@@ -103,39 +103,32 @@ StatusOr<DriverRawPtr> QuerySharedDriverQueue::take() {
         }
     });
 
-    MonotonicStopWatch sw;
-    sw.start();
     {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> lock(_global_mutex);
         sw.stop();
         lock_time_ns = sw.elapsed_time();
-
         if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
             LOG(WARNING) << "[LZH] slow_driver_queue_take [time" << sw.elapsed_time() << "]";
         }
 
-        while (true) {
-            if (_is_closed) {
-                return Status::Cancelled("Shutdown");
-            }
-
-            // Find the queue with the smallest execution time.
-            for (int i = 0; i < QUEUE_SIZE; ++i) {
-                // we just search for queue has element
-                if (!_queues[i].empty()) {
-                    double local_target_time = _queues[i].accu_time_after_divisor();
-                    if (queue_idx < 0 || local_target_time < target_accu_time) {
-                        target_accu_time = local_target_time;
-                        queue_idx = i;
-                    }
+        // Find the queue with the smallest execution time.
+        for (int i = 0; i < QUEUE_SIZE; ++i) {
+            // we just search for queue has element
+            if (!_queues[i].empty()) {
+                double local_target_time = _queues[i].accu_time_after_divisor();
+                if (queue_idx < 0 || local_target_time < target_accu_time) {
+                    target_accu_time = local_target_time;
+                    queue_idx = i;
                 }
             }
-
-            if (queue_idx >= 0) {
-                break;
-            }
-            _cv.wait(lock);
         }
+
+        if (queue_idx < 0) {
+            return nullptr;
+        }
+
         // record queue's index to accumulate time for it.
         driver_ptr = _queues[queue_idx].take();
         driver_ptr->set_in_ready_queue(false);

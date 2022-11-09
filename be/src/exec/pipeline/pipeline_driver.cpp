@@ -63,6 +63,8 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _take_from_ready_queue_lock_timer = ADD_CHILD_TIMER(_runtime_profile, "TakeFromReadyQueueLockTime", "LockTime");
     _push_to_ready_queue_lock_timer = ADD_CHILD_TIMER(_runtime_profile, "PushToReadyQueueLockTime", "LockTime");
     _push_to_blocking_queue_lock_timer = ADD_CHILD_TIMER(_runtime_profile, "PushToBlockingQueueLockTime", "LockTime");
+    _sched_local_counter = ADD_COUNTER(_runtime_profile, "SchedLocalCounter", TUnit::UNIT);
+    _sched_steal_counter = ADD_COUNTER(_runtime_profile, "SchedStealCounter", TUnit::UNIT);
 
     DCHECK(_state == DriverState::NOT_READY);
 
