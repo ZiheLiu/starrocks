@@ -55,6 +55,9 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _output_full_timer = ADD_CHILD_TIMER(_runtime_profile, "OutputFullTime", "PendingTime");
     _pending_finish_timer = ADD_CHILD_TIMER(_runtime_profile, "PendingFinishTime", "PendingTime");
 
+    _sched_local_counter = ADD_COUNTER(_runtime_profile, "SchedLocalCounter", TUnit::UNIT);
+    _sched_steal_counter = ADD_COUNTER(_runtime_profile, "SchedStealCounter", TUnit::UNIT);
+
     DCHECK(_state == DriverState::NOT_READY);
 
     auto* source_op = source_operator();

@@ -173,6 +173,7 @@ set(EXEC_FILES
     pipeline/sort/local_merge_sort_source_operator.cpp
     pipeline/sort/sort_context.cpp
     pipeline/pipeline_driver_executor.cpp
+    pipeline/pipeline_driver_queue_manager.cpp
     pipeline/pipeline_driver_queue.cpp
     pipeline/pipeline_driver_poller.cpp
     pipeline/pipeline_driver.cpp

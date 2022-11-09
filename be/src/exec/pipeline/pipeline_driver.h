@@ -367,6 +367,12 @@ public:
 
     inline std::string get_name() const { return strings::Substitute("PipelineDriver (id=$0)", _driver_id); }
 
+    void set_dispatcher_id(int dispatcher_id) { _dispatcher_id = dispatcher_id; }
+    int dispatcher_id() { return _dispatcher_id; }
+
+    void incr_sched_local_counter() { _sched_local_counter->update(1); }
+    void incr_sched_steal_counter() { _sched_steal_counter->update(1); }
+
 private:
     // Yield PipelineDriver when maximum time in nano-seconds has spent in current execution round.
     static constexpr int64_t YIELD_MAX_TIME_SPENT = 100'000'000L;
@@ -420,6 +426,8 @@ private:
     size_t _driver_queue_level = 0;
     std::atomic<bool> _in_ready_queue{false};
 
+    int _dispatcher_id = -1;
+
     // metrics
     RuntimeProfile::Counter* _total_timer = nullptr;
     RuntimeProfile::Counter* _active_timer = nullptr;
@@ -441,6 +449,9 @@ private:
     RuntimeProfile::Counter* _followup_input_empty_timer = nullptr;
     RuntimeProfile::Counter* _output_full_timer = nullptr;
     RuntimeProfile::Counter* _pending_finish_timer = nullptr;
+
+    RuntimeProfile::Counter* _sched_local_counter = nullptr;
+    RuntimeProfile::Counter* _sched_steal_counter = nullptr;
 
     MonotonicStopWatch* _total_timer_sw = nullptr;
     MonotonicStopWatch* _pending_timer_sw = nullptr;

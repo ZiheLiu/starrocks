@@ -15,10 +15,9 @@ namespace starrocks::pipeline {
 GlobalDriverExecutor::GlobalDriverExecutor(const std::string& name, std::unique_ptr<ThreadPool> thread_pool,
                                            bool enable_resource_group)
         : Base(name),
-          _driver_queue(enable_resource_group ? std::unique_ptr<DriverQueue>(std::make_unique<WorkGroupDriverQueue>())
-                                              : std::make_unique<QuerySharedDriverQueue>()),
+          _driver_queue_manager(std::make_unique<DriverQueueManager>()),
           _thread_pool(std::move(thread_pool)),
-          _blocked_driver_poller(new PipelineDriverPoller(_driver_queue.get())),
+          _blocked_driver_poller(new PipelineDriverPoller(_driver_queue_manager.get())),
           _exec_state_reporter(new ExecStateReporter()) {}
 
 GlobalDriverExecutor::~GlobalDriverExecutor() {
@@ -30,7 +29,7 @@ GlobalDriverExecutor::~GlobalDriverExecutor() {
         _driver_queue_len.reset();
         _driver_poller_block_queue_len.reset();
     }
-    _driver_queue->close();
+    _driver_queue_manager->close();
 }
 
 void GlobalDriverExecutor::initialize(int num_threads) {
@@ -44,11 +43,12 @@ void GlobalDriverExecutor::initialize(int num_threads) {
             metrics->register_metric(full_name, metric.get());
             metrics->register_hook(full_name, [&metric, provider]() { metric->set_value(provider()); });
         };
-        regist_metric("driver_queue_len", _driver_queue_len, [this]() { return _driver_queue->size(); });
+        regist_metric("driver_queue_len", _driver_queue_len, [this]() { return _driver_queue_manager->size(); });
         regist_metric("poller_block_queue_len", _driver_poller_block_queue_len,
                       [this]() { return _blocked_driver_poller->blocked_driver_queue_len(); });
     }
 
+    _driver_queue_manager->initialize(num_threads);
     _blocked_driver_poller->start();
     _num_threads_setter.set_actual_num(num_threads);
     for (auto i = 0; i < num_threads; ++i) {
@@ -82,7 +82,7 @@ void GlobalDriverExecutor::_worker_thread() {
         CurrentThread::current().set_fragment_instance_id({});
         CurrentThread::current().set_pipeline_driver_id(0);
 
-        auto maybe_driver = this->_driver_queue->take();
+        auto maybe_driver = this->_driver_queue_manager->take(worker_id);
         if (maybe_driver.status().is_cancelled()) {
             return;
         }
@@ -125,7 +125,7 @@ void GlobalDriverExecutor::_worker_thread() {
             maybe_state = driver->process(runtime_state, worker_id);
 #endif
             Status status = maybe_state.status();
-            this->_driver_queue->update_statistics(driver);
+            this->_driver_queue_manager->update_statistics(driver);
 
             // Check big query
             if (status.ok() && driver->workgroup()) {
@@ -150,7 +150,7 @@ void GlobalDriverExecutor::_worker_thread() {
             switch (driver_state) {
             case READY:
             case RUNNING: {
-                this->_driver_queue->put_back_from_executor(driver);
+                this->_driver_queue_manager->put_back_from_executor(driver);
                 break;
             }
             case FINISH:
@@ -186,7 +186,7 @@ void GlobalDriverExecutor::submit(DriverRawPtr driver) {
             driver->set_driver_state(DriverState::INPUT_EMPTY);
             this->_blocked_driver_poller->add_blocked_driver(driver);
         } else {
-            this->_driver_queue->put_back(driver);
+            this->_driver_queue_manager->put_back(driver);
         }
     }
 }
@@ -195,7 +195,7 @@ void GlobalDriverExecutor::cancel(DriverRawPtr driver) {
     // if driver is already in ready queue, we should cancel it
     // otherwise, just ignore it and wait for the poller to schedule
     if (driver->is_in_ready_queue()) {
-        this->_driver_queue->cancel(driver);
+        this->_driver_queue_manager->cancel(driver);
     }
 }
 
