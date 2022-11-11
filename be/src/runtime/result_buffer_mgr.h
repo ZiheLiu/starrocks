@@ -70,9 +70,16 @@ private:
     // when fe crush, this thread clear the buffer avoid memory leak in this backend
     void cancel_thread();
 
+
+    size_t _slot_idx(const TUniqueId& query_id);
+
+private:
+    const size_t _num_slots = 64;
+    const size_t _slot_mask = _num_slots - 1;
+
     bool _is_stop{false};
     // lock for buffer map
-    std::mutex _lock;
+    std::vector<std::mutex> _locks;
     // buffer block map
     BufferMap _buffer_map;
 

@@ -30,11 +30,11 @@
 
 namespace starrocks {
 
-ResultBufferMgr::ResultBufferMgr() {
+ResultBufferMgr::ResultBufferMgr(): _locks(_num_slots) {
     // Each BufferControlBlock has a limited queue size of 1024, it's not needed to count the
     // actual size of all BufferControlBlock.
     REGISTER_GAUGE_STARROCKS_METRIC(result_buffer_block_count, [this]() {
-        std::lock_guard<std::mutex> l(_lock);
+//        std::lock_guard<std::mutex> l(_lock);
         return _buffer_map.size();
     });
 }
@@ -60,7 +60,8 @@ Status ResultBufferMgr::create_sender(const TUniqueId& query_id, int buffer_size
 
     std::shared_ptr<BufferControlBlock> control_block(new BufferControlBlock(query_id, buffer_size));
     {
-        std::lock_guard<std::mutex> l(_lock);
+        size_t i = _slot_idx(query_id);
+        std::lock_guard<std::mutex> l(_locks[i]);
         _buffer_map.insert(std::make_pair(query_id, control_block));
     }
     *sender = control_block;
@@ -69,7 +70,8 @@ Status ResultBufferMgr::create_sender(const TUniqueId& query_id, int buffer_size
 
 std::shared_ptr<BufferControlBlock> ResultBufferMgr::find_control_block(const TUniqueId& query_id) {
     // TODO(zhaochun): this lock can be bottleneck?
-    std::lock_guard<std::mutex> l(_lock);
+    size_t i = _slot_idx(query_id);
+    std::lock_guard<std::mutex> l(_locks[i]);
     auto iter = _buffer_map.find(query_id);
 
     if (_buffer_map.end() != iter) {
@@ -104,7 +106,8 @@ void ResultBufferMgr::fetch_data(const PUniqueId& finst_id, GetResultBatchCtx* c
 }
 
 Status ResultBufferMgr::cancel(const TUniqueId& query_id) {
-    std::lock_guard<std::mutex> l(_lock);
+    size_t i = _slot_idx(query_id);
+    std::lock_guard<std::mutex> l(_locks[i]);
     auto iter = _buffer_map.find(query_id);
 
     if (_buffer_map.end() != iter) {
@@ -157,6 +160,10 @@ void ResultBufferMgr::cancel_thread() {
     }
 
     LOG(INFO) << "result buffer manager cancel thread finish.";
+}
+
+size_t ResultBufferMgr::_slot_idx(const TUniqueId& query_id) {
+    return std::hash<size_t>()(query_id.hi) & _slot_mask;
 }
 
 } // namespace starrocks
