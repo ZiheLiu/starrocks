@@ -176,7 +176,7 @@ void PInternalServiceImplBase<T>::exec_batch_plan_fragments(google::protobuf::Rp
                                                             const PExecBatchPlanFragmentsRequest* request,
                                                             PExecBatchPlanFragmentsResult* response,
                                                             google::protobuf::Closure* done) {
-    ClosureGuard closure_guard(done);
+    //    ClosureGuard closure_guard(done);
     auto* cntl = static_cast<brpc::Controller*>(cntl_base);
     if (k_starrocks_exit.load(std::memory_order_relaxed)) {
         cntl->SetFailed(brpc::EINTERNAL, "BE is shutting down");
@@ -184,11 +184,14 @@ void PInternalServiceImplBase<T>::exec_batch_plan_fragments(google::protobuf::Rp
         return;
     }
 
-    auto st = _exec_batch_plan_fragments(cntl);
-    if (!st.ok()) {
-        LOG(WARNING) << "exec multi plan fragments failed, errmsg=" << st.get_error_msg();
-    }
-    st.to_protobuf(response->mutable_status());
+    _exec_env->pipeline_prepare_pool()->offer([cntl, response, done, this] {
+        auto st = this->_exec_batch_plan_fragments(cntl);
+        if (!st.ok()) {
+            LOG(WARNING) << "exec multi plan fragments failed, errmsg=" << st.get_error_msg();
+        }
+        st.to_protobuf(response->mutable_status());
+        done->Run();
+    });
 }
 
 template <typename T>
