@@ -540,6 +540,8 @@ public class Config extends ConfigBase {
     @ConfField
     public static int brpc_idle_wait_max_time = 10000;
     @ConfField
+    public static int brpc_io_event_type = 0;
+    @ConfField
     public static boolean bprc_no_delay = false;
 
     /**

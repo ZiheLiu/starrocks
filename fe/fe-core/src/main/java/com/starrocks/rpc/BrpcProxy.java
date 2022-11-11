@@ -38,7 +38,7 @@ public class BrpcProxy {
         // Therefore, MaxIdleSize shouldn't less than MaxTotal for the async requests.
         rpcOptions.setMaxIdleSize(Config.brpc_connection_pool_size);
         rpcOptions.setMaxWait(Config.brpc_idle_wait_max_time);
-        rpcOptions.setIoEventGroupType(RpcClientOptions.EPOLL_EVENT_GROUP);
+        rpcOptions.setIoEventGroupType(Config.brpc_io_event_type);
         rpcOptions.setTcpNoDelay(Config.bprc_no_delay);
 
         rpcClient = new RpcClient(rpcOptions);
