@@ -539,6 +539,8 @@ public class Config extends ConfigBase {
     // BRPC idle wait time (ms)
     @ConfField
     public static int brpc_idle_wait_max_time = 10000;
+    @ConfField
+    public static boolean bprc_no_delay = false;
 
     /**
      * FE mysql server port
