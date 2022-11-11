@@ -37,7 +37,8 @@ public class StatementPlanner {
         return plan(stmt, session, true, TResultSinkType.MYSQL_PROTOCAL);
     }
 
-    public static ExecPlan plan(StatementBase stmt, ConnectContext session, boolean lockDb, TResultSinkType resultSinkType) {
+    public static ExecPlan plan(StatementBase stmt, ConnectContext session, boolean lockDb,
+                                TResultSinkType resultSinkType) {
         if (stmt instanceof QueryStatement) {
             OptimizerTraceUtil.logQueryStatement(session, "after parse:\n%s", (QueryStatement) stmt);
         }
@@ -47,8 +48,10 @@ public class StatementPlanner {
         if (lockDb) {
             dbLocks = dbs;
         }
-        try {
-            lock(dbLocks);
+        try (PlannerProfile.ScopedTimer ignored2 = PlannerProfile.getScopedTimer("InnerPlan")) {
+            try (PlannerProfile.ScopedTimer ignored3 = PlannerProfile.getScopedTimer("LockDB")) {
+                lock(dbLocks);
+            }
             try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Analyzer")) {
                 Analyzer.analyze(stmt, session);
             }
@@ -84,8 +87,12 @@ public class StatementPlanner {
         List<String> colNames = query.getColumnOutputNames();
 
         //1. Build Logical plan
-        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
-        LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, session).transformWithSelectLimit(query);
+        ColumnRefFactory columnRefFactory;
+        LogicalPlan logicalPlan;
+        try (PlannerProfile.ScopedTimer ignored3 = PlannerProfile.getScopedTimer("TransformLogicPlan")) {
+            columnRefFactory = new ColumnRefFactory();
+            logicalPlan = new RelationTransformer(columnRefFactory, session).transformWithSelectLimit(query);
+        }
 
         // TODO: remove forceDisablePipeline when all the operators support pipeline engine.
         boolean isEnablePipeline = session.getSessionVariable().isEnablePipelineEngine();
