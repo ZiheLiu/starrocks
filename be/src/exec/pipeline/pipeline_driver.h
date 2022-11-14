@@ -373,6 +373,8 @@ public:
     void incr_sched_local_counter() { _sched_local_counter->update(1); }
     void incr_sched_steal_counter() { _sched_steal_counter->update(1); }
 
+    void incr_pending_iterate_timer(int64_t delta);
+
 private:
     // Yield PipelineDriver when maximum time in nano-seconds has spent in current execution round.
     static constexpr int64_t YIELD_MAX_TIME_SPENT = 100'000'000L;
@@ -449,6 +451,7 @@ private:
     RuntimeProfile::Counter* _followup_input_empty_timer = nullptr;
     RuntimeProfile::Counter* _output_full_timer = nullptr;
     RuntimeProfile::Counter* _pending_finish_timer = nullptr;
+    RuntimeProfile::Counter* _pending_iterate_timer = nullptr;
 
     RuntimeProfile::Counter* _sched_local_counter = nullptr;
     RuntimeProfile::Counter* _sched_steal_counter = nullptr;

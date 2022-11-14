@@ -54,6 +54,7 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _followup_input_empty_timer = ADD_CHILD_TIMER(_runtime_profile, "FollowupInputEmptyTime", "InputEmptyTime");
     _output_full_timer = ADD_CHILD_TIMER(_runtime_profile, "OutputFullTime", "PendingTime");
     _pending_finish_timer = ADD_CHILD_TIMER(_runtime_profile, "PendingFinishTime", "PendingTime");
+    _pending_iterate_timer = ADD_CHILD_TIMER(_runtime_profile, "PendingIterateTime", "PendingTime");
 
     _sched_local_counter = ADD_COUNTER(_runtime_profile, "SchedLocalCounter", TUnit::UNIT);
     _sched_steal_counter = ADD_COUNTER(_runtime_profile, "SchedStealCounter", TUnit::UNIT);
@@ -607,6 +608,10 @@ void PipelineDriver::_update_statistics(size_t total_chunks_moved, size_t total_
     int64_t sink_operator_last_cpu_time_ns = sink_operator()->get_last_growth_cpu_time_ns();
     int64_t accounted_cpu_cost = runtime_ns + source_operator_last_cpu_time_ns + sink_operator_last_cpu_time_ns;
     query_ctx()->incr_cpu_cost(accounted_cpu_cost);
+}
+
+void PipelineDriver::incr_pending_iterate_timer(int64_t delta) {
+    COUNTER_UPDATE(_pending_iterate_timer, delta);
 }
 
 } // namespace starrocks::pipeline

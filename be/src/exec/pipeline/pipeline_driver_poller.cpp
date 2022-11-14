@@ -49,8 +49,10 @@ void PipelineDriverPoller::run_internal() {
             }
         }
 
+        int64_t it_timer = 0;
         {
             std::unique_lock write_lock(_local_mutex);
+            SCOPED_RAW_TIMER(&it_timer);
 
             if (!tmp_blocked_drivers.empty()) {
                 _local_blocked_drivers.splice(_local_blocked_drivers.end(), tmp_blocked_drivers);
@@ -125,6 +127,10 @@ void PipelineDriverPoller::run_internal() {
             spin_count += 1;
         } else {
             spin_count = 0;
+
+            for (auto* driver : ready_drivers) {
+                driver->incr_pending_iterate_timer(it_timer);
+            }
 
             _driver_queue_manager->put_back(ready_drivers);
             ready_drivers.clear();
