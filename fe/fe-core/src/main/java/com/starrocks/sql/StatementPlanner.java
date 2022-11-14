@@ -49,9 +49,9 @@ public class StatementPlanner {
             dbLocks = dbs;
         }
         try (PlannerProfile.ScopedTimer ignored2 = PlannerProfile.getScopedTimer("InnerPlan")) {
-            try (PlannerProfile.ScopedTimer ignored3 = PlannerProfile.getScopedTimer("LockDB")) {
-                lock(dbLocks);
-            }
+            // try (PlannerProfile.ScopedTimer ignored3 = PlannerProfile.getScopedTimer("LockDB")) {
+            //     lock(dbLocks);
+            //  }
             try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("Analyzer")) {
                 Analyzer.analyze(stmt, session);
             }
@@ -76,9 +76,10 @@ public class StatementPlanner {
             } else if (stmt instanceof DeleteStmt) {
                 return new DeletePlanner().plan((DeleteStmt) stmt, session);
             }
-        } finally {
-            unLock(dbLocks);
         }
+        // finally {
+        //    unLock(dbLocks);
+        // }
         return null;
     }
 
