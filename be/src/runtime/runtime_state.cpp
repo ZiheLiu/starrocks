@@ -113,9 +113,9 @@ RuntimeState::~RuntimeState() {
         _error_log_file = nullptr;
     }
 
-    if (_exec_env != nullptr && _exec_env->thread_mgr() != nullptr) {
-        _exec_env->thread_mgr()->unregister_pool(_resource_pool);
-    }
+//    if (_exec_env != nullptr && _exec_env->thread_mgr() != nullptr) {
+//        _exec_env->thread_mgr()->unregister_pool(_resource_pool);
+//    }
 }
 
 Status RuntimeState::init(const TUniqueId& fragment_instance_id, const TQueryOptions& query_options,
@@ -158,10 +158,10 @@ Status RuntimeState::init(const TUniqueId& fragment_instance_id, const TQueryOpt
     }
 
     // Register with the thread mgr
-    if (exec_env != nullptr) {
-        _resource_pool = exec_env->thread_mgr()->register_pool();
-        DCHECK(_resource_pool != nullptr);
-    }
+//    if (exec_env != nullptr) {
+//        _resource_pool = exec_env->thread_mgr()->register_pool();
+//        DCHECK(_resource_pool != nullptr);
+//    }
     _runtime_filter_port = _obj_pool->add(new RuntimeFilterPort(this));
 
     return Status::OK();
