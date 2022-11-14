@@ -375,6 +375,9 @@ public:
 
     void incr_pending_iterate_timer(int64_t delta);
 
+    void notify_ready();
+    void notify_process();
+
 private:
     // Yield PipelineDriver when maximum time in nano-seconds has spent in current execution round.
     static constexpr int64_t YIELD_MAX_TIME_SPENT = 100'000'000L;
@@ -452,6 +455,7 @@ private:
     RuntimeProfile::Counter* _output_full_timer = nullptr;
     RuntimeProfile::Counter* _pending_finish_timer = nullptr;
     RuntimeProfile::Counter* _pending_iterate_timer = nullptr;
+    RuntimeProfile::Counter* _real_schedule_timer = nullptr;
 
     RuntimeProfile::Counter* _sched_local_counter = nullptr;
     RuntimeProfile::Counter* _sched_steal_counter = nullptr;
@@ -462,6 +466,7 @@ private:
     MonotonicStopWatch* _input_empty_timer_sw = nullptr;
     MonotonicStopWatch* _output_full_timer_sw = nullptr;
     MonotonicStopWatch* _pending_finish_timer_sw = nullptr;
+    MonotonicStopWatch* _real_schedule_timer_sw = nullptr;
 };
 
 } // namespace pipeline

@@ -37,6 +37,7 @@ void QuerySharedDriverQueue::put_back(const DriverRawPtr driver) {
     driver->set_driver_queue_level(level);
     {
         std::lock_guard<std::mutex> lock(_global_mutex);
+        driver->notify_ready();
         _queues[level].put(driver);
         driver->set_in_ready_queue(true);
         _cv.notify_one();
@@ -52,6 +53,7 @@ void QuerySharedDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) 
     }
     std::lock_guard<std::mutex> lock(_global_mutex);
     for (int i = 0; i < drivers.size(); i++) {
+        drivers[i]->notify_ready();
         _queues[levels[i]].put(drivers[i]);
         drivers[i]->set_in_ready_queue(true);
         _cv.notify_one();
@@ -95,6 +97,8 @@ StatusOr<DriverRawPtr> QuerySharedDriverQueue::take() {
 
         --_num_drivers;
     }
+
+    driver_ptr->notify_process();
 
     // next pipeline driver to execute.
     return driver_ptr;

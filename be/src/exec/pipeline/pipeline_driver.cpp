@@ -55,6 +55,7 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _output_full_timer = ADD_CHILD_TIMER(_runtime_profile, "OutputFullTime", "PendingTime");
     _pending_finish_timer = ADD_CHILD_TIMER(_runtime_profile, "PendingFinishTime", "PendingTime");
     _pending_iterate_timer = ADD_CHILD_TIMER(_runtime_profile, "PendingIterateTime", "PendingTime");
+    _real_schedule_timer = ADD_CHILD_TIMER(_runtime_profile, "RealSchedTime", "ScheduleTime");
 
     _sched_local_counter = ADD_COUNTER(_runtime_profile, "SchedLocalCounter", TUnit::UNIT);
     _sched_steal_counter = ADD_COUNTER(_runtime_profile, "SchedStealCounter", TUnit::UNIT);
@@ -152,12 +153,14 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _input_empty_timer_sw = runtime_state->obj_pool()->add(new MonotonicStopWatch());
     _output_full_timer_sw = runtime_state->obj_pool()->add(new MonotonicStopWatch());
     _pending_finish_timer_sw = runtime_state->obj_pool()->add(new MonotonicStopWatch());
+    _real_schedule_timer_sw = runtime_state->obj_pool()->add(new MonotonicStopWatch());
     _total_timer_sw->start();
     _pending_timer_sw->start();
     _precondition_block_timer_sw->start();
     _input_empty_timer_sw->start();
     _output_full_timer_sw->start();
     _pending_finish_timer_sw->start();
+    _real_schedule_timer_sw->start();
 
     return Status::OK();
 }
@@ -612,6 +615,14 @@ void PipelineDriver::_update_statistics(size_t total_chunks_moved, size_t total_
 
 void PipelineDriver::incr_pending_iterate_timer(int64_t delta) {
     COUNTER_UPDATE(_pending_iterate_timer, delta);
+}
+
+void PipelineDriver::notify_ready() {
+    _real_schedule_timer_sw->reset();
+}
+
+void PipelineDriver::notify_process() {
+    _real_schedule_timer->update(_real_schedule_timer_sw->elapsed_time());
 }
 
 } // namespace starrocks::pipeline
