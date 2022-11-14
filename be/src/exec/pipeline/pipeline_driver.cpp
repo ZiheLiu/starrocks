@@ -405,7 +405,14 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state) {
 
     // last finished driver notify FE the fragment's completion again and
     // unregister the FragmentContext.
+    int64_t finalize_time = 0;
+    DeferOp print_finalize_time([&finalize_time] {
+        if (finalize_time > 0) {
+            LOG(WARNING) << "finalize time: " << finalize_time;
+        }
+    });
     if (_fragment_ctx->count_down_drivers()) {
+        SCOPED_RAW_TIMER(&finalize_time);
         if (config::pipeline_print_profile) {
             std::stringstream ss;
             // Print profile for this fragment
@@ -448,6 +455,7 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state) {
             return;
         }
     }
+
     QUERY_TRACE_END("finalize", _driver_name);
 }
 
