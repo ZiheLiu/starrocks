@@ -77,18 +77,18 @@ RuntimeProfile::RuntimeProfile(std::string name, bool is_averaged_profile)
 RuntimeProfile::~RuntimeProfile() {
     decltype(_counter_map)::iterator iter;
 
-    for (iter = _counter_map.begin(); iter != _counter_map.end(); ++iter) {
-        stop_rate_counters_updates(iter->second.first);
-        stop_sampling_counters_updates(iter->second.first);
-    }
-
-    std::set<std::vector<Counter*>*>::const_iterator buckets_iter;
-
-    for (buckets_iter = _bucketing_counters.begin(); buckets_iter != _bucketing_counters.end(); ++buckets_iter) {
-        // This is just a clean up. No need to perform conversion. Also, the underlying
-        // counters might be gone already.
-        stop_bucketing_counters_updates(*buckets_iter, false);
-    }
+//    for (iter = _counter_map.begin(); iter != _counter_map.end(); ++iter) {
+//        stop_rate_counters_updates(iter->second.first);
+//        stop_sampling_counters_updates(iter->second.first);
+//    }
+//
+//    std::set<std::vector<Counter*>*>::const_iterator buckets_iter;
+//
+//    for (buckets_iter = _bucketing_counters.begin(); buckets_iter != _bucketing_counters.end(); ++buckets_iter) {
+//        // This is just a clean up. No need to perform conversion. Also, the underlying
+//        // counters might be gone already.
+//        stop_bucketing_counters_updates(*buckets_iter, false);
+//    }
 }
 
 void RuntimeProfile::merge(RuntimeProfile* other) {
