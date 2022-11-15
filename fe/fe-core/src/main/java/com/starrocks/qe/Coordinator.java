@@ -251,6 +251,7 @@ public class Coordinator {
                        TDescriptorTable descTable) {
         this.isBlockQuery = false;
         this.queryId = context.getExecutionId();
+        LOG.warn("queryId, hi={}, lo={}", this.queryId.hi, this.queryId.lo);
         this.connectContext = context;
         this.fragments = fragments;
         this.scanNodes = scanNodes;
