@@ -29,7 +29,7 @@ GlobalDriverExecutor::GlobalDriverExecutor(const std::string& name, std::unique_
                                            bool enable_resource_group)
         : Base(name),
           _driver_queue(enable_resource_group ? std::unique_ptr<DriverQueue>(std::make_unique<WorkGroupDriverQueue>())
-                                              : std::make_unique<QuerySharedDriverQueue>()),
+                                              : std::make_unique<CFSDriverQueue>()),
           _thread_pool(std::move(thread_pool)),
           _blocked_driver_poller(new PipelineDriverPoller(_driver_queue.get())),
           _exec_state_reporter(new ExecStateReporter()) {}

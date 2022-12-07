@@ -45,6 +45,7 @@ class PipelineDriver;
 using DriverPtr = std::shared_ptr<PipelineDriver>;
 using Drivers = std::vector<DriverPtr>;
 using IterateImmutableDriverFunc = std::function<void(DriverConstRawPtr)>;
+class DriverQueue;
 
 enum DriverState : uint32_t {
     NOT_READY = 0,
@@ -376,6 +377,8 @@ public:
     inline bool is_in_ready_queue() const { return _in_ready_queue.load(std::memory_order_acquire); }
     void set_in_ready_queue(bool v) { _in_ready_queue.store(v, std::memory_order_release); }
 
+    void set_in_queue(DriverQueue* queue) { _in_queue = queue; }
+
     inline std::string get_name() const { return strings::Substitute("PipelineDriver (id=$0)", _driver_id); }
 
 private:
@@ -430,6 +433,8 @@ private:
     // The index of QuerySharedDriverQueue._queues which this driver belongs to.
     size_t _driver_queue_level = 0;
     std::atomic<bool> _in_ready_queue{false};
+
+    DriverQueue* _in_queue = nullptr;
 
     // metrics
     RuntimeProfile::Counter* _total_timer = nullptr;

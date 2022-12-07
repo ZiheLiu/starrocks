@@ -193,6 +193,107 @@ DriverRawPtr SubQuerySharedDriverQueue::take() {
     return nullptr;
 }
 
+/// CFSDriverQueue.
+bool CFSDriverQueue::DriverComparator::operator()(const DriverRawPtr& lhs, const DriverRawPtr& rhs) const {
+    return lhs->driver_acct().get_accumulated_time_spent() < rhs->driver_acct().get_accumulated_time_spent();
+}
+
+void CFSDriverQueue::close() {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+    _is_closed = true;
+    _cv.notify_all();
+}
+
+void CFSDriverQueue::put_back(const DriverRawPtr driver) {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+
+    driver->set_in_queue(this);
+    driver->set_in_ready_queue(true);
+    if (_min_driver == nullptr || _min_driver.load()->driver_acct().get_accumulated_time_spent() >
+                                          driver->driver_acct().get_accumulated_time_spent()) {
+        _min_driver = driver;
+    }
+    ++_num_drivers;
+    _drivers.emplace(driver);
+
+    _cv.notify_one();
+}
+
+void CFSDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+
+    for (const auto& driver : drivers) {
+        driver->set_in_queue(this);
+        driver->set_in_ready_queue(true);
+        if (_min_driver == nullptr || _min_driver.load()->driver_acct().get_accumulated_time_spent() >
+                                              driver->driver_acct().get_accumulated_time_spent()) {
+            _min_driver = driver;
+        }
+        ++_num_drivers;
+        _drivers.emplace(driver);
+
+        _cv.notify_one();
+    }
+
+    _num_drivers += drivers.size();
+}
+
+void CFSDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
+    // QuerySharedDriverQueue::put_back_from_executor is identical to put_back.
+    put_back(driver);
+}
+
+StatusOr<DriverRawPtr> CFSDriverQueue::take() {
+    DriverRawPtr driver = nullptr;
+    {
+        std::unique_lock<std::mutex> lock(_global_mutex);
+
+        if (_is_closed) {
+            return Status::Cancelled("Shutdown");
+        }
+
+        if (_drivers.empty()) {
+            _cv.wait(lock);
+        }
+
+        driver = *_drivers.begin();
+        driver->set_in_ready_queue(false);
+        _drivers.erase(driver);
+        _min_driver = *_drivers.begin();
+
+        --_num_drivers;
+    }
+
+    return driver;
+}
+
+void CFSDriverQueue::cancel(DriverRawPtr driver) {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+    if (_is_closed) {
+        return;
+    }
+    if (!driver->is_in_ready_queue()) {
+        return;
+    }
+    _cv.notify_one();
+}
+
+size_t CFSDriverQueue::size() const {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+    return _num_drivers;
+}
+
+void CFSDriverQueue::update_statistics(const DriverRawPtr driver) {
+    // Do nothing.
+}
+
+bool CFSDriverQueue::should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const {
+    auto* min_driver = _min_driver.load();
+    return min_driver != driver && min_driver &&
+           min_driver->driver_acct().get_accumulated_time_spent() <
+                   driver->driver_acct().get_accumulated_time_spent() + unaccounted_runtime_ns;
+}
+
 /// WorkGroupDriverQueue.
 bool WorkGroupDriverQueue::WorkGroupDriverSchedEntityComparator::operator()(
         const WorkGroupDriverSchedEntityPtr& lhs, const WorkGroupDriverSchedEntityPtr& rhs) const {

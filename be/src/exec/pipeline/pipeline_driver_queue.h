@@ -95,6 +95,43 @@ private:
     std::atomic<int64_t> _accu_consume_time = 0;
 };
 
+class CFSDriverQueue : public FactoryMethod<DriverQueue, CFSDriverQueue> {
+    friend class FactoryMethod<DriverQueue, CFSDriverQueue>;
+
+public:
+    ~CFSDriverQueue() override = default;
+
+    void close() override;
+    void put_back(const DriverRawPtr driver) override;
+    void put_back(const std::vector<DriverRawPtr>& drivers) override;
+    void put_back_from_executor(const DriverRawPtr driver) override;
+
+    void update_statistics(const DriverRawPtr driver) override;
+
+    // Return cancelled status, if the queue is closed.
+    StatusOr<DriverRawPtr> take() override;
+
+    void cancel(DriverRawPtr driver) override;
+
+    size_t size() const override;
+
+    bool should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const override;
+
+private:
+    struct DriverComparator {
+        bool operator()(const DriverRawPtr& lhs, const DriverRawPtr& rhs) const;
+    };
+
+    std::set<DriverRawPtr, DriverComparator> _drivers;
+    std::atomic<DriverRawPtr> _min_driver = nullptr;
+
+    size_t _num_drivers = 0;
+
+    mutable std::mutex _global_mutex;
+    std::condition_variable _cv;
+    bool _is_closed = false;
+};
+
 class QuerySharedDriverQueue : public FactoryMethod<DriverQueue, QuerySharedDriverQueue> {
     friend class FactoryMethod<DriverQueue, QuerySharedDriverQueue>;
 
