@@ -216,7 +216,11 @@ void CFSDriverQueue::put_back(const DriverRawPtr driver) {
     ++_num_drivers;
     _drivers.emplace(driver);
 
-    LOG(WARNING) << "[BUG] put_back [size after=" << _drivers.size() << "]";
+    LOG(WARNING) << "[BUG] put_back "
+                 << "[driver=" << driver << "] "
+                 << "[_num_drivers" << _num_drivers << "] "
+                 << "[size=" << _drivers.size() << "] "
+                 << "[empty=" << _drivers.empty() << "] ";
 
     _cv.notify_one();
 }
@@ -233,7 +237,11 @@ void CFSDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
         }
         ++_num_drivers;
         _drivers.emplace(driver);
-        LOG(WARNING) << "[BUG] put_backs [size after=" << _drivers.size() << "]";
+        LOG(WARNING) << "[BUG] put_backs "
+                     << "[driver=" << driver << "] "
+                     << "[_num_drivers" << _num_drivers << "] "
+                     << "[size=" << _drivers.size() << "] "
+                     << "[empty=" << _drivers.empty() << "] ";
 
         _cv.notify_one();
     }
@@ -254,7 +262,11 @@ StatusOr<DriverRawPtr> CFSDriverQueue::take() {
         }
 
         while (_drivers.empty()) {
-            LOG(WARNING) << "[BUG] take empty";
+            LOG(WARNING) << "[BUG] take empty "
+                         << "[driver=" << driver << "] "
+                         << "[_num_drivers" << _num_drivers << "] "
+                         << "[size=" << _drivers.size() << "] "
+                         << "[empty=" << _drivers.empty() << "] ";
             _cv.wait(lock);
             if (_is_closed) {
                 return Status::Cancelled("Shutdown");
@@ -271,6 +283,12 @@ StatusOr<DriverRawPtr> CFSDriverQueue::take() {
         }
 
         --_num_drivers;
+
+        LOG(WARNING) << "[BUG] take one "
+                     << "[driver=" << driver << "] "
+                     << "[_num_drivers" << _num_drivers << "] "
+                     << "[size=" << _drivers.size() << "] "
+                     << "[empty=" << _drivers.empty() << "] ";
     }
 
     return driver;
