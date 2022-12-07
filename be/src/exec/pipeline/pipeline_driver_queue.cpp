@@ -234,8 +234,6 @@ void CFSDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
 
         _cv.notify_one();
     }
-
-    _num_drivers += drivers.size();
 }
 
 void CFSDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
@@ -253,16 +251,20 @@ StatusOr<DriverRawPtr> CFSDriverQueue::take() {
         }
 
         while (_drivers.empty()) {
+            _cv.wait(lock);
             if (_is_closed) {
                 return Status::Cancelled("Shutdown");
             }
-            _cv.wait(lock);
         }
 
         driver = *_drivers.begin();
         driver->set_in_ready_queue(false);
         _drivers.erase(driver);
-        _min_driver = *_drivers.begin();
+        if (_drivers.empty()) {
+            _min_driver = nullptr;
+        } else {
+            _min_driver = *_drivers.begin();
+        }
 
         --_num_drivers;
     }
