@@ -216,6 +216,8 @@ void CFSDriverQueue::put_back(const DriverRawPtr driver) {
     ++_num_drivers;
     _drivers.emplace(driver);
 
+    LOG(WARNING) << "[BUG] put_back [size after=" << _drivers.size() << "]";
+
     _cv.notify_one();
 }
 
@@ -231,6 +233,7 @@ void CFSDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
         }
         ++_num_drivers;
         _drivers.emplace(driver);
+        LOG(WARNING) << "[BUG] put_backs [size after=" << _drivers.size() << "]";
 
         _cv.notify_one();
     }
