@@ -253,6 +253,9 @@ StatusOr<DriverRawPtr> CFSDriverQueue::take() {
         }
 
         while (_drivers.empty()) {
+            if (_is_closed) {
+                return Status::Cancelled("Shutdown");
+            }
             _cv.wait(lock);
         }
 
