@@ -195,7 +195,12 @@ DriverRawPtr SubQuerySharedDriverQueue::take() {
 
 /// CFSDriverQueue.
 bool CFSDriverQueue::DriverComparator::operator()(const DriverRawPtr& lhs, const DriverRawPtr& rhs) const {
-    return lhs->driver_acct().get_accumulated_time_spent() < rhs->driver_acct().get_accumulated_time_spent();
+    int64_t lhs_val = lhs->driver_acct().get_accumulated_time_spent();
+    int64_t rhs_val = rhs->driver_acct().get_accumulated_time_spent();
+    if (lhs_val == rhs_val) {
+        return lhs < rhs;
+    }
+    return lhs_val < rhs_val;
 }
 
 void CFSDriverQueue::close() {
