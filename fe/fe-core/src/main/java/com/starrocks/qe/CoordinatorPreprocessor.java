@@ -479,7 +479,7 @@ public class CoordinatorPreprocessor {
             FragmentExecParams params = fragmentExecParamsMap.get(fragment.getFragmentId());
 
             boolean dopAdaptionEnabled = usePipeline &&
-                    connectContext.getSessionVariable().isPipelineDopAdaptionEnabled();
+                    connectContext.getSessionVariable().isEnablePipelineAdaptiveDop();
 
             // If left child is MultiCastDataFragment(only support left now), will keep same instance with child.
             if (fragment.getChildren().size() > 0 && fragment.getChild(0) instanceof MultiCastPlanFragment) {
