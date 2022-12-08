@@ -44,7 +44,6 @@ import com.starrocks.common.TreeNode;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
-import com.starrocks.system.BackendCoreStat;
 import com.starrocks.thrift.TCacheParam;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TGlobalDict;
@@ -157,6 +156,8 @@ public class PlanFragment extends TreeNode<PlanFragment> {
     private boolean forceSetTableSinkDop = false;
     private boolean forceAssignScanRangesPerDriverSeq = false;
 
+    private Boolean cachedCanUseAdaptiveDop = null;
+
     /**
      * C'tor for fragment with specific partition; the output is by default broadcast.
      */
@@ -192,6 +193,13 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
     public boolean canUsePipeline() {
         return getPlanRoot().canUsePipeLine() && getSink().canUsePipeLine();
+    }
+
+    public boolean canUseAdaptiveDop() {
+        if (cachedCanUseAdaptiveDop == null) {
+            cachedCanUseAdaptiveDop = getPlanRoot().canUseAdaptiveDop() && getSink().canUseAdaptiveDop();
+        }
+        return cachedCanUseAdaptiveDop;
     }
 
     /**
