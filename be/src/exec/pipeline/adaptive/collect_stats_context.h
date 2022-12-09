@@ -30,7 +30,8 @@ class CollectStatsContext;
 class CollectStatsState;
 using CollectStatsStatePtr = std::unique_ptr<CollectStatsState>;
 using CollectStatsStateRawPtr = CollectStatsState*;
-enum class CollectStatsStateEnum;
+
+enum class CollectStatsStateEnum { BUFFER = 0, PASSTHROUGH, ROUND_ROBIN_PER_CHUNK, ROUND_ROBIN_PER_SEQ };
 
 class CollectStatsContext final : public ContextWithDependency {
 public:

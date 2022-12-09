@@ -22,8 +22,6 @@
 namespace starrocks::pipeline {
 
 /// CollectStatsState.
-enum class CollectStatsStateEnum { BUFFER = 0, PASSTHROUGH, ROUND_ROBIN_PER_CHUNK, ROUND_ROBIN_PER_SEQ };
-
 class CollectStatsState {
 public:
     CollectStatsState(CollectStatsContext* const ctx) : _ctx(ctx) {}
@@ -216,7 +214,7 @@ Status BufferState::set_finishing(int32_t driver_seq) {
         adjusted_dop = std::max<size_t>(adjusted_dop, 1);
         adjusted_dop = std::min<size_t>(adjusted_dop, _ctx->_dop);
 
-        CollectStatsState* next_state;
+        CollectStatsState* next_state = nullptr;
         switch (_ctx->_assign_chunk_strategy) {
         case CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_CHUNK:
             next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_CHUNK);
