@@ -320,11 +320,13 @@ bool RoundRobinPerChunkState::has_output(int32_t driver_seq) const {
         return true;
     }
 
+    int seq = info.buffer_chunk_seq;
     for (int i = info.num_read_buffers; i < _ctx->_dop; ++i) {
-        const auto& buffer_chunks = _ctx->_chunks(info.buffer_chunk_seq);
-        if (_buffer_chunk_idx_per_in_driver_seq[info.buffer_chunk_seq] < buffer_chunks.size()) {
+        const auto& buffer_chunks = _ctx->_chunks(seq);
+        if (_buffer_chunk_idx_per_in_driver_seq[seq] < buffer_chunks.size()) {
             return true;
         }
+        seq = (seq + 1) % _ctx->_dop;
     }
     return false;
 }
@@ -344,7 +346,7 @@ StatusOr<vectorized::ChunkPtr> RoundRobinPerChunkState::pull_chunk(int32_t drive
             info.accumulator.push(std::move(buffer_chunks[idx]));
         }
         ++info.num_read_buffers;
-        info.buffer_chunk_seq = (info.buffer_chunk_seq + 1) % _adjusted_dop;
+        info.buffer_chunk_seq = (info.buffer_chunk_seq + 1) % _ctx->_dop;
     }
 
     info.accumulator.finalize();
@@ -444,7 +446,6 @@ CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size
 
 void CollectStatsContext::close(RuntimeState* state) {
     _chunks_per_driver_seq.clear();
-    _state.reset();
 }
 
 bool CollectStatsContext::need_input(int32_t driver_seq) const {
