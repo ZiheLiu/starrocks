@@ -165,6 +165,8 @@ Status FragmentExecutor::_prepare_fragment_ctx(const UnifiedExecPlanFragmentPara
     _fragment_ctx->set_query_id(query_id);
     _fragment_ctx->set_fragment_instance_id(fragment_instance_id);
     _fragment_ctx->set_fe_addr(coord);
+    _fragment_ctx->set_enable_adaptive_dop(request.common().__isset.enable_adaptive_dop &&
+                                           request.common().enable_adaptive_dop);
 
     LOG(INFO) << "Prepare(): query_id=" << print_id(query_id)
               << " fragment_instance_id=" << print_id(fragment_instance_id) << " backend_num=" << request.backend_num();

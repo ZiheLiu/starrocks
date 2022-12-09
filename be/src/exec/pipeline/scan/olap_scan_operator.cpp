@@ -76,7 +76,7 @@ bool OlapScanOperator::is_finished() const {
         return true;
     }
 
-    // ScanOperator::is_finished() will check whether the morsel queue has more morsels,
+    // ScanOperator::can_finish() will check whether the morsel queue has more morsels,
     // and some kinds of morsel queue will be ready after the scan context prepares ready.
     // Therefore, return false when the context is not ready.
     if (!_ctx->is_prepare_finished()) {

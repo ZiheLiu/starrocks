@@ -17,6 +17,8 @@
 #include <util/time.h>
 
 #include "column/chunk.h"
+#include "exec/pipeline/adaptive/collect_stats_context.h"
+#include "exec/pipeline/adaptive/collect_stats_operator.h"
 #include "exec/pipeline/chunk_accumulate_operator.h"
 #include "exec/pipeline/limit_operator.h"
 #include "exec/pipeline/pipeline_builder.h"
@@ -525,6 +527,15 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
     scan_operator->set_could_local_shuffle(morsel_queue_factory->could_local_shuffle());
 
     ops.emplace_back(std::move(scan_operator));
+
+    if (context->fragment_context()->enable_adaptive_dop()) {
+        // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
+        CollectStatsContextPtr collect_stats_ctx =
+                std::make_unique<CollectStatsContext>(context->runtime_state(), scan_operator->degree_of_parallelism(),
+                                                      CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
+        ops.emplace_back(std::make_shared<CollectStatsOperatorFactory>(context->next_operator_id(), scan_node->id(),
+                                                                       std::move(collect_stats_ctx)));
+    }
 
     if (!scan_node->conjunct_ctxs().empty() || ops.back()->has_runtime_filters()) {
         ops.emplace_back(

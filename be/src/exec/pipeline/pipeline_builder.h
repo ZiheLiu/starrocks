@@ -73,6 +73,7 @@ public:
 
     Pipelines get_pipelines() const { return _pipelines; }
 
+    RuntimeState* runtime_state() { return _fragment_context->runtime_state(); }
     FragmentContext* fragment_context() { return _fragment_context; }
 
     size_t dop_of_source_operator(int source_node_id);
