@@ -86,6 +86,9 @@ bool BufferState::is_finished(int32_t driver_seq) const {
 }
 
 /// PassthroughState.
+PassthroughState::PassthroughState(CollectStatsContext* const ctx)
+        : CollectStatsState(ctx), _info_per_driver_seq(ctx->_dop) {}
+
 bool PassthroughState::need_input(int32_t driver_seq) const {
     return _info_per_driver_seq[driver_seq].in_chunk == nullptr;
 }
@@ -125,6 +128,18 @@ bool PassthroughState::is_finished(int32_t driver_seq) const {
 }
 
 /// RoundRobinPerChunkState.
+RoundRobinPerChunkState::RoundRobinPerChunkState(CollectStatsContext* const ctx)
+        : CollectStatsState(ctx), _idx_in_buffers(ctx->_dop) {}
+
+void RoundRobinPerChunkState::set_adjusted_dop(size_t adjusted_dop) {
+    _adjusted_dop = adjusted_dop;
+
+    _info_per_driver_seq.reserve(_adjusted_dop);
+    for (int i = 0; i < _adjusted_dop; i++) {
+        _info_per_driver_seq.emplace_back(i, _ctx->_runtime_state->chunk_size());
+    }
+}
+
 bool RoundRobinPerChunkState::need_input(int32_t driver_seq) const {
     return false;
 }
@@ -190,6 +205,15 @@ bool RoundRobinPerChunkState::is_finished(int32_t driver_seq) const {
 }
 
 /// RoundRobinPerSeqState.
+void RoundRobinPerSeqState::set_adjusted_dop(size_t adjusted_dop) {
+    _adjusted_dop = adjusted_dop;
+
+    _info_per_driver_seq.reserve(_adjusted_dop);
+    for (int i = 0; i < _adjusted_dop; i++) {
+        _info_per_driver_seq.emplace_back(i, _ctx->_runtime_state->chunk_size());
+    }
+}
+
 bool RoundRobinPerSeqState::need_input(int32_t driver_seq) const {
     return false;
 }

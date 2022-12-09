@@ -80,7 +80,7 @@ private:
 
 class PassthroughState final : public CollectStatsState {
 public:
-    PassthroughState(CollectStatsContext* const ctx) : CollectStatsState(ctx), _info_per_driver_seq(ctx->_dop) {}
+    PassthroughState(CollectStatsContext* const ctx);
 
     ~PassthroughState() override = default;
 
@@ -108,17 +108,10 @@ private:
 
 class RoundRobinPerChunkState final : public CollectStatsState {
 public:
-    RoundRobinPerChunkState(CollectStatsContext* const ctx) : CollectStatsState(ctx), _idx_in_buffers(ctx->_dop) {}
+    RoundRobinPerChunkState(CollectStatsContext* const ctx);
     ~RoundRobinPerChunkState() override = default;
 
-    void set_adjusted_dop(size_t adjusted_dop) override {
-        _adjusted_dop = adjusted_dop;
-
-        _info_per_driver_seq.reserve(_adjusted_dop);
-        for (int i = 0; i < _adjusted_dop; i++) {
-            _info_per_driver_seq.emplace_back(i, _ctx->_runtime_state->chunk_size());
-        }
-    }
+    void set_adjusted_dop(size_t adjusted_dop) override;
 
     bool need_input(int32_t driver_seq) const override;
     Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
@@ -149,14 +142,7 @@ public:
     RoundRobinPerSeqState(CollectStatsContext* const ctx) : CollectStatsState(ctx) {}
     ~RoundRobinPerSeqState() override = default;
 
-    void set_adjusted_dop(size_t adjusted_dop) override {
-        _adjusted_dop = adjusted_dop;
-
-        _info_per_driver_seq.reserve(_adjusted_dop);
-        for (int i = 0; i < _adjusted_dop; i++) {
-            _info_per_driver_seq.emplace_back(i, _ctx->_runtime_state->chunk_size());
-        }
-    }
+    void set_adjusted_dop(size_t adjusted_dop) override;
 
     bool need_input(int32_t driver_seq) const override;
     Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
