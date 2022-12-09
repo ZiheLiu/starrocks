@@ -444,9 +444,7 @@ CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size
           _chunks_per_driver_seq(dop),
           _runtime_state(runtime_state) {}
 
-void CollectStatsContext::close(RuntimeState* state) {
-    _chunks_per_driver_seq.clear();
-}
+void CollectStatsContext::close(RuntimeState* state) {}
 
 bool CollectStatsContext::need_input(int32_t driver_seq) const {
     return _state_ref()->need_input(driver_seq);
