@@ -74,8 +74,10 @@ Status BufferState::set_finishing(int32_t driver_seq) {
             next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ);
             break;
         }
-        next_state->set_adjusted_dop(adjusted_dop);
-        _ctx->_set_state(next_state);
+        if (next_state != nullptr) {
+            next_state->set_adjusted_dop(adjusted_dop);
+            _ctx->_set_state(next_state);
+        }
     }
 
     return Status::OK();

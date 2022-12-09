@@ -39,13 +39,12 @@ public:
     virtual ~CollectStatsState() = default;
 
     virtual bool need_input(int32_t driver_seq) const = 0;
-    virtual Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) = 0;
-
     virtual bool has_output(int32_t driver_seq) const = 0;
-    virtual StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) = 0;
-
-    virtual Status set_finishing(int32_t driver_seq) = 0;
     virtual bool is_finished(int32_t driver_seq) const = 0;
+
+    virtual Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) = 0;
+    virtual StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) = 0;
+    virtual Status set_finishing(int32_t driver_seq) = 0;
 
     virtual void set_adjusted_dop(size_t adjusted_dop) {}
 
@@ -57,19 +56,14 @@ class BufferState final : public CollectStatsState {
 public:
     BufferState(CollectStatsContext* const ctx, int max_buffer_rows)
             : CollectStatsState(ctx), _max_buffer_rows(max_buffer_rows) {}
-
     ~BufferState() override = default;
 
     bool need_input(int32_t driver_seq) const override;
-
-    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
-
     bool has_output(int32_t driver_seq) const override;
-
-    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
-
     bool is_finished(int32_t driver_seq) const override;
 
+    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
+    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
     Status set_finishing(int32_t driver_seq) override;
 
 private:
@@ -81,19 +75,14 @@ private:
 class PassthroughState final : public CollectStatsState {
 public:
     PassthroughState(CollectStatsContext* const ctx);
-
     ~PassthroughState() override = default;
 
     bool need_input(int32_t driver_seq) const override;
-
-    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
-
     bool has_output(int32_t driver_seq) const override;
-
-    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
-
     bool is_finished(int32_t driver_seq) const override;
 
+    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
+    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
     Status set_finishing(int32_t driver_seq) override;
 
 private:
@@ -114,12 +103,11 @@ public:
     void set_adjusted_dop(size_t adjusted_dop) override;
 
     bool need_input(int32_t driver_seq) const override;
-    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
-
     bool has_output(int32_t driver_seq) const override;
-    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
-
     bool is_finished(int32_t driver_seq) const override;
+
+    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
+    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
     Status set_finishing(int32_t driver_seq) override;
 
 private:
@@ -145,12 +133,11 @@ public:
     void set_adjusted_dop(size_t adjusted_dop) override;
 
     bool need_input(int32_t driver_seq) const override;
-    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
-
     bool has_output(int32_t driver_seq) const override;
-    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
-
     bool is_finished(int32_t driver_seq) const override;
+
+    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
+    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
     Status set_finishing(int32_t driver_seq) override;
 
 private:
@@ -177,11 +164,12 @@ public:
     void close(RuntimeState* state) override;
 
     bool need_input(int32_t driver_seq) const;
-    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk);
     bool has_output(int32_t driver_seq) const;
+    bool is_finished(int32_t driver_seq) const;
+
+    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk);
     StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq);
     Status set_finishing(int32_t driver_seq);
-    bool is_finished(int32_t driver_seq) const;
 
 private:
     CollectStatsStateRawPtr _get_state(CollectStatsStateEnum state) const;
