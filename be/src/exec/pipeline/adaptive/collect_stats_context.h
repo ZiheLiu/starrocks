@@ -28,7 +28,9 @@ namespace pipeline {
 
 class CollectStatsContext;
 class CollectStatsState;
-using CollectStatsStatePtr = std::shared_ptr<CollectStatsState>;
+using CollectStatsStatePtr = std::unique_ptr<CollectStatsState>;
+using CollectStatsStateRawPtr = CollectStatsState*;
+enum class CollectStatsStateEnum;
 
 class CollectStatsContext final : public ContextWithDependency {
 public:
@@ -47,8 +49,9 @@ public:
     bool is_finished(int32_t driver_seq) const;
 
 private:
-    CollectStatsStatePtr _state_ref() const;
-    void _set_state(CollectStatsStatePtr state);
+    CollectStatsStateRawPtr _get_state(CollectStatsStateEnum state) const;
+    CollectStatsStateRawPtr _state_ref() const;
+    void _set_state(CollectStatsStateRawPtr state);
     std::vector<vectorized::ChunkPtr>& _chunks(int32_t driver_seq);
 
 private:
@@ -57,7 +60,8 @@ private:
     friend class RoundRobinPerSeqState;
     friend class PassthroughState;
 
-    CollectStatsStatePtr _state;
+    std::atomic<CollectStatsStateRawPtr> _state = nullptr;
+    std::unordered_map<CollectStatsStateEnum, CollectStatsStatePtr> _state_payloads;
 
     size_t _dop;
     AssignChunkStrategy _assign_chunk_strategy;

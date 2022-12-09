@@ -22,6 +22,8 @@
 namespace starrocks::pipeline {
 
 /// CollectStatsState.
+enum class CollectStatsStateEnum { BUFFER = 0, PASSTHROUGH, ROUND_ROBIN_PER_CHUNK, ROUND_ROBIN_PER_SEQ };
+
 class CollectStatsState {
 public:
     CollectStatsState(CollectStatsContext* const ctx) : _ctx(ctx) {}
@@ -35,6 +37,8 @@ public:
 
     virtual Status set_finishing(int32_t driver_seq) = 0;
     virtual bool is_finished(int32_t driver_seq) const = 0;
+
+    virtual void set_adjusted_dop(size_t adjusted_dop) {}
 
 protected:
     CollectStatsContext* const _ctx;
@@ -84,92 +88,88 @@ public:
     Status set_finishing(int32_t driver_seq) override;
 
 private:
-    struct InfoPerDriverSeq {
+    struct DriverInfo {
     public:
-        int buffer_chunk_idx = 0;
+        int idx_in_buffer = 0;
         vectorized::ChunkPtr in_chunk = nullptr;
     };
 
-    std::vector<InfoPerDriverSeq> _info_per_driver_seq;
+    std::vector<DriverInfo> _info_per_driver_seq;
 };
 
 class RoundRobinPerChunkState final : public CollectStatsState {
 public:
-    RoundRobinPerChunkState(CollectStatsContext* const ctx, size_t adjusted_dop)
-            : CollectStatsState(ctx), _adjusted_dop(adjusted_dop), _buffer_chunk_idx_per_in_driver_seq(ctx->_dop) {
+    RoundRobinPerChunkState(CollectStatsContext* const ctx) : CollectStatsState(ctx), _idx_in_buffers(ctx->_dop) {}
+    ~RoundRobinPerChunkState() override = default;
+
+    void set_adjusted_dop(size_t adjusted_dop) override {
+        _adjusted_dop = adjusted_dop;
+
         _info_per_driver_seq.reserve(_adjusted_dop);
         for (int i = 0; i < _adjusted_dop; i++) {
-            _info_per_driver_seq.emplace_back(i, ctx->_runtime_state->chunk_size());
+            _info_per_driver_seq.emplace_back(i, _ctx->_runtime_state->chunk_size());
         }
     }
 
-    ~RoundRobinPerChunkState() override = default;
-
     bool need_input(int32_t driver_seq) const override;
-
     Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
 
     bool has_output(int32_t driver_seq) const override;
-
     StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
 
     bool is_finished(int32_t driver_seq) const override;
-
     Status set_finishing(int32_t driver_seq) override;
 
 private:
-    struct InfoPerDriverSeq {
+    struct DriverInfo {
     public:
-        InfoPerDriverSeq(int32_t driver_seq, size_t chunk_size)
-                : buffer_chunk_seq(driver_seq), accumulator(chunk_size) {}
+        DriverInfo(int32_t driver_seq, size_t chunk_size) : buffer_idx(driver_seq), accumulator(chunk_size) {}
 
         int num_read_buffers = 0;
-        int buffer_chunk_seq;
+        int buffer_idx;
         ChunkAccumulator accumulator;
     };
 
-    const size_t _adjusted_dop;
-    std::vector<std::atomic<int>> _buffer_chunk_idx_per_in_driver_seq;
-    std::vector<InfoPerDriverSeq> _info_per_driver_seq;
+    size_t _adjusted_dop = 0;
+    std::vector<std::atomic<int>> _idx_in_buffers;
+    std::vector<DriverInfo> _info_per_driver_seq;
 };
 
 class RoundRobinPerSeqState final : public CollectStatsState {
 public:
-    RoundRobinPerSeqState(CollectStatsContext* const ctx, size_t adjusted_dop)
-            : CollectStatsState(ctx), _adjusted_dop(adjusted_dop) {
+    RoundRobinPerSeqState(CollectStatsContext* const ctx) : CollectStatsState(ctx) {}
+    ~RoundRobinPerSeqState() override = default;
+
+    void set_adjusted_dop(size_t adjusted_dop) override {
+        _adjusted_dop = adjusted_dop;
+
         _info_per_driver_seq.reserve(_adjusted_dop);
         for (int i = 0; i < _adjusted_dop; i++) {
-            _info_per_driver_seq.emplace_back(i, ctx->_runtime_state->chunk_size());
+            _info_per_driver_seq.emplace_back(i, _ctx->_runtime_state->chunk_size());
         }
     }
 
-    ~RoundRobinPerSeqState() override = default;
-
     bool need_input(int32_t driver_seq) const override;
-
     Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
 
     bool has_output(int32_t driver_seq) const override;
-
     StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
 
     bool is_finished(int32_t driver_seq) const override;
-
     Status set_finishing(int32_t driver_seq) override;
 
 private:
-    struct InfoPerDriverSeq {
+    struct DriverInfo {
     public:
-        InfoPerDriverSeq(int32_t driver_seq, size_t chunk_size)
-                : buffer_chunk_seq(driver_seq), accumulator(chunk_size) {}
+        DriverInfo(int32_t driver_seq, size_t chunk_size) : buffer_idx(driver_seq), accumulator(chunk_size) {}
 
-        int buffer_chunk_idx = 0;
-        int buffer_chunk_seq;
+        int buffer_idx;
+        int idx_in_buffer = 0;
         ChunkAccumulator accumulator;
     };
 
-    const size_t _adjusted_dop;
-    std::vector<InfoPerDriverSeq> _info_per_driver_seq;
+    size_t _adjusted_dop = 0;
+    std::vector<DriverInfo> _info_per_driver_seq;
 };
 
 /// BufferState.
@@ -182,16 +182,10 @@ Status BufferState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) {
     _ctx->_chunks(driver_seq).emplace_back(std::move(chunk));
     size_t prev_num_rows = _num_rows.fetch_add(num_chunk_rows);
 
-    //    LOG(WARNING) << "[ADAPTIVE] BufferState::push_chunk "
-    //                 << "[driver_seq=" << driver_seq << "] "
-    //                 << "[prev_num_rows=" << prev_num_rows << "] "
-    //                 << "[_max_buffer_rows=" << _max_buffer_rows << "] "
-    //                 << "[num_chunk_rows=" << num_chunk_rows << "] "
-    //                 << "[change_to_passthrough="
-    //                 << (prev_num_rows < _max_buffer_rows && prev_num_rows + num_chunk_rows >= _max_buffer_rows) << "] ";
-
     if (prev_num_rows < _max_buffer_rows && prev_num_rows + num_chunk_rows >= _max_buffer_rows) {
-        _ctx->_set_state(std::make_shared<PassthroughState>(_ctx));
+        auto* next_state = _ctx->_get_state(CollectStatsStateEnum::PASSTHROUGH);
+        next_state->set_adjusted_dop(_ctx->_dop);
+        _ctx->_set_state(next_state);
     }
     return Status::OK();
 }
@@ -222,25 +216,17 @@ Status BufferState::set_finishing(int32_t driver_seq) {
         adjusted_dop = std::max<size_t>(adjusted_dop, 1);
         adjusted_dop = std::min<size_t>(adjusted_dop, _ctx->_dop);
 
-        //        LOG(WARNING) << "[ADAPTIVE] BufferState::set_finishing "
-        //                     << "[driver_seq=" << driver_seq << "] "
-        //                     << "[num_finished_seqs=" << num_finished_seqs << "] "
-        //                     << "[change_to_round_robin=1] "
-        //                     << "[adjusted_dop=" << adjusted_dop << "] ";
-
+        CollectStatsState* next_state;
         switch (_ctx->_assign_chunk_strategy) {
         case CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_CHUNK:
-            _ctx->_set_state(std::make_shared<RoundRobinPerChunkState>(_ctx, adjusted_dop));
+            next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_CHUNK);
             break;
         case CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ:
-            _ctx->_set_state(std::make_shared<RoundRobinPerSeqState>(_ctx, adjusted_dop));
+            next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ);
             break;
         }
-    } else {
-        //        LOG(WARNING) << "[ADAPTIVE] BufferState::set_finishing "
-        //                     << "[driver_seq=" << driver_seq << "] "
-        //                     << "[num_finished_seqs=" << num_finished_seqs << "] "
-        //                     << "[change_to_round_robin=0] ";
+        next_state->set_adjusted_dop(adjusted_dop);
+        _ctx->_set_state(next_state);
     }
 
     return Status::OK();
@@ -264,13 +250,7 @@ bool PassthroughState::has_output(int32_t driver_seq) const {
     const auto& info = _info_per_driver_seq[driver_seq];
     const auto& buffer_chunks = _ctx->_chunks(driver_seq);
 
-    //    LOG(WARNING) << "[ADAPTIVE] PassthroughState::has_output "
-    //                 << "[driver_seq=" << driver_seq << "] "
-    //                 << "[buffer_chunk_idx=" << info.buffer_chunk_idx << "] "
-    //                 << "[buffer_chunks_size " << buffer_chunks.size() << "] "
-    //                 << "[in_chunk=" << info.in_chunk.get() << "] ";
-
-    if (info.buffer_chunk_idx < buffer_chunks.size()) {
+    if (info.idx_in_buffer < buffer_chunks.size()) {
         return true;
     }
 
@@ -281,24 +261,18 @@ StatusOr<vectorized::ChunkPtr> PassthroughState::pull_chunk(int32_t driver_seq) 
     auto& info = _info_per_driver_seq[driver_seq];
     auto& buffer_chunks = _ctx->_chunks(driver_seq);
 
-    if (info.buffer_chunk_idx < buffer_chunks.size()) {
-        return std::move(buffer_chunks[info.buffer_chunk_idx++]);
+    if (info.idx_in_buffer < buffer_chunks.size()) {
+        return std::move(buffer_chunks[info.idx_in_buffer++]);
     }
     return std::move(info.in_chunk);
 }
 
 Status PassthroughState::set_finishing(int32_t driver_seq) {
-    //    LOG(WARNING) << "[ADAPTIVE] PassthroughState::set_finishing "
-    //                 << "[driver_seq=" << driver_seq << "] ";
     return Status::OK();
 }
 
 bool PassthroughState::is_finished(int32_t driver_seq) const {
-    bool res = !has_output(driver_seq);
-    //    LOG(WARNING) << "[ADAPTIVE] PassthroughState::is_finished "
-    //                 << "[driver_seq=" << driver_seq << "] "
-    //                 << "[res=" << res << "] ";
-    return res;
+    return !has_output(driver_seq);
 }
 
 /// RoundRobinPerChunkState.
@@ -320,10 +294,10 @@ bool RoundRobinPerChunkState::has_output(int32_t driver_seq) const {
         return true;
     }
 
-    int seq = info.buffer_chunk_seq;
+    int seq = info.buffer_idx;
     for (int i = info.num_read_buffers; i < _ctx->_dop; ++i) {
         const auto& buffer_chunks = _ctx->_chunks(seq);
-        if (_buffer_chunk_idx_per_in_driver_seq[seq] < buffer_chunks.size()) {
+        if (_idx_in_buffers[seq] < buffer_chunks.size()) {
             return true;
         }
         seq = (seq + 1) % _ctx->_dop;
@@ -340,13 +314,13 @@ StatusOr<vectorized::ChunkPtr> RoundRobinPerChunkState::pull_chunk(int32_t drive
     }
 
     while (info.num_read_buffers < _ctx->_dop) {
-        auto& buffer_chunks = _ctx->_chunks(info.buffer_chunk_seq);
-        auto& buffer_chunk_idx = _buffer_chunk_idx_per_in_driver_seq[info.buffer_chunk_seq];
-        for (int idx = buffer_chunk_idx.fetch_add(1); idx < buffer_chunks.size(); idx = buffer_chunk_idx.fetch_add(1)) {
+        auto& buffer_chunks = _ctx->_chunks(info.buffer_idx);
+        auto& idx_in_buffer = _idx_in_buffers[info.buffer_idx];
+        for (int idx = idx_in_buffer.fetch_add(1); idx < buffer_chunks.size(); idx = idx_in_buffer.fetch_add(1)) {
             info.accumulator.push(std::move(buffer_chunks[idx]));
         }
         ++info.num_read_buffers;
-        info.buffer_chunk_seq = (info.buffer_chunk_seq + 1) % _ctx->_dop;
+        info.buffer_idx = (info.buffer_idx + 1) % _ctx->_dop;
     }
 
     info.accumulator.finalize();
@@ -385,10 +359,10 @@ bool RoundRobinPerSeqState::has_output(int32_t driver_seq) const {
         return true;
     }
 
-    for (int seq = info.buffer_chunk_seq; seq < _ctx->_dop; seq += _adjusted_dop) {
+    for (int seq = info.buffer_idx; seq < _ctx->_dop; seq += _adjusted_dop) {
         const auto& buffer_chunks = _ctx->_chunks(seq);
-        int buffer_chunk_idx = seq == info.buffer_chunk_seq ? info.buffer_chunk_idx : 0;
-        if (buffer_chunk_idx < buffer_chunks.size()) {
+        int idx_in_buffer = seq == info.buffer_idx ? info.idx_in_buffer : 0;
+        if (idx_in_buffer < buffer_chunks.size()) {
             return true;
         }
     }
@@ -402,8 +376,8 @@ StatusOr<vectorized::ChunkPtr> RoundRobinPerSeqState::pull_chunk(int32_t driver_
         return accumulator.pull();
     }
 
-    int& seq = info.buffer_chunk_seq;
-    int& idx = info.buffer_chunk_idx;
+    int& seq = info.buffer_idx;
+    int& idx = info.idx_in_buffer;
     while (seq < _ctx->_dop) {
         auto& buffer_chunks = _ctx->_chunks(seq);
         while (idx < buffer_chunks.size()) {
@@ -432,17 +406,23 @@ bool RoundRobinPerSeqState::is_finished(int32_t driver_seq) const {
     }
 
     const auto& info = _info_per_driver_seq[driver_seq];
-    return info.buffer_chunk_seq >= _ctx->_dop && info.accumulator.empty();
+    return info.buffer_idx >= _ctx->_dop && info.accumulator.empty();
 }
 
 /// CollectStatsContext.
 CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size_t dop,
                                          AssignChunkStrategy assign_chunk_strategy)
-        : _state(std::make_shared<BufferState>(this, runtime_state->chunk_size() * dop)),
-          _dop(dop),
+        : _dop(dop),
           _assign_chunk_strategy(assign_chunk_strategy),
           _chunks_per_driver_seq(dop),
-          _runtime_state(runtime_state) {}
+          _runtime_state(runtime_state) {
+    int max_buffer_rows = runtime_state->chunk_size() * dop;
+    _state_payloads[CollectStatsStateEnum::BUFFER] = std::make_unique<BufferState>(this, max_buffer_rows);
+    _state_payloads[CollectStatsStateEnum::PASSTHROUGH] = std::make_unique<PassthroughState>(this);
+    _state_payloads[CollectStatsStateEnum::ROUND_ROBIN_PER_CHUNK] = std::make_unique<RoundRobinPerChunkState>(this);
+    _state_payloads[CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ] = std::make_unique<RoundRobinPerSeqState>(this);
+    _set_state(_get_state(CollectStatsStateEnum::BUFFER));
+}
 
 void CollectStatsContext::close(RuntimeState* state) {}
 
@@ -470,12 +450,14 @@ bool CollectStatsContext::is_finished(int32_t driver_seq) const {
     return _state_ref()->is_finished(driver_seq);
 }
 
-CollectStatsStatePtr CollectStatsContext::_state_ref() const {
-    return std::atomic_load(&_state);
+CollectStatsStateRawPtr CollectStatsContext::_get_state(CollectStatsStateEnum state) const {
+    return _state_payloads.at(state).get();
 }
-
-void CollectStatsContext::_set_state(CollectStatsStatePtr state) {
-    std::atomic_store(&_state, std::move(state));
+CollectStatsStateRawPtr CollectStatsContext::_state_ref() const {
+    return _state.load();
+}
+void CollectStatsContext::_set_state(CollectStatsStateRawPtr state) {
+    _state = state;
 }
 
 std::vector<vectorized::ChunkPtr>& CollectStatsContext::_chunks(int32_t driver_seq) {
