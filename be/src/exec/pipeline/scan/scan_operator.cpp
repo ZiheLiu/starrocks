@@ -523,16 +523,16 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
     OpFactories ops;
 
     const auto* morsel_queue_factory = context->morsel_queue_factory_of_source_operator(scan_operator.get());
-    scan_operator->set_degree_of_parallelism(morsel_queue_factory->size());
+    size_t dop = morsel_queue_factory->size();
+    scan_operator->set_degree_of_parallelism(dop);
     scan_operator->set_could_local_shuffle(morsel_queue_factory->could_local_shuffle());
 
     ops.emplace_back(std::move(scan_operator));
 
     if (context->fragment_context()->enable_adaptive_dop()) {
         // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
-        CollectStatsContextPtr collect_stats_ctx =
-                std::make_unique<CollectStatsContext>(context->runtime_state(), scan_operator->degree_of_parallelism(),
-                                                      CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
+        CollectStatsContextPtr collect_stats_ctx = std::make_unique<CollectStatsContext>(
+                context->runtime_state(), dop, CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
         ops.emplace_back(std::make_shared<CollectStatsOperatorFactory>(context->next_operator_id(), scan_node->id(),
                                                                        std::move(collect_stats_ctx)));
     }
