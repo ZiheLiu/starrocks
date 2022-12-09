@@ -240,22 +240,23 @@ Status PassthroughState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chu
 
 bool PassthroughState::has_output(int32_t driver_seq) const {
     const auto& info = _info_per_driver_seq[driver_seq];
-    if (info.in_chunk != nullptr) {
+    const auto& buffer_chunks = _ctx->_chunks(driver_seq);
+
+    if (info.buffer_chunk_idx < buffer_chunks.size()) {
         return true;
     }
 
-    const auto& buffer_chunks = _ctx->_chunks(driver_seq);
-    return info.buffer_chunk_idx < buffer_chunks.size();
+    return info.in_chunk != nullptr;
 }
 
 StatusOr<vectorized::ChunkPtr> PassthroughState::pull_chunk(int32_t driver_seq) {
     auto& info = _info_per_driver_seq[driver_seq];
-    if (info.in_chunk != nullptr) {
-        return std::move(info.in_chunk);
-    }
-
     auto& buffer_chunks = _ctx->_chunks(driver_seq);
-    return std::move(buffer_chunks[info.buffer_chunk_idx]);
+
+    if (info.buffer_chunk_idx < buffer_chunks.size()) {
+        return std::move(buffer_chunks[info.buffer_chunk_idx]);
+    }
+    return std::move(info.in_chunk);
 }
 
 Status PassthroughState::set_finishing(int32_t driver_seq) {
