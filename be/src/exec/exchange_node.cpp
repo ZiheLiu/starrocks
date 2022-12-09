@@ -262,8 +262,8 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
             CollectStatsContextPtr collect_stats_ctx = std::make_unique<CollectStatsContext>(
                     context->runtime_state(), context->degree_of_parallelism(),
                     CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
-            operators.emplace_back(std::make_shared<CollectStatsOperatorFactory>(
-                    context->next_operator_id(), exchange_source_op->id(), std::move(collect_stats_ctx)));
+            operators.emplace_back(std::make_shared<CollectStatsOperatorFactory>(context->next_operator_id(), id(),
+                                                                                 std::move(collect_stats_ctx)));
         }
 
     } else {

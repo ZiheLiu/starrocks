@@ -263,7 +263,7 @@ Status PassthroughState::set_finishing(int32_t driver_seq) {
 }
 
 bool PassthroughState::is_finished(int32_t driver_seq) const {
-    return true;
+    return !has_output(driver_seq);
 }
 
 /// RoundRobinPerChunkState.
