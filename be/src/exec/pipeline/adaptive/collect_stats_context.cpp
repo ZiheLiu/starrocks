@@ -181,6 +181,15 @@ Status BufferState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) {
     size_t num_chunk_rows = chunk->num_rows();
     _ctx->_chunks(driver_seq).emplace_back(std::move(chunk));
     size_t prev_num_rows = _num_rows.fetch_add(num_chunk_rows);
+
+    LOG(WARNING) << "[ADAPTIVE] BufferState::push_chunk "
+                 << "[driver_seq=" << driver_seq << "] "
+                 << "[prev_num_rows=" << prev_num_rows << "] "
+                 << "[_max_buffer_rows=" << _max_buffer_rows << "] "
+                 << "[num_chunk_rows=" << num_chunk_rows << "] "
+                 << "[change_to_passthrough="
+                 << (prev_num_rows < _max_buffer_rows && prev_num_rows + num_chunk_rows >= _max_buffer_rows) << "] ";
+
     if (prev_num_rows < _max_buffer_rows && prev_num_rows + num_chunk_rows >= _max_buffer_rows) {
         _ctx->_set_state(std::make_shared<PassthroughState>(_ctx));
     }
@@ -205,12 +214,19 @@ size_t compute_max_le_power2(size_t num) {
 }
 
 Status BufferState::set_finishing(int32_t driver_seq) {
-    if (++_num_finished_seqs == _ctx->_dop) {
+    int num_finished_seqs = ++_num_finished_seqs;
+    if (num_finished_seqs == _ctx->_dop) {
         int num_partial_rows = _ctx->_dop * _ctx->_runtime_state->chunk_size();
         size_t adjusted_dop = _num_rows / num_partial_rows;
         adjusted_dop = compute_max_le_power2(adjusted_dop);
         adjusted_dop = std::max<size_t>(adjusted_dop, 1);
         adjusted_dop = std::min<size_t>(adjusted_dop, _ctx->_dop);
+
+        LOG(WARNING) << "[ADAPTIVE] BufferState::set_finishing "
+                     << "[driver_seq=" << driver_seq << "] "
+                     << "[num_finished_seqs=" << num_finished_seqs << "] "
+                     << "[change_to_round_robin=1] "
+                     << "[adjusted_dop=" << adjusted_dop << "] ";
 
         switch (_ctx->_assign_chunk_strategy) {
         case CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_CHUNK:
@@ -220,7 +236,13 @@ Status BufferState::set_finishing(int32_t driver_seq) {
             _ctx->_set_state(std::make_shared<RoundRobinPerSeqState>(_ctx, adjusted_dop));
             break;
         }
+    } else {
+        LOG(WARNING) << "[ADAPTIVE] BufferState::set_finishing "
+                     << "[driver_seq=" << driver_seq << "] "
+                     << "[num_finished_seqs=" << num_finished_seqs << "] "
+                     << "[change_to_round_robin=0] ";
     }
+
     return Status::OK();
 }
 
@@ -242,6 +264,12 @@ bool PassthroughState::has_output(int32_t driver_seq) const {
     const auto& info = _info_per_driver_seq[driver_seq];
     const auto& buffer_chunks = _ctx->_chunks(driver_seq);
 
+    LOG(WARNING) << "[ADAPTIVE] PassthroughState::has_output "
+                 << "[driver_seq=" << driver_seq << "] "
+                 << "[buffer_chunk_idx=" << info.buffer_chunk_idx << "] "
+                 << "[buffer_chunks_size " << buffer_chunks.size() << "] "
+                 << "[in_chunk=" << info.in_chunk.get() << "] ";
+
     if (info.buffer_chunk_idx < buffer_chunks.size()) {
         return true;
     }
@@ -260,11 +288,17 @@ StatusOr<vectorized::ChunkPtr> PassthroughState::pull_chunk(int32_t driver_seq) 
 }
 
 Status PassthroughState::set_finishing(int32_t driver_seq) {
+    LOG(WARNING) << "[ADAPTIVE] PassthroughState::set_finishing "
+                 << "[driver_seq=" << driver_seq << "] ";
     return Status::OK();
 }
 
 bool PassthroughState::is_finished(int32_t driver_seq) const {
-    return !has_output(driver_seq);
+    bool res = !has_output(driver_seq);
+    LOG(WARNING) << "[ADAPTIVE] PassthroughState::is_finished "
+                 << "[driver_seq=" << driver_seq << "] "
+                 << "[res=" << res << "] ";
+    return res;
 }
 
 /// RoundRobinPerChunkState.
