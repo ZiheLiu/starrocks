@@ -248,6 +248,9 @@ public:
     SourceOperator* source_operator() {
         return _operators.empty() ? nullptr : down_cast<SourceOperator*>(_operators.front().get());
     }
+    Operator* first_unfinished_operator() {
+        return _first_unfinished >= _operators.size() ? nullptr : _operators[_first_unfinished].get();
+    }
     RuntimeProfile* runtime_profile() { return _runtime_profile.get(); }
     // drivers that waits for runtime filters' readiness must be marked PRECONDITION_NOT_READY and put into
     // PipelineDriverPoller.
@@ -354,6 +357,10 @@ public:
 
         // INPUT_EMPTY
         if (!source_operator()->is_finished() && !source_operator()->has_output()) {
+            set_driver_state(DriverState::INPUT_EMPTY);
+            return false;
+        }
+        if (!first_unfinished_operator()->is_finished() && !first_unfinished_operator()->has_output()) {
             set_driver_state(DriverState::INPUT_EMPTY);
             return false;
         }
