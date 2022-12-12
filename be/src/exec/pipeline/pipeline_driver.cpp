@@ -323,8 +323,8 @@ StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int w
             } else if (!sink_operator()->is_finished() && !sink_operator()->need_input()) {
                 set_driver_state(DriverState::OUTPUT_FULL);
                 COUNTER_UPDATE(_block_by_output_full_counter, 1);
-            } else if (!source_operator()->is_finished() && !source_operator()->has_output() ||
-                       !first_unfinished_operator()->is_finished() && !first_unfinished_operator()->has_output()) {
+            } else if ((!source_operator()->is_finished() && !source_operator()->has_output()) ||
+                       (!first_unfinished_operator()->is_finished() && !first_unfinished_operator()->has_output())) {
                 set_driver_state(DriverState::INPUT_EMPTY);
                 COUNTER_UPDATE(_block_by_input_empty_counter, 1);
             } else {
