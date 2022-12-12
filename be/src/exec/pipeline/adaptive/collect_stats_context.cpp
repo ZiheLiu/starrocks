@@ -59,7 +59,7 @@ size_t compute_max_le_power2(size_t num) {
 Status BufferState::set_finishing(int32_t driver_seq) {
     int num_finished_seqs = ++_num_finished_seqs;
     if (num_finished_seqs == _ctx->_dop) {
-        int num_partial_rows = _ctx->_dop * _ctx->_runtime_state->chunk_size();
+        int num_partial_rows = _ctx->_runtime_state->chunk_size();
         size_t adjusted_dop = _num_rows / num_partial_rows;
         adjusted_dop = compute_max_le_power2(adjusted_dop);
         adjusted_dop = std::max<size_t>(adjusted_dop, 1);
