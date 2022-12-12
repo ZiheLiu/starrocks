@@ -156,19 +156,7 @@ bool RoundRobinPerChunkState::has_output(int32_t driver_seq) const {
     }
 
     const auto& info = _info_per_driver_seq[driver_seq];
-    if (!info.accumulator.empty()) {
-        return true;
-    }
-
-    int seq = info.buffer_idx;
-    for (int i = info.num_read_buffers; i < _ctx->_dop; ++i) {
-        const auto& buffer_chunks = _ctx->_chunks(seq);
-        if (_idx_in_buffers[seq] < buffer_chunks.size()) {
-            return true;
-        }
-        seq = (seq + 1) % _ctx->_dop;
-    }
-    return false;
+    return info.num_read_buffers < _ctx->_dop || !info.accumulator.empty();
 }
 
 StatusOr<vectorized::ChunkPtr> RoundRobinPerChunkState::pull_chunk(int32_t driver_seq) {
@@ -198,12 +186,7 @@ Status RoundRobinPerChunkState::set_finishing(int32_t driver_seq) {
 }
 
 bool RoundRobinPerChunkState::is_finished(int32_t driver_seq) const {
-    if (driver_seq >= _adjusted_dop) {
-        return true;
-    }
-
-    const auto& info = _info_per_driver_seq[driver_seq];
-    return info.num_read_buffers >= _ctx->_dop && info.accumulator.empty();
+    return !has_output(driver_seq);
 }
 
 /// RoundRobinPerSeqState.
@@ -229,42 +212,28 @@ bool RoundRobinPerSeqState::has_output(int32_t driver_seq) const {
         return false;
     }
 
-    const auto& info = _info_per_driver_seq[driver_seq];
-    if (!info.accumulator.empty()) {
-        return true;
-    }
-
-    for (int seq = info.buffer_idx; seq < _ctx->_dop; seq += _adjusted_dop) {
-        const auto& buffer_chunks = _ctx->_chunks(seq);
-        int idx_in_buffer = seq == info.buffer_idx ? info.idx_in_buffer : 0;
-        if (idx_in_buffer < buffer_chunks.size()) {
-            return true;
-        }
-    }
-    return false;
+    const auto& [buffer_idx, _, accumulator] = _info_per_driver_seq[driver_seq];
+    return buffer_idx < _ctx->_dop || !accumulator.empty();
 }
 
 StatusOr<vectorized::ChunkPtr> RoundRobinPerSeqState::pull_chunk(int32_t driver_seq) {
-    auto& info = _info_per_driver_seq[driver_seq];
-    auto& accumulator = info.accumulator;
+    auto& [buffer_idx, idx_in_buffer, accumulator] = _info_per_driver_seq[driver_seq];
     if (!accumulator.empty()) {
         return accumulator.pull();
     }
 
-    int& seq = info.buffer_idx;
-    int& idx = info.idx_in_buffer;
-    while (seq < _ctx->_dop) {
-        auto& buffer_chunks = _ctx->_chunks(seq);
-        while (idx < buffer_chunks.size()) {
-            accumulator.push(std::move(buffer_chunks[idx]));
-            ++idx;
+    while (buffer_idx < _ctx->_dop) {
+        auto& buffer_chunks = _ctx->_chunks(buffer_idx);
+        while (idx_in_buffer < buffer_chunks.size()) {
+            accumulator.push(std::move(buffer_chunks[idx_in_buffer]));
+            ++idx_in_buffer;
             if (!accumulator.empty()) {
                 return accumulator.pull();
             }
         }
 
-        seq += _adjusted_dop;
-        idx = 0;
+        buffer_idx += _adjusted_dop;
+        idx_in_buffer = 0;
     }
 
     accumulator.finalize();
@@ -276,12 +245,7 @@ Status RoundRobinPerSeqState::set_finishing(int32_t driver_seq) {
 }
 
 bool RoundRobinPerSeqState::is_finished(int32_t driver_seq) const {
-    if (driver_seq >= _adjusted_dop) {
-        return true;
-    }
-
-    const auto& info = _info_per_driver_seq[driver_seq];
-    return info.buffer_idx >= _ctx->_dop && info.accumulator.empty();
+    return !has_output(driver_seq);
 }
 
 /// CollectStatsContext.
