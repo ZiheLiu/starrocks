@@ -269,7 +269,7 @@ public class PlanFragmentBuilder {
             }
         }
 
-        if (ConnectContext.get() != null && ConnectContext.get().getSessionVariable().isEnablePipelineAdaptiveDop()) {
+        if (ConnectContext.get() != null && ConnectContext.get().getSessionVariable().isEnableAdaptiveDop()) {
             for (PlanFragment fragment : fragments) {
                 if (fragment.canUseAdaptiveDop()) {
                     fragment.setPipelineDop(Utils.computeMaxLEPower2(fragment.getPipelineDop()));

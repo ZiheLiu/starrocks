@@ -666,7 +666,7 @@ public class CoordinatorPreprocessor {
                                 int expectedDop = Math.max(1, Math.min(pipelineDop, scanRangeParams.size()));
                                 List<List<TScanRangeParams>> scanRangeParamsPerDriverSeq =
                                         ListUtil.splitBySize(scanRangeParams, expectedDop);
-                                if (connectContext.getSessionVariable().isEnablePipelineAdaptiveDop() &&
+                                if (connectContext.getSessionVariable().isEnableAdaptiveDop() &&
                                         fragment.canUseAdaptiveDop()) {
                                     instanceParam.pipelineDop =
                                             Utils.computeMinGEPower2(scanRangeParamsPerDriverSeq.size());
@@ -927,7 +927,7 @@ public class CoordinatorPreprocessor {
                         ListUtil.splitBySize(scanRangePerInstance, expectedDop);
 
                 if (assignPerDriverSeq) {
-                    if (connectContext.getSessionVariable().isEnablePipelineAdaptiveDop() &&
+                    if (connectContext.getSessionVariable().isEnableAdaptiveDop() &&
                             params.fragment.canUseAdaptiveDop()) {
                         instanceParam.pipelineDop = Utils.computeMinGEPower2(scanRangesPerDriverSeq.size());
                     } else {
@@ -1539,7 +1539,7 @@ public class CoordinatorPreprocessor {
                         commonParams.setWorkgroup(resourceGroup);
                     }
                     commonParams.setEnable_adaptive_dop(
-                            sessionVariable.isEnablePipelineAdaptiveDop() && fragment.canUseAdaptiveDop());
+                            sessionVariable.isEnableAdaptiveDop() && fragment.canUseAdaptiveDop());
                 }
             }
         }
