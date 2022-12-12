@@ -192,6 +192,8 @@ public:
     DriverAcct& driver_acct() { return _driver_acct; }
     DriverState driver_state() const { return _state; }
 
+    void update_poller_iterate_timer(int64_t cost_ns) { COUNTER_UPDATE(_poller_iterate_timer, cost_ns); }
+
     void set_driver_state(DriverState state) {
         if (state == _state) {
             return;
@@ -443,6 +445,7 @@ private:
     RuntimeProfile::Counter* _active_timer = nullptr;
     RuntimeProfile::Counter* _overhead_timer = nullptr;
     RuntimeProfile::Counter* _schedule_timer = nullptr;
+    RuntimeProfile::Counter* _poller_iterate_timer = nullptr;
 
     // Schedule counters
     RuntimeProfile::Counter* _schedule_counter = nullptr;
