@@ -32,10 +32,7 @@ using PipelineDriverPollerPtr = std::unique_ptr<PipelineDriverPoller>;
 class PipelineDriverPoller {
 public:
     explicit PipelineDriverPoller(DriverQueue* driver_queue)
-            : _driver_queue(driver_queue),
-              _polling_thread(nullptr),
-              _is_polling_thread_initialized(false),
-              _is_shutdown(false) {}
+            : _info_per_thread(POLLER_NUM), _driver_queue(driver_queue) {}
 
     using DriverList = std::list<DriverRawPtr>;
 
@@ -50,28 +47,42 @@ public:
     void remove_blocked_driver(DriverList& local_blocked_drivers, DriverList::iterator& driver_it);
     // only used for collect metrics
     size_t blocked_driver_queue_len() const {
-        std::shared_lock guard(_local_mutex);
-        return _local_blocked_drivers.size();
+        size_t len = 0;
+        for (const auto& info : _info_per_thread) {
+            std::shared_lock guard(info.local_mutex);
+            len += info.local_blocked_drivers.size();
+        }
+        return len;
     }
 
     void iterate_immutable_driver(const IterateImmutableDriverFunc& call) const;
 
 private:
-    void run_internal();
+    void run_internal(int32_t poller_id);
     PipelineDriverPoller(const PipelineDriverPoller&) = delete;
     PipelineDriverPoller& operator=(const PipelineDriverPoller&) = delete;
 
 private:
-    mutable std::mutex _global_mutex;
-    std::condition_variable _cond;
-    DriverList _blocked_drivers;
+    struct Info {
+        mutable std::mutex global_mutex;
+        std::condition_variable cond;
+        DriverList blocked_drivers;
 
-    mutable std::shared_mutex _local_mutex;
-    DriverList _local_blocked_drivers;
+        mutable std::shared_mutex local_mutex;
+        DriverList local_blocked_drivers;
+
+        scoped_refptr<Thread> polling_thread;
+    };
+
+    const int POLLER_NUM{config::pipeline_poller_num};
+
+    std::vector<Info> _info_per_thread;
 
     DriverQueue* _driver_queue;
-    scoped_refptr<Thread> _polling_thread;
-    std::atomic<bool> _is_polling_thread_initialized;
-    std::atomic<bool> _is_shutdown;
+
+    std::atomic<int32_t> _is_polling_thread_initialized{0};
+    std::atomic<bool> _is_shutdown{false};
+
+    std::atomic<int> _add_cnt{0};
 };
 } // namespace starrocks::pipeline
