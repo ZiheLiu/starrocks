@@ -194,6 +194,8 @@ public:
 
     void update_poller_iterate_timer(int64_t cost_ns) { COUNTER_UPDATE(_poller_iterate_timer, cost_ns); }
 
+    RuntimeProfile::Counter* poller_check_timer() { return _poller_check_timer; }
+
     void set_driver_state(DriverState state) {
         if (state == _state) {
             return;
@@ -446,6 +448,7 @@ private:
     RuntimeProfile::Counter* _overhead_timer = nullptr;
     RuntimeProfile::Counter* _schedule_timer = nullptr;
     RuntimeProfile::Counter* _poller_iterate_timer = nullptr;
+    RuntimeProfile::Counter* _poller_check_timer = nullptr;
 
     // Schedule counters
     RuntimeProfile::Counter* _schedule_counter = nullptr;
