@@ -71,6 +71,7 @@ void PipelineDriverPoller::run_internal(int32_t poller_id) {
         }
 
         int64_t iterate_time_ns = 0;
+        bool has_ready_drivers = false;
         {
             SCOPED_RAW_TIMER(&iterate_time_ns);
             std::unique_lock write_lock(local_mutex);
@@ -86,6 +87,18 @@ void PipelineDriverPoller::run_internal(int32_t poller_id) {
                 SCOPED_TIMER(driver->poller_check_timer());
                 COUNTER_UPDATE(driver->poller_check_counter(), 1);
                 driver->poller_check_drivers_num()->set(local_blocked_drivers.size());
+
+                if (ready_drivers.size() >= config::pipeline_poller_put_back_num) {
+                    has_ready_drivers = true;
+
+                    for (auto* d : ready_drivers) {
+                        d->update_poller_iterate_timer(iterate_time_ns);
+                        d->poller_ready_drivers_num()->set(ready_drivers.size());
+                    }
+
+                    _driver_queue->put_back(ready_drivers);
+                    ready_drivers.clear();
+                }
 
                 if (driver->query_ctx()->is_query_expired()) {
                     // there are not any drivers belonging to a query context can make progress for an expiration period
@@ -148,10 +161,8 @@ void PipelineDriverPoller::run_internal(int32_t poller_id) {
             }
         }
 
-        if (ready_drivers.empty()) {
-            spin_count += 1;
-        } else {
-            spin_count = 0;
+        if (!ready_drivers.empty()) {
+            has_ready_drivers = true;
 
             for (auto* driver : ready_drivers) {
                 driver->update_poller_iterate_timer(iterate_time_ns);
@@ -160,6 +171,12 @@ void PipelineDriverPoller::run_internal(int32_t poller_id) {
 
             _driver_queue->put_back(ready_drivers);
             ready_drivers.clear();
+        }
+
+        if (!has_ready_drivers) {
+            spin_count += 1;
+        } else {
+            spin_count = 0;
         }
 
         if (spin_count != 0 && spin_count % 64 == 0) {
