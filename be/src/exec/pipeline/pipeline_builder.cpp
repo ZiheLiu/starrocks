@@ -268,12 +268,12 @@ OpFactories PipelineBuilderContext::interpolate_cache_operator(
     auto cache_mgr = ExecEnv::GetInstance()->cache_mgr();
     auto cache_op = std::make_shared<query_cache::CacheOperatorFactory>(next_operator_id(), next_pseudo_plan_node_id(),
                                                                         cache_mgr, cache_param);
-    upstream_pipeline.push_back(cache_op);
+    upstream_pipeline.emplace_back(std::move(cache_op));
 
-    auto merge_operators = merge_operators_generator(true);
-    upstream_pipeline.push_back(std::move(std::get<0>(merge_operators)));
-    downstream_pipeline.push_back(std::move(std::get<1>(merge_operators)));
-    down_cast<SourceOperatorFactory*>(downstream_pipeline.front().get())->set_degree_of_parallelism(dop);
+    auto [post_cache_sink_op, post_cache_source_op] = merge_operators_generator(true);
+    upstream_pipeline.emplace_back(std::move(post_cache_sink_op));
+    post_cache_source_op->set_degree_of_parallelism(dop);
+    downstream_pipeline.emplace_back(std::move(post_cache_source_op));
     return downstream_pipeline;
 }
 

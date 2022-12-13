@@ -209,6 +209,8 @@ set(EXEC_FILES
     pipeline/set/intersect_output_source_operator.cpp
     pipeline/chunk_accumulate_operator.cpp
     pipeline/adaptive/collect_stats_operator.cpp
+    pipeline/adaptive/collect_stats_sink_operator.cpp
+    pipeline/adaptive/collect_stats_source_operator.cpp
     pipeline/adaptive/collect_stats_context.cpp
     workgroup/work_group.cpp
     workgroup/scan_executor.cpp
