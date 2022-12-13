@@ -53,6 +53,7 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _schedule_timer = ADD_TIMER(_runtime_profile, "ScheduleTime");
     _poller_iterate_timer = ADD_TIMER(_runtime_profile, "PollerIterateTime");
     _poller_check_timer = ADD_TIMER(_runtime_profile, "PollerCheckTime");
+    _poller_check_counter = ADD_COUNTER(_runtime_profile, "PollerCheckCount", TUnit::UNIT);
     _schedule_counter = ADD_COUNTER(_runtime_profile, "ScheduleCount", TUnit::UNIT);
     _yield_by_time_limit_counter = ADD_COUNTER(_runtime_profile, "YieldByTimeLimit", TUnit::UNIT);
     _yield_by_preempt_counter = ADD_COUNTER(_runtime_profile, "YieldByPreempt", TUnit::UNIT);
