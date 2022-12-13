@@ -195,6 +195,8 @@ public:
     void update_poller_iterate_timer(int64_t cost_ns) { COUNTER_UPDATE(_poller_iterate_timer, cost_ns); }
     RuntimeProfile::Counter* poller_check_timer() { return _poller_check_timer; }
     RuntimeProfile::Counter* poller_check_counter() { return _poller_check_counter; }
+    RuntimeProfile::HighWaterMarkCounter* poller_ready_drivers_num() { return _poller_ready_drivers_num; }
+    RuntimeProfile::HighWaterMarkCounter* poller_check_drivers_num() { return _poller_check_drivers_num; }
 
     void set_driver_state(DriverState state) {
         if (state == _state) {
@@ -450,6 +452,8 @@ private:
     RuntimeProfile::Counter* _poller_iterate_timer = nullptr;
     RuntimeProfile::Counter* _poller_check_timer = nullptr;
     RuntimeProfile::Counter* _poller_check_counter = nullptr;
+    RuntimeProfile::HighWaterMarkCounter* _poller_ready_drivers_num = nullptr;
+    RuntimeProfile::HighWaterMarkCounter* _poller_check_drivers_num = nullptr;
 
     // Schedule counters
     RuntimeProfile::Counter* _schedule_counter = nullptr;
