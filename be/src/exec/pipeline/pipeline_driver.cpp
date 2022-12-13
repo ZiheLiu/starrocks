@@ -58,6 +58,7 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
                                                                           RuntimeProfile::ROOT_COUNTER, true);
     _poller_check_drivers_num = _runtime_profile->AddHighWaterMarkCounter("PollerPeakCheckDrivers", TUnit::UNIT,
                                                                           RuntimeProfile::ROOT_COUNTER, true);
+    _queue_lock_timer = ADD_TIMER(_runtime_profile, "QueueLockTime");
     _schedule_counter = ADD_COUNTER(_runtime_profile, "ScheduleCount", TUnit::UNIT);
     _yield_by_time_limit_counter = ADD_COUNTER(_runtime_profile, "YieldByTimeLimit", TUnit::UNIT);
     _yield_by_preempt_counter = ADD_COUNTER(_runtime_profile, "YieldByPreempt", TUnit::UNIT);

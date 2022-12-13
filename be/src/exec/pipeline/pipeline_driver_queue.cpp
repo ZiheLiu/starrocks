@@ -47,8 +47,11 @@ void QuerySharedDriverQueue::close() {
 void QuerySharedDriverQueue::put_back(const DriverRawPtr driver) {
     int level = _compute_driver_level(driver);
     driver->set_driver_queue_level(level);
+
+    ScopedTimer<MonotonicStopWatch> wait_timer(driver->queue_lock_timer());
     {
         std::lock_guard<std::mutex> lock(_global_mutex);
+        wait_timer.stop();
         _queues[level].put(driver);
         driver->set_in_ready_queue(true);
         _cv.notify_one();
@@ -62,10 +65,15 @@ void QuerySharedDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) 
         levels[i] = _compute_driver_level(drivers[i]);
         drivers[i]->set_driver_queue_level(levels[i]);
     }
+    int64_t lock_time_ns = 0;
+    std::unique_ptr<ScopedRawTimer<MonotonicStopWatch>> wait_timer{
+            std::make_unique<ScopedRawTimer<MonotonicStopWatch>>(&lock_time_ns)};
     std::lock_guard<std::mutex> lock(_global_mutex);
+    wait_timer.reset();
     for (int i = 0; i < drivers.size(); i++) {
         _queues[levels[i]].put(drivers[i]);
         drivers[i]->set_in_ready_queue(true);
+        COUNTER_UPDATE(drivers[i]->queue_lock_timer(), lock_time_ns);
         _cv.notify_one();
     }
     _num_drivers += drivers.size();

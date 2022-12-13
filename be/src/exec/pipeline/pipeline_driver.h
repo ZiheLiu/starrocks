@@ -197,6 +197,7 @@ public:
     RuntimeProfile::Counter* poller_check_counter() { return _poller_check_counter; }
     RuntimeProfile::HighWaterMarkCounter* poller_ready_drivers_num() { return _poller_ready_drivers_num; }
     RuntimeProfile::HighWaterMarkCounter* poller_check_drivers_num() { return _poller_check_drivers_num; }
+    RuntimeProfile::Counter* queue_lock_timer() { return _queue_lock_timer; }
 
     void set_driver_state(DriverState state) {
         if (state == _state) {
@@ -454,6 +455,7 @@ private:
     RuntimeProfile::Counter* _poller_check_counter = nullptr;
     RuntimeProfile::HighWaterMarkCounter* _poller_ready_drivers_num = nullptr;
     RuntimeProfile::HighWaterMarkCounter* _poller_check_drivers_num = nullptr;
+    RuntimeProfile::Counter* _queue_lock_timer = nullptr;
 
     // Schedule counters
     RuntimeProfile::Counter* _schedule_counter = nullptr;
