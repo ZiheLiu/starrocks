@@ -3202,6 +3202,10 @@ public class Coordinator {
                         uniqueParams.getFragment().getOutput_sink().getMulti_cast_stream_sink().getDestinations();
                 List<List<TPlanFragmentDestination>> newDestinations = Lists.newArrayList();
                 for (List<TPlanFragmentDestination> destinations : multiFragmentDestinations) {
+                    if (instanceExecParams.size() != destinations.size()) {
+                        LOG.warn("[BUG] CTE unmatched {} {}", instanceExecParams.size(), destinations.size());
+                    }
+
                     Preconditions.checkState(instanceExecParams.size() == destinations.size());
                     TPlanFragmentDestination ndes = destinations.get(fragmentIndex);
 
