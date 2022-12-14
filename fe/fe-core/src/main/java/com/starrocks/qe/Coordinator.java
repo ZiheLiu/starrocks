@@ -3203,7 +3203,8 @@ public class Coordinator {
                 List<List<TPlanFragmentDestination>> newDestinations = Lists.newArrayList();
                 for (List<TPlanFragmentDestination> destinations : multiFragmentDestinations) {
                     if (instanceExecParams.size() != destinations.size()) {
-                        LOG.warn("[BUG] CTE unmatched {} {}", instanceExecParams.size(), destinations.size());
+                        LOG.warn("[BUG] CTE unmatched {} {}, fragmentID={}",
+                                instanceExecParams.size(), destinations.size(), fragment.getFragmentId());
                     }
 
                     Preconditions.checkState(instanceExecParams.size() == destinations.size());
