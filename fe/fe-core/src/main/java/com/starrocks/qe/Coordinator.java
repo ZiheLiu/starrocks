@@ -1843,6 +1843,12 @@ public class Coordinator {
             boolean dopAdaptionEnabled = usePipeline &&
                     connectContext.getSessionVariable().isPipelineDopAdaptionEnabled();
 
+            for (int childIdx = 1; childIdx < fragment.getChildren().size(); ++childIdx) {
+                if (fragment.getChild(childIdx) instanceof MultiCastPlanFragment) {
+                    LOG.warn("[BUG] childIdx is MultiCastPlanFragment {}", childIdx);
+                }
+            }
+
             // If left child is MultiCastDataFragment(only support left now), will keep same instance with child.
             if (fragment.getChildren().size() > 0 && fragment.getChild(0) instanceof MultiCastPlanFragment) {
                 FragmentExecParams childFragmentParams =
