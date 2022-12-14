@@ -1501,6 +1501,10 @@ public class CoordinatorPreprocessor {
                         uniqueParams.getFragment().getOutput_sink().getMulti_cast_stream_sink().getDestinations();
                 List<List<TPlanFragmentDestination>> newDestinations = Lists.newArrayList();
                 for (List<TPlanFragmentDestination> destinations : multiFragmentDestinations) {
+                    if (instanceExecParams.size() != destinations.size()) {
+                        LOG.warn("[BUG] trigger {} {}, fragmentID={}",
+                                instanceExecParams.size(), destinations.size(), fragment.getFragmentId());
+                    }
                     Preconditions.checkState(instanceExecParams.size() == destinations.size());
                     TPlanFragmentDestination ndes = destinations.get(fragmentIndex);
 
