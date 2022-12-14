@@ -1849,6 +1849,20 @@ public class Coordinator {
                 }
             }
 
+            // F15051
+            // F15064
+            // F15077
+
+            boolean downstream = fragment.getFragmentId().asInt() == 15051 || fragment.getFragmentId().asInt() == 15064 ||
+                    fragment.getFragmentId().asInt() == 15077;
+            boolean upstream = fragment.getFragmentId().asInt() == 15038;
+            String label = downstream ? "downstream" : (upstream ? "upstream" : "no");
+
+            if (downstream || upstream) {
+                LOG.warn("[BUG] =====================================================");
+                LOG.warn("[BUG] computeFragmentHosts {} start, [FID={}]", label, fragment.getFragmentId());
+            }
+
             // If left child is MultiCastDataFragment(only support left now), will keep same instance with child.
             if (fragment.getChildren().size() > 0 && fragment.getChild(0) instanceof MultiCastPlanFragment) {
                 FragmentExecParams childFragmentParams =
@@ -1856,6 +1870,14 @@ public class Coordinator {
                 for (FInstanceExecParam childInstanceParam : childFragmentParams.instanceExecParams) {
                     params.instanceExecParams.add(new FInstanceExecParam(null, childInstanceParam.host, 0, params));
                 }
+
+                if (downstream || upstream) {
+                    LOG.warn("[BUG] computeFragmentHosts {} case 1, [FID={}] [childrenSize={}] [firstChildInstanceSize={}]",
+                            label, fragment.getFragmentId(),
+                            fragment.getChildren().size(),
+                            childFragmentParams.instanceExecParams.size());
+                }
+
                 continue;
             }
 
@@ -1876,6 +1898,13 @@ public class Coordinator {
                 FInstanceExecParam instanceParam = new FInstanceExecParam(null, execHostport,
                         0, params);
                 params.instanceExecParams.add(instanceParam);
+
+                if (downstream || upstream) {
+                    LOG.warn("[BUG] computeFragmentHosts {} case 2, [FID={}] [childrenSize={}]",
+                            label, fragment.getFragmentId(),
+                            fragment.getChildren().size());
+                }
+
                 continue;
             }
 
@@ -1949,6 +1978,14 @@ public class Coordinator {
                 if (dopAdaptionEnabled) {
                     Preconditions.checkArgument(leftMostNode instanceof ExchangeNode);
                     maxParallelism = hostSet.size();
+                }
+
+                if (downstream || upstream) {
+                    LOG.warn("[BUG] computeFragmentHosts {} case 3, [FID={}] [childrenSize={}] " +
+                                    "[maxChildFragmentID={}] [macChildInstanceSize={}] [maxChildHostSize={}]",
+                            label, fragment.getFragmentId(),
+                            fragment.getChildren().size(),
+                            inputFragmentId, maxParallelismFragmentExecParams.instanceExecParams, hostSet.size());
                 }
 
                 // AddAll() soft copy()
@@ -3201,11 +3238,15 @@ public class Coordinator {
                 List<List<TPlanFragmentDestination>> multiFragmentDestinations =
                         uniqueParams.getFragment().getOutput_sink().getMulti_cast_stream_sink().getDestinations();
                 List<List<TPlanFragmentDestination>> newDestinations = Lists.newArrayList();
+                int destI = 0;
                 for (List<TPlanFragmentDestination> destinations : multiFragmentDestinations) {
                     if (instanceExecParams.size() != destinations.size()) {
-                        LOG.warn("[BUG] CTE unmatched {} {}, fragmentID={}",
-                                instanceExecParams.size(), destinations.size(), fragment.getFragmentId());
+                        MultiCastPlanFragment mf = (MultiCastPlanFragment) fragment;
+                        PlanFragment df = mf.getDestFragmentList().get(destI);
+                        LOG.warn("[BUG] CTE unmatched {} {}, fragmentID={}, destFragment={}",
+                                instanceExecParams.size(), destinations.size(), fragment.getFragmentId(), df.getFragmentId());
                     }
+                    destI++;
 
                     Preconditions.checkState(instanceExecParams.size() == destinations.size());
                     TPlanFragmentDestination ndes = destinations.get(fragmentIndex);
