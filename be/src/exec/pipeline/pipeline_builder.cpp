@@ -36,6 +36,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_broadcast_exchange(R
     auto local_exchange_source =
             std::make_shared<LocalExchangeSourceOperatorFactory>(next_operator_id(), pseudo_plan_node_id, mem_mgr);
     local_exchange_source->set_runtime_state(state);
+    local_exchange_source->set_could_local_shuffle(true);
     auto local_exchange = std::make_shared<BroadcastExchanger>(mem_mgr, local_exchange_source.get());
     auto local_exchange_sink =
             std::make_shared<LocalExchangeSinkOperatorFactory>(next_operator_id(), pseudo_plan_node_id, local_exchange);
@@ -76,6 +77,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_passthrough_exchange
     auto local_exchange_source =
             std::make_shared<LocalExchangeSourceOperatorFactory>(next_operator_id(), pseudo_plan_node_id, mem_mgr);
     local_exchange_source->set_runtime_state(state);
+    local_exchange_source->set_could_local_shuffle(true);
     auto local_exchange = std::make_shared<PassthroughExchanger>(mem_mgr, local_exchange_source.get());
     auto local_exchange_sink =
             std::make_shared<LocalExchangeSinkOperatorFactory>(next_operator_id(), pseudo_plan_node_id, local_exchange);
@@ -112,6 +114,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_shuffle_exchange(
     auto local_shuffle_source =
             std::make_shared<LocalExchangeSourceOperatorFactory>(next_operator_id(), pseudo_plan_node_id, mem_mgr);
     local_shuffle_source->set_runtime_state(state);
+    local_shuffle_source->set_could_local_shuffle(false);
     auto local_shuffle =
             std::make_shared<PartitionExchanger>(mem_mgr, local_shuffle_source.get(), part_type, partition_expr_ctxs,
                                                  pred_source_op->degree_of_parallelism());
@@ -149,6 +152,7 @@ OpFactories PipelineBuilderContext::maybe_gather_pipelines_to_one(RuntimeState* 
     auto local_exchange_source =
             std::make_shared<LocalExchangeSourceOperatorFactory>(next_operator_id(), pseudo_plan_node_id, mem_mgr);
     local_exchange_source->set_runtime_state(state);
+    local_exchange_source->set_could_local_shuffle(true);
     auto exchanger = std::make_shared<PassthroughExchanger>(mem_mgr, local_exchange_source.get());
 
     // Append a local exchange sink to the tail of each pipeline, which comes to end.
