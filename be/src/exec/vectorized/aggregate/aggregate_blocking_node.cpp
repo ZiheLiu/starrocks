@@ -185,6 +185,9 @@ pipeline::OpFactories AggregateBlockingNode::_decompose_to_pipeline(pipeline::Op
         aggregator_factory->set_aggr_mode(aggr_mode);
         auto sink_operator = std::make_shared<SinkFactory>(context->next_operator_id(), id(), aggregator_factory);
         auto source_operator = std::make_shared<SourceFactory>(context->next_operator_id(), id(), aggregator_factory);
+
+        LOG(WARNING) << "[LocalShuffle] AggregateBlockingNode source "
+                     << "[could_local_shuffle=" << could_local_shuffle << "] ";
         source_operator->set_could_local_shuffle(could_local_shuffle);
         return std::tuple<OpFactoryPtr, SourceOperatorFactoryPtr>(sink_operator, source_operator);
     };
@@ -230,8 +233,11 @@ pipeline::OpFactories AggregateBlockingNode::decompose_to_pipeline(pipeline::Pip
         auto part_type = source_op->partition_type();
         const auto& partition_exprs = source_op->partition_exprs();
         if (!partition_exprs.empty()) {
+            LOG(WARNING) << "[LocalShuffle] AggregateBlockingNode sink has partition_exprs "
+                         << "[size=" << source_op->partition_exprs().size() << "] ";
             return context->maybe_interpolate_local_shuffle_exchange(runtime_state(), ops, partition_exprs, part_type);
         }
+        LOG(WARNING) << "[LocalShuffle] AggregateBlockingNode sink hasn't partition_exprs ";
 
         std::vector<ExprContext*> group_by_expr_ctxs;
         Expr::create_expr_trees(_pool, _tnode.agg_node.grouping_exprs, &group_by_expr_ctxs, runtime_state());

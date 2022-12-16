@@ -114,6 +114,13 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_shuffle_exchange(
     auto local_shuffle_source =
             std::make_shared<LocalExchangeSourceOperatorFactory>(next_operator_id(), pseudo_plan_node_id, mem_mgr);
     local_shuffle_source->set_runtime_state(state);
+
+    if (!pred_source_op->partition_exprs().empty()) {
+        LOG(WARNING) << "[LocalShuffle] maybe_interpolate_local_shuffle_exchange has partition_exprs"
+                     << "[size=" << source_op->partition_exprs().size() << "] ";
+    } else {
+        LOG(WARNING) << "[LocalShuffle] maybe_interpolate_local_shuffle_exchange hasn't partition_exprs";
+    }
     local_shuffle_source->set_could_local_shuffle(pred_source_op->partition_exprs().empty());
     auto local_shuffle =
             std::make_shared<PartitionExchanger>(mem_mgr, local_shuffle_source.get(), part_type, partition_expr_ctxs,

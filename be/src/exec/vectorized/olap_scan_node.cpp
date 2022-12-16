@@ -93,6 +93,10 @@ Status OlapScanNode::prepare(RuntimeState* state) {
         for (int i = 0; i < part_exprs.size(); ++i) {
             RETURN_IF_ERROR(Expr::create_expr_tree(_pool, part_exprs[i], &_partition_exprs[i], state));
         }
+        LOG(WARNING) << "[LocalShuffle] OlapScanNode has partition_exprs "
+                     << "[size=" << _partition_exprs.size() << "] ";
+    } else {
+        LOG(WARNING) << "[LocalShuffle] OlapScanNode hasn't partition_exprs "
     }
 
     return Status::OK();
