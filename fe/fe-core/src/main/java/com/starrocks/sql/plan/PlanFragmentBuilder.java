@@ -563,7 +563,6 @@ public class PlanFragmentBuilder {
             OlapScanNode scanNode = new OlapScanNode(context.getNextNodeId(), tupleDescriptor, "OlapScanNode");
             scanNode.setLimit(node.getLimit());
             scanNode.computeStatistics(optExpr.getStatistics());
-            scanNode.setPartitionExprs(getPartitionExprsIgnoreSlot(node.getDistributionSpec(), context));
 
             // set tablet
             try {
@@ -647,6 +646,8 @@ public class PlanFragmentBuilder {
             scanNode.setDictStringIdToIntIds(node.getDictStringIdToIntIds());
             scanNode.updateAppliedDictStringColumns(node.getGlobalDicts().stream().
                     map(entry -> entry.first).collect(Collectors.toSet()));
+
+            scanNode.setPartitionExprs(getPartitionExprs(node.getDistributionSpec(), context));
 
             context.getScanNodes().add(scanNode);
             PlanFragment fragment =
@@ -1944,14 +1945,6 @@ public class PlanFragmentBuilder {
         private List<Expr> getPartitionExprs(HashDistributionSpec hashDistributionSpec, ExecPlan context) {
             List<ColumnRefOperator> partitionColumns = getPartitionColumns(hashDistributionSpec);
             return partitionColumns.stream().map(e -> ScalarOperatorToExpr.buildExecExpression(e,
-                            new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
-                    .collect(Collectors.toList());
-        }
-
-        private List<Expr> getPartitionExprsIgnoreSlot(HashDistributionSpec hashDistributionSpec, ExecPlan context) {
-            List<ColumnRefOperator> partitionColumns = getPartitionColumns(hashDistributionSpec);
-            LOG.warn("[LocalShuffle] getPartitionExprsIgnoreSlot [partitionColumns.size={}]", partitionColumns.size());
-            return partitionColumns.stream().map(e -> ScalarOperatorToExpr.buildExprIgnoreSlot(e,
                             new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
                     .collect(Collectors.toList());
         }
