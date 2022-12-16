@@ -563,7 +563,7 @@ public class PlanFragmentBuilder {
             OlapScanNode scanNode = new OlapScanNode(context.getNextNodeId(), tupleDescriptor, "OlapScanNode");
             scanNode.setLimit(node.getLimit());
             scanNode.computeStatistics(optExpr.getStatistics());
-            scanNode.setPartitionExprs(getPartitionExprs(node.getDistributionSpec(), context));
+            scanNode.setPartitionExprs(getPartitionExprsIgnoreSlot(node.getDistributionSpec(), context));
 
             // set tablet
             try {
@@ -1306,6 +1306,14 @@ public class PlanFragmentBuilder {
                 return inputFragment;
             }
 
+            PlanNode leafNode = sourceFragment.getLeftMostLeafNode();
+            if (leafNode instanceof OlapScanNode) {
+                // The partitions of OnePhaseLocalAgg in ScanNode->LocalShuffle->OnePhaseLocalAgg
+                // are not the same as that of OlapScanNode, so the partitions of OlapScanNode shouldn't pass to BE.
+                OlapScanNode olapScanNode = (OlapScanNode) leafNode;
+                olapScanNode.setPartitionExprs(Lists.newArrayList());
+            }
+
             // Traverse fragment in reverse to delete inputFragment,
             // because the last fragment is inputFragment for the most cases.
             ArrayList<PlanFragment> fragments = context.getFragments();
@@ -1936,6 +1944,13 @@ public class PlanFragmentBuilder {
         private List<Expr> getPartitionExprs(HashDistributionSpec hashDistributionSpec, ExecPlan context) {
             List<ColumnRefOperator> partitionColumns = getPartitionColumns(hashDistributionSpec);
             return partitionColumns.stream().map(e -> ScalarOperatorToExpr.buildExecExpression(e,
+                            new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
+                    .collect(Collectors.toList());
+        }
+
+        private List<Expr> getPartitionExprsIgnoreSlot(HashDistributionSpec hashDistributionSpec, ExecPlan context) {
+            List<ColumnRefOperator> partitionColumns = getPartitionColumns(hashDistributionSpec);
+            return partitionColumns.stream().map(e -> ScalarOperatorToExpr.buildExprIgnoreSlot(e,
                             new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
                     .collect(Collectors.toList());
         }
