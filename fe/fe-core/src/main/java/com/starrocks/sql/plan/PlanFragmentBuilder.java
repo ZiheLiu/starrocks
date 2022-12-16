@@ -1950,6 +1950,7 @@ public class PlanFragmentBuilder {
 
         private List<Expr> getPartitionExprsIgnoreSlot(HashDistributionSpec hashDistributionSpec, ExecPlan context) {
             List<ColumnRefOperator> partitionColumns = getPartitionColumns(hashDistributionSpec);
+            LOG.warn("[LocalShuffle] getPartitionExprsIgnoreSlot [partitionColumns.size={}]", partitionColumns.size());
             return partitionColumns.stream().map(e -> ScalarOperatorToExpr.buildExprIgnoreSlot(e,
                             new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
                     .collect(Collectors.toList());
