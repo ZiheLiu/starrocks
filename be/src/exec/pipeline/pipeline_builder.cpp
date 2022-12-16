@@ -105,7 +105,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_shuffle_exchange(
         return pred_operators;
     }
 
-    auto* pred_source_op = down_cast<SourceOperatorFactory*>(pred_operators[0].get());
+    auto* pred_source_op = source_operator(pred_operators);
 
     // To make sure at least one partition source operator is ready to output chunk before sink operators are full.
     auto pseudo_plan_node_id = next_pseudo_plan_node_id();
@@ -114,7 +114,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_shuffle_exchange(
     auto local_shuffle_source =
             std::make_shared<LocalExchangeSourceOperatorFactory>(next_operator_id(), pseudo_plan_node_id, mem_mgr);
     local_shuffle_source->set_runtime_state(state);
-    local_shuffle_source->set_could_local_shuffle(source_operator(pred_operators)->partition_exprs().empty());
+    local_shuffle_source->set_could_local_shuffle(pred_source_op->partition_exprs().empty());
     auto local_shuffle =
             std::make_shared<PartitionExchanger>(mem_mgr, local_shuffle_source.get(), part_type, partition_expr_ctxs,
                                                  pred_source_op->degree_of_parallelism());
