@@ -117,7 +117,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_shuffle_exchange(
 
     if (!pred_source_op->partition_exprs().empty()) {
         LOG(WARNING) << "[LocalShuffle] maybe_interpolate_local_shuffle_exchange has partition_exprs"
-                     << "[size=" << source_op->partition_exprs().size() << "] ";
+                     << "[size=" << pred_source_op->partition_exprs().size() << "] ";
     } else {
         LOG(WARNING) << "[LocalShuffle] maybe_interpolate_local_shuffle_exchange hasn't partition_exprs";
     }

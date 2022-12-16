@@ -96,7 +96,7 @@ Status OlapScanNode::prepare(RuntimeState* state) {
         LOG(WARNING) << "[LocalShuffle] OlapScanNode has partition_exprs "
                      << "[size=" << _partition_exprs.size() << "] ";
     } else {
-        LOG(WARNING) << "[LocalShuffle] OlapScanNode hasn't partition_exprs "
+        LOG(WARNING) << "[LocalShuffle] OlapScanNode hasn't partition_exprs ";
     }
 
     return Status::OK();
