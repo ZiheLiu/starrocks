@@ -87,6 +87,14 @@ Status OlapScanNode::prepare(RuntimeState* state) {
         _runtime_profile->add_info_string("Predicates", _olap_scan_node.sql_predicates);
     }
 
+    if (_olap_scan_node.__isset.partition_exprs) {
+        const auto& part_exprs = _olap_scan_node.partition_exprs;
+        _partition_exprs.resize(part_exprs.size());
+        for (int i = 0; i < part_exprs.size(); ++i) {
+            RETURN_IF_ERROR(Expr::create_expr_tree(_pool, part_exprs[i], &_partition_exprs[i], state));
+        }
+    }
+
     return Status::OK();
 }
 

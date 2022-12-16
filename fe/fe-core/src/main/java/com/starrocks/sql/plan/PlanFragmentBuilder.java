@@ -563,6 +563,7 @@ public class PlanFragmentBuilder {
             OlapScanNode scanNode = new OlapScanNode(context.getNextNodeId(), tupleDescriptor, "OlapScanNode");
             scanNode.setLimit(node.getLimit());
             scanNode.computeStatistics(optExpr.getStatistics());
+            scanNode.setPartitionExprs(getPartitionExprs(node.getDistributionSpec(), context));
 
             // set tablet
             try {
@@ -1630,14 +1631,8 @@ public class PlanFragmentBuilder {
                 dataPartition = DataPartition.UNPARTITIONED;
             } else if (DistributionSpec.DistributionType.SHUFFLE.equals(distribution.getDistributionSpec().getType())) {
                 exchangeNode.setNumInstances(inputFragment.getPlanRoot().getNumInstances());
-                List<Integer> columnRefSet =
-                        ((HashDistributionSpec) distribution.getDistributionSpec()).getHashDistributionDesc()
-                                .getColumns();
-                Preconditions.checkState(!columnRefSet.isEmpty());
-                List<ColumnRefOperator> partitionColumns = new ArrayList<>();
-                for (int columnId : columnRefSet) {
-                    partitionColumns.add(columnRefFactory.getColumnRef(columnId));
-                }
+                List<ColumnRefOperator> partitionColumns =
+                        getPartitionColumns((HashDistributionSpec) distribution.getDistributionSpec());
                 List<Expr> distributeExpressions =
                         partitionColumns.stream().map(e -> ScalarOperatorToExpr.buildExecExpression(e,
                                         new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
@@ -1857,9 +1852,7 @@ public class PlanFragmentBuilder {
                     optExpr.getRequiredProperties().get(1).getDistributionProperty().getSpec();
             if (leftDistributionSpec instanceof HashDistributionSpec &&
                     rightDistributionSpec instanceof HashDistributionSpec) {
-                probePartitionByExprs =
-                        getHashDistributionSpecPartitionByExprs((HashDistributionSpec) leftDistributionSpec,
-                                context);
+                probePartitionByExprs = getPartitionExprs((HashDistributionSpec) leftDistributionSpec, context);
             }
 
             setNullableForJoin(node.getJoinType(), leftFragment, rightFragment, context);
@@ -1929,14 +1922,19 @@ public class PlanFragmentBuilder {
             return planFragment;
         }
 
-        private List<Expr> getHashDistributionSpecPartitionByExprs(HashDistributionSpec hashDistributionSpec,
-                                                                   ExecPlan context) {
-            List<Integer> columnRefSet = hashDistributionSpec.getHashDistributionDesc().getColumns();
-            Preconditions.checkState(!columnRefSet.isEmpty());
+        private List<ColumnRefOperator> getPartitionColumns(HashDistributionSpec spec) {
+            List<Integer> columnRefs = spec.getShuffleColumns();
+            Preconditions.checkState(!columnRefs.isEmpty());
+
             List<ColumnRefOperator> partitionColumns = new ArrayList<>();
-            for (int columnId : columnRefSet) {
+            for (int columnId : columnRefs) {
                 partitionColumns.add(columnRefFactory.getColumnRef(columnId));
             }
+            return partitionColumns;
+        }
+
+        private List<Expr> getPartitionExprs(HashDistributionSpec hashDistributionSpec, ExecPlan context) {
+            List<ColumnRefOperator> partitionColumns = getPartitionColumns(hashDistributionSpec);
             return partitionColumns.stream().map(e -> ScalarOperatorToExpr.buildExecExpression(e,
                             new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
                     .collect(Collectors.toList());
@@ -1976,9 +1974,7 @@ public class PlanFragmentBuilder {
                     optExpr.getRequiredProperties().get(1).getDistributionProperty().getSpec();
             if (leftDistributionSpec instanceof HashDistributionSpec &&
                     rightDistributionSpec instanceof HashDistributionSpec) {
-                probePartitionByExprs =
-                        getHashDistributionSpecPartitionByExprs((HashDistributionSpec) leftDistributionSpec,
-                                context);
+                probePartitionByExprs = getPartitionExprs((HashDistributionSpec) leftDistributionSpec, context);
             }
 
             JoinNode.DistributionMode distributionMode =

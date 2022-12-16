@@ -114,7 +114,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_shuffle_exchange(
     auto local_shuffle_source =
             std::make_shared<LocalExchangeSourceOperatorFactory>(next_operator_id(), pseudo_plan_node_id, mem_mgr);
     local_shuffle_source->set_runtime_state(state);
-    local_shuffle_source->set_could_local_shuffle(false);
+    local_shuffle_source->set_could_local_shuffle(source_operator(pred_operators)->partition_exprs().empty());
     auto local_shuffle =
             std::make_shared<PartitionExchanger>(mem_mgr, local_shuffle_source.get(), part_type, partition_expr_ctxs,
                                                  pred_source_op->degree_of_parallelism());
@@ -189,6 +189,10 @@ MorselQueueFactory* PipelineBuilderContext::morsel_queue_factory_of_source_opera
     }
 
     return morsel_queue_factory_of_source_operator(source_op->plan_node_id());
+}
+
+SourceOperatorFactory* PipelineBuilderContext::source_operator(OpFactories ops) {
+    return down_cast<SourceOperatorFactory*>(ops[0].get());
 }
 
 bool PipelineBuilderContext::could_local_shuffle(OpFactories ops) const {
