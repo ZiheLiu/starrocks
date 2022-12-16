@@ -648,12 +648,12 @@ public class PlanFragmentBuilder {
                     map(entry -> entry.first).collect(Collectors.toSet()));
 
             List<ColumnRefOperator> partitionColumns = getPartitionColumns(node.getDistributionSpec());
-            List<Expr> partitionExprs  = partitionColumns.stream()
+            List<Expr> usedPartitionExprs  = partitionColumns.stream()
                     .filter(c -> node.getGlobalDictStringColumns().contains(c))
                     .map(e -> ScalarOperatorToExpr.buildExecExpression(e,
                             new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
                     .collect(Collectors.toList());
-            scanNode.setPartitionExprs(partitionExprs);
+            scanNode.setPartitionExprs(usedPartitionExprs);
 
             context.getScanNodes().add(scanNode);
             PlanFragment fragment =
