@@ -467,7 +467,6 @@ pipeline::OpFactories HashJoinNode::decompose_to_pipeline(pipeline::PipelineBuil
             DCHECK_EQ(part_type, lhs_source_op->partition_type());
             if (context->could_local_shuffle(lhs_operators)) {
                 if (!lhs_source_op->partition_exprs().empty()) {
-                    DCHECK(!_probe_equivalence_partition_expr_ctxs.empty());
                     lhs_operators = context->maybe_interpolate_local_shuffle_exchange(
                             runtime_state(), lhs_operators, lhs_source_op->partition_exprs(), part_type);
                 } else if (part_type == TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED) {
