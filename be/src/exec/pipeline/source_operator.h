@@ -60,6 +60,9 @@ public:
     void set_partition_type(TPartitionType::type partition_type) { _partition_type = partition_type; };
     virtual const std::vector<ExprContext*>& partition_exprs() const { return _empty_partition_exprs; }
 
+    enum class State { NOT_READY, READY, INHERIT };
+    virtual State state() const { return State::INHERIT; }
+
 protected:
     size_t _degree_of_parallelism = 1;
     bool _could_local_shuffle = true;
@@ -77,13 +80,11 @@ public:
     ~SourceOperator() override = default;
 
     bool need_input() const override { return false; }
-
     Status push_chunk(RuntimeState* state, const vectorized::ChunkPtr& chunk) override {
         return Status::InternalError("Shouldn't push chunk to source operator");
     }
 
     virtual void add_morsel_queue(MorselQueue* morsel_queue) { _morsel_queue = morsel_queue; };
-
     const MorselQueue* morsel_queue() const { return _morsel_queue; }
 
     size_t degree_of_parallelism() const { return _source_factory()->degree_of_parallelism(); }

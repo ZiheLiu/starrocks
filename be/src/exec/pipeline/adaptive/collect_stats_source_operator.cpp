@@ -14,4 +14,57 @@
 
 #include "exec/pipeline/adaptive/collect_stats_source_operator.h"
 
-namespace starrocks::pipeline {}
+#include "exec/pipeline/adaptive/collect_stats_context.h"
+
+namespace starrocks::pipeline {
+
+/// CollectStatsSourceOperator.
+CollectStatsSourceOperator::CollectStatsSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
+                                                       const int32_t driver_sequence, CollectStatsContextRawPtr ctx)
+        : SourceOperator(factory, id, "collect_stats_source", plan_node_id, driver_sequence), _ctx(ctx) {}
+
+bool CollectStatsSourceOperator::need_input() const {
+    return false;
+}
+bool CollectStatsSourceOperator::has_output() const {
+    return _ctx->has_output(_driver_sequence);
+}
+bool CollectStatsSourceOperator::is_finished() const {
+    return _ctx->is_finished(_driver_sequence);
+}
+
+Status CollectStatsSourceOperator::push_chunk(RuntimeState* state, const vectorized::ChunkPtr& chunk) {
+    return Status::InternalError("Not support");
+}
+StatusOr<vectorized::ChunkPtr> CollectStatsSourceOperator::pull_chunk(RuntimeState* state) {
+    return _ctx->pull_chunk(_driver_sequence);
+}
+Status CollectStatsSourceOperator::set_finishing(RuntimeState* state) {
+    return Status::OK();
+}
+
+/// CollectStatsSourceOperatorFactory.
+CollectStatsSourceOperatorFactory::CollectStatsSourceOperatorFactory(int32_t id, int32_t plan_node_id,
+                                                                     CollectStatsContextPtr ctx)
+        : SourceOperatorFactory(id, "collect_stats_source", plan_node_id), _ctx(std::move(ctx)) {}
+
+Status CollectStatsSourceOperatorFactory::prepare(RuntimeState* state) {
+    RETURN_IF_ERROR(OperatorFactory::prepare(state));
+    _ctx->ref();
+
+    return Status::OK();
+}
+
+void CollectStatsSourceOperatorFactory::close(RuntimeState* state) {
+    _ctx->unref(state);
+    OperatorFactory::close(state);
+}
+
+SourceOperatorFactory::State CollectStatsSourceOperatorFactory::state() const {
+    if (_ctx->is_source_ready()) {
+        return SourceOperatorFactory::State::READY;
+    }
+    return SourceOperatorFactory::State::NOT_READY;
+}
+
+} // namespace starrocks::pipeline

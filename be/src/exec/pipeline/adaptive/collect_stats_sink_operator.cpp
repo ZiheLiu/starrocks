@@ -14,4 +14,51 @@
 
 #include "exec/pipeline/adaptive/collect_stats_sink_operator.h"
 
-namespace starrocks::pipeline {}
+#include "exec/pipeline/adaptive/collect_stats_context.h"
+
+namespace starrocks::pipeline {
+
+/// CollectStatsSinkOperator.
+CollectStatsSinkOperator::CollectStatsSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
+                                                   const int32_t driver_sequence, CollectStatsContextRawPtr ctx)
+        : Operator(factory, id, "collect_stats_sink", plan_node_id, driver_sequence), _ctx(ctx) {}
+
+Status CollectStatsSinkOperator::prepare(RuntimeState* state) {
+    RETURN_IF_ERROR(Operator::prepare(state));
+    _ctx->ref();
+
+    return Status::OK();
+}
+
+void CollectStatsSinkOperator::close(RuntimeState* state) {
+    _ctx->unref(state);
+    Operator::close(state);
+}
+
+bool CollectStatsSinkOperator::need_input() const {
+    return _ctx->need_input(_driver_sequence);
+}
+bool CollectStatsSinkOperator::has_output() const {
+    return false;
+}
+bool CollectStatsSinkOperator::is_finished() const {
+    return _is_finishing;
+}
+
+Status CollectStatsSinkOperator::push_chunk(RuntimeState* state, const vectorized::ChunkPtr& chunk) {
+    return _ctx->push_chunk(_driver_sequence, chunk);
+}
+StatusOr<vectorized::ChunkPtr> CollectStatsSinkOperator::pull_chunk(RuntimeState* state) {
+    return Status::InternalError("Not support");
+}
+Status CollectStatsSinkOperator::set_finishing(RuntimeState* state) {
+    _is_finishing = true;
+    return _ctx->set_finishing(_driver_sequence);
+}
+
+/// CollectStatsSinkOperatorFactory.
+CollectStatsSinkOperatorFactory::CollectStatsSinkOperatorFactory(int32_t id, int32_t plan_node_id,
+                                                                 CollectStatsContextPtr ctx)
+        : OperatorFactory(id, "collect_stats_sink", plan_node_id), _ctx(std::move(ctx)) {}
+
+} // namespace starrocks::pipeline

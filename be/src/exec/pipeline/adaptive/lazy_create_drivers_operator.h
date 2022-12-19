@@ -14,16 +14,15 @@
 
 #pragma once
 
-#include "exec/pipeline/adaptive/adaptive_fwd.h"
 #include "exec/pipeline/source_operator.h"
 
 namespace starrocks::pipeline {
 
-class CollectStatsSourceOperator final : public SourceOperator {
+class LazyCreateDriversOperator final : public SourceOperator {
 public:
-    CollectStatsSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
-                               const int32_t driver_sequence, CollectStatsContextRawPtr ctx);
-    ~CollectStatsSourceOperator() override = default;
+    LazyCreateDriversOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, const int32_t driver_sequence,
+                              const std::vector<Pipelines>& unready_pipeline_groups);
+    ~LazyCreateDriversOperator() override = default;
 
     bool has_output() const override;
     bool need_input() const override;
@@ -34,25 +33,30 @@ public:
     Status push_chunk(RuntimeState* state, const vectorized::ChunkPtr& chunk) override;
 
 private:
-    CollectStatsContextRawPtr _ctx;
+    struct PipelineItem {
+        PipelinePtr pipeline;
+        size_t original_dop;
+
+        PipelineItem(const PipelinePtr& pipeline, size_t originalDop) : pipeline(pipeline), original_dop(originalDop) {}
+    };
+    using PipelineItems = std::vector<PipelineItem>;
+
+    std::list<PipelineItems> _unready_pipeline_groups;
 };
 
-class CollectStatsSourceOperatorFactory final : public SourceOperatorFactory {
+class LazyCreateDriversOperatorFactory final : public SourceOperatorFactory {
 public:
-    CollectStatsSourceOperatorFactory(int32_t id, int32_t plan_node_id, CollectStatsContextPtr ctx);
-    ~CollectStatsSourceOperatorFactory() override = default;
-
-    Status prepare(RuntimeState* state) override;
-    void close(RuntimeState* state) override;
+    LazyCreateDriversOperatorFactory(int32_t id, int32_t plan_node_id,
+                                     std::vector<Pipelines>&& unready_pipeline_groups);
+    ~LazyCreateDriversOperatorFactory() override = default;
 
     OperatorPtr create(int32_t degree_of_parallelism, int32_t driver_sequence) override {
-        return std::make_shared<CollectStatsSourceOperator>(this, _id, _plan_node_id, driver_sequence, _ctx.get());
+        return std::make_shared<LazyCreateDriversOperator>(this, _id, _plan_node_id, driver_sequence,
+                                                           _unready_pipeline_groups);
     }
 
-    SourceOperatorFactory::State state() const override;
-
 private:
-    CollectStatsContextPtr _ctx;
+    const std::vector<Pipelines> _unready_pipeline_groups;
 };
 
 } // namespace starrocks::pipeline

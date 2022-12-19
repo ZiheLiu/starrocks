@@ -14,4 +14,44 @@
 
 #pragma once
 
-namespace starrocks::pipeline {}
+#include "exec/pipeline/adaptive/adaptive_fwd.h"
+#include "exec/pipeline/operator.h"
+
+namespace starrocks::pipeline {
+
+class CollectStatsSinkOperator final : public Operator {
+public:
+    CollectStatsSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, const int32_t driver_sequence,
+                             CollectStatsContextRawPtr ctx);
+    ~CollectStatsSinkOperator() override = default;
+
+    Status prepare(RuntimeState* state) override;
+    void close(RuntimeState* state) override;
+
+    bool has_output() const override;
+    bool need_input() const override;
+    bool is_finished() const override;
+
+    Status set_finishing(RuntimeState* state) override;
+    StatusOr<vectorized::ChunkPtr> pull_chunk(RuntimeState* state) override;
+    Status push_chunk(RuntimeState* state, const vectorized::ChunkPtr& chunk) override;
+
+private:
+    CollectStatsContextRawPtr _ctx;
+    bool _is_finishing = false;
+};
+
+class CollectStatsSinkOperatorFactory final : public OperatorFactory {
+public:
+    CollectStatsSinkOperatorFactory(int32_t id, int32_t plan_node_id, CollectStatsContextPtr ctx);
+    ~CollectStatsSinkOperatorFactory() override = default;
+
+    OperatorPtr create(int32_t degree_of_parallelism, int32_t driver_sequence) override {
+        return std::make_shared<CollectStatsSinkOperator>(this, _id, _plan_node_id, driver_sequence, _ctx.get());
+    }
+
+private:
+    CollectStatsContextPtr _ctx;
+};
+
+} // namespace starrocks::pipeline

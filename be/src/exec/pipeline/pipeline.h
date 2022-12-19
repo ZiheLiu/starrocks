@@ -21,15 +21,14 @@
 #include "exec/pipeline/pipeline_fwd.h"
 #include "exec/pipeline/source_operator.h"
 #include "gutil/strings/substitute.h"
+
 namespace starrocks::pipeline {
 
-class Pipeline;
-using PipelinePtr = std::shared_ptr<Pipeline>;
-using Pipelines = std::vector<PipelinePtr>;
 class Pipeline {
 public:
     Pipeline() = delete;
-    Pipeline(uint32_t id, OpFactories op_factories) : _id(id), _op_factories(std::move(op_factories)) {
+    Pipeline(uint32_t id, OpFactories op_factories, FragmentContext* fragment_ctx)
+            : _id(id), _op_factories(std::move(op_factories)), _fragment_ctx(fragment_ctx) {
         _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("Pipeline (id=$0)", _id));
     }
 
@@ -81,10 +80,16 @@ public:
         return ss.str();
     }
 
+    FragmentContext* fragment_ctx() { return _fragment_ctx; }
+
+    void setup_profile_hierarchy(const DriverPtr& driver);
+
 private:
     uint32_t _id = 0;
     std::shared_ptr<RuntimeProfile> _runtime_profile = nullptr;
     OpFactories _op_factories;
+
+    FragmentContext* _fragment_ctx;
 };
 
 } // namespace starrocks::pipeline

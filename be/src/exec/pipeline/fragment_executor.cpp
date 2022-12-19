@@ -18,10 +18,12 @@
 
 #include "common/config.h"
 #include "exec/exchange_node.h"
+#include "exec/pipeline/adaptive/lazy_create_drivers_operator.h"
 #include "exec/pipeline/exchange/exchange_sink_operator.h"
 #include "exec/pipeline/exchange/multi_cast_local_exchange.h"
 #include "exec/pipeline/exchange/sink_buffer.h"
 #include "exec/pipeline/fragment_context.h"
+#include "exec/pipeline/noop_sink_operator.h"
 #include "exec/pipeline/olap_table_sink_operator.h"
 #include "exec/pipeline/pipeline_builder.h"
 #include "exec/pipeline/pipeline_driver_executor.h"
@@ -91,19 +93,6 @@ const TDataSink& UnifiedExecPlanFragmentParams::output_sink() const {
 /// Profile methods.
 static void setup_profile_hierarchy(RuntimeState* runtime_state, const PipelinePtr& pipeline) {
     runtime_state->runtime_profile()->add_child(pipeline->runtime_profile(), true, nullptr);
-}
-
-static void setup_profile_hierarchy(const PipelinePtr& pipeline, const DriverPtr& driver) {
-    pipeline->runtime_profile()->add_child(driver->runtime_profile(), true, nullptr);
-    auto* dop_counter = ADD_COUNTER_SKIP_MERGE(pipeline->runtime_profile(), "DegreeOfParallelism", TUnit::UNIT);
-    COUNTER_SET(dop_counter, static_cast<int64_t>(pipeline->source_operator_factory()->degree_of_parallelism()));
-    auto* total_dop_counter = ADD_COUNTER(pipeline->runtime_profile(), "TotalDegreeOfParallelism", TUnit::UNIT);
-    COUNTER_SET(total_dop_counter, dop_counter->value());
-    auto& operators = driver->operators();
-    for (int32_t i = operators.size() - 1; i >= 0; --i) {
-        auto& curr_op = operators[i];
-        driver->runtime_profile()->add_child(curr_op->get_runtime_profile(), true, nullptr);
-    }
 }
 
 /// FragmentExecutor.
@@ -208,6 +197,7 @@ Status FragmentExecutor::_prepare_runtime_state(ExecEnv* exec_env, const Unified
             std::make_unique<RuntimeState>(query_id, fragment_instance_id, query_options, query_globals, exec_env));
     auto* runtime_state = _fragment_ctx->runtime_state();
     runtime_state->set_enable_pipeline_engine(true);
+    runtime_state->set_fragment_ctx(_fragment_ctx.get());
 
     if (wg != nullptr && wg->use_big_query_mem_limit()) {
         _query_ctx->init_mem_tracker(wg->big_query_mem_limit(), wg->mem_tracker());
@@ -483,6 +473,28 @@ Status FragmentExecutor::_prepare_stream_load_pipe(ExecEnv* exec_env, const Unif
     return Status::OK();
 }
 
+void create_lazy_create_drivers_pipeline(PipelineBuilderContext* ctx, QueryContext* query_ctx,
+                                         FragmentContext* fragment_ctx,
+                                         std::vector<Pipelines>&& unready_pipeline_groups, Drivers& drivers) {
+    OpFactories ops;
+    ops.emplace_back(std::make_shared<LazyCreateDriversOperatorFactory>(
+            ctx->next_operator_id(), ctx->next_pseudo_plan_node_id(), std::move(unready_pipeline_groups)));
+    ops.emplace_back(
+            std::make_shared<NoopSinkOperatorFactory>(ctx->next_operator_id(), ctx->next_pseudo_plan_node_id()));
+
+    auto pipe = std::make_shared<Pipeline>(ctx->next_pipe_id(), ops, fragment_ctx);
+    fragment_ctx->pipelines().emplace_back(pipe);
+
+    size_t dop = pipe->source_operator_factory()->degree_of_parallelism();
+    for (size_t i = 0; i < dop; ++i) {
+        auto&& operators = pipe->create_operators(dop, i);
+        DriverPtr driver = std::make_shared<PipelineDriver>(std::move(operators), query_ctx, fragment_ctx,
+                                                            fragment_ctx->next_driver_id());
+        pipe->setup_profile_hierarchy(driver);
+        drivers.emplace_back(std::move(driver));
+    }
+}
+
 Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request) {
     const auto& fragment_instance_id = request.fragment_instance_id();
     const auto degree_of_parallelism = _calc_dop(exec_env, request);
@@ -519,7 +531,9 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
     }
     RETURN_IF_ERROR(_fragment_ctx->prepare_all_pipelines());
 
-    size_t driver_id = 0;
+    std::vector<Pipelines> unready_pipeline_groups;
+    Pipelines unready_pipeline_group;
+    size_t num_lazy_drivers = 0;
     for (const auto& pipeline : pipelines) {
         // DOP(degree of parallelism) of Pipeline's SourceOperator determines the Pipeline's DOP.
         const auto cur_pipeline_dop = pipeline->source_operator_factory()->degree_of_parallelism();
@@ -529,6 +543,33 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
         // If pipeline's SourceOperator is with morsels, a MorselQueue is added to the SourceOperator.
         // at present, only OlapScanOperator need a MorselQueue attached.
         setup_profile_hierarchy(runtime_state, pipeline);
+
+        switch (pipeline->source_operator_factory()->state()) {
+        case SourceOperatorFactory::State::READY:
+            if (!unready_pipeline_group.empty()) {
+                unready_pipeline_groups.emplace_back(std::move(unready_pipeline_group));
+                unready_pipeline_group.clear();
+            }
+            break;
+        case SourceOperatorFactory::State::NOT_READY:
+            if (!unready_pipeline_group.empty()) {
+                unready_pipeline_groups.emplace_back(std::move(unready_pipeline_group));
+                unready_pipeline_group.clear();
+            }
+            num_lazy_drivers += cur_pipeline_dop;
+            unready_pipeline_group.emplace_back(pipeline);
+            continue;
+        case SourceOperatorFactory::State::INHERIT:
+            // The previous pipeline is not ready, so this pipeline is not ready.
+            if (!unready_pipeline_group.empty()) {
+                num_lazy_drivers += cur_pipeline_dop;
+                unready_pipeline_group.emplace_back(pipeline);
+                continue;
+            }
+            // The previous pipeline is ready, so this pipeline is ready.
+            break;
+        }
+
         if (pipeline->source_operator_factory()->with_morsels()) {
             auto source_id = pipeline->get_op_factories()[0]->plan_node_id();
             DCHECK(morsel_queue_factories.count(source_id));
@@ -540,8 +581,8 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
             pipeline->source_operator_factory()->set_morsel_queue_factory(morsel_queue_factory.get());
             for (size_t i = 0; i < cur_pipeline_dop; ++i) {
                 auto&& operators = pipeline->create_operators(cur_pipeline_dop, i);
-                DriverPtr driver = std::make_shared<PipelineDriver>(std::move(operators), _query_ctx,
-                                                                    _fragment_ctx.get(), driver_id++);
+                DriverPtr driver = std::make_shared<PipelineDriver>(
+                        std::move(operators), _query_ctx, _fragment_ctx.get(), _fragment_ctx->next_driver_id());
                 driver->set_morsel_queue(morsel_queue_factory->create(i));
                 if (auto* scan_operator = driver->source_scan_operator()) {
                     scan_operator->set_workgroup(_wg);
@@ -561,26 +602,37 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
                     }
                 }
 
-                setup_profile_hierarchy(pipeline, driver);
+                pipeline->setup_profile_hierarchy(driver);
                 drivers.emplace_back(std::move(driver));
             }
         } else {
             for (size_t i = 0; i < cur_pipeline_dop; ++i) {
                 auto&& operators = pipeline->create_operators(cur_pipeline_dop, i);
-                DriverPtr driver = std::make_shared<PipelineDriver>(std::move(operators), _query_ctx,
-                                                                    _fragment_ctx.get(), driver_id++);
-                setup_profile_hierarchy(pipeline, driver);
+                DriverPtr driver = std::make_shared<PipelineDriver>(
+                        std::move(operators), _query_ctx, _fragment_ctx.get(), _fragment_ctx->next_driver_id());
+                pipeline->setup_profile_hierarchy(driver);
                 drivers.emplace_back(std::move(driver));
             }
         }
     }
+
+    if (!unready_pipeline_group.empty()) {
+        unready_pipeline_groups.emplace_back(std::move(unready_pipeline_group));
+    }
+    if (!unready_pipeline_groups.empty()) {
+        create_lazy_create_drivers_pipeline(&context, _query_ctx, _fragment_ctx.get(),
+                                            std::move(unready_pipeline_groups), drivers);
+    }
+
     // The pipeline created later should be placed in the front
+    // TODO: reverse profile children when reporting.
     runtime_state->runtime_profile()->reverse_childs();
-    _fragment_ctx->set_drivers(std::move(drivers));
+    _fragment_ctx->set_drivers(std::move(drivers), num_lazy_drivers);
     _query_ctx->query_trace()->register_drivers(fragment_instance_id, _fragment_ctx->drivers());
 
     // Acquire driver token to avoid overload
-    auto maybe_driver_token = exec_env->driver_limiter()->try_acquire(_fragment_ctx->drivers().size());
+    auto maybe_driver_token =
+            exec_env->driver_limiter()->try_acquire(_fragment_ctx->drivers().size() + num_lazy_drivers);
     if (maybe_driver_token.ok()) {
         _fragment_ctx->set_driver_token(std::move(maybe_driver_token.value()));
     } else {
@@ -588,6 +640,7 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
     }
 
     if (_wg != nullptr) {
+        _fragment_ctx->set_workgroup(_wg);
         for (auto& driver : _fragment_ctx->drivers()) {
             driver->set_workgroup(_wg);
         }

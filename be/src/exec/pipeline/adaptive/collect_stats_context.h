@@ -28,7 +28,7 @@ namespace pipeline {
 
 class CollectStatsContext;
 class CollectStatsState;
-using CollectStatsStatePtr = std::unique_ptr<CollectStatsState>;
+using CollectStatsStatePtr = std::shared_ptr<CollectStatsState>;
 using CollectStatsStateRawPtr = CollectStatsState*;
 
 enum class CollectStatsStateEnum { BUFFER = 0, PASSTHROUGH, ROUND_ROBIN_PER_CHUNK, ROUND_ROBIN_PER_SEQ };
@@ -171,11 +171,13 @@ public:
     StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq);
     Status set_finishing(int32_t driver_seq);
 
+    bool is_source_ready() const;
+
 private:
     CollectStatsStateRawPtr _get_state(CollectStatsStateEnum state) const;
     CollectStatsStateRawPtr _state_ref() const;
     void _set_state(CollectStatsStateRawPtr state);
-    std::vector<vectorized::ChunkPtr>& _chunks(int32_t driver_seq);
+    std::vector<vectorized::ChunkPtr>& _buffer_chunks(int32_t driver_seq);
 
 private:
     friend class BufferState;
@@ -189,7 +191,8 @@ private:
     size_t _dop;
     AssignChunkStrategy _assign_chunk_strategy;
 
-    std::vector<std::vector<vectorized::ChunkPtr>> _chunks_per_driver_seq;
+    std::vector<std::vector<vectorized::ChunkPtr>> _buffer_chunks_per_driver_seq;
+    std::vector<bool> _is_finishing_per_driver_seq;
 
     RuntimeState* const _runtime_state;
 };

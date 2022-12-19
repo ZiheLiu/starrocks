@@ -212,6 +212,8 @@ set(EXEC_FILES
     pipeline/adaptive/collect_stats_sink_operator.cpp
     pipeline/adaptive/collect_stats_source_operator.cpp
     pipeline/adaptive/collect_stats_context.cpp
+    pipeline/adaptive/lazy_create_drivers_operator.cpp
+    pipeline/pipeline.cpp
     workgroup/work_group.cpp
     workgroup/scan_executor.cpp
     workgroup/scan_task_queue.cpp

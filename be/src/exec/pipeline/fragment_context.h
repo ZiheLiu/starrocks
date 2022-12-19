@@ -51,6 +51,7 @@ public:
     FragmentContext() = default;
     ~FragmentContext() {
         _runtime_filter_hub.close_all_in_filters(_runtime_state.get());
+        _lazy_drivers.clear();
         _drivers.clear();
         close_all_pipelines();
         if (_plan != nullptr) {
@@ -74,14 +75,19 @@ public:
     Pipelines& pipelines() { return _pipelines; }
     void set_pipelines(Pipelines&& pipelines) { _pipelines = std::move(pipelines); }
     Drivers& drivers() { return _drivers; }
-    void set_drivers(Drivers&& drivers) {
+    void set_drivers(Drivers&& drivers, size_t num_lazy_drivers) {
         _drivers = std::move(drivers);
-        _num_drivers.store(_drivers.size());
+        _num_drivers.store(_drivers.size() + num_lazy_drivers);
         _final_status.store(nullptr);
+    }
+    void add_lazy_drivers(const Drivers& drivers) {
+        for (const auto& driver : drivers) {
+            _lazy_drivers.emplace_back(driver);
+        }
     }
 
     int num_drivers() const { return _num_drivers.load(); }
-    bool count_down_drivers() { return _num_drivers.fetch_sub(1) == 1; }
+    bool count_down_drivers(size_t val = 1) { return _num_drivers.fetch_sub(val) == val; }
 
     void set_final_status(const Status& status);
 
@@ -137,6 +143,11 @@ public:
     void set_enable_adaptive_dop(bool val) { _enable_adaptive_dop = val; }
     bool enable_adaptive_dop() const { return _enable_adaptive_dop; }
 
+    size_t next_driver_id() { return _next_driver_id++; }
+
+    void set_workgroup(workgroup::WorkGroupPtr wg) { _workgroup = std::move(wg); }
+    const workgroup::WorkGroupPtr& workgroup() const { return _workgroup; }
+
 private:
     // Id of this query
     TUniqueId _query_id;
@@ -153,6 +164,7 @@ private:
     ExecNode* _plan = nullptr; // lives in _runtime_state->obj_pool()
     Pipelines _pipelines;
     Drivers _drivers;
+    Drivers _lazy_drivers;
 
     RuntimeFilterHub _runtime_filter_hub;
 
@@ -174,6 +186,9 @@ private:
     bool _channel_stream_load = false;
 
     bool _enable_adaptive_dop = false;
+
+    size_t _next_driver_id = 0;
+    workgroup::WorkGroupPtr _workgroup = nullptr;
 };
 
 class FragmentContextManager {
