@@ -14,6 +14,7 @@
 
 #include "exec/pipeline/fragment_context.h"
 
+#include "exec/data_sink.h"
 #include "exec/pipeline/pipeline_driver_executor.h"
 #include "runtime/data_stream_mgr.h"
 #include "runtime/exec_env.h"
@@ -21,6 +22,19 @@
 #include "runtime/stream_load/transaction_mgr.h"
 
 namespace starrocks::pipeline {
+
+FragmentContext::FragmentContext() : _data_sink(nullptr) {}
+
+FragmentContext::~FragmentContext() {
+    _data_sink.reset();
+    _runtime_filter_hub.close_all_in_filters(_runtime_state.get());
+    _lazy_drivers.clear();
+    _drivers.clear();
+    close_all_pipelines();
+    if (_plan != nullptr) {
+        _plan->close(_runtime_state.get());
+    }
+}
 
 void FragmentContext::set_final_status(const Status& status) {
     if (_final_status.load() != nullptr) {

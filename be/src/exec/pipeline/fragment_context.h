@@ -48,16 +48,8 @@ class FragmentContext {
     friend FragmentContextManager;
 
 public:
-    FragmentContext() = default;
-    ~FragmentContext() {
-        _runtime_filter_hub.close_all_in_filters(_runtime_state.get());
-        _lazy_drivers.clear();
-        _drivers.clear();
-        close_all_pipelines();
-        if (_plan != nullptr) {
-            _plan->close(_runtime_state.get());
-        }
-    }
+    FragmentContext();
+    ~FragmentContext();
     const TUniqueId& query_id() const { return _query_id; }
     void set_query_id(const TUniqueId& query_id) { _query_id = query_id; }
     const TUniqueId& fragment_instance_id() const { return _fragment_instance_id; }
@@ -150,6 +142,8 @@ public:
     void set_workgroup(workgroup::WorkGroupPtr wg) { _workgroup = std::move(wg); }
     const workgroup::WorkGroupPtr& workgroup() const { return _workgroup; }
 
+    void set_data_sink(std::unique_ptr<DataSink> data_sink) { _data_sink = std::move(data_sink); }
+
 private:
     // Id of this query
     TUniqueId _query_id;
@@ -193,6 +187,8 @@ private:
 
     size_t _next_driver_id = 0;
     workgroup::WorkGroupPtr _workgroup = nullptr;
+
+    std::unique_ptr<DataSink> _data_sink;
 };
 
 class FragmentContextManager {
