@@ -81,7 +81,14 @@ public:
     }
 
     int num_drivers() const { return _num_drivers.load(); }
-    bool count_down_drivers(size_t val = 1) { return _num_drivers.fetch_sub(val) == val; }
+    bool count_down_drivers(size_t val = 1) {
+        auto old = _num_drivers.fetch_sub(val);
+        LOG(WARNING) << "[ADAPTIVE] count_down_drivers "
+                     << "[val=" << val << "] "
+                     << "[old=" << old << "] "
+                     << "[res=" << (old == val) << "] ";
+        return old == val;
+    }
 
     void set_final_status(const Status& status);
 
