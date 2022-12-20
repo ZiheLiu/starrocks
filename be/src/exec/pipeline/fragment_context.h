@@ -16,6 +16,7 @@
 
 #include <unordered_map>
 
+#include "exec/data_sink.h"
 #include "exec/exec_node.h"
 #include "exec/pipeline/driver_limiter.h"
 #include "exec/pipeline/pipeline.h"
