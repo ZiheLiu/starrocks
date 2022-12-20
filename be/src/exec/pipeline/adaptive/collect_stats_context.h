@@ -86,10 +86,11 @@ public:
     Status set_finishing(int32_t driver_seq) override;
 
 private:
+    static constexpr size_t MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ = 8;
     struct DriverInfo {
     public:
         int idx_in_buffer = 0;
-        vectorized::ChunkPtr in_chunk = nullptr;
+        std::queue<vectorized::ChunkPtr> in_chunks;
     };
 
     std::vector<DriverInfo> _info_per_driver_seq;

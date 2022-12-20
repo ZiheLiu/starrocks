@@ -473,9 +473,9 @@ Status FragmentExecutor::_prepare_stream_load_pipe(ExecEnv* exec_env, const Unif
     return Status::OK();
 }
 
-void create_lazy_create_drivers_pipeline(PipelineBuilderContext* ctx, QueryContext* query_ctx,
-                                         FragmentContext* fragment_ctx,
-                                         std::vector<Pipelines>&& unready_pipeline_groups, Drivers& drivers) {
+Status create_lazy_create_drivers_pipeline(RuntimeState* state, PipelineBuilderContext* ctx, QueryContext* query_ctx,
+                                           FragmentContext* fragment_ctx,
+                                           std::vector<Pipelines>&& unready_pipeline_groups, Drivers& drivers) {
     OpFactories ops;
     ops.emplace_back(std::make_shared<LazyCreateDriversOperatorFactory>(
             ctx->next_operator_id(), ctx->next_pseudo_plan_node_id(), std::move(unready_pipeline_groups)));
@@ -484,6 +484,7 @@ void create_lazy_create_drivers_pipeline(PipelineBuilderContext* ctx, QueryConte
 
     auto pipe = std::make_shared<Pipeline>(ctx->next_pipe_id(), ops, fragment_ctx);
     fragment_ctx->pipelines().emplace_back(pipe);
+    RETURN_IF_ERROR(pipe->prepare(state));
 
     size_t dop = pipe->source_operator_factory()->degree_of_parallelism();
     for (size_t i = 0; i < dop; ++i) {
@@ -493,6 +494,8 @@ void create_lazy_create_drivers_pipeline(PipelineBuilderContext* ctx, QueryConte
         pipe->setup_profile_hierarchy(driver);
         drivers.emplace_back(std::move(driver));
     }
+
+    return Status::OK();
 }
 
 Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request) {
@@ -620,8 +623,8 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
         unready_pipeline_groups.emplace_back(std::move(unready_pipeline_group));
     }
     if (!unready_pipeline_groups.empty()) {
-        create_lazy_create_drivers_pipeline(&context, _query_ctx, _fragment_ctx.get(),
-                                            std::move(unready_pipeline_groups), drivers);
+        RETURN_IF_ERROR(create_lazy_create_drivers_pipeline(runtime_state, &context, _query_ctx, _fragment_ctx.get(),
+                                                            std::move(unready_pipeline_groups), drivers));
     }
 
     // The pipeline created later should be placed in the front

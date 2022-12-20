@@ -92,11 +92,11 @@ PassthroughState::PassthroughState(CollectStatsContext* const ctx)
         : CollectStatsState(ctx), _info_per_driver_seq(ctx->_dop) {}
 
 bool PassthroughState::need_input(int32_t driver_seq) const {
-    return _info_per_driver_seq[driver_seq].in_chunk == nullptr;
+    return _info_per_driver_seq[driver_seq].in_chunks.size() < MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ;
 }
 
 Status PassthroughState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) {
-    _info_per_driver_seq[driver_seq].in_chunk = std::move(chunk);
+    _info_per_driver_seq[driver_seq].in_chunks.emplace(std::move(chunk));
     return Status::OK();
 }
 
@@ -108,7 +108,7 @@ bool PassthroughState::has_output(int32_t driver_seq) const {
         return true;
     }
 
-    return info.in_chunk != nullptr;
+    return !info.in_chunks.empty();
 }
 
 StatusOr<vectorized::ChunkPtr> PassthroughState::pull_chunk(int32_t driver_seq) {
@@ -118,7 +118,10 @@ StatusOr<vectorized::ChunkPtr> PassthroughState::pull_chunk(int32_t driver_seq) 
     if (info.idx_in_buffer < buffer_chunks.size()) {
         return std::move(buffer_chunks[info.idx_in_buffer++]);
     }
-    return std::move(info.in_chunk);
+
+    auto chunk = std::move(info.in_chunks.front());
+    info.in_chunks.pop();
+    return chunk;
 }
 
 Status PassthroughState::set_finishing(int32_t driver_seq) {
