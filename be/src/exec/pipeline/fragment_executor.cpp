@@ -488,6 +488,8 @@ Status create_lazy_create_drivers_pipeline(RuntimeState* state, PipelineBuilderC
     fragment_ctx->pipelines().emplace_back(pipe);
     RETURN_IF_ERROR(pipe->prepare(state));
 
+    setup_profile_hierarchy(state, pipe);
+
     size_t dop = pipe->source_operator_factory()->degree_of_parallelism();
     for (size_t i = 0; i < dop; ++i) {
         auto&& operators = pipe->create_operators(dop, i);
