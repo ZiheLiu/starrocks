@@ -36,6 +36,10 @@ FragmentContext::~FragmentContext() {
     }
 }
 
+void FragmentContext::set_data_sink(std::unique_ptr<DataSink> data_sink) {
+    _data_sink = std::move(data_sink);
+}
+
 void FragmentContext::set_final_status(const Status& status) {
     if (_final_status.load() != nullptr) {
         return;

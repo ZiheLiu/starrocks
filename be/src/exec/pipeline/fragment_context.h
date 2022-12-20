@@ -16,7 +16,6 @@
 
 #include <unordered_map>
 
-#include "exec/data_sink.h"
 #include "exec/exec_node.h"
 #include "exec/pipeline/driver_limiter.h"
 #include "exec/pipeline/pipeline.h"
@@ -143,7 +142,7 @@ public:
     void set_workgroup(workgroup::WorkGroupPtr wg) { _workgroup = std::move(wg); }
     const workgroup::WorkGroupPtr& workgroup() const { return _workgroup; }
 
-    void set_data_sink(std::unique_ptr<DataSink> data_sink) { _data_sink = std::move(data_sink); }
+    void set_data_sink(std::unique_ptr<DataSink> data_sink);
 
 private:
     // Id of this query
