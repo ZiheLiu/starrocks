@@ -25,6 +25,7 @@ LazyCreateDriversOperator::LazyCreateDriversOperator(OperatorFactory* factory, i
                                                      const int32_t driver_sequence,
                                                      const std::vector<Pipelines>& unready_pipeline_groups)
         : SourceOperator(factory, id, "lazy_create_drivers", plan_node_id, driver_sequence) {
+    LOG(WARNING) << "[ADAPTIVE] [unready_pipeline_groups=" << unready_pipeline_groups.size() << "] ";
     for (const auto& pipe_group : unready_pipeline_groups) {
         PipelineItems pipe_item_group;
         pipe_item_group.reserve(pipe_group.size());
@@ -72,6 +73,9 @@ StatusOr<vectorized::ChunkPtr> LazyCreateDriversOperator::pull_chunk(RuntimeStat
 
         // TODO: what about local shuffle? This will limit dop of LocalShuffleSource to too small.
         size_t max_dop = source_op_of_first_pipeline->degree_of_parallelism();
+
+        LOG(WARNING) << "[ADAPTIVE] pipe_item_group is ready "
+                     << "[max_odp=" << max_dop << "] ";
 
         for (const auto& pipe_item : pipe_item_group) {
             auto& [pipe, original_dop] = pipe_item;
