@@ -36,7 +36,8 @@
 
 #include "column/chunk.h"
 #include "exec/pipeline/adaptive/collect_stats_context.h"
-#include "exec/pipeline/adaptive/collect_stats_operator.h"
+#include "exec/pipeline/adaptive/collect_stats_sink_operator.h"
+#include "exec/pipeline/adaptive/collect_stats_source_operator.h"
 #include "exec/pipeline/chunk_accumulate_operator.h"
 #include "exec/pipeline/exchange/exchange_merge_sort_source_operator.h"
 #include "exec/pipeline/exchange/exchange_source_operator.h"
@@ -257,15 +258,6 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
         exchange_source_op->set_degree_of_parallelism(context->degree_of_parallelism());
         operators.emplace_back(exchange_source_op);
 
-        if (context->fragment_context()->enable_adaptive_dop()) {
-            // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
-            CollectStatsContextPtr collect_stats_ctx = std::make_unique<CollectStatsContext>(
-                    context->runtime_state(), context->degree_of_parallelism(),
-                    CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
-            operators.emplace_back(std::make_shared<CollectStatsOperatorFactory>(context->next_operator_id(), id(),
-                                                                                 std::move(collect_stats_ctx)));
-        }
-
     } else {
         auto exchange_merge_sort_source_operator = std::make_shared<ExchangeMergeSortSourceOperatorFactory>(
                 context->next_operator_id(), id(), _num_senders, _input_row_desc, &_sort_exec_exprs, _is_asc_order,
@@ -286,6 +278,22 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
     if (limit() != -1) {
         operators.emplace_back(std::make_shared<LimitOperatorFactory>(context->next_operator_id(), id(), limit()));
     }
+
+    size_t dop = context->source_operator(operators)->degree_of_parallelism();
+    if (dop > 1 && context->fragment_context()->enable_adaptive_dop()) {
+        // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
+        CollectStatsContextPtr collect_stats_ctx =
+                std::make_shared<CollectStatsContext>(context->runtime_state(), context->degree_of_parallelism(),
+                                                      CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
+        operators.emplace_back(std::make_shared<CollectStatsSinkOperatorFactory>(context->next_operator_id(), id(),
+                                                                                 collect_stats_ctx));
+        context->add_pipeline(operators);
+
+        operators.clear();
+        operators.emplace_back(std::make_shared<CollectStatsSourceOperatorFactory>(context->next_operator_id(), id(),
+                                                                                   std::move(collect_stats_ctx)));
+    }
+
     return operators;
 }
 

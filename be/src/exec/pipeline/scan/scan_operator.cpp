@@ -18,7 +18,8 @@
 
 #include "column/chunk.h"
 #include "exec/pipeline/adaptive/collect_stats_context.h"
-#include "exec/pipeline/adaptive/collect_stats_operator.h"
+#include "exec/pipeline/adaptive/collect_stats_sink_operator.h"
+#include "exec/pipeline/adaptive/collect_stats_source_operator.h"
 #include "exec/pipeline/chunk_accumulate_operator.h"
 #include "exec/pipeline/limit_operator.h"
 #include "exec/pipeline/pipeline_builder.h"
@@ -529,14 +530,6 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
 
     ops.emplace_back(std::move(scan_operator));
 
-    if (context->fragment_context()->enable_adaptive_dop()) {
-        // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
-        CollectStatsContextPtr collect_stats_ctx = std::make_unique<CollectStatsContext>(
-                context->runtime_state(), dop, CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
-        ops.emplace_back(std::make_shared<CollectStatsOperatorFactory>(context->next_operator_id(), scan_node->id(),
-                                                                       std::move(collect_stats_ctx)));
-    }
-
     if (!scan_node->conjunct_ctxs().empty() || ops.back()->has_runtime_filters()) {
         ops.emplace_back(
                 std::make_shared<ChunkAccumulateOperatorFactory>(context->next_operator_id(), scan_node->id()));
@@ -546,6 +539,19 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
     if (limit != -1) {
         ops.emplace_back(
                 std::make_shared<pipeline::LimitOperatorFactory>(context->next_operator_id(), scan_node->id(), limit));
+    }
+
+    if (dop > 1 && context->fragment_context()->enable_adaptive_dop()) {
+        // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
+        CollectStatsContextPtr collect_stats_ctx = std::make_shared<CollectStatsContext>(
+                context->runtime_state(), dop, CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
+        ops.emplace_back(std::make_shared<CollectStatsSinkOperatorFactory>(context->next_operator_id(), scan_node->id(),
+                                                                           collect_stats_ctx));
+        context->add_pipeline(ops);
+
+        ops.clear();
+        ops.emplace_back(std::make_shared<CollectStatsSourceOperatorFactory>(
+                context->next_operator_id(), scan_node->id(), std::move(collect_stats_ctx)));
     }
 
     return ops;

@@ -285,7 +285,9 @@ StatusOr<vectorized::ChunkPtr> CollectStatsContext::pull_chunk(int32_t driver_se
     return _state_ref()->pull_chunk(driver_seq);
 }
 
+// TODO: what about source operator short-circuit?
 Status CollectStatsContext::set_finishing(int32_t driver_seq) {
+    _is_finishing_per_driver_seq[driver_seq] = true;
     return _state_ref()->set_finishing(driver_seq);
 }
 
@@ -308,7 +310,6 @@ void CollectStatsContext::_set_state(CollectStatsStateRawPtr state) {
 }
 
 std::vector<vectorized::ChunkPtr>& CollectStatsContext::_buffer_chunks(int32_t driver_seq) {
-    _is_finishing_per_driver_seq[driver_seq] = true;
     return _buffer_chunks_per_driver_seq[driver_seq];
 }
 

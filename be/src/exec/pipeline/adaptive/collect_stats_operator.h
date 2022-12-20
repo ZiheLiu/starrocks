@@ -14,13 +14,10 @@
 
 #pragma once
 
+#include "exec/pipeline/adaptive/adaptive_fwd.h"
 #include "exec/pipeline/operator.h"
 
 namespace starrocks::pipeline {
-
-class CollectStatsContext;
-using CollectStatsContextPtr = std::unique_ptr<CollectStatsContext>;
-using CollectStatsContextRawPtr = CollectStatsContext*;
 
 class CollectStatsOperator final : public Operator {
 public:

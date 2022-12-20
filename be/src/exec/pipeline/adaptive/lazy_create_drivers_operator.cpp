@@ -70,8 +70,12 @@ StatusOr<vectorized::ChunkPtr> LazyCreateDriversOperator::pull_chunk(RuntimeStat
             continue;
         }
 
+        // TODO: what about local shuffle? This will limit dop of LocalShuffleSource to too small.
+        size_t max_dop = source_op_of_first_pipeline->degree_of_parallelism();
+
         for (const auto& pipe_item : pipe_item_group) {
             auto& [pipe, original_dop] = pipe_item;
+            pipe->source_operator_factory()->set_max_dop(max_dop);
             size_t cur_dop = pipe->source_operator_factory()->degree_of_parallelism();
             for (size_t i = 0; i < cur_dop; ++i) {
                 auto&& operators = pipe->create_operators(cur_dop, i);
