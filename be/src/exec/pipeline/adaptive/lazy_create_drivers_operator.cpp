@@ -89,7 +89,7 @@ StatusOr<vectorized::ChunkPtr> LazyCreateDriversOperator::pull_chunk(RuntimeStat
                 drivers.emplace_back(std::move(driver));
             }
 
-            bool res = fragment_ctx->count_down_drivers(cur_dop - original_dop);
+            bool res = fragment_ctx->count_down_drivers(original_dop - cur_dop);
             LOG(WARNING) << "[ADAPTIVE] count_down_drivers "
                          << "[cur_do=p" << cur_dop << "] "
                          << "[original_dop=" << original_dop << "] "
