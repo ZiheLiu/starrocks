@@ -206,6 +206,10 @@ Status ExchangeSinkOperator::Channel::send_one_chunk(RuntimeState* state, const 
 
 Status ExchangeSinkOperator::Channel::send_one_chunk(RuntimeState* state, const vectorized::Chunk* chunk,
                                                      int32_t driver_sequence, bool eos, bool* is_real_sent) {
+    LOG(WARNING) << "[ADAPTIVE] Channel::send_one_chunk "
+                 << "[driver_seq=" << driver_sequence << "] "
+                 << "[eos" << eos << "] ";
+
     *is_real_sent = false;
 
     if (_ignore_local_data && !eos) {
@@ -287,6 +291,8 @@ Status ExchangeSinkOperator::Channel::send_chunk_request(RuntimeState* state, PT
 }
 
 Status ExchangeSinkOperator::Channel::_close_internal(RuntimeState* state, FragmentContext* fragment_ctx) {
+    LOG(WARNING) << "[ADAPTIVE] Channel::_close_internal "
+                 << "[lo_id=" << this->_fragment_instance_id.lo << "] ";
     // no need to send EOS packet to pseudo destinations in scenarios of bucket shuffle join.
     if (this->_fragment_instance_id.lo == -1) {
         return Status::OK();
@@ -616,7 +622,8 @@ Status ExchangeSinkOperator::push_chunk(RuntimeState* state, const vectorized::C
 Status ExchangeSinkOperator::set_finishing(RuntimeState* state) {
     _is_finished = true;
 
-    LOG(WARNING) << "[ADAPTIVE] ExchangeSinkOperator::set_finishing ";
+    LOG(WARNING) << "[ADAPTIVE] ExchangeSinkOperator::set_finishing "
+                 << "[_instance_id2channel.size=" << _instance_id2channel.size() << "] ";
 
     if (_chunk_request != nullptr) {
         butil::IOBuf attachment;
