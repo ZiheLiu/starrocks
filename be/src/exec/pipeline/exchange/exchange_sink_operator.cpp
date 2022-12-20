@@ -616,6 +616,8 @@ Status ExchangeSinkOperator::push_chunk(RuntimeState* state, const vectorized::C
 Status ExchangeSinkOperator::set_finishing(RuntimeState* state) {
     _is_finished = true;
 
+    LOG(WARNING) << "[ADAPTIVE] ExchangeSinkOperator::set_finishing ";
+
     if (_chunk_request != nullptr) {
         butil::IOBuf attachment;
         int64_t attachment_physical_bytes = construct_brpc_attachment(_chunk_request, attachment);
