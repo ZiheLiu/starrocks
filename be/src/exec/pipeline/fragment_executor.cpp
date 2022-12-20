@@ -482,7 +482,7 @@ Status create_lazy_create_drivers_pipeline(RuntimeState* state, PipelineBuilderC
     ops.emplace_back(
             std::make_shared<NoopSinkOperatorFactory>(ctx->next_operator_id(), ctx->next_pseudo_plan_node_id()));
 
-    auto pipe = std::make_shared<Pipeline>(ctx->next_pipe_id(), ops, fragment_ctx);
+    auto pipe = std::make_shared<Pipeline>(ctx->next_pipe_id(), ops);
     fragment_ctx->pipelines().emplace_back(pipe);
     RETURN_IF_ERROR(pipe->prepare(state));
 

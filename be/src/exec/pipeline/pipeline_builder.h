@@ -32,7 +32,7 @@ public:
             : _fragment_context(fragment_context), _degree_of_parallelism(degree_of_parallelism) {}
 
     void add_pipeline(const OpFactories& operators) {
-        _pipelines.emplace_back(std::make_shared<Pipeline>(next_pipe_id(), operators, _fragment_context));
+        _pipelines.emplace_back(std::make_shared<Pipeline>(next_pipe_id(), operators));
     }
 
     OpFactories maybe_interpolate_local_broadcast_exchange(RuntimeState* state, OpFactories& pred_operators,
