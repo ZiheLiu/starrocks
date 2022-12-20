@@ -71,6 +71,8 @@ public:
     std::shared_ptr<RuntimeState> runtime_state_ptr() { return _runtime_state; }
     void set_runtime_state(std::shared_ptr<RuntimeState>&& runtime_state) { _runtime_state = std::move(runtime_state); }
     ExecNode*& plan() { return _plan; }
+    void set_thrift_plan(TPlan& tplan) { swap(_thrift_plan, tplan); }
+    const TPlan& thrift_plan() const { return _thrift_plan; }
 
     Pipelines& pipelines() { return _pipelines; }
     void set_pipelines(Pipelines&& pipelines) { _pipelines = std::move(pipelines); }
@@ -154,6 +156,8 @@ private:
     // Id of this instance
     TUniqueId _fragment_instance_id;
     TNetworkAddress _fe_addr;
+
+    TPlan _thrift_plan;
 
     // promise used to determine whether fragment finished its execution
     FragmentPromise _finish_promise;

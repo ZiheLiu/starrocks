@@ -298,7 +298,9 @@ Status FragmentExecutor::_prepare_exec_plan(ExecEnv* exec_env, const UnifiedExec
                                                                 : TTabletInternalParallelMode::type::AUTO;
 
     // Set up plan
-    RETURN_IF_ERROR(ExecNode::create_tree(runtime_state, obj_pool, fragment.plan, desc_tbl, &_fragment_ctx->plan()));
+    _fragment_ctx->set_thrift_plan(fragment.plan);
+    RETURN_IF_ERROR(ExecNode::create_tree(runtime_state, obj_pool, _fragment_ctx->thrift_plan(), desc_tbl,
+                                          &_fragment_ctx->plan()));
     ExecNode* plan = _fragment_ctx->plan();
     plan->push_down_join_runtime_filter_recursively(runtime_state);
     std::vector<TupleSlotMapping> empty_mappings;
