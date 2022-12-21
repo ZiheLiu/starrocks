@@ -527,7 +527,6 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
     size_t dop = morsel_queue_factory->size();
     scan_operator->set_degree_of_parallelism(dop);
     scan_operator->set_could_local_shuffle(morsel_queue_factory->could_local_shuffle());
-
     ops.emplace_back(std::move(scan_operator));
 
     if (!scan_node->conjunct_ctxs().empty() || ops.back()->has_runtime_filters()) {
@@ -542,14 +541,18 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
     }
 
     if (dop > 1 && context->fragment_context()->enable_adaptive_dop()) {
+        auto* upstream_source_op = context->source_operator(ops);
         CollectStatsContextPtr collect_stats_ctx = std::make_shared<CollectStatsContext>(context->runtime_state(), dop);
         ops.emplace_back(std::make_shared<CollectStatsSinkOperatorFactory>(context->next_operator_id(), scan_node->id(),
                                                                            collect_stats_ctx));
         context->add_pipeline(ops);
 
         ops.clear();
-        ops.emplace_back(std::make_shared<CollectStatsSourceOperatorFactory>(
-                context->next_operator_id(), scan_node->id(), std::move(collect_stats_ctx)));
+        auto downstream_source_op = std::make_shared<CollectStatsSourceOperatorFactory>(
+                context->next_operator_id(), scan_node->id(), std::move(collect_stats_ctx));
+        downstream_source_op->set_could_local_shuffle(upstream_source_op->could_local_shuffle());
+        downstream_source_op->set_partition_type(upstream_source_op->partition_type());
+        ops.emplace_back(std::move(downstream_source_op));
     }
 
     return ops;

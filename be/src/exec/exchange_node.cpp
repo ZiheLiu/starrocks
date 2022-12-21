@@ -281,6 +281,7 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
 
     size_t dop = context->source_operator(operators)->degree_of_parallelism();
     if (dop > 1 && context->fragment_context()->enable_adaptive_dop()) {
+        auto* upstream_source_op = context->source_operator(operators);
         CollectStatsContextPtr collect_stats_ctx =
                 std::make_shared<CollectStatsContext>(context->runtime_state(), context->degree_of_parallelism());
         operators.emplace_back(std::make_shared<CollectStatsSinkOperatorFactory>(context->next_operator_id(), id(),
@@ -288,8 +289,11 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
         context->add_pipeline(operators);
 
         operators.clear();
-        operators.emplace_back(std::make_shared<CollectStatsSourceOperatorFactory>(context->next_operator_id(), id(),
-                                                                                   std::move(collect_stats_ctx)));
+        auto downstream_source_op = std::make_shared<CollectStatsSourceOperatorFactory>(
+                context->next_operator_id(), id(), std::move(collect_stats_ctx));
+        downstream_source_op->set_could_local_shuffle(upstream_source_op->could_local_shuffle());
+        downstream_source_op->set_partition_type(upstream_source_op->partition_type());
+        operators.emplace_back(std::move(downstream_source_op));
     }
 
     return operators;
