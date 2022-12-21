@@ -18,6 +18,7 @@
 #include "exec/pipeline/adaptive/adaptive_fwd.h"
 #include "exec/pipeline/context_with_dependency.h"
 #include "storage/chunk_helper.h"
+#include "util/moodycamel/concurrentqueue.h"
 
 namespace starrocks {
 
@@ -83,13 +84,9 @@ public:
 
 private:
     static constexpr size_t MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ = 8;
-    struct DriverInfo {
-    public:
-        int idx_in_buffer = 0;
-        std::queue<vectorized::ChunkPtr> in_chunks;
-    };
 
-    std::vector<DriverInfo> _info_per_driver_seq;
+    using ChunkQueue = moodycamel::ConcurrentQueue<vectorized::ChunkPtr>;
+    std::vector<ChunkQueue> _in_chunk_queue_per_driver_seq;
 };
 
 class RoundRobinPerSeqState final : public CollectStatsState {
@@ -113,7 +110,6 @@ private:
         DriverInfo(int32_t driver_seq, size_t chunk_size) : buffer_idx(driver_seq), accumulator(chunk_size) {}
 
         int buffer_idx;
-        int idx_in_buffer = 0;
         ChunkAccumulator accumulator;
     };
 
@@ -139,10 +135,13 @@ public:
     bool is_source_ready() const;
 
 private:
+    using BufferChunkQueue = std::queue<vectorized::ChunkPtr>;
+
     CollectStatsStateRawPtr _get_state(CollectStatsStateEnum state) const;
     CollectStatsStateRawPtr _state_ref() const;
-    void _set_state(CollectStatsStateRawPtr state);
-    std::vector<vectorized::ChunkPtr>& _buffer_chunks(int32_t driver_seq);
+    void _set_state(CollectStatsStateEnum state_enum);
+    void _transform_state(CollectStatsStateEnum state_enum, size_t source_dop);
+    BufferChunkQueue& _buffer_chunk_queue(int32_t driver_seq);
 
 private:
     friend class BufferState;
@@ -155,10 +154,12 @@ private:
     size_t _sink_dop;
     size_t _source_dop;
 
-    std::vector<std::vector<vectorized::ChunkPtr>> _buffer_chunks_per_driver_seq;
+    std::vector<BufferChunkQueue> _buffer_chunk_queue_per_driver_seq;
     std::vector<bool> _is_finishing_per_driver_seq;
 
     RuntimeState* const _runtime_state;
+
+    mutable std::atomic<int> _num_log_times{0};
 };
 
 } // namespace pipeline

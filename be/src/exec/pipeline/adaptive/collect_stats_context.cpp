@@ -28,13 +28,11 @@ bool BufferState::need_input(int32_t driver_seq) const {
 
 Status BufferState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) {
     size_t num_chunk_rows = chunk->num_rows();
-    _ctx->_buffer_chunks(driver_seq).emplace_back(std::move(chunk));
+    _ctx->_buffer_chunk_queue(driver_seq).emplace(std::move(chunk));
     size_t prev_num_rows = _num_rows.fetch_add(num_chunk_rows);
 
     if (prev_num_rows < _max_buffer_rows && prev_num_rows + num_chunk_rows >= _max_buffer_rows) {
-        auto* next_state = _ctx->_get_state(CollectStatsStateEnum::PASSTHROUGH);
-        next_state->set_adjusted_dop(_ctx->_sink_dop);
-        _ctx->_set_state(next_state);
+        _ctx->_transform_state(CollectStatsStateEnum::PASSTHROUGH, _ctx->_sink_dop);
     }
     return Status::OK();
 }
@@ -65,9 +63,7 @@ Status BufferState::set_finishing(int32_t driver_seq) {
         adjusted_dop = std::max<size_t>(adjusted_dop, 1);
         adjusted_dop = std::min<size_t>(adjusted_dop, _ctx->_sink_dop);
 
-        CollectStatsState* next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ);
-        next_state->set_adjusted_dop(adjusted_dop);
-        _ctx->_set_state(next_state);
+        _ctx->_transform_state(CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ, adjusted_dop);
     }
 
     return Status::OK();
@@ -79,38 +75,35 @@ bool BufferState::is_finished(int32_t driver_seq) const {
 
 /// PassthroughState.
 PassthroughState::PassthroughState(CollectStatsContext* const ctx)
-        : CollectStatsState(ctx), _info_per_driver_seq(ctx->_sink_dop) {}
+        : CollectStatsState(ctx), _in_chunk_queue_per_driver_seq(ctx->_sink_dop) {}
 
 bool PassthroughState::need_input(int32_t driver_seq) const {
-    return _info_per_driver_seq[driver_seq].in_chunks.size() < MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ;
+    return _in_chunk_queue_per_driver_seq[driver_seq].size_approx() < MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ;
 }
 
 Status PassthroughState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) {
-    _info_per_driver_seq[driver_seq].in_chunks.emplace(std::move(chunk));
+    _in_chunk_queue_per_driver_seq[driver_seq].enqueue(std::move(chunk));
     return Status::OK();
 }
 
 bool PassthroughState::has_output(int32_t driver_seq) const {
-    const auto& info = _info_per_driver_seq[driver_seq];
-    const auto& buffer_chunks = _ctx->_buffer_chunks(driver_seq);
+    const auto& buffer_chunk_queue = _ctx->_buffer_chunk_queue(driver_seq);
+    const auto& passthrough_chunk_queue = _in_chunk_queue_per_driver_seq[driver_seq];
 
-    if (info.idx_in_buffer < buffer_chunks.size()) {
-        return true;
-    }
-
-    return !info.in_chunks.empty();
+    return !buffer_chunk_queue.empty() || passthrough_chunk_queue.size_approx() > 0;
 }
 
 StatusOr<vectorized::ChunkPtr> PassthroughState::pull_chunk(int32_t driver_seq) {
-    auto& info = _info_per_driver_seq[driver_seq];
-    auto& buffer_chunks = _ctx->_buffer_chunks(driver_seq);
-
-    if (info.idx_in_buffer < buffer_chunks.size()) {
-        return std::move(buffer_chunks[info.idx_in_buffer++]);
+    auto& buffer_chunk_queue = _ctx->_buffer_chunk_queue(driver_seq);
+    if (!buffer_chunk_queue.empty()) {
+        auto chunk = std::move(buffer_chunk_queue.front());
+        buffer_chunk_queue.pop();
+        return chunk;
     }
 
-    auto chunk = std::move(info.in_chunks.front());
-    info.in_chunks.pop();
+    auto& passthrough_chunk_queue = _in_chunk_queue_per_driver_seq[driver_seq];
+    vectorized::ChunkPtr chunk = nullptr;
+    passthrough_chunk_queue.try_dequeue(chunk);
     return chunk;
 }
 
@@ -119,7 +112,7 @@ Status PassthroughState::set_finishing(int32_t driver_seq) {
 }
 
 bool PassthroughState::is_finished(int32_t driver_seq) const {
-    return !has_output(driver_seq);
+    return _ctx->_is_finishing_per_driver_seq[driver_seq] && !has_output(driver_seq);
 }
 
 /// RoundRobinPerSeqState.
@@ -145,28 +138,27 @@ bool RoundRobinPerSeqState::has_output(int32_t driver_seq) const {
         return false;
     }
 
-    const auto& [buffer_idx, _, accumulator] = _info_per_driver_seq[driver_seq];
+    const auto& [buffer_idx, accumulator] = _info_per_driver_seq[driver_seq];
     return buffer_idx < _ctx->_sink_dop || !accumulator.empty();
 }
 
 StatusOr<vectorized::ChunkPtr> RoundRobinPerSeqState::pull_chunk(int32_t driver_seq) {
-    auto& [buffer_idx, idx_in_buffer, accumulator] = _info_per_driver_seq[driver_seq];
+    auto& [buffer_idx, accumulator] = _info_per_driver_seq[driver_seq];
     if (!accumulator.empty()) {
         return accumulator.pull();
     }
 
     while (buffer_idx < _ctx->_sink_dop) {
-        auto& buffer_chunks = _ctx->_buffer_chunks(buffer_idx);
-        while (idx_in_buffer < buffer_chunks.size()) {
-            accumulator.push(std::move(buffer_chunks[idx_in_buffer]));
-            ++idx_in_buffer;
+        auto& buffer_chunk_queue = _ctx->_buffer_chunk_queue(buffer_idx);
+        while (!buffer_chunk_queue.empty()) {
+            accumulator.push(std::move(buffer_chunk_queue.front()));
+            buffer_chunk_queue.pop();
             if (!accumulator.empty()) {
                 return accumulator.pull();
             }
         }
 
         buffer_idx += _adjusted_dop;
-        idx_in_buffer = 0;
     }
 
     accumulator.finalize();
@@ -184,14 +176,14 @@ bool RoundRobinPerSeqState::is_finished(int32_t driver_seq) const {
 /// CollectStatsContext.
 CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size_t dop)
         : _sink_dop(dop),
-          _buffer_chunks_per_driver_seq(dop),
+          _buffer_chunk_queue_per_driver_seq(dop),
           _is_finishing_per_driver_seq(dop),
           _runtime_state(runtime_state) {
     int max_buffer_rows = runtime_state->chunk_size() * dop;
     _state_payloads[CollectStatsStateEnum::BUFFER] = std::make_unique<BufferState>(this, max_buffer_rows);
     _state_payloads[CollectStatsStateEnum::PASSTHROUGH] = std::make_unique<PassthroughState>(this);
     _state_payloads[CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ] = std::make_unique<RoundRobinPerSeqState>(this);
-    _set_state(_get_state(CollectStatsStateEnum::BUFFER));
+    _set_state(CollectStatsStateEnum::BUFFER);
 }
 
 void CollectStatsContext::close(RuntimeState* state) {}
@@ -219,7 +211,12 @@ Status CollectStatsContext::set_finishing(int32_t driver_seq) {
 }
 
 bool CollectStatsContext::is_finished(int32_t driver_seq) const {
-    return _is_finishing_per_driver_seq[driver_seq] && _state_ref()->is_finished(driver_seq);
+    bool res = _state_ref()->is_finished(driver_seq);
+    if (_num_log_times++ < 1000) {
+        LOG(WARNING) << "[ADAPTIVE] CollectStatsContext::is_finished "
+                     << "[driver_seq=" << driver_seq << "] "
+                     << "[res=" << res << "] ";
+    }
 }
 
 bool CollectStatsContext::is_source_ready() const {
@@ -232,12 +229,22 @@ CollectStatsStateRawPtr CollectStatsContext::_get_state(CollectStatsStateEnum st
 CollectStatsStateRawPtr CollectStatsContext::_state_ref() const {
     return _state.load();
 }
-void CollectStatsContext::_set_state(CollectStatsStateRawPtr state) {
-    _state = state;
+void CollectStatsContext::_set_state(CollectStatsStateEnum state_enum) {
+    LOG(WARNING) << "[ADAPTIVE] _set_state [state=" << int(state_enum) << "] ";
+    _state = _get_state(state_enum);
+}
+void CollectStatsContext::_transform_state(CollectStatsStateEnum state_enum, size_t source_dop) {
+    LOG(WARNING) << "[ADAPTIVE] _transform_state "
+                 << "[state=" << int(state_enum) << "] "
+                 << "[source_dop=" << source_dop << "] ";
+    auto* next_state = _get_state(state_enum);
+    next_state->set_adjusted_dop(source_dop);
+    _source_dop = source_dop;
+    _state = next_state;
 }
 
-std::vector<vectorized::ChunkPtr>& CollectStatsContext::_buffer_chunks(int32_t driver_seq) {
-    return _buffer_chunks_per_driver_seq[driver_seq];
+CollectStatsContext::BufferChunkQueue& CollectStatsContext::_buffer_chunk_queue(int32_t driver_seq) {
+    return _buffer_chunk_queue_per_driver_seq[driver_seq];
 }
 
 } // namespace starrocks::pipeline
