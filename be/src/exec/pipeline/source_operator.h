@@ -44,7 +44,7 @@ public:
         // TODO: Is this OK?
         _degree_of_parallelism = std::min(max_dop, _degree_of_parallelism);
     }
-    size_t degree_of_parallelism() const { return _degree_of_parallelism; }
+    virtual size_t degree_of_parallelism() const { return _degree_of_parallelism; }
 
     void set_morsel_queue_factory(MorselQueueFactory* morsel_queue_factory) {
         _morsel_queue_factory = morsel_queue_factory;

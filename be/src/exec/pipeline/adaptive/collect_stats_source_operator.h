@@ -50,6 +50,7 @@ public:
     }
 
     SourceOperatorFactory::State state() const override;
+    size_t degree_of_parallelism() const override;
 
 private:
     CollectStatsContextPtr _ctx;

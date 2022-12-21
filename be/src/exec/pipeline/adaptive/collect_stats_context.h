@@ -133,6 +133,7 @@ public:
     Status set_finishing(int32_t driver_seq);
 
     bool is_source_ready() const;
+    size_t source_dop() const { return _source_dop; }
 
 private:
     using BufferChunkQueue = std::queue<vectorized::ChunkPtr>;

@@ -67,4 +67,8 @@ SourceOperatorFactory::State CollectStatsSourceOperatorFactory::state() const {
     return SourceOperatorFactory::State::NOT_READY;
 }
 
+size_t CollectStatsSourceOperatorFactory::degree_of_parallelism() const {
+    return _ctx->source_dop();
+}
+
 } // namespace starrocks::pipeline
