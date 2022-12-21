@@ -33,7 +33,7 @@ Status BufferState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) {
 
     if (prev_num_rows < _max_buffer_rows && prev_num_rows + num_chunk_rows >= _max_buffer_rows) {
         auto* next_state = _ctx->_get_state(CollectStatsStateEnum::PASSTHROUGH);
-        next_state->set_adjusted_dop(_ctx->_dop);
+        next_state->set_adjusted_dop(_ctx->_sink_dop);
         _ctx->_set_state(next_state);
     }
     return Status::OK();
@@ -58,12 +58,12 @@ size_t compute_max_le_power2(size_t num) {
 
 Status BufferState::set_finishing(int32_t driver_seq) {
     int num_finished_seqs = ++_num_finished_seqs;
-    if (num_finished_seqs == _ctx->_dop) {
+    if (num_finished_seqs == _ctx->_sink_dop) {
         int num_partial_rows = _ctx->_runtime_state->chunk_size();
         size_t adjusted_dop = _num_rows / num_partial_rows;
         adjusted_dop = compute_max_le_power2(adjusted_dop);
         adjusted_dop = std::max<size_t>(adjusted_dop, 1);
-        adjusted_dop = std::min<size_t>(adjusted_dop, _ctx->_dop);
+        adjusted_dop = std::min<size_t>(adjusted_dop, _ctx->_sink_dop);
 
         CollectStatsState* next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ);
         next_state->set_adjusted_dop(adjusted_dop);
@@ -79,7 +79,7 @@ bool BufferState::is_finished(int32_t driver_seq) const {
 
 /// PassthroughState.
 PassthroughState::PassthroughState(CollectStatsContext* const ctx)
-        : CollectStatsState(ctx), _info_per_driver_seq(ctx->_dop) {}
+        : CollectStatsState(ctx), _info_per_driver_seq(ctx->_sink_dop) {}
 
 bool PassthroughState::need_input(int32_t driver_seq) const {
     return _info_per_driver_seq[driver_seq].in_chunks.size() < MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ;
@@ -146,7 +146,7 @@ bool RoundRobinPerSeqState::has_output(int32_t driver_seq) const {
     }
 
     const auto& [buffer_idx, _, accumulator] = _info_per_driver_seq[driver_seq];
-    return buffer_idx < _ctx->_dop || !accumulator.empty();
+    return buffer_idx < _ctx->_sink_dop || !accumulator.empty();
 }
 
 StatusOr<vectorized::ChunkPtr> RoundRobinPerSeqState::pull_chunk(int32_t driver_seq) {
@@ -155,7 +155,7 @@ StatusOr<vectorized::ChunkPtr> RoundRobinPerSeqState::pull_chunk(int32_t driver_
         return accumulator.pull();
     }
 
-    while (buffer_idx < _ctx->_dop) {
+    while (buffer_idx < _ctx->_sink_dop) {
         auto& buffer_chunks = _ctx->_buffer_chunks(buffer_idx);
         while (idx_in_buffer < buffer_chunks.size()) {
             accumulator.push(std::move(buffer_chunks[idx_in_buffer]));
@@ -183,7 +183,7 @@ bool RoundRobinPerSeqState::is_finished(int32_t driver_seq) const {
 
 /// CollectStatsContext.
 CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size_t dop)
-        : _dop(dop),
+        : _sink_dop(dop),
           _buffer_chunks_per_driver_seq(dop),
           _is_finishing_per_driver_seq(dop),
           _runtime_state(runtime_state) {
