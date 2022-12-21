@@ -84,9 +84,10 @@ public:
 
 private:
     const size_t MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ = config::pipeline_cs_passthrough_buffer;
-
+    const size_t UNPLUG_THRESHOLD_PER_DRIVER_SEQ = MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ / 2;
     using ChunkQueue = moodycamel::ConcurrentQueue<vectorized::ChunkPtr>;
     std::vector<ChunkQueue> _in_chunk_queue_per_driver_seq;
+    mutable std::vector<uint8_t> _unpluging_per_driver_seq;
 };
 
 class RoundRobinPerSeqState final : public CollectStatsState {

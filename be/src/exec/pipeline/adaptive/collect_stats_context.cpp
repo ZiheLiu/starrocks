@@ -75,7 +75,9 @@ bool BufferState::is_finished(int32_t driver_seq) const {
 
 /// PassthroughState.
 PassthroughState::PassthroughState(CollectStatsContext* const ctx)
-        : CollectStatsState(ctx), _in_chunk_queue_per_driver_seq(ctx->_sink_dop) {}
+        : CollectStatsState(ctx),
+          _in_chunk_queue_per_driver_seq(ctx->_sink_dop),
+          _unpluging_per_driver_seq(ctx->_sink_dop) {}
 
 bool PassthroughState::need_input(int32_t driver_seq) const {
     return _in_chunk_queue_per_driver_seq[driver_seq].size_approx() < MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ;
@@ -88,9 +90,27 @@ Status PassthroughState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chu
 
 bool PassthroughState::has_output(int32_t driver_seq) const {
     const auto& buffer_chunk_queue = _ctx->_buffer_chunk_queue(driver_seq);
-    const auto& passthrough_chunk_queue = _in_chunk_queue_per_driver_seq[driver_seq];
+    if (!buffer_chunk_queue.empty()) {
+        return true;
+    }
 
-    return !buffer_chunk_queue.empty() || passthrough_chunk_queue.size_approx() > 0;
+    size_t num_chunks = _in_chunk_queue_per_driver_seq[driver_seq].size_approx();
+    auto& unpluging = _unpluging_per_driver_seq[driver_seq];
+    if (unpluging) {
+        if (num_chunks > 0) {
+            return true;
+        }
+        unpluging = false;
+        return false;
+    } else if (num_chunks >= UNPLUG_THRESHOLD_PER_DRIVER_SEQ) {
+        unpluging = true;
+        return true;
+    }
+
+    if (_ctx->_is_finishing_per_driver_seq[driver_seq]) {
+        return num_chunks > 0;
+    }
+    return false;
 }
 
 StatusOr<vectorized::ChunkPtr> PassthroughState::pull_chunk(int32_t driver_seq) {
@@ -112,7 +132,13 @@ Status PassthroughState::set_finishing(int32_t driver_seq) {
 }
 
 bool PassthroughState::is_finished(int32_t driver_seq) const {
-    return _ctx->_is_finishing_per_driver_seq[driver_seq] && !has_output(driver_seq);
+    if (!_ctx->_is_finishing_per_driver_seq[driver_seq]) {
+        return false;
+    }
+
+    const auto& buffer_chunk_queue = _ctx->_buffer_chunk_queue(driver_seq);
+    const auto& passthrough_chunk_queue = _in_chunk_queue_per_driver_seq[driver_seq];
+    return buffer_chunk_queue.empty() && passthrough_chunk_queue.size_approx() <= 0;
 }
 
 /// RoundRobinPerSeqState.
