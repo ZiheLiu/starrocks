@@ -180,7 +180,7 @@ CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size
           _buffer_chunk_queue_per_driver_seq(dop),
           _is_finishing_per_driver_seq(dop),
           _runtime_state(runtime_state) {
-    int max_buffer_rows = runtime_state->chunk_size() * dop;
+    int max_buffer_rows = runtime_state->chunk_size() * dop * MAX_BUFFER_CHUNKS_PER_DRIVER;
     _state_payloads[CollectStatsStateEnum::BUFFER] = std::make_unique<BufferState>(this, max_buffer_rows);
     _state_payloads[CollectStatsStateEnum::PASSTHROUGH] = std::make_unique<PassthroughState>(this);
     _state_payloads[CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ] = std::make_unique<RoundRobinPerSeqState>(this);

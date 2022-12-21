@@ -720,6 +720,7 @@ CONF_mBool(pipeline_print_profile, "false");
 CONF_Int32(pipeline_poller_num, "2");
 CONF_Int32(pipeline_poller_put_back_num, "10");
 CONF_Int32(pipeline_cs_passthrough_buffer, "32");
+CONF_Int32(pipeline_max_buffer_chunks_per_driver, "4");
 
 /// For parallel scan on the single tablet.
 // These three configs are used to calculate the minimum number of rows picked up from a segment at one time.
