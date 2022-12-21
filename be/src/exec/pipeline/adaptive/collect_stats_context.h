@@ -153,7 +153,7 @@ private:
     std::unordered_map<CollectStatsStateEnum, CollectStatsStatePtr> _state_payloads;
 
     size_t _sink_dop;
-    size_t _source_dop;
+    size_t _source_dop = 0;
 
     std::vector<BufferChunkQueue> _buffer_chunk_queue_per_driver_seq;
     std::vector<bool> _is_finishing_per_driver_seq;
