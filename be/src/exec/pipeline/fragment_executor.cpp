@@ -478,11 +478,11 @@ Status FragmentExecutor::_prepare_stream_load_pipe(ExecEnv* exec_env, const Unif
 Status create_lazy_create_drivers_pipeline(RuntimeState* state, PipelineBuilderContext* ctx, QueryContext* query_ctx,
                                            FragmentContext* fragment_ctx,
                                            std::vector<Pipelines>&& unready_pipeline_groups, Drivers& drivers) {
+    int32_t first_plan_node_id = unready_pipeline_groups[0][0]->source_operator_factory()->plan_node_id();
     OpFactories ops;
-    ops.emplace_back(std::make_shared<LazyCreateDriversOperatorFactory>(
-            ctx->next_operator_id(), ctx->next_pseudo_plan_node_id(), std::move(unready_pipeline_groups)));
-    ops.emplace_back(
-            std::make_shared<NoopSinkOperatorFactory>(ctx->next_operator_id(), ctx->next_pseudo_plan_node_id()));
+    ops.emplace_back(std::make_shared<LazyCreateDriversOperatorFactory>(ctx->next_operator_id(), first_plan_node_id,
+                                                                        std::move(unready_pipeline_groups)));
+    ops.emplace_back(std::make_shared<NoopSinkOperatorFactory>(ctx->next_operator_id(), first_plan_node_id));
 
     auto pipe = std::make_shared<Pipeline>(ctx->next_pipe_id(), ops);
     fragment_ctx->pipelines().emplace_back(pipe);
