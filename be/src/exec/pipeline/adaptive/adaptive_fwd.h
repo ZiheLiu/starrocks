@@ -22,4 +22,8 @@ class CollectStatsContext;
 using CollectStatsContextPtr = std::shared_ptr<CollectStatsContext>;
 using CollectStatsContextRawPtr = CollectStatsContext*;
 
+class CollectStatsState;
+using CollectStatsStatePtr = std::shared_ptr<CollectStatsState>;
+using CollectStatsStateRawPtr = CollectStatsState*;
+
 } // namespace starrocks::pipeline

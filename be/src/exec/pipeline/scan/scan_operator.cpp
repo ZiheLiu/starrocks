@@ -542,9 +542,7 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
     }
 
     if (dop > 1 && context->fragment_context()->enable_adaptive_dop()) {
-        // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
-        CollectStatsContextPtr collect_stats_ctx = std::make_shared<CollectStatsContext>(
-                context->runtime_state(), dop, CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
+        CollectStatsContextPtr collect_stats_ctx = std::make_shared<CollectStatsContext>(context->runtime_state(), dop);
         ops.emplace_back(std::make_shared<CollectStatsSinkOperatorFactory>(context->next_operator_id(), scan_node->id(),
                                                                            collect_stats_ctx));
         context->add_pipeline(ops);

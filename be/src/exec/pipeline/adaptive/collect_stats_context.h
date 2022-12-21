@@ -15,6 +15,7 @@
 #pragma once
 
 #include "column/vectorized_fwd.h"
+#include "exec/pipeline/adaptive/adaptive_fwd.h"
 #include "exec/pipeline/context_with_dependency.h"
 #include "storage/chunk_helper.h"
 
@@ -26,12 +27,7 @@ class StatusOr;
 
 namespace pipeline {
 
-class CollectStatsContext;
-class CollectStatsState;
-using CollectStatsStatePtr = std::shared_ptr<CollectStatsState>;
-using CollectStatsStateRawPtr = CollectStatsState*;
-
-enum class CollectStatsStateEnum { BUFFER = 0, PASSTHROUGH, ROUND_ROBIN_PER_CHUNK, ROUND_ROBIN_PER_SEQ };
+enum class CollectStatsStateEnum { BUFFER = 0, PASSTHROUGH, ROUND_ROBIN_PER_SEQ };
 
 class CollectStatsState {
 public:
@@ -96,36 +92,6 @@ private:
     std::vector<DriverInfo> _info_per_driver_seq;
 };
 
-class RoundRobinPerChunkState final : public CollectStatsState {
-public:
-    RoundRobinPerChunkState(CollectStatsContext* const ctx);
-    ~RoundRobinPerChunkState() override = default;
-
-    void set_adjusted_dop(size_t adjusted_dop) override;
-
-    bool need_input(int32_t driver_seq) const override;
-    bool has_output(int32_t driver_seq) const override;
-    bool is_finished(int32_t driver_seq) const override;
-
-    Status push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) override;
-    StatusOr<vectorized::ChunkPtr> pull_chunk(int32_t driver_seq) override;
-    Status set_finishing(int32_t driver_seq) override;
-
-private:
-    struct DriverInfo {
-    public:
-        DriverInfo(int32_t driver_seq, size_t chunk_size) : buffer_idx(driver_seq), accumulator(chunk_size) {}
-
-        int num_read_buffers = 0;
-        int buffer_idx;
-        ChunkAccumulator accumulator;
-    };
-
-    size_t _adjusted_dop = 0;
-    std::vector<std::atomic<int>> _idx_in_buffers;
-    std::vector<DriverInfo> _info_per_driver_seq;
-};
-
 class RoundRobinPerSeqState final : public CollectStatsState {
 public:
     RoundRobinPerSeqState(CollectStatsContext* const ctx) : CollectStatsState(ctx) {}
@@ -157,9 +123,7 @@ private:
 
 class CollectStatsContext final : public ContextWithDependency {
 public:
-    enum class AssignChunkStrategy { ROUND_ROBIN_CHUNK, ROUND_ROBIN_DRIVER_SEQ };
-
-    CollectStatsContext(RuntimeState* const runtime_state, size_t dop, AssignChunkStrategy assign_chunk_strategy);
+    CollectStatsContext(RuntimeState* const runtime_state, size_t dop);
     ~CollectStatsContext() override = default;
 
     void close(RuntimeState* state) override;
@@ -182,7 +146,6 @@ private:
 
 private:
     friend class BufferState;
-    friend class RoundRobinPerChunkState;
     friend class RoundRobinPerSeqState;
     friend class PassthroughState;
 
@@ -190,7 +153,6 @@ private:
     std::unordered_map<CollectStatsStateEnum, CollectStatsStatePtr> _state_payloads;
 
     size_t _dop;
-    AssignChunkStrategy _assign_chunk_strategy;
 
     std::vector<std::vector<vectorized::ChunkPtr>> _buffer_chunks_per_driver_seq;
     std::vector<bool> _is_finishing_per_driver_seq;

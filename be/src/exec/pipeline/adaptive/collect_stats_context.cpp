@@ -65,19 +65,9 @@ Status BufferState::set_finishing(int32_t driver_seq) {
         adjusted_dop = std::max<size_t>(adjusted_dop, 1);
         adjusted_dop = std::min<size_t>(adjusted_dop, _ctx->_dop);
 
-        CollectStatsState* next_state = nullptr;
-        switch (_ctx->_assign_chunk_strategy) {
-        case CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_CHUNK:
-            next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_CHUNK);
-            break;
-        case CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ:
-            next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ);
-            break;
-        }
-        if (next_state != nullptr) {
-            next_state->set_adjusted_dop(adjusted_dop);
-            _ctx->_set_state(next_state);
-        }
+        CollectStatsState* next_state = _ctx->_get_state(CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ);
+        next_state->set_adjusted_dop(adjusted_dop);
+        _ctx->_set_state(next_state);
     }
 
     return Status::OK();
@@ -129,66 +119,6 @@ Status PassthroughState::set_finishing(int32_t driver_seq) {
 }
 
 bool PassthroughState::is_finished(int32_t driver_seq) const {
-    return !has_output(driver_seq);
-}
-
-/// RoundRobinPerChunkState.
-RoundRobinPerChunkState::RoundRobinPerChunkState(CollectStatsContext* const ctx)
-        : CollectStatsState(ctx), _idx_in_buffers(ctx->_dop) {}
-
-void RoundRobinPerChunkState::set_adjusted_dop(size_t adjusted_dop) {
-    _adjusted_dop = adjusted_dop;
-
-    _info_per_driver_seq.reserve(_adjusted_dop);
-    for (int i = 0; i < _adjusted_dop; i++) {
-        _info_per_driver_seq.emplace_back(i, _ctx->_runtime_state->chunk_size());
-    }
-}
-
-bool RoundRobinPerChunkState::need_input(int32_t driver_seq) const {
-    return false;
-}
-
-Status RoundRobinPerChunkState::push_chunk(int32_t driver_seq, vectorized::ChunkPtr chunk) {
-    return Status::InternalError("Shouldn't call RoundRobinPerChunkState::push_chunk");
-}
-
-bool RoundRobinPerChunkState::has_output(int32_t driver_seq) const {
-    if (driver_seq >= _adjusted_dop) {
-        return false;
-    }
-
-    const auto& info = _info_per_driver_seq[driver_seq];
-    return info.num_read_buffers < _ctx->_dop || !info.accumulator.empty();
-}
-
-StatusOr<vectorized::ChunkPtr> RoundRobinPerChunkState::pull_chunk(int32_t driver_seq) {
-    DCHECK_LT(driver_seq, _adjusted_dop);
-
-    auto& info = _info_per_driver_seq[driver_seq];
-    if (!info.accumulator.empty()) {
-        return info.accumulator.pull();
-    }
-
-    while (info.num_read_buffers < _ctx->_dop) {
-        auto& buffer_chunks = _ctx->_buffer_chunks(info.buffer_idx);
-        auto& idx_in_buffer = _idx_in_buffers[info.buffer_idx];
-        for (int idx = idx_in_buffer.fetch_add(1); idx < buffer_chunks.size(); idx = idx_in_buffer.fetch_add(1)) {
-            info.accumulator.push(std::move(buffer_chunks[idx]));
-        }
-        ++info.num_read_buffers;
-        info.buffer_idx = (info.buffer_idx + 1) % _ctx->_dop;
-    }
-
-    info.accumulator.finalize();
-    return info.accumulator.pull();
-}
-
-Status RoundRobinPerChunkState::set_finishing(int32_t driver_seq) {
-    return Status::InternalError("Should already call RoundRobinPerChunkState::set_finishing before");
-}
-
-bool RoundRobinPerChunkState::is_finished(int32_t driver_seq) const {
     return !has_output(driver_seq);
 }
 
@@ -252,17 +182,14 @@ bool RoundRobinPerSeqState::is_finished(int32_t driver_seq) const {
 }
 
 /// CollectStatsContext.
-CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size_t dop,
-                                         AssignChunkStrategy assign_chunk_strategy)
+CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size_t dop)
         : _dop(dop),
-          _assign_chunk_strategy(assign_chunk_strategy),
           _buffer_chunks_per_driver_seq(dop),
           _is_finishing_per_driver_seq(dop),
           _runtime_state(runtime_state) {
     int max_buffer_rows = runtime_state->chunk_size() * dop;
     _state_payloads[CollectStatsStateEnum::BUFFER] = std::make_unique<BufferState>(this, max_buffer_rows);
     _state_payloads[CollectStatsStateEnum::PASSTHROUGH] = std::make_unique<PassthroughState>(this);
-    _state_payloads[CollectStatsStateEnum::ROUND_ROBIN_PER_CHUNK] = std::make_unique<RoundRobinPerChunkState>(this);
     _state_payloads[CollectStatsStateEnum::ROUND_ROBIN_PER_SEQ] = std::make_unique<RoundRobinPerSeqState>(this);
     _set_state(_get_state(CollectStatsStateEnum::BUFFER));
 }

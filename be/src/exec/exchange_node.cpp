@@ -281,10 +281,8 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
 
     size_t dop = context->source_operator(operators)->degree_of_parallelism();
     if (dop > 1 && context->fragment_context()->enable_adaptive_dop()) {
-        // TODO: decide whether using AssignChunkStrategy::ROUND_ROBIN_CHUNK.
         CollectStatsContextPtr collect_stats_ctx =
-                std::make_shared<CollectStatsContext>(context->runtime_state(), context->degree_of_parallelism(),
-                                                      CollectStatsContext::AssignChunkStrategy::ROUND_ROBIN_DRIVER_SEQ);
+                std::make_shared<CollectStatsContext>(context->runtime_state(), context->degree_of_parallelism());
         operators.emplace_back(std::make_shared<CollectStatsSinkOperatorFactory>(context->next_operator_id(), id(),
                                                                                  collect_stats_ctx));
         context->add_pipeline(operators);
