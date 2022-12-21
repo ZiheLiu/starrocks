@@ -217,6 +217,7 @@ bool CollectStatsContext::is_finished(int32_t driver_seq) const {
                      << "[driver_seq=" << driver_seq << "] "
                      << "[res=" << res << "] ";
     }
+    return res;
 }
 
 bool CollectStatsContext::is_source_ready() const {
