@@ -132,9 +132,9 @@ private:
     // Used for local shuffle exchanger.
     // The sink_driver_sequence-th local sink operator exclusively uses the sink_driver_sequence-th partitioner.
     // TODO(lzh): limit the size of _partitioners, because it will cost too much memory when dop is high.
+    TPartitionType::type _part_type;
     std::vector<ExprContext*> _partition_exprs;
 
-    TPartitionType::type _part_type;
     std::vector<Partitioner> _partitioners;
 };
 
