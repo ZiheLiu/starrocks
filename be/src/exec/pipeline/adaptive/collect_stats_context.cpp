@@ -176,6 +176,7 @@ bool RoundRobinPerSeqState::is_finished(int32_t driver_seq) const {
 /// CollectStatsContext.
 CollectStatsContext::CollectStatsContext(RuntimeState* const runtime_state, size_t dop)
         : _sink_dop(dop),
+          _source_dop(dop),
           _buffer_chunk_queue_per_driver_seq(dop),
           _is_finishing_per_driver_seq(dop),
           _runtime_state(runtime_state) {
