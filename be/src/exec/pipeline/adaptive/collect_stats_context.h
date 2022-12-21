@@ -83,7 +83,7 @@ public:
     Status set_finishing(int32_t driver_seq) override;
 
 private:
-    static constexpr size_t MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ = 8;
+    const size_t MAX_PASSTHROUGH_CHUNKS_PER_DRIVER_SEQ = config::pipeline_cs_passthrough_buffer;
 
     using ChunkQueue = moodycamel::ConcurrentQueue<vectorized::ChunkPtr>;
     std::vector<ChunkQueue> _in_chunk_queue_per_driver_seq;
