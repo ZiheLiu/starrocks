@@ -184,8 +184,6 @@ private:
     // Non-atomic type is enough because the concurrency inconsistency is acceptable
     int64_t _first_send_time = -1;
     int64_t _last_receive_time = -1;
-
-    mutable std::atomic<int> _num_log_times = 0;
 };
 
 } // namespace starrocks::pipeline

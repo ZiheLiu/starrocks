@@ -211,13 +211,7 @@ Status CollectStatsContext::set_finishing(int32_t driver_seq) {
 }
 
 bool CollectStatsContext::is_finished(int32_t driver_seq) const {
-    bool res = _state_ref()->is_finished(driver_seq);
-    if (_num_log_times++ < 1000) {
-        LOG(WARNING) << "[ADAPTIVE] CollectStatsContext::is_finished "
-                     << "[driver_seq=" << driver_seq << "] "
-                     << "[res=" << res << "] ";
-    }
-    return res;
+    return _state_ref()->is_finished(driver_seq);
 }
 
 bool CollectStatsContext::is_source_ready() const {

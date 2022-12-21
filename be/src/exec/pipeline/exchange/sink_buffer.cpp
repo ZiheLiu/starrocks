@@ -74,10 +74,6 @@ Status SinkBuffer::prepare(RuntimeState* state) {
     }
     _num_remaining_eos += _num_sinkers.size();
 
-    LOG(WARNING) << "[ADAPTIVE] SinkBuffer::prepare "
-                 << "[_num_remaining_eos=" << _num_remaining_eos << "] "
-                 << "[_num_uncancelled_sinkers=" << _num_uncancelled_sinkers << "] ";
-
     return Status::OK();
 }
 
@@ -130,12 +126,6 @@ void SinkBuffer::set_finishing() {
 }
 
 bool SinkBuffer::is_finished() const {
-    if (_num_log_times++ < 1000) {
-        LOG(WARNING) << "[ADAPTIVE] SinkBuffer::is_finished "
-                     << "[_is_finishing" << _is_finishing << "] "
-                     << "[_num_sending_rpc" << _num_sending_rpc << "] "
-                     << "[_total_in_flight_rpc" << _total_in_flight_rpc << "] ";
-    }
     if (!_is_finishing) {
         return false;
     }
@@ -298,14 +288,11 @@ Status SinkBuffer::_try_to_send_rpc(const TUniqueId& instance_id, const std::fun
         if (request.params->eos()) {
             DeferOp eos_defer([this, &instance_id, &need_wait]() {
                 if (need_wait) {
-                    LOG(WARNING) << "[ADAPTIVE] receive a EOS, but need wait";
                     return;
                 }
                 if (--_num_remaining_eos == 0) {
                     _is_finishing = true;
                 }
-                LOG(WARNING) << "[ADAPTIVE] receive a EOS "
-                             << "[_num_remaining_eos=" << _num_remaining_eos << "] ";
                 --_num_sinkers[instance_id.lo];
             });
             // Only the last eos is sent to ExchangeSourceOperator. it must be guaranteed that

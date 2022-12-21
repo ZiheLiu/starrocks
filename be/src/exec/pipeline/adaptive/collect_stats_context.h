@@ -159,8 +159,6 @@ private:
     std::vector<bool> _is_finishing_per_driver_seq;
 
     RuntimeState* const _runtime_state;
-
-    mutable std::atomic<int> _num_log_times{0};
 };
 
 } // namespace pipeline
