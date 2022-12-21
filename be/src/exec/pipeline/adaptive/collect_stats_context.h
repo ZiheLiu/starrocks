@@ -149,7 +149,7 @@ private:
     friend class RoundRobinPerSeqState;
     friend class PassthroughState;
 
-    const int64_t MAX_BUFFER_CHUNKS_PER_DRIVER = config::pipeline_max_buffer_chunks_per_driver;
+    const int32_t MAX_BUFFER_CHUNKS_PER_DRIVER = config::pipeline_max_buffer_chunks_per_driver;
 
     std::atomic<CollectStatsStateRawPtr> _state = nullptr;
     std::unordered_map<CollectStatsStateEnum, CollectStatsStatePtr> _state_payloads;
