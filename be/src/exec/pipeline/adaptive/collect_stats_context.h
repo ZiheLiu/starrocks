@@ -156,7 +156,7 @@ private:
     size_t _source_dop;
 
     std::vector<BufferChunkQueue> _buffer_chunk_queue_per_driver_seq;
-    std::vector<bool> _is_finishing_per_driver_seq;
+    std::vector<uint8_t> _is_finishing_per_driver_seq;
 
     RuntimeState* const _runtime_state;
 };
