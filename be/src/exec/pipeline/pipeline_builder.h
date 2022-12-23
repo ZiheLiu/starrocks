@@ -32,7 +32,7 @@ public:
             : _fragment_context(fragment_context), _degree_of_parallelism(degree_of_parallelism) {}
 
     void add_pipeline(const OpFactories& operators) {
-        _pipelines.emplace_back(std::make_unique<Pipeline>(next_pipe_id(), operators));
+        _pipelines.emplace_back(std::make_shared<Pipeline>(next_pipe_id(), operators));
     }
 
     OpFactories maybe_interpolate_local_broadcast_exchange(RuntimeState* state, OpFactories& pred_operators,
@@ -63,6 +63,8 @@ public:
     // These local exchange sink operators and the source operator share a passthrough exchanger.
     OpFactories maybe_gather_pipelines_to_one(RuntimeState* state, std::vector<OpFactories>& pred_operators_list);
 
+    OpFactories maybe_interpolate_collect_stats(RuntimeState* state, OpFactories& pred_operators);
+
     uint32_t next_pipe_id() { return _next_pipeline_id++; }
 
     uint32_t next_operator_id() { return _next_operator_id++; }
@@ -73,6 +75,7 @@ public:
 
     Pipelines get_pipelines() const { return _pipelines; }
 
+    RuntimeState* runtime_state() { return _fragment_context->runtime_state(); }
     FragmentContext* fragment_context() { return _fragment_context; }
 
     size_t dop_of_source_operator(int source_node_id);

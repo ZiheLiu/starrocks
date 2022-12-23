@@ -409,7 +409,10 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state) {
 
     // last finished driver notify FE the fragment's completion again and
     // unregister the FragmentContext.
-    if (_fragment_ctx->count_down_drivers()) {
+    if (_pipeline->count_down_driver() && _fragment_ctx->count_down_pipeline()) {
+        // The pipeline created later should be placed in the front
+        runtime_state->runtime_profile()->reverse_childs();
+
         if (config::pipeline_print_profile) {
             std::stringstream ss;
             // Print profile for this fragment

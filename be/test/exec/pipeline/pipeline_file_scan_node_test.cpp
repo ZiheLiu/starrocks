@@ -233,51 +233,19 @@ void PipeLineFileScanNodeTest::prepare_pipeline() {
     const size_t num_pipelines = pipelines.size();
     for (auto n = 0; n < num_pipelines; ++n) {
         const auto& pipeline = pipelines[n];
-        const auto degree_of_parallelism = pipeline->source_operator_factory()->degree_of_parallelism();
-
-        if (pipeline->source_operator_factory()->with_morsels()) {
-            auto source_id = pipeline->get_op_factories()[0]->plan_node_id();
-            ASSERT_TRUE(morsel_queues.count(source_id));
-            auto& morsel_queue_factory = morsel_queues[source_id];
-
-            pipeline->source_operator_factory()->set_morsel_queue_factory(morsel_queue_factory.get());
-            for (size_t i = 0; i < degree_of_parallelism; ++i) {
-                auto&& operators = pipeline->create_operators(degree_of_parallelism, i);
-                DriverPtr driver =
-                        std::make_shared<PipelineDriver>(std::move(operators), _query_ctx, _fragment_ctx, driver_id++);
-                driver->set_morsel_queue(morsel_queue_factory->create(i));
-                if (auto* scan_operator = driver->source_scan_operator()) {
-                    scan_operator->set_query_ctx(_query_ctx->get_shared_ptr());
-                    if (dynamic_cast<starrocks::pipeline::ConnectorScanOperator*>(scan_operator) != nullptr) {
-                        scan_operator->set_scan_executor(_exec_env->connector_scan_executor_without_workgroup());
-                    } else {
-                        scan_operator->set_scan_executor(_exec_env->scan_executor_without_workgroup());
-                    }
-                }
-
-                drivers.emplace_back(std::move(driver));
-            }
-
-        } else {
-            for (size_t i = 0; i < degree_of_parallelism; ++i) {
-                auto&& operators = pipeline->create_operators(degree_of_parallelism, i);
-                DriverPtr driver =
-                        std::make_shared<PipelineDriver>(std::move(operators), _query_ctx, _fragment_ctx, driver_id++);
-                drivers.emplace_back(driver);
-            }
-        }
+        pipeline->create_drivers(_fragment_ctx->runtime_state());
     }
-
-    _fragment_ctx->set_drivers(std::move(drivers));
 }
 
 void PipeLineFileScanNodeTest::execute_pipeline() {
-    for (const auto& driver : _fragment_ctx->drivers()) {
-        ASSERT_TRUE(driver->prepare(_fragment_ctx->runtime_state()).ok());
-    }
-    for (const auto& driver : _fragment_ctx->drivers()) {
-        _exec_env->driver_executor()->submit(driver.get());
-    }
+    Status prepare_status = _fragment_ctx->iterate_drivers(
+            [state = _fragment_ctx->runtime_state()](const DriverPtr& driver) { return driver->prepare(state); });
+    ASSERT_TRUE(prepare_status.ok());
+
+    _fragment_ctx->iterate_drivers([exec_env = _exec_env](const DriverPtr& driver) {
+        exec_env->driver_executor()->submit(driver.get());
+        return Status::OK();
+    });
 }
 
 void PipeLineFileScanNodeTest::generate_morse_queue(

@@ -48,15 +48,8 @@ class FragmentContext {
     friend FragmentContextManager;
 
 public:
-    FragmentContext() = default;
-    ~FragmentContext() {
-        _runtime_filter_hub.close_all_in_filters(_runtime_state.get());
-        _drivers.clear();
-        close_all_pipelines();
-        if (_plan != nullptr) {
-            _plan->close(_runtime_state.get());
-        }
-    }
+    FragmentContext();
+    ~FragmentContext();
     const TUniqueId& query_id() const { return _query_id; }
     void set_query_id(const TUniqueId& query_id) { _query_id = query_id; }
     const TUniqueId& fragment_instance_id() const { return _fragment_instance_id; }
@@ -71,17 +64,16 @@ public:
     void set_runtime_state(std::shared_ptr<RuntimeState>&& runtime_state) { _runtime_state = std::move(runtime_state); }
     ExecNode*& plan() { return _plan; }
 
+    void set_tplan(TPlan& tplan);
+    const TPlan& tplan() const { return _tplan; }
+    void set_data_sink(std::unique_ptr<DataSink> data_sink);
+
+    size_t total_dop() const;
     Pipelines& pipelines() { return _pipelines; }
     void set_pipelines(Pipelines&& pipelines) { _pipelines = std::move(pipelines); }
-    Drivers& drivers() { return _drivers; }
-    void set_drivers(Drivers&& drivers) {
-        _drivers = std::move(drivers);
-        _num_drivers.store(_drivers.size());
-        _final_status.store(nullptr);
-    }
 
-    int num_drivers() const { return _num_drivers.load(); }
-    bool count_down_drivers() { return _num_drivers.fetch_sub(1) == 1; }
+    int is_finished() const { return _num_finished_pipelines == _pipelines.size(); }
+    bool count_down_pipeline() { return ++_num_finished_pipelines == _pipelines.size(); }
 
     void set_final_status(const Status& status);
 
@@ -104,12 +96,9 @@ public:
         }
         return Status::OK();
     }
-
-    void close_all_pipelines() {
-        for (auto& pipe : _pipelines) {
-            pipe->close(_runtime_state.get());
-        }
-    }
+    Status iterate_drivers(const std::function<Status(const DriverPtr&)>& call);
+    void clear_all_drivers();
+    void close_all_pipelines();
 
     RuntimeFilterHub* runtime_filter_hub() { return &_runtime_filter_hub; }
 
@@ -117,10 +106,6 @@ public:
 
     void prepare_pass_through_chunk_buffer();
     void destroy_pass_through_chunk_buffer();
-
-    void set_enable_resource_group() { _enable_resource_group = true; }
-
-    bool enable_resource_group() const { return _enable_resource_group; }
 
     void set_driver_token(DriverLimiter::TokenPtr driver_token) { _driver_token = std::move(driver_token); }
 
@@ -134,12 +119,24 @@ public:
 
     void set_stream_load_contexts(const std::vector<StreamLoadContext*>& contexts);
 
+    void set_enable_adaptive_dop(bool val) { _enable_adaptive_dop = val; }
+    bool enable_adaptive_dop() const { return _enable_adaptive_dop; }
+
+    size_t next_driver_id() { return _next_driver_id++; }
+
+    void set_workgroup(workgroup::WorkGroupPtr wg) { _workgroup = std::move(wg); }
+    const workgroup::WorkGroupPtr& workgroup() const { return _workgroup; }
+    bool enable_resource_group() const { return _workgroup != nullptr; }
+
 private:
     // Id of this query
     TUniqueId _query_id;
     // Id of this instance
     TUniqueId _fragment_instance_id;
     TNetworkAddress _fe_addr;
+
+    TPlan _tplan;
+    std::unique_ptr<DataSink> _data_sink;
 
     // promise used to determine whether fragment finished its execution
     FragmentPromise _finish_promise;
@@ -149,19 +146,14 @@ private:
     std::shared_ptr<RuntimeState> _runtime_state = nullptr;
     ExecNode* _plan = nullptr; // lives in _runtime_state->obj_pool()
     Pipelines _pipelines;
-    Drivers _drivers;
+    size_t _next_driver_id = 0;
 
     RuntimeFilterHub _runtime_filter_hub;
 
     MorselQueueFactoryMap _morsel_queue_factories;
-    // when _num_drivers counts down to zero, means all drivers has finished, then BE
-    // can notify FE via reportExecStatus that fragment instance is done after which
-    // FragmentContext can be unregistered safely.
-    std::atomic<size_t> _num_drivers;
-    std::atomic<Status*> _final_status;
+    std::atomic<size_t> _num_finished_pipelines = 0;
+    std::atomic<Status*> _final_status = nullptr;
     Status _s_status;
-
-    bool _enable_resource_group = false;
 
     DriverLimiter::TokenPtr _driver_token = nullptr;
     query_cache::CacheParam _cache_param;
@@ -169,6 +161,10 @@ private:
     PerDriverScanRangesMap _scan_ranges_per_driver_seq;
     std::vector<StreamLoadContext*> _stream_load_contexts;
     bool _channel_stream_load = false;
+
+    bool _enable_adaptive_dop = false;
+
+    workgroup::WorkGroupPtr _workgroup = nullptr;
 };
 
 class FragmentContextManager {

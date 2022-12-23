@@ -55,6 +55,7 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.FrontendOptions;
 import com.starrocks.sql.common.ErrorType;
 import com.starrocks.sql.common.StarRocksPlannerException;
+import com.starrocks.sql.optimizer.Utils;
 import com.starrocks.statistic.StatisticUtils;
 import com.starrocks.system.Backend;
 import com.starrocks.system.ComputeNode;
@@ -479,7 +480,7 @@ public class CoordinatorPreprocessor {
             FragmentExecParams params = fragmentExecParamsMap.get(fragment.getFragmentId());
 
             boolean dopAdaptionEnabled = usePipeline &&
-                    connectContext.getSessionVariable().isPipelineDopAdaptionEnabled();
+                    connectContext.getSessionVariable().isEnablePipelineAdaptiveDop();
 
             // If left child is MultiCastDataFragment(only support left now), will keep same instance with child.
             if (fragment.getChildren().size() > 0 && fragment.getChild(0) instanceof MultiCastPlanFragment) {
@@ -665,11 +666,21 @@ public class CoordinatorPreprocessor {
                                 int expectedDop = Math.max(1, Math.min(pipelineDop, scanRangeParams.size()));
                                 List<List<TScanRangeParams>> scanRangeParamsPerDriverSeq =
                                         ListUtil.splitBySize(scanRangeParams, expectedDop);
-                                instanceParam.pipelineDop = scanRangeParamsPerDriverSeq.size();
+                                if (connectContext.getSessionVariable().isEnableAdaptiveDop() &&
+                                        fragment.canUseAdaptiveDop()) {
+                                    instanceParam.pipelineDop =
+                                            Utils.computeMinGEPower2(scanRangeParamsPerDriverSeq.size());
+                                } else {
+                                    instanceParam.pipelineDop = scanRangeParamsPerDriverSeq.size();
+                                }
                                 Map<Integer, List<TScanRangeParams>> scanRangesPerDriverSeq = new HashMap<>();
                                 instanceParam.nodeToPerDriverSeqScanRanges.put(planNodeId, scanRangesPerDriverSeq);
                                 for (int driverSeq = 0; driverSeq < scanRangeParamsPerDriverSeq.size(); ++driverSeq) {
                                     scanRangesPerDriverSeq.put(driverSeq, scanRangeParamsPerDriverSeq.get(driverSeq));
+                                }
+                                for (int driverSeq = scanRangeParamsPerDriverSeq.size();
+                                        driverSeq < instanceParam.pipelineDop; ++driverSeq) {
+                                    scanRangesPerDriverSeq.put(driverSeq, Lists.newArrayList());
                                 }
                             }
                             if (this.queryOptions.getLoad_job_type() == TLoadJobType.STREAM_LOAD) {
@@ -916,7 +927,12 @@ public class CoordinatorPreprocessor {
                         ListUtil.splitBySize(scanRangePerInstance, expectedDop);
 
                 if (assignPerDriverSeq) {
-                    instanceParam.pipelineDop = scanRangesPerDriverSeq.size();
+                    if (connectContext.getSessionVariable().isEnableAdaptiveDop() &&
+                            params.fragment.canUseAdaptiveDop()) {
+                        instanceParam.pipelineDop = Utils.computeMinGEPower2(scanRangesPerDriverSeq.size());
+                    } else {
+                        instanceParam.pipelineDop = scanRangesPerDriverSeq.size();
+                    }
                 }
 
                 for (int driverSeq = 0; driverSeq < scanRangesPerDriverSeq.size(); ++driverSeq) {
@@ -1522,6 +1538,8 @@ public class CoordinatorPreprocessor {
                     if (enableResourceGroup && resourceGroup != null) {
                         commonParams.setWorkgroup(resourceGroup);
                     }
+                    commonParams.setEnable_adaptive_dop(
+                            sessionVariable.isEnableAdaptiveDop() && fragment.canUseAdaptiveDop());
                 }
             }
         }
