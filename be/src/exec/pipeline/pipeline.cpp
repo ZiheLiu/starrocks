@@ -63,7 +63,7 @@ void Pipeline::create_drivers(RuntimeState* state) {
 
     query_ctx->query_trace()->register_drivers(fragment_ctx->fragment_instance_id(), _drivers);
 
-    if (source_operator_factory()->with_morsels()) {
+    if (!source_operator_factory()->with_morsels()) {
         return;
     }
 
