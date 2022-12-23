@@ -59,7 +59,7 @@ Status LazyCreateDriversOperator::push_chunk(RuntimeState* state, const vectoriz
 StatusOr<vectorized::ChunkPtr> LazyCreateDriversOperator::pull_chunk(RuntimeState* state) {
     auto* fragment_ctx = state->fragment_ctx();
 
-    Drivers drivers;
+    std::vector<PipelinePtr> ready_pipelines;
     auto pipe_group_it = _unready_pipeline_groups.begin();
     while (pipe_group_it != _unready_pipeline_groups.end()) {
         auto& pipe_item_group = *pipe_group_it;
@@ -72,26 +72,31 @@ StatusOr<vectorized::ChunkPtr> LazyCreateDriversOperator::pull_chunk(RuntimeStat
         size_t max_dop = source_op_of_first_pipeline->degree_of_parallelism();
         bool adjust_dop = max_dop != pipe_item_group[0].original_dop;
 
-        for (const auto& pipe_item : pipe_item_group) {
+        for (auto& pipe_item : pipe_item_group) {
             auto& pipe = pipe_item.pipeline;
             if (adjust_dop) {
                 pipe->source_operator_factory()->set_max_dop(max_dop);
             }
             pipe->create_drivers(state);
+            ready_pipelines.emplace_back(std::move(pipe));
         }
 
         _unready_pipeline_groups.erase(pipe_group_it++);
     }
 
-    for (const auto& driver : drivers) {
-        RETURN_IF_ERROR(driver->prepare(state));
+    for (const auto& pipe : ready_pipelines) {
+        for (const auto& driver : pipe->drivers()) {
+            RETURN_IF_ERROR(driver->prepare(state));
+        }
     }
 
     auto* executor = fragment_ctx->enable_resource_group() ? state->exec_env()->wg_driver_executor()
                                                            : state->exec_env()->driver_executor();
-    for (const auto& driver : drivers) {
-        DCHECK(!fragment_ctx->enable_resource_group() || driver->workgroup() != nullptr);
-        executor->submit(driver.get());
+    for (const auto& pipe : ready_pipelines) {
+        for (const auto& driver : pipe->drivers()) {
+            DCHECK(!fragment_ctx->enable_resource_group() || driver->workgroup() != nullptr);
+            executor->submit(driver.get());
+        }
     }
 
     return nullptr;

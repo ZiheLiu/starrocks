@@ -41,7 +41,6 @@ private:
         PipelineItem(const PipelinePtr& pipeline, size_t originalDop) : pipeline(pipeline), original_dop(originalDop) {}
     };
     using PipelineItems = std::vector<PipelineItem>;
-
     std::list<PipelineItems> _unready_pipeline_groups;
 };
 
