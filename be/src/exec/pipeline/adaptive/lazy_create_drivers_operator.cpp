@@ -100,7 +100,7 @@ StatusOr<vectorized::ChunkPtr> LazyCreateDriversOperator::pull_chunk(RuntimeStat
 void LazyCreateDriversOperator::close(RuntimeState* state) {
     auto* fragment_ctx = state->fragment_ctx();
     for (auto& pipeline_group : _unready_pipeline_groups) {
-        for (auto& pipeline : pipeline_group) {
+        for (auto& _ : pipeline_group) {
             fragment_ctx->count_down_pipeline();
         }
     }
