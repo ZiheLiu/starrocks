@@ -491,7 +491,6 @@ Status create_lazy_create_drivers_pipeline(RuntimeState* state, PipelineBuilderC
 }
 
 Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request) {
-    const auto& fragment_instance_id = request.fragment_instance_id();
     const auto degree_of_parallelism = _calc_dop(exec_env, request);
     const auto& fragment = request.common().fragment;
     const auto& params = request.common().params;
