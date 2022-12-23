@@ -15,6 +15,7 @@
 
 package com.starrocks.qe;
 
+import com.google.common.base.Joiner;
 import com.google.common.base.Preconditions;
 import com.starrocks.common.UserException;
 import com.starrocks.metric.MetricRepo;
@@ -146,6 +147,9 @@ public class QueryQueueManager {
             pendingQueryInfoMap.put(info.connectCtx, info);
             MetricRepo.COUNTER_QUERY_QUEUE_PENDING.increase(1L);
             MetricRepo.COUNTER_QUERY_QUEUE_TOTAL.increase(1L);
+
+            String res = Joiner.on(" ## ").join(info.connectCtx.toThreadInfo().toRow(System.currentTimeMillis(), true));
+            LOG.warn("===================[DEBUG] pending {}", res);
 
             while (enableCheckQueue(coord) && !canRunMore()) {
                 timeoutMs = startMs + GlobalVariable.getQueryQueuePendingTimeoutSecond() * 1000L;
