@@ -73,7 +73,9 @@ public:
     void set_pipelines(Pipelines&& pipelines) { _pipelines = std::move(pipelines); }
 
     int is_finished() const { return _num_finished_pipelines == _pipelines.size(); }
-    bool count_down_pipeline() { return ++_num_finished_pipelines == _pipelines.size(); }
+    bool count_down_pipeline(size_t val = 1) {
+        return _num_finished_pipelines.fetch_add(val) + val == _pipelines.size();
+    }
 
     void set_final_status(const Status& status);
 
