@@ -487,8 +487,11 @@ const workgroup::WorkGroup* PipelineDriver::workgroup() const {
 }
 
 void PipelineDriver::set_workgroup(workgroup::WorkGroupPtr wg) {
-    this->_workgroup = std::move(wg);
-    this->_workgroup->incr_num_running_drivers();
+    _workgroup = std::move(wg);
+    if (_workgroup == nullptr) {
+        return;
+    }
+    _workgroup->incr_num_running_drivers();
 }
 
 bool PipelineDriver::_check_fragment_is_canceled(RuntimeState* runtime_state) {
