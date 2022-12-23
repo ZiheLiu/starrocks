@@ -57,7 +57,6 @@ Status LazyCreateDriversOperator::push_chunk(RuntimeState* state, const vectoriz
 }
 
 StatusOr<vectorized::ChunkPtr> LazyCreateDriversOperator::pull_chunk(RuntimeState* state) {
-    auto* query_ctx = state->query_ctx();
     auto* fragment_ctx = state->fragment_ctx();
 
     Drivers drivers;
