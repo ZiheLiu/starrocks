@@ -214,7 +214,7 @@ Status DeltaWriter::write(const Chunk& chunk, const uint32_t* indexes, uint32_t 
         st = _flush_memtable_async();
         _reset_mem_table();
     } else {
-        LOG(WARNING) << "[TEST] Flushing memory table [chunk_size=" << chunk.size() << "]";
+        LOG(WARNING) << "[TEST] Flushing memory table [chunk_size=" << chunk.num_rows() << "]";
         st = _flush_memtable();
         _reset_mem_table();
     }
