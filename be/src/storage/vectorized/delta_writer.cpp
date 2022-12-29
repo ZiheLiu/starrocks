@@ -213,6 +213,10 @@ Status DeltaWriter::write(const Chunk& chunk, const uint32_t* indexes, uint32_t 
     } else if (full) {
         st = _flush_memtable_async();
         _reset_mem_table();
+    } else {
+        LOG(WARNING) << "[TEST] Flushing memory table [chunk_size=" << chunk.size() << "]";
+        st = _flush_memtable();
+        _reset_mem_table();
     }
     if (!st.ok()) {
         _set_state(kAborted);
