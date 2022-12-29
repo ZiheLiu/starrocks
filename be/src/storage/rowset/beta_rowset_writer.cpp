@@ -257,13 +257,21 @@ StatusOr<std::unique_ptr<SegmentWriter>> HorizontalBetaRowsetWriter::_create_seg
 
 Status HorizontalBetaRowsetWriter::add_chunk(const vectorized::Chunk& chunk) {
     if (_segment_writer == nullptr) {
+        LOG(WARNING) << "[TEST] add_chunk first_chunk "
+                     << "[chunk=" << chunk.num_rows() << "] ";
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
     } else if (_segment_writer->estimate_segment_size() >= config::max_segment_file_size ||
                _segment_writer->num_rows_written() + chunk.num_rows() >= 10) {
+        LOG(WARNING) << "[TEST] add_chunk segment_is_full "
+                     << "[num_rows_written=" << _segment_writer->num_rows_written() << "] "
+                     << "[chunk=" << chunk.num_rows() << "] ";
         RETURN_IF_ERROR(_flush_segment_writer(&_segment_writer));
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
+    } else {
+        LOG(WARNING) << "[TEST] add_chunk continue "
+                     << "[num_rows_written=" << _segment_writer->num_rows_written() << "] "
+                     << "[chunk=" << chunk.num_rows() << "] ";
     }
-
     RETURN_IF_ERROR(_segment_writer->append_chunk(chunk));
     _num_rows_written += static_cast<int64_t>(chunk.num_rows());
     _total_row_size += static_cast<int64_t>(chunk.bytes_usage());
@@ -272,11 +280,20 @@ Status HorizontalBetaRowsetWriter::add_chunk(const vectorized::Chunk& chunk) {
 
 Status HorizontalBetaRowsetWriter::add_chunk_with_rssid(const vectorized::Chunk& chunk, const vector<uint32_t>& rssid) {
     if (_segment_writer == nullptr) {
+        LOG(WARNING) << "[TEST] add_chunk_with_rssid first_chunk "
+                     << "[chunk=" << chunk.num_rows() << "] ";
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
     } else if (_segment_writer->estimate_segment_size() >= config::max_segment_file_size ||
                _segment_writer->num_rows_written() + chunk.num_rows() >= 10) {
+        LOG(WARNING) << "[TEST] add_chunk_with_rssid segment_is_full "
+                     << "[num_rows_written=" << _segment_writer->num_rows_written() << "] "
+                     << "[chunk=" << chunk.num_rows() << "] ";
         RETURN_IF_ERROR(_flush_segment_writer(&_segment_writer));
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
+    } else {
+        LOG(WARNING) << "[TEST] add_chunk_with_rssid continue "
+                     << "[num_rows_written=" << _segment_writer->num_rows_written() << "] "
+                     << "[chunk=" << chunk.num_rows() << "] ";
     }
 
     RETURN_IF_ERROR(_segment_writer->append_chunk(chunk));
