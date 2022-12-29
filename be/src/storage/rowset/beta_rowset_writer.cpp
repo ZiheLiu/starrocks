@@ -259,7 +259,7 @@ Status HorizontalBetaRowsetWriter::add_chunk(const vectorized::Chunk& chunk) {
     if (_segment_writer == nullptr) {
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
     } else if (_segment_writer->estimate_segment_size() >= config::max_segment_file_size ||
-               _segment_writer->num_rows_written() + chunk.num_rows() >= _context.max_rows_per_segment) {
+               _segment_writer->num_rows_written() + chunk.num_rows() >= 10) {
         RETURN_IF_ERROR(_flush_segment_writer(&_segment_writer));
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
     }
@@ -274,7 +274,7 @@ Status HorizontalBetaRowsetWriter::add_chunk_with_rssid(const vectorized::Chunk&
     if (_segment_writer == nullptr) {
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
     } else if (_segment_writer->estimate_segment_size() >= config::max_segment_file_size ||
-               _segment_writer->num_rows_written() + chunk.num_rows() >= _context.max_rows_per_segment) {
+               _segment_writer->num_rows_written() + chunk.num_rows() >= 10) {
         RETURN_IF_ERROR(_flush_segment_writer(&_segment_writer));
         ASSIGN_OR_RETURN(_segment_writer, _create_segment_writer());
     }
