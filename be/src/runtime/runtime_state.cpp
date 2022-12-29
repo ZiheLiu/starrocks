@@ -150,8 +150,8 @@ Status RuntimeState::init(const TUniqueId& fragment_instance_id, const TQueryOpt
     // if BE was in grayscale upgrade. old BE chunk size was 4096.
     // if FE set a zero batch_size, batch_size will be set to DEFAULT_CHUNK_SIZE
     // (DEFAULT_CHUNK_SIZE was 2048 before version 2.0/2.1.0). which will cause overflow
-    if (_query_options.batch_size <= DEFAULT_CHUNK_SIZE) {
-        _query_options.batch_size = DEFAULT_CHUNK_SIZE;
+    if (_query_options.batch_size <= config::vector_chunk_size) {
+        _query_options.batch_size = config::vector_chunk_size;
     }
 
     // Register with the thread mgr
