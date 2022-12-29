@@ -363,6 +363,10 @@ public:
     static void encode_ascending(const void* value, size_t index_size, std::string* buf) {
         const Slice* slice = (const Slice*)value;
         size_t copy_size = std::min(index_size, slice->size);
+        LOG(WARNING) << "[TEST] encode_ascending "
+                     << "[index_size=" << index_size << "] "
+                     << "[slice_size=" << slice->size << "] "
+                     << "[copy_size=" << slice->size << "] ";
         buf->append(slice->data, copy_size);
     }
 

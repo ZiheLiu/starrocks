@@ -63,6 +63,11 @@ inline std::string SeekTuple::short_key_encode(size_t num_short_keys, uint8_t pa
     if (_values.size() < num_short_keys) {
         output.push_back(padding);
     }
+
+    LOG(WARNING) << "[TEST] short_key_encode "
+                 << "[output=" << output << "] "
+                 << "[size=" << output.size() << "] ";
+
     return output;
 }
 

@@ -299,6 +299,12 @@ Status SegmentWriter::append_chunk(const vectorized::Chunk& chunk) {
     }
 
     size_t chunk_num_rows = chunk.num_rows();
+
+    LOG(WARNING) << "[TEST] SegmentWriter::append_chunk "
+                 << "[_has_key=" << _has_key << "] "
+                 << "[num_rows_per_block=" << _opts.num_rows_per_block << "] "
+                 << "[chunk_num_rows=" << chunk_num_rows << "] ";
+
     if (_has_key) {
         for (size_t i = 0; i < chunk_num_rows; i++) {
             // At the begin of one block, so add a short key index entry
