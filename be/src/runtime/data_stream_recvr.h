@@ -220,6 +220,14 @@ private:
     RuntimeProfile::Counter* _sender_wait_lock_timer = nullptr;
 
     RuntimeProfile::Counter* _buffer_unplug_counter = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter1 = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter2 = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter3 = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter4 = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter5 = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter6 = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter7 = nullptr;
+    RuntimeProfile::Counter* _has_output_return_counter8 = nullptr;
 
     // Sub plan query statistics receiver.
     std::shared_ptr<QueryStatisticsRecvr> _sub_plan_query_statistics_recvr;

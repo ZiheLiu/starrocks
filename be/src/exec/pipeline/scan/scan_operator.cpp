@@ -162,7 +162,7 @@ bool ScanOperator::has_output() const {
         }
     }
 
-    return num_buffered_chunks() > 0;
+    return _num_running_io_tasks == 0 && num_buffered_chunks() > 0;
 }
 
 bool ScanOperator::pending_finish() const {
@@ -538,6 +538,8 @@ pipeline::OpFactories decompose_scan_node_to_pipeline(std::shared_ptr<ScanOperat
         ops.emplace_back(
                 std::make_shared<pipeline::LimitOperatorFactory>(context->next_operator_id(), scan_node->id(), limit));
     }
+
+    ops = context->maybe_interpolate_collect_stats(context->runtime_state(), ops);
 
     return ops;
 }
