@@ -161,6 +161,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     // them do the real work on core.
     public static final String ENABLE_PIPELINE = "enable_pipeline";
 
+    public static final String ENABLE_ADAPTIVE_DOP = "enable_adaptive_dop";
     public static final String ADAPTIVE_DOP_MAX_BLOCK_ROWS_PER_DRIVER_SEQ = "adaptive_dop_max_block_rows_per_driver_seq";
 
     public static final String ENABLE_PIPELINE_ENGINE = "enable_pipeline_engine";
@@ -366,6 +367,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VariableMgr.VarAttr(name = ENABLE_PIPELINE, alias = ENABLE_PIPELINE_ENGINE, show = ENABLE_PIPELINE_ENGINE)
     private boolean enablePipelineEngine = true;
+
+    @VariableMgr.VarAttr(name = ENABLE_ADAPTIVE_DOP)
+    private boolean enableAdaptiveDop = true;
 
     @VariableMgr.VarAttr(name = ADAPTIVE_DOP_MAX_BLOCK_ROWS_PER_DRIVER_SEQ, flag = VariableMgr.INVISIBLE)
     private long adaptiveDopMaxBlockRowsPerDriverSeq = 4096 * 4;
@@ -1231,6 +1235,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnablePipelineAdaptiveDop() {
         return enablePipelineEngine && pipelineDop <= 0;
+    }
+
+    public boolean isEnableAdaptiveDop() {
+        return enableAdaptiveDop;
     }
 
     public long getAdaptiveDopMaxBlockRowsPerDriverSeq() {
