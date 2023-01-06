@@ -62,17 +62,16 @@ public:
 
     bool need_input(int32_t driver_seq) const;
     bool has_output(int32_t driver_seq) const;
-    bool is_source_finished(int32_t driver_seq) const;
-    bool is_sink_finished(int32_t driver_seq) const;
+    bool is_downstream_finished(int32_t driver_seq) const;
+    bool is_upstream_finished(int32_t driver_seq) const;
 
     Status push_chunk(int32_t driver_seq, ChunkPtr chunk);
     StatusOr<ChunkPtr> pull_chunk(int32_t driver_seq);
     Status set_finishing(int32_t driver_seq);
     Status set_finished(int32_t driver_seq);
 
-    bool is_source_ready() const;
-    size_t sink_dop() const { return _sink_dop; }
-    size_t source_dop() const { return _source_dop; }
+    bool is_downstream_ready() const;
+    size_t downstream_dop() const { return _downstream_dop; }
 
 private:
     using BufferChunkQueue = std::queue<ChunkPtr>;
@@ -80,7 +79,7 @@ private:
     CollectStatsStateRawPtr _get_state(CollectStatsStateEnum state) const;
     CollectStatsStateRawPtr _state_ref() const;
     void _set_state(CollectStatsStateEnum state_enum);
-    void _transform_state(CollectStatsStateEnum state_enum, size_t source_dop);
+    void _transform_state(CollectStatsStateEnum state_enum, size_t downstream_dop);
     BufferChunkQueue& _buffer_chunk_queue(int32_t driver_seq);
 
 private:
@@ -91,8 +90,10 @@ private:
     std::atomic<CollectStatsStateRawPtr> _state = nullptr;
     std::unordered_map<CollectStatsStateEnum, CollectStatsStatePtr> _state_payloads;
 
-    const size_t _sink_dop;
-    size_t _source_dop;
+    // _upstream_dop and _downstream_dop are DOP of CollectStatsSinkOperator and CollectStatsSourceOperator.
+    // They are both power of two, and upstream_dop is times of downstream_dop.
+    const size_t _upstream_dop;
+    size_t _downstream_dop;
 
     const size_t _max_block_rows_per_driver_seq;
 
@@ -112,8 +113,8 @@ public:
 
     virtual bool need_input(int32_t driver_seq) const = 0;
     virtual bool has_output(int32_t driver_seq) const = 0;
-    virtual bool is_source_finished(int32_t driver_seq) const = 0;
-    virtual bool is_sink_finished(int32_t driver_seq) const = 0;
+    virtual bool is_downstream_finished(int32_t driver_seq) const = 0;
+    virtual bool is_upstream_finished(int32_t driver_seq) const = 0;
 
     virtual Status push_chunk(int32_t driver_seq, ChunkPtr chunk) = 0;
     virtual StatusOr<ChunkPtr> pull_chunk(int32_t driver_seq) = 0;
@@ -126,15 +127,15 @@ protected:
 class BlockState final : public CollectStatsState {
 public:
     BlockState(CollectStatsContext* const ctx)
-            : CollectStatsState(ctx), _max_buffer_rows(ctx->_max_block_rows_per_driver_seq * ctx->_sink_dop) {}
+            : CollectStatsState(ctx), _max_buffer_rows(ctx->_max_block_rows_per_driver_seq * ctx->_upstream_dop) {}
     ~BlockState() override = default;
 
     std::string name() const override;
 
     bool need_input(int32_t driver_seq) const override;
     bool has_output(int32_t driver_seq) const override;
-    bool is_source_finished(int32_t driver_seq) const override;
-    bool is_sink_finished(int32_t driver_seq) const override;
+    bool is_downstream_finished(int32_t driver_seq) const override;
+    bool is_upstream_finished(int32_t driver_seq) const override;
 
     Status push_chunk(int32_t driver_seq, ChunkPtr chunk) override;
     StatusOr<ChunkPtr> pull_chunk(int32_t driver_seq) override;
@@ -155,8 +156,8 @@ public:
 
     bool need_input(int32_t driver_seq) const override;
     bool has_output(int32_t driver_seq) const override;
-    bool is_source_finished(int32_t driver_seq) const override;
-    bool is_sink_finished(int32_t driver_seq) const override;
+    bool is_downstream_finished(int32_t driver_seq) const override;
+    bool is_upstream_finished(int32_t driver_seq) const override;
 
     Status push_chunk(int32_t driver_seq, ChunkPtr chunk) override;
     StatusOr<ChunkPtr> pull_chunk(int32_t driver_seq) override;
@@ -180,8 +181,8 @@ public:
 
     bool need_input(int32_t driver_seq) const override;
     bool has_output(int32_t driver_seq) const override;
-    bool is_source_finished(int32_t driver_seq) const override;
-    bool is_sink_finished(int32_t driver_seq) const override;
+    bool is_downstream_finished(int32_t driver_seq) const override;
+    bool is_upstream_finished(int32_t driver_seq) const override;
 
     Status push_chunk(int32_t driver_seq, ChunkPtr chunk) override;
     StatusOr<ChunkPtr> pull_chunk(int32_t driver_seq) override;

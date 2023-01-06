@@ -42,7 +42,7 @@ bool CollectStatsSinkOperator::has_output() const {
     return false;
 }
 bool CollectStatsSinkOperator::is_finished() const {
-    return _is_finishing || _ctx->is_sink_finished(_driver_sequence);
+    return _is_finishing || _ctx->is_upstream_finished(_driver_sequence);
 }
 
 Status CollectStatsSinkOperator::push_chunk(RuntimeState* state, const ChunkPtr& chunk) {

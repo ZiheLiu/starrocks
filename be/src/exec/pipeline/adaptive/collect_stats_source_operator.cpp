@@ -38,7 +38,7 @@ bool CollectStatsSourceOperator::has_output() const {
     return _ctx->has_output(_driver_sequence);
 }
 bool CollectStatsSourceOperator::is_finished() const {
-    return _is_finished || _ctx->is_source_finished(_driver_sequence);
+    return _is_finished || _ctx->is_downstream_finished(_driver_sequence);
 }
 
 Status CollectStatsSourceOperator::push_chunk(RuntimeState* state, const ChunkPtr& chunk) {
@@ -77,14 +77,14 @@ OperatorPtr CollectStatsSourceOperatorFactory::create(int32_t degree_of_parallel
 }
 
 SourceOperatorFactory::AdaptiveState CollectStatsSourceOperatorFactory::adaptive_state() const {
-    if (_ctx->is_source_ready()) {
+    if (_ctx->is_downstream_ready()) {
         return SourceOperatorFactory::AdaptiveState::READY;
     }
     return SourceOperatorFactory::AdaptiveState::NOT_READY;
 }
 
 size_t CollectStatsSourceOperatorFactory::degree_of_parallelism() const {
-    return _ctx->source_dop();
+    return _ctx->downstream_dop();
 }
 
 } // namespace starrocks::pipeline
