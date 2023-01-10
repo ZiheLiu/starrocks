@@ -383,6 +383,9 @@ StatusOr<MorselPtr> LogicalSplitMorselQueue::try_get() {
     ShortKeyOptionPtr _cur_range_lower = nullptr;
     ShortKeyOptionPtr _cur_range_upper = nullptr;
     bool need_more_blocks = true;
+
+    LOG(WARNING) << "[DEBUG] logical split ============================================================";
+
     while (!_cur_tablet_finished() &&      // One morsel only read data from one tablet.
            (_cur_range_lower != nullptr || // Haven't found the _cur_range_upper different from _cur_range_lower.
             (need_more_blocks && num_taken_blocks < _sample_splitted_scan_blocks))) {
@@ -417,8 +420,26 @@ StatusOr<MorselPtr> LogicalSplitMorselQueue::try_get() {
         _cur_range_upper = _create_range_upper();
 
         if (num_rest_blocks == 0 || _valid_range(_cur_range_lower, _cur_range_upper)) {
+            LOG(WARNING) << "[DEBUG] logical split add +++++++++++++++++++++++++"
+                         << "[_range_idx=" << _range_idx << "] "
+                         << "[_sample_splitted_scan_blocks=" << _sample_splitted_scan_blocks << "] "
+                         << "[cur_num_taken_blocks=" << cur_num_taken_blocks << "] "
+                         << "[num_rest_blocks=" << num_rest_blocks << "] "
+                         << "[num_taken_blocks=" << num_taken_blocks << "] "
+                         << "[_cur_range_lower=" << _cur_range_lower.get() << "] "
+                         << "[_cur_range_upper=" << _cur_range_upper.get() << "] ";
+
             short_key_ranges.emplace_back(
                     std::make_shared<ShortKeyRangeOption>(std::move(_cur_range_lower), std::move(_cur_range_upper)));
+        } else {
+            LOG(WARNING) << "[DEBUG] logical split continue ------------------------------"
+                         << "[_range_idx=" << _range_idx << "] "
+                         << "[_sample_splitted_scan_blocks=" << _sample_splitted_scan_blocks << "] "
+                         << "[cur_num_taken_blocks=" << cur_num_taken_blocks << "] "
+                         << "[num_rest_blocks=" << num_rest_blocks << "] "
+                         << "[num_taken_blocks=" << num_taken_blocks << "] "
+                         << "[_cur_range_lower=" << _cur_range_lower.get() << "] "
+                         << "[_cur_range_upper=" << _cur_range_upper.get() << "] ";
         }
 
         // The current key range has no more blocks, so move to next key range.
@@ -429,6 +450,7 @@ StatusOr<MorselPtr> LogicalSplitMorselQueue::try_get() {
             }
         }
     }
+    LOG(WARNING) << "[DEBUG] logical split ============================================================";
     DCHECK(_cur_range_lower == nullptr);
     DCHECK(_cur_range_upper == nullptr);
 
@@ -463,6 +485,10 @@ bool LogicalSplitMorselQueue::_valid_range(const ShortKeyOptionPtr& lower, const
         --end_iter;
         upper_key = *end_iter;
     }
+
+    LOG(WARNING) << "[DEBUG] logical split valid_range "
+                 << "[lower_key=" << lower_key.to_string() << "] "
+                 << "[upper_key=" << upper_key.to_string() << "] ";
 
     return lower_key.compare(upper_key) != 0;
 }
