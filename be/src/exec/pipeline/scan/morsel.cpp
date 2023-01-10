@@ -470,23 +470,23 @@ bool LogicalSplitMorselQueue::_valid_range(const ShortKeyOptionPtr& lower, const
         return true;
     }
 
-    Slice lower_key = lower->short_key;
+    Slice lower_key;
     // Empty short key of start ShortKeyOption means it is the first splitted key range,
     // so use start original short key to compare.
     if (lower->tuple_key != nullptr) {
         lower_key = lower->tuple_key->short_key_encode(_short_key_schema->num_fields(), KEY_MINIMAL_MARKER);
-    } else if (!lower_key.empty()) {
+    } else if (!lower->short_key.empty()) {
         lower_key = lower->short_key;
     } else {
         lower_key = *_block_ranges_per_seek_range[_range_idx].first;
     }
 
-    Slice upper_key = upper->short_key;
+    Slice upper_key;
     // Empty short key of end ShortKeyOption means it is the last splitted key range,
     // so use end original short key to compare.
     if (upper->tuple_key != nullptr) {
         upper_key = upper->tuple_key->short_key_encode(_short_key_schema->num_fields(), KEY_MINIMAL_MARKER);
-    } else if (!lower_key.empty()) {
+    } else if (!upper->short_key.empty()) {
         upper_key = upper->short_key;
     } else {
         auto end_iter = _block_ranges_per_seek_range[_range_idx].second;
