@@ -355,6 +355,7 @@ public class StmtExecutor {
             boolean needCached = parsedStmt != null && parsedStmt.getOrigStmt().toString().contains("select * from nation");
             if (cachedExecPlan != null && needCached) {
                 execPlan = cachedExecPlan;
+                execPlanBuildByNewPlanner = true;
             } else {
                 // Entrance to the new planner
                 if (StatementPlanner.supportedByNewPlanner(parsedStmt)) {
