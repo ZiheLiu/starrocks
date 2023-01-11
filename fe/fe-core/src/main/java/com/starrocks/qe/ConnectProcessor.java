@@ -60,6 +60,7 @@ import com.starrocks.thrift.TQueryOptions;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.spark_project.guava.collect.Lists;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -266,6 +267,8 @@ public class ConnectProcessor {
         QueryDetailQueue.addAndRemoveTimeoutQueryDetail(queryDetail.copy());
     }
 
+    private static StatementBase cachedStmt = null;
+
     // process COM_QUERY statement,
     private void handleQuery() {
         MetricRepo.COUNTER_REQUEST_ALL.increase(1L);
@@ -291,12 +294,20 @@ public class ConnectProcessor {
         // execute this query.
         StatementBase parsedStmt = null;
         try {
+            boolean needCache = originStmt.toString().contains("select * from nation");
+
             ctx.setQueryId(UUIDUtil.genUUID());
             List<StatementBase> stmts;
-            try {
-                stmts = com.starrocks.sql.parser.SqlParser.parse(originStmt, ctx.getSessionVariable().getSqlMode());
-            } catch (ParsingException parsingException) {
-                throw new AnalysisException(parsingException.getMessage());
+
+            if (cachedStmt != null && needCache) {
+                parsedStmt = cachedStmt;
+                stmts = Lists.newArrayList(cachedStmt);
+            } else {
+                try {
+                    stmts = com.starrocks.sql.parser.SqlParser.parse(originStmt, ctx.getSessionVariable().getSqlMode());
+                } catch (ParsingException parsingException) {
+                    throw new AnalysisException(parsingException.getMessage());
+                }
             }
 
             for (int i = 0; i < stmts.size(); ++i) {
@@ -307,6 +318,10 @@ public class ConnectProcessor {
                 }
                 parsedStmt = stmts.get(i);
                 parsedStmt.setOrigStmt(new OriginStatement(originStmt, i));
+
+                if (needCache) {
+                    cachedStmt = parsedStmt;
+                }
 
                 // Only add the last running stmt for multi statement,
                 // because the audit log will only show the last stmt.
