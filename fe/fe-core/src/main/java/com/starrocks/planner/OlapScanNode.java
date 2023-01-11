@@ -339,7 +339,6 @@ public class OlapScanNode extends ScanNode {
                 replicas = allQueryableReplicas;
             }
 
-            Collections.shuffle(replicas);
             boolean tabletIsNull = true;
             boolean collectedStat = false;
             for (Replica replica : replicas) {
