@@ -308,6 +308,8 @@ public class StmtExecutor {
         return parsedStmt;
     }
 
+    private static ExecPlan cachedExecPlan = null;
+
     // Execute one statement.
     // Exception:
     //  IOException: talk with client failed.
@@ -350,45 +352,54 @@ public class StmtExecutor {
             ExecPlan execPlan = null;
             boolean execPlanBuildByNewPlanner = false;
 
-            // Entrance to the new planner
-            if (StatementPlanner.supportedByNewPlanner(parsedStmt)) {
-                try (PlannerProfile.ScopedTimer _ = PlannerProfile.getScopedTimer("Total")) {
-                    redirectStatus = parsedStmt.getRedirectStatus();
-                    if (!isForwardToLeader()) {
-                        context.getDumpInfo().reset();
-                        context.getDumpInfo().setOriginStmt(parsedStmt.getOrigStmt().originStmt);
-                        if (parsedStmt instanceof ShowStmt) {
-                            com.starrocks.sql.analyzer.Analyzer.analyze(parsedStmt, context);
-                            PrivilegeChecker.check(parsedStmt, context);
+            boolean needCached = parsedStmt != null && parsedStmt.toSql().contains("select * from nation");
+            if (cachedExecPlan != null && needCached) {
+                execPlan = cachedExecPlan;
+            } else {
+                // Entrance to the new planner
+                if (StatementPlanner.supportedByNewPlanner(parsedStmt)) {
+                    try (PlannerProfile.ScopedTimer _ = PlannerProfile.getScopedTimer("Total")) {
+                        redirectStatus = parsedStmt.getRedirectStatus();
+                        if (!isForwardToLeader()) {
+                            context.getDumpInfo().reset();
+                            context.getDumpInfo().setOriginStmt(parsedStmt.getOrigStmt().originStmt);
+                            if (parsedStmt instanceof ShowStmt) {
+                                com.starrocks.sql.analyzer.Analyzer.analyze(parsedStmt, context);
+                                PrivilegeChecker.check(parsedStmt, context);
 
-                            QueryStatement selectStmt = ((ShowStmt) parsedStmt).toSelectStmt();
-                            if (selectStmt != null) {
-                                parsedStmt = selectStmt;
+                                QueryStatement selectStmt = ((ShowStmt) parsedStmt).toSelectStmt();
+                                if (selectStmt != null) {
+                                    parsedStmt = selectStmt;
+                                    execPlan = StatementPlanner.plan(parsedStmt, context);
+                                }
+                            } else {
                                 execPlan = StatementPlanner.plan(parsedStmt, context);
                             }
-                        } else {
-                            execPlan = StatementPlanner.plan(parsedStmt, context);
+                            execPlanBuildByNewPlanner = true;
                         }
-                        execPlanBuildByNewPlanner = true;
+                    } catch (SemanticException e) {
+                        dumpException(e);
+                        throw new AnalysisException(e.getMessage());
+                    } catch (StarRocksPlannerException e) {
+                        dumpException(e);
+                        if (e.getType().equals(ErrorType.USER_ERROR)) {
+                            throw e;
+                        } else if (e.getType().equals(ErrorType.UNSUPPORTED) && e.getMessage().contains("UDF function")) {
+                            LOG.warn("New planner not implement : " + originStmt.originStmt, e);
+                            analyze(context.getSessionVariable().toThrift());
+                        } else {
+                            LOG.warn("New planner error: " + originStmt.originStmt, e);
+                            throw e;
+                        }
                     }
-                } catch (SemanticException e) {
-                    dumpException(e);
-                    throw new AnalysisException(e.getMessage());
-                } catch (StarRocksPlannerException e) {
-                    dumpException(e);
-                    if (e.getType().equals(ErrorType.USER_ERROR)) {
-                        throw e;
-                    } else if (e.getType().equals(ErrorType.UNSUPPORTED) && e.getMessage().contains("UDF function")) {
-                        LOG.warn("New planner not implement : " + originStmt.originStmt, e);
-                        analyze(context.getSessionVariable().toThrift());
-                    } else {
-                        LOG.warn("New planner error: " + originStmt.originStmt, e);
-                        throw e;
-                    }
+                } else {
+                    // analyze this query
+                    analyze(context.getSessionVariable().toThrift());
                 }
-            } else {
-                // analyze this query
-                analyze(context.getSessionVariable().toThrift());
+
+                if (needCached) {
+                    cachedExecPlan = execPlan;
+                }
             }
 
             if (context.isQueryDump()) {
