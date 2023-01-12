@@ -153,7 +153,7 @@ Status ExecEnv::_init(const std::vector<StorePath>& store_paths) {
     _frontend_client_cache = new FrontendServiceClientCache(config::max_client_cache_size_per_host);
     _broker_client_cache = new BrokerServiceClientCache(config::max_client_cache_size_per_host);
     // query_context_mgr keeps slotted map with 64 slot to reduce contention
-    _query_context_mgr = new pipeline::QueryContextManager(6);
+    _query_context_mgr = new pipeline::QueryContextManager(config::pipeline_query_context_slots_log2);
     RETURN_IF_ERROR(_query_context_mgr->init());
     _thread_pool =
             new PriorityThreadPool("table_scan_io", // olap/external table scan thread pool

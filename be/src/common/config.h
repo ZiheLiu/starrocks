@@ -765,6 +765,8 @@ CONF_Int32(orc_file_cache_max_size, "8388608");
 CONF_Int32(orc_natural_read_size, "8388608");
 CONF_mBool(orc_coalesce_read_enable, "true");
 
+CONF_Int32(pipeline_query_context_slots_log2, "1");
+
 // parquet reader, each column will reserve X bytes for read
 // but with coalesce read enabled, this value is not used.
 CONF_mInt32(parquet_buffer_stream_reserve_size, "1048576");
