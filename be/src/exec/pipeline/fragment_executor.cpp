@@ -422,6 +422,7 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
     bool prepare_success = false;
     int64_t prepare_time = 0;
     DeferOp defer([this, &request, &prepare_success, &prepare_time]() {
+        LOG(WARNING) << "[DEBUG] prepare " << double(prepare_time) / 1e9;
         if (prepare_success) {
             auto fragment_ctx = _query_ctx->fragment_mgr()->get(request.params.fragment_instance_id);
             auto* prepare_timer =

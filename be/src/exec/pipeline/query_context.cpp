@@ -284,7 +284,7 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
     std::vector<QueryContextPtr> cleaned_ctxs;
 
     int64_t cost_ns = 0;
-    DeferOp defer([&cost_ns]() { LOG(WARNING) << "QueryContextManager::remove " << cost_ns; });
+    DeferOp defer([&cost_ns]() { LOG(WARNING) << "QueryContextManager::remove " << double(cost_ns) / 1e9; });
     SCOPED_RAW_TIMER(&cost_ns);
 
     std::unique_lock<std::shared_mutex> write_lock(mutex);
