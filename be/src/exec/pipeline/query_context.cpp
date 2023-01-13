@@ -183,6 +183,13 @@ void QueryContextManager::_clean_func(QueryContextManager* manager) {
 }
 
 size_t QueryContextManager::_slot_idx(const TUniqueId& query_id) {
+    int64_t num1 = 991075177850671597;
+    auto slot_id = HashUtil::hash(&num1, sizeof(num1), 0) & _slot_mask;
+    LOG(WARNING) << "[DEBUG] 991075177850671597 " << slot_id;
+    int64_t num2 = 1164290925430510061;
+    auto slot_id2 = HashUtil::hash(&num2, sizeof(num2), 0) & _slot_mask;
+    LOG(WARNING) << "[DEBUG] 1164290925430510061 " << slot_id2;
+
     return HashUtil::hash(&query_id.hi, sizeof(query_id.hi), 0) & _slot_mask;
 }
 
