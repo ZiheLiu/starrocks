@@ -282,6 +282,11 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
     auto& sc_map = _second_chance_maps[i];
 
     std::vector<QueryContextPtr> cleaned_ctxs;
+
+    int64_t cost_ns = 0;
+    DeferOp defer([&cost_ns]() { LOG(WARNING) << "QueryContextManager::remove " << cost_ns; });
+    SCOPED_RAW_TIMER(&cost_ns);
+
     std::unique_lock<std::shared_mutex> write_lock(mutex);
     _clean_slot_unlocked(i, cleaned_ctxs);
     // return directly if query_ctx is absent
