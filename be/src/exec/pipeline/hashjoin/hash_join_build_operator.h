@@ -60,6 +60,7 @@ public:
 private:
     HashJoinerPtr _join_builder;
     PartialRuntimeFilterMerger* _partial_rf_merger;
+    mutable size_t _num_distinct_keys_approx = 0;
     std::atomic<bool> _is_finished = false;
 
     const TJoinDistributionMode::type _distribution_mode;
