@@ -58,7 +58,8 @@ public:
     void set_could_local_shuffle(bool could_local_shuffle) { _could_local_shuffle = could_local_shuffle; }
     virtual TPartitionType::type partition_type() const { return _partition_type; }
     void set_partition_type(TPartitionType::type partition_type) { _partition_type = partition_type; };
-    virtual const std::vector<ExprContext*>& partition_exprs() const { return _empty_partition_exprs; }
+    virtual const std::vector<ExprContext*>& partition_exprs() const { return _partition_exprs; }
+    void set_partition_exprs(const std::vector<ExprContext*>& partition_exprs) { _partition_exprs = partition_exprs; }
 
     /// The pipelines of a fragment instance are organized by groups.
     /// - The operator tree is broken into several groups by CollectStatsSourceOperator (CsSource)
@@ -107,8 +108,7 @@ protected:
     bool _could_local_shuffle = true;
     TPartitionType::type _partition_type = TPartitionType::type::HASH_PARTITIONED;
     MorselQueueFactory* _morsel_queue_factory = nullptr;
-    // Because partition_exprs() returns const reference, we need a non-temporal empty vector here.
-    const std::vector<ExprContext*> _empty_partition_exprs;
+    std::vector<ExprContext*> _partition_exprs;
 
     SourceOperatorFactory* _group_leader = this;
     std::vector<const Pipeline*> _group_dependent_pipelines;
