@@ -209,6 +209,7 @@ OpFactories PipelineBuilderContext::maybe_interpolate_collect_stats(RuntimeState
             next_operator_id(), last_plan_node_id, std::move(collect_stats_ctx));
     inherit_upstream_source_properties(downstream_source_op.get(), pred_source_op);
     downstream_source_op->set_degree_of_parallelism(1);
+    downstream_source_op->set_partition_exprs(pred_source_op->partition_exprs());
 
     for (const auto& pipeline : _dependent_pipelines) {
         downstream_source_op->add_group_dependent_pipeline(pipeline);
