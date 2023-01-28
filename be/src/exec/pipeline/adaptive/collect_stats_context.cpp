@@ -205,7 +205,7 @@ StatusOr<ChunkPtr> RoundRobinState::pull_chunk(int32_t driver_seq) {
 }
 
 Status RoundRobinState::set_finishing(int32_t driver_seq) {
-    return Status::InternalError("Should already call RoundRobinState::set_finishing before");
+    return Status::InternalError("Shouldn't call RoundRobinState::set_finishing");
 }
 
 bool RoundRobinState::is_downstream_finished(int32_t driver_seq) const {

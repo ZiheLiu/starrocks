@@ -372,7 +372,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private boolean enableRuntimeAdaptiveDop = true;
 
     @VariableMgr.VarAttr(name = ADAPTIVE_DOP_MAX_BLOCK_ROWS_PER_DRIVER_SEQ, flag = VariableMgr.INVISIBLE)
-    private long adaptiveDopMaxBlockRowsPerDriverSeq = 4096 * 4;
+    private long adaptiveDopMaxBlockRowsPerDriverSeq = 4096L * 4;
 
     @VarAttr(name = ENABLE_MV_PLANNER)
     private boolean enableMVPlanner = false;
