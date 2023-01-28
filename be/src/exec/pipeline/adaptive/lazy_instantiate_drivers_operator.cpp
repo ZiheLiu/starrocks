@@ -45,7 +45,7 @@ LazyInstantiateDriversOperator::LazyInstantiateDriversOperator(OperatorFactory* 
 bool LazyInstantiateDriversOperator::has_output() const {
     return std::any_of(
             _unready_pipeline_groups.begin(), _unready_pipeline_groups.end(),
-            [](const auto& pipeline_group) { return pipeline_group.leader_source_op->is_adaptive_group_ready(); });
+            [](const auto& pipeline_group) { return pipeline_group.leader_source_op->is_adaptive_group_active(); });
 }
 bool LazyInstantiateDriversOperator::need_input() const {
     return false;
@@ -68,7 +68,7 @@ StatusOr<ChunkPtr> LazyInstantiateDriversOperator::pull_chunk(RuntimeState* stat
     auto pipe_group_it = _unready_pipeline_groups.begin();
     while (pipe_group_it != _unready_pipeline_groups.end()) {
         auto& [leader_source_op, original_leader_dop, pipelines] = *pipe_group_it;
-        if (!leader_source_op->is_adaptive_group_ready()) {
+        if (!leader_source_op->is_adaptive_group_active()) {
             pipe_group_it++;
             continue;
         }

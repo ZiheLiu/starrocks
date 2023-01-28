@@ -36,19 +36,19 @@ SourceOperatorFactory* SourceOperatorFactory::group_leader() {
     return _group_leader;
 }
 
-bool SourceOperatorFactory::is_adaptive_group_ready() const {
+bool SourceOperatorFactory::is_adaptive_group_active() const {
     if (_group_leader != this) {
-        return _group_leader->is_adaptive_group_ready();
+        return _group_leader->is_adaptive_group_active();
     }
 
-    if (adaptive_state() != AdaptiveState::READY) {
+    if (adaptive_state() != AdaptiveState::ACTIVE) {
         return false;
     }
 
     const auto& pipelines = _group_dependent_pipelines;
     if (!_group_dependent_pipelines_ready) {
         _group_dependent_pipelines_ready = std::all_of(pipelines.begin(), pipelines.end(), [](const auto& pipeline) {
-            return pipeline->source_operator_factory()->is_adaptive_group_ready();
+            return pipeline->source_operator_factory()->is_adaptive_group_active();
         });
         if (!_group_dependent_pipelines_ready) {
             return false;

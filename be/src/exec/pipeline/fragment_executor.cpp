@@ -560,7 +560,7 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
     PipelineGroupMap unready_pipeline_groups;
     for (const auto& pipeline : pipelines) {
         auto* source_op = pipeline->source_operator_factory();
-        if (!source_op->is_adaptive_group_ready()) {
+        if (!source_op->is_adaptive_group_active()) {
             auto* group_leader_source_op = source_op->group_leader();
             unready_pipeline_groups[group_leader_source_op].emplace_back(pipeline);
             continue;

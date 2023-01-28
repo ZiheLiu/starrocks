@@ -66,7 +66,7 @@ public:
                                                                 _unready_pipeline_groups);
     }
 
-    SourceOperatorFactory::AdaptiveState adaptive_state() const override { return AdaptiveState::READY; }
+    SourceOperatorFactory::AdaptiveState adaptive_state() const override { return AdaptiveState::ACTIVE; }
 
 private:
     const PipelineGroupMap _unready_pipeline_groups;

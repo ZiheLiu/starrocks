@@ -78,9 +78,9 @@ OperatorPtr CollectStatsSourceOperatorFactory::create(int32_t degree_of_parallel
 
 SourceOperatorFactory::AdaptiveState CollectStatsSourceOperatorFactory::adaptive_state() const {
     if (_ctx->is_downstream_ready()) {
-        return SourceOperatorFactory::AdaptiveState::READY;
+        return SourceOperatorFactory::AdaptiveState::ACTIVE;
     }
-    return SourceOperatorFactory::AdaptiveState::NOT_READY;
+    return SourceOperatorFactory::AdaptiveState::INACTIVE;
 }
 
 size_t CollectStatsSourceOperatorFactory::degree_of_parallelism() const {

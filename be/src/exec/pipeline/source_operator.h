@@ -66,8 +66,8 @@ public:
     ///   and the operators with multiple children, such as HashJoin, NLJoin, Except, and Intersect.
     /// - The group leader is the source operator of the most downstream pipeline in the group,
     ///   including CsSource, Scan, and Exchange.
-    /// - The adaptive_state of group leader is READY or NOT_READY,
-    ///   and that of the other pipelines is INHERIT.
+    /// - The adaptive_state of group leader is ACTIVE or INACTIVE,
+    ///   and that of the other pipelines is NONE.
     ///
     /// Dependent relations between groups.
     /// - As for the operator who depends on other operators, e.g. HashJoinProbe depends on HashJoinBuild,
@@ -84,18 +84,18 @@ public:
     ///               |
     ///          HashJoinProbe                       HashJoinBuild
     ///  pipe#3       |                                    |                  pipe#4
-    ///          BlockingAggSource(INHERIT)          ExchangeSource(READY)
+    ///          BlockingAggSource(NONE)          ExchangeSource(ACTIVE)
     ///
     ///          BlockingAggSink
     ///  pipe#2       |
-    ///          CsSource(NOT_READY)
+    ///          CsSource(INACTIVE)
     ///
     ///          CsSink
     ///  pipe#1     |
-    ///          ScanNode(READY)
-    enum class AdaptiveState { NOT_READY, READY, INHERIT };
-    virtual AdaptiveState adaptive_state() const { return AdaptiveState::INHERIT; }
-    bool is_adaptive_group_ready() const;
+    ///          ScanNode(ACTIVE)
+    enum class AdaptiveState { ACTIVE, INACTIVE, NONE };
+    virtual AdaptiveState adaptive_state() const { return AdaptiveState::NONE; }
+    bool is_adaptive_group_active() const;
 
     void add_group_dependent_pipeline(const Pipeline* dependent_op);
     const std::vector<const Pipeline*>& group_dependent_pipelines() const;

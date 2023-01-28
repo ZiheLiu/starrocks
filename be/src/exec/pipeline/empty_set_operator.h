@@ -45,7 +45,7 @@ public:
         return std::make_shared<EmptySetOperator>(this, _id, _plan_node_id, driver_sequence);
     }
 
-    SourceOperatorFactory::AdaptiveState adaptive_state() const override { return AdaptiveState::READY; }
+    SourceOperatorFactory::AdaptiveState adaptive_state() const override { return AdaptiveState::ACTIVE; }
 };
 
 } // namespace starrocks::pipeline
