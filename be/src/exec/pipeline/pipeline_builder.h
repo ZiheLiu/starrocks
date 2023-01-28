@@ -77,8 +77,6 @@ public:
 
     bool is_stream_pipeline() const { return _is_stream_pipeline; }
 
-    Pipelines get_pipelines() const { return _pipelines; }
-
     const Pipelines& get_pipelines() const { return _pipelines; }
     const Pipeline* last_pipeline() const {
         DCHECK(!_pipelines.empty());
