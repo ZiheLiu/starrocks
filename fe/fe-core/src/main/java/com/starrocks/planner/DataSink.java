@@ -100,7 +100,7 @@ public abstract class DataSink {
         return false;
     }
 
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return false;
     }
 }

@@ -293,7 +293,7 @@ public class EsScanNode extends ScanNode {
     }
 
     @Override
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return true;
     }
 }

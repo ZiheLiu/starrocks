@@ -109,7 +109,7 @@ public class UpdatePlanner {
                 sinkFragment.setHasOlapTableSink();
                 sinkFragment.setForceSetTableSinkDop();
                 sinkFragment.setForceAssignScanRangesPerDriverSeq();
-                sinkFragment.disableAdaptiveDop();
+                sinkFragment.disableRuntimeAdaptiveDop();
             } else {
                 execPlan.getFragments().get(0).setPipelineDop(1);
             }

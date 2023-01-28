@@ -127,7 +127,7 @@ public class DataStreamSink extends DataSink {
     }
 
     @Override
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return true;
     }
 }

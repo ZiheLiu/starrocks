@@ -726,7 +726,7 @@ public class OlapScanNode extends ScanNode {
     }
 
     @Override
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return true;
     }
 

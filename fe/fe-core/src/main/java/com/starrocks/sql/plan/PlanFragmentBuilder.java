@@ -327,10 +327,10 @@ public class PlanFragmentBuilder {
                 FragmentNormalizer normalizer = new FragmentNormalizer(execPlan, fragment);
                 normalizer.normalize();
             }
-        } else if (ConnectContext.get() != null && ConnectContext.get().getSessionVariable().isEnableAdaptiveDop()) {
+        } else if (ConnectContext.get() != null && ConnectContext.get().getSessionVariable().isEnableRuntimeAdaptiveDop()) {
             // TODO(lzh): Adaptive DOP supports query cache.
             for (PlanFragment fragment : fragments) {
-                if (fragment.canUseAdaptiveDop()) {
+                if (fragment.canUseRuntimeAdaptiveDop()) {
                     fragment.enableAdaptiveDop();
                 }
             }

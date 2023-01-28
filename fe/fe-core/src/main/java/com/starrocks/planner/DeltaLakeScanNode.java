@@ -303,7 +303,7 @@ public class DeltaLakeScanNode extends ScanNode {
     }
 
     @Override
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return true;
     }
 }

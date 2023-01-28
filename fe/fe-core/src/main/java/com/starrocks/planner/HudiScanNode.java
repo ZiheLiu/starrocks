@@ -194,7 +194,7 @@ public class HudiScanNode extends ScanNode {
     }
 
     @Override
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return true;
     }
 }

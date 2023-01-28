@@ -54,8 +54,8 @@ public class DecodeNode extends PlanNode {
     }
 
     @Override
-    public boolean canUseAdaptiveDop() {
-        return getChildren().stream().allMatch(PlanNode::canUseAdaptiveDop);
+    public boolean canUseRuntimeAdaptiveDop() {
+        return getChildren().stream().allMatch(PlanNode::canUseRuntimeAdaptiveDop);
     }
 
     @Override

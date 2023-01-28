@@ -207,7 +207,7 @@ public class FileTableScanNode extends ScanNode {
     }
 
     @Override
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return true;
     }
 }

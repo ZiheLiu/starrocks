@@ -154,7 +154,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
     private boolean forceSetTableSinkDop = false;
     private boolean forceAssignScanRangesPerDriverSeq = false;
 
-    private boolean useAdaptiveDop = false;
+    private boolean useRuntimeAdaptiveDop = false;
 
     /**
      * C'tor for fragment with specific partition; the output is by default broadcast.
@@ -193,24 +193,24 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         return getPlanRoot().canUsePipeLine() && getSink().canUsePipeLine();
     }
 
-    public boolean canUseAdaptiveDop() {
-        return getPlanRoot().canUseAdaptiveDop() && getSink().canUseAdaptiveDop();
+    public boolean canUseRuntimeAdaptiveDop() {
+        return getPlanRoot().canUseRuntimeAdaptiveDop() && getSink().canUseRuntimeAdaptiveDop();
     }
 
     public void enableAdaptiveDop() {
-        useAdaptiveDop = true;
+        useRuntimeAdaptiveDop = true;
         // Constrict DOP as the power of two to make the strategy of decrement DOP easy.
         // After decreasing DOP from old_dop to new_dop, chunks from the i-th input driver is passed
         // to the j-th output driver, where j=i%new_dop.
         pipelineDop = Utils.computeMaxLEPower2(pipelineDop);
     }
 
-    public void disableAdaptiveDop() {
-        useAdaptiveDop = false;
+    public void disableRuntimeAdaptiveDop() {
+        useRuntimeAdaptiveDop = false;
     }
 
-    public boolean isUseAdaptiveDop() {
-        return useAdaptiveDop;
+    public boolean isUseRuntimeAdaptiveDop() {
+        return useRuntimeAdaptiveDop;
     }
 
     /**

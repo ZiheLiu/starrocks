@@ -722,7 +722,7 @@ abstract public class PlanNode extends TreeNode<PlanNode> {
         return false;
     }
 
-    public boolean canUseAdaptiveDop() {
+    public boolean canUseRuntimeAdaptiveDop() {
         return false;
     }
 
