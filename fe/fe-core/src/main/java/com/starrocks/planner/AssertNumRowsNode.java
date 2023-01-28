@@ -87,6 +87,11 @@ public class AssertNumRowsNode extends PlanNode {
     }
 
     @Override
+    public boolean canUseAdaptiveDop() {
+        return getChildren().stream().allMatch(PlanNode::canUseAdaptiveDop);
+    }
+
+    @Override
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         TNormalAssertNumRowsNode assertNumRowsNode = new TNormalAssertNumRowsNode();
         assertNumRowsNode.setDesired_num_rows(desiredNumOfRows);

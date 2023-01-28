@@ -77,6 +77,11 @@ public class EmptySetNode extends PlanNode {
     }
 
     @Override
+    public boolean canUseAdaptiveDop() {
+        return getChildren().stream().allMatch(PlanNode::canUseAdaptiveDop);
+    }
+
+    @Override
     protected void toNormalForm(TNormalPlanNode planNode, FragmentNormalizer normalizer) {
         planNode.setNode_type(TPlanNodeType.EXCHANGE_NODE);
     }

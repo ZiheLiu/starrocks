@@ -308,6 +308,11 @@ public class AnalyticEvalNode extends PlanNode {
     }
 
     @Override
+    public boolean canUseAdaptiveDop() {
+        return getChildren().stream().allMatch(PlanNode::canUseAdaptiveDop);
+    }
+
+    @Override
     public boolean extractConjunctsToNormalize(FragmentNormalizer normalizer) {
         List<Expr> conjuncts = normalizer.getConjunctsByPlanNodeId(this);
         normalizer.filterOutPartColRangePredicates(getId(), conjuncts, FragmentNormalizer.getSlotIdSet(partitionExprs));
