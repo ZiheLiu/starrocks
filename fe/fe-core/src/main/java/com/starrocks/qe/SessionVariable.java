@@ -369,7 +369,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private boolean enablePipelineEngine = true;
 
     @VariableMgr.VarAttr(name = ENABLE_RUNTIME_ADAPTIVE_DOP)
-    private boolean enableRuntimeAdaptiveDop = true;
+    private boolean enableRuntimeAdaptiveDop = false;
 
     @VariableMgr.VarAttr(name = ADAPTIVE_DOP_MAX_BLOCK_ROWS_PER_DRIVER_SEQ, flag = VariableMgr.INVISIBLE)
     private long adaptiveDopMaxBlockRowsPerDriverSeq = 4096L * 4;
