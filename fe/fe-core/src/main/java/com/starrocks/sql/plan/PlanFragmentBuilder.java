@@ -328,7 +328,6 @@ public class PlanFragmentBuilder {
                 normalizer.normalize();
             }
         } else if (ConnectContext.get() != null && ConnectContext.get().getSessionVariable().isEnableRuntimeAdaptiveDop()) {
-            // TODO(lzh): Adaptive DOP supports query cache.
             for (PlanFragment fragment : fragments) {
                 if (fragment.canUseRuntimeAdaptiveDop()) {
                     fragment.enableAdaptiveDop();

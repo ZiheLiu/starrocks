@@ -240,6 +240,7 @@ public class ExchangeNode extends PlanNode {
         return getChildren().stream().allMatch(PlanNode::canUsePipeLine);
     }
 
+    @Override
     public boolean canUseRuntimeAdaptiveDop() {
         return true;
     }
