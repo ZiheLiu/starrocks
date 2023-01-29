@@ -209,7 +209,6 @@ OpFactories PipelineBuilderContext::maybe_interpolate_collect_stats(RuntimeState
             next_operator_id(), last_plan_node_id, std::move(collect_stats_ctx));
     inherit_upstream_source_properties(downstream_source_op.get(), pred_source_op);
     downstream_source_op->set_degree_of_parallelism(1);
-    downstream_source_op->set_partition_exprs(pred_source_op->partition_exprs());
 
     for (const auto& pipeline : _dependent_pipelines) {
         downstream_source_op->add_group_dependent_pipeline(pipeline);
@@ -301,6 +300,7 @@ void PipelineBuilderContext::inherit_upstream_source_properties(SourceOperatorFa
     downstream_source->set_degree_of_parallelism(upstream_source->degree_of_parallelism());
     downstream_source->set_could_local_shuffle(upstream_source->could_local_shuffle());
     downstream_source->set_partition_type(upstream_source->partition_type());
+    downstream_source->set_partition_exprs(upstream_source->partition_exprs());
     if (downstream_source->adaptive_state() != SourceOperatorFactory::AdaptiveState::NONE) {
         downstream_source->set_group_leader(downstream_source);
     } else {
