@@ -783,30 +783,45 @@ bool DataStreamRecvr::PipelineSenderQueue::has_output(const int32_t driver_seque
     // 1. in the unplug state, return true if there is a chunk, otherwise return false and exit the unplug state
     if (chunk_queue_state.unpluging) {
         if (chunk_num > 0) {
+            COUNTER_UPDATE(_recvr->_has_output_return_counter1, 1);
             return true;
         }
         chunk_queue_state.unpluging = false;
+        COUNTER_UPDATE(_recvr->_has_output_return_counter2, 1);
         return false;
     }
     // 2. if this queue is not in the unplug state, try to batch as much chunk as possible before returning
     // @TODO need an adaptive strategy to determin this threshold
     if (chunk_num >= kUnplugBufferThreshold) {
         COUNTER_UPDATE(_recvr->_buffer_unplug_counter, 1);
+        COUNTER_UPDATE(_recvr->_has_output_return_counter3, 1);
         chunk_queue_state.unpluging = true;
         return true;
     }
 
+    if (chunk_num <= 0) {
+        COUNTER_UPDATE(_recvr->_has_output_return_counter4, 1);
+        return false;
+    }
+
     bool is_buffer_full = _recvr->_num_buffered_bytes > _recvr->_total_buffer_limit;
     // 3. if buffer is full and this queue has chunks, return true to release the buffer capacity ASAP
-    if (is_buffer_full && chunk_num > 0) {
+    if (is_buffer_full) {
+        COUNTER_UPDATE(_recvr->_has_output_return_counter5, 1);
         return true;
     }
     // 4. if there is no new data, return true if this queue has chunks
     if (_num_remaining_senders == 0) {
-        return chunk_num > 0;
+        COUNTER_UPDATE(_recvr->_has_output_return_counter6, 1);
+        return true;
     }
     // 5. if this queue has blocked closures, return true to release the closure ASAP to trigger the next transmit requests
-    return chunk_queue_state.blocked_closure_num > 0;
+    if (chunk_queue_state.blocked_closure_num > 0) {
+        COUNTER_UPDATE(_recvr->_has_output_return_counter7, 1);
+        return true;
+    }
+    COUNTER_UPDATE(_recvr->_has_output_return_counter8, 1);
+    return false;
 }
 
 bool DataStreamRecvr::PipelineSenderQueue::is_finished() const {

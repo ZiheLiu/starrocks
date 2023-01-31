@@ -182,6 +182,15 @@ DataStreamRecvr::DataStreamRecvr(DataStreamMgr* stream_mgr, RuntimeState* runtim
 
     _buffer_unplug_counter = ADD_COUNTER(_profile, "BufferUnplugCount", TUnit::UNIT);
 
+    _has_output_return_counter1 = ADD_COUNTER(_profile, "HasOutputCounter1", TUnit::UNIT);
+    _has_output_return_counter2 = ADD_COUNTER(_profile, "HasOutputCounter2", TUnit::UNIT);
+    _has_output_return_counter3 = ADD_COUNTER(_profile, "HasOutputCounter3", TUnit::UNIT);
+    _has_output_return_counter4 = ADD_COUNTER(_profile, "HasOutputCounter4", TUnit::UNIT);
+    _has_output_return_counter5 = ADD_COUNTER(_profile, "HasOutputCounter5", TUnit::UNIT);
+    _has_output_return_counter6 = ADD_COUNTER(_profile, "HasOutputCounter6", TUnit::UNIT);
+    _has_output_return_counter7 = ADD_COUNTER(_profile, "HasOutputCounter7", TUnit::UNIT);
+    _has_output_return_counter8 = ADD_COUNTER(_profile, "HasOutputCounter8", TUnit::UNIT);
+
     _pass_through_context.init();
     if (runtime_state->query_options().__isset.transmission_encode_level) {
         _encode_level = runtime_state->query_options().transmission_encode_level;
