@@ -256,6 +256,8 @@ private:
     phmap::flat_hash_map<int, phmap::flat_hash_map<int64_t, ChunkList>> _buffered_chunk_queues;
 
     static constexpr size_t kUnplugBufferThreshold = 16;
+
+    bool _cached_has_output = false;
 };
 
 } // namespace starrocks
