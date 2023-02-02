@@ -176,31 +176,25 @@ bool RoundRobinState::has_output(int32_t driver_seq) const {
         return false;
     }
 
-    const auto& [buffer_idx, accumulator] = _info_per_driver_seq[driver_seq];
-    return buffer_idx < _ctx->_sink_dop || !accumulator.empty();
+    const auto& [buffer_idx, _] = _info_per_driver_seq[driver_seq];
+    return buffer_idx < _ctx->_sink_dop;
 }
 
 StatusOr<ChunkPtr> RoundRobinState::pull_chunk(int32_t driver_seq) {
-    auto& [buffer_idx, accumulator] = _info_per_driver_seq[driver_seq];
-    if (!accumulator.empty()) {
-        return accumulator.pull();
-    }
+    auto& [buffer_idx, _] = _info_per_driver_seq[driver_seq];
 
     while (buffer_idx < _ctx->_sink_dop) {
         auto& buffer_chunk_queue = _ctx->_buffer_chunk_queue(buffer_idx);
         while (!buffer_chunk_queue.empty()) {
-            accumulator.push(std::move(buffer_chunk_queue.front()));
+            auto chunk = buffer_chunk_queue.front();
             buffer_chunk_queue.pop();
-            if (!accumulator.empty()) {
-                return accumulator.pull();
-            }
+            return chunk;
         }
 
         buffer_idx += _ctx->_source_dop;
     }
 
-    accumulator.finalize();
-    return accumulator.pull();
+    return nullptr;
 }
 
 Status RoundRobinState::set_finishing(int32_t driver_seq) {
