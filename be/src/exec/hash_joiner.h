@@ -170,7 +170,6 @@ public:
 
     Columns string_key_columns() { return _string_key_columns; }
     Status reset_probe(RuntimeState* state);
-    const std::vector<HashJoinerPtr>& get_read_only_join_probers() { return _read_only_join_probers; }
 
     size_t num_distinct_keys_approx() const;
 
