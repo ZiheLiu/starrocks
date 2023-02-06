@@ -123,7 +123,9 @@ size_t CollectStatsSourceOperatorFactory::degree_of_parallelism() const {
         for (const auto& dependent_pipeline : dependent_pipelines) {
             output_amplification *= dependent_pipeline->output_amplification();
         }
-        output_amplification = std::min(output_amplification, max_output_amplification);
+        if (max_output_amplification > 0) {
+            output_amplification = std::min(output_amplification, max_output_amplification);
+        }
     }
     if (output_amplification != 1) {
         _adjusted_dop *= output_amplification;
