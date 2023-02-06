@@ -73,6 +73,7 @@ public:
     bool is_source_ready() const;
     size_t sink_dop() const { return _sink_dop; }
     size_t source_dop() const { return _source_dop; }
+    void set_sink_dop(size_t sink_dop) { _sink_dop = sink_dop; }
     void set_source_dop(size_t source_dop) { _source_dop = source_dop; }
 
     const size_t max_output_amplification() const { return _max_output_amplification; }
@@ -94,8 +95,8 @@ private:
     std::atomic<CollectStatsStateRawPtr> _state = nullptr;
     std::unordered_map<CollectStatsStateEnum, CollectStatsStatePtr> _state_payloads;
 
-    const size_t _sink_dop;
-    size_t _source_dop;
+    size_t _sink_dop = 0;
+    size_t _source_dop = 0;
 
     const size_t _max_block_rows_per_driver_seq;
     const size_t _max_output_amplification;

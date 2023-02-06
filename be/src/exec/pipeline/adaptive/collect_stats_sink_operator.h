@@ -47,6 +47,7 @@ public:
     ~CollectStatsSinkOperatorFactory() override = default;
 
     OperatorPtr create(int32_t degree_of_parallelism, int32_t driver_sequence) override {
+        _ctx->set_sink_dop(degree_of_parallelism);
         return std::make_shared<CollectStatsSinkOperator>(this, _id, _plan_node_id, driver_sequence, _ctx.get());
     }
 
