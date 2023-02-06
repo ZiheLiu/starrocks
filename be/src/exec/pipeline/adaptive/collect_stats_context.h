@@ -75,6 +75,8 @@ public:
     size_t source_dop() const { return _source_dop; }
     void set_source_dop(size_t source_dop) { _source_dop = source_dop; }
 
+    const size_t max_output_amplification() const { return _max_output_amplification; }
+
 private:
     using BufferChunkQueue = std::queue<ChunkPtr>;
 
@@ -96,6 +98,7 @@ private:
     size_t _source_dop;
 
     const size_t _max_block_rows_per_driver_seq;
+    const size_t _max_output_amplification;
 
     std::vector<BufferChunkQueue> _buffer_chunk_queue_per_driver_seq;
     std::vector<uint8_t> _is_finishing_per_driver_seq;
