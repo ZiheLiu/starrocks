@@ -422,8 +422,12 @@ Status HashJoinNode::close(RuntimeState* state) {
 pipeline::OpFactories HashJoinNode::decompose_to_pipeline(pipeline::PipelineBuilderContext* context) {
     using namespace pipeline;
 
+    if (_distribution_mode == TJoinDistributionMode::BROADCAST) {
+        context->set_force_disable_adaptive_dop(true);
+    }
     auto rhs_operators = child(1)->decompose_to_pipeline(context);
     if (_distribution_mode == TJoinDistributionMode::BROADCAST) {
+        context->set_force_disable_adaptive_dop(false);
         // Broadcast join need only create one hash table, because all the HashJoinProbeOperators
         // use the same hash table with their own different probe states.
         rhs_operators = context->maybe_interpolate_local_passthrough_exchange(runtime_state(), rhs_operators);

@@ -18,6 +18,7 @@
 #include "exec/pipeline/adaptive/collect_stats_context.h"
 #include "exec/pipeline/adaptive/collect_stats_sink_operator.h"
 #include "exec/pipeline/adaptive/collect_stats_source_operator.h"
+#include "exec/pipeline/exchange/exchange_source_operator.h"
 #include "exec/query_cache/cache_manager.h"
 #include "exec/query_cache/cache_operator.h"
 #include "exec/query_cache/conjugate_operator.h"
@@ -68,6 +69,12 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_passthrough_exchange
     DCHECK(!pred_operators.empty() && pred_operators[0]->is_source());
     auto* source_op = source_operator(pred_operators);
     if (!force && source_op->degree_of_parallelism() == num_receivers) {
+        return pred_operators;
+    }
+
+    if (1 == num_receivers && pred_operators.size() == 1 &&
+        typeid(*source_op) == typeid(ExchangeSourceOperatorFactory)) {
+        source_op->set_degree_of_parallelism(1);
         return pred_operators;
     }
 
