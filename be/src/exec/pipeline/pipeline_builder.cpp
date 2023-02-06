@@ -94,8 +94,10 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_passthrough_exchange
     pred_operators.emplace_back(std::move(local_exchange_sink));
     add_pipeline(pred_operators);
 
-    OpFactories operators_source_with_local_exchange;
-    operators_source_with_local_exchange.emplace_back(std::move(local_exchange_source));
+    OpFactories operators_source_with_local_exchange{std::move(local_exchange_source)};
+    if (source_op->degree_of_parallelism() < num_receivers) {
+        return maybe_interpolate_collect_stats(state, operators_source_with_local_exchange);
+    }
     return operators_source_with_local_exchange;
 }
 
