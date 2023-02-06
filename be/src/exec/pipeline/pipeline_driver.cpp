@@ -282,9 +282,9 @@ StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int w
                             LOG(WARNING) << "push_chunk returns not ok status " << return_status.to_string();
                             return return_status;
                         }
+                        num_chunks_moved += 1;
+                        total_chunks_moved += 1;
                     }
-                    num_chunks_moved += 1;
-                    total_chunks_moved += 1;
                 }
 
                 // Check curr_op finished again
