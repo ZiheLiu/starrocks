@@ -61,4 +61,9 @@ CollectStatsSinkOperatorFactory::CollectStatsSinkOperatorFactory(int32_t id, int
                                                                  CollectStatsContextPtr ctx)
         : OperatorFactory(id, "collect_stats_sink", plan_node_id), _ctx(std::move(ctx)) {}
 
+OperatorPtr CollectStatsSinkOperatorFactory::create(int32_t degree_of_parallelism, int32_t driver_sequence) {
+    _ctx->set_sink_dop(degree_of_parallelism);
+    return std::make_shared<CollectStatsSinkOperator>(this, _id, _plan_node_id, driver_sequence, _ctx.get());
+}
+
 } // namespace starrocks::pipeline
