@@ -57,6 +57,18 @@ RunningQueryToken::~RunningQueryToken() {
     wg->decr_num_queries();
 }
 
+RunningDriverToken::RunningDriverToken() : RunningDriverToken(nullptr) {}
+RunningDriverToken::RunningDriverToken(WorkGroup* const wg) : wg(wg) {
+    if (wg != nullptr) {
+        wg->incr_num_running_drivers();
+    }
+}
+RunningDriverToken::~RunningDriverToken() {
+    if (wg != nullptr) {
+        wg->decr_num_running_drivers();
+    }
+}
+
 WorkGroup::WorkGroup(std::string name, int64_t id, int64_t version, size_t cpu_limit, double memory_limit,
                      size_t concurrency, WorkGroupType type)
         : _name(std::move(name)),
@@ -186,6 +198,15 @@ StatusOr<RunningQueryTokenPtr> WorkGroup::acquire_running_query_token() {
     }
     _num_total_queries++;
     return std::make_unique<RunningQueryToken>(shared_from_this());
+}
+
+RunningQueryTokenPtr WorkGroup::make_running_query_token() {
+    _num_running_queries.fetch_add(1);
+    return std::make_unique<RunningQueryToken>(shared_from_this());
+}
+
+RunningDriverTokenPtr WorkGroup::make_running_driver_token(WorkGroup* wg) {
+    return std::make_unique<RunningDriverToken>(wg);
 }
 
 void WorkGroup::decr_num_queries() {
@@ -541,7 +562,7 @@ size_t WorkGroupManager::normal_workgroup_cpu_hard_limit() const {
 DefaultWorkGroupInitialization::DefaultWorkGroupInitialization() {
     // The default workgroup can use all the resources of CPU and memory,
     // so set cpu_limit to max_executor_threads and memory_limit to 100%.
-    int64_t cpu_limit = ExecEnv::GetInstance()->max_executor_threads();
+    int64_t cpu_limit = ExecEnv::GetInstance()->max_executor_threads() / 2;
     double memory_limit = 1.0;
     auto default_wg = std::make_shared<WorkGroup>("default_wg", WorkGroup::DEFAULT_WG_ID, WorkGroup::DEFAULT_VERSION,
                                                   cpu_limit, memory_limit, 0, WorkGroupType::WG_DEFAULT);

@@ -149,6 +149,11 @@ void GlobalDriverExecutor::_worker_thread() {
             // Check big query
             if (!driver->is_query_never_expired() && status.ok() && driver->workgroup()) {
                 status = driver->workgroup()->check_big_query(*query_ctx);
+                if (!status.ok() && config::resource_group_large_query_downgrade) {
+                    query_ctx->change_workgroup(workgroup::WorkGroupManager::instance()->get_default_workgroup());
+                    status = Status::OK();
+                }
+                driver->maybe_change_workgroup();
             }
 
             if (!status.ok()) {

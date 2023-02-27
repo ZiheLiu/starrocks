@@ -130,14 +130,15 @@ void QueryContext::init_mem_tracker(int64_t bytes_limit, MemTracker* parent) {
     });
 }
 
-Status QueryContext::init_query_once(workgroup::WorkGroup* wg) {
+Status QueryContext::init_workgroup_once(const workgroup::WorkGroupPtr& wg) {
     Status st = Status::OK();
     if (wg != nullptr) {
-        std::call_once(_init_query_once, [this, &st, wg]() {
+        std::call_once(_init_workgroup_once, [this, &st, &wg]() {
             this->init_query_begin_time();
             auto maybe_token = wg->acquire_running_query_token();
             if (maybe_token.ok()) {
                 _wg_running_query_token_ptr = std::move(maybe_token.value());
+                _wg = wg;
             } else {
                 st = maybe_token.status();
             }
@@ -145,6 +146,21 @@ Status QueryContext::init_query_once(workgroup::WorkGroup* wg) {
     }
 
     return st;
+}
+
+void QueryContext::change_workgroup(const workgroup::WorkGroupPtr& wg) {
+    auto* old_wg = _atomic_wg.load();
+    if (old_wg == wg.get()) {
+        return;
+    }
+    if (_atomic_wg.compare_exchange_strong(old_wg, wg.get())) {
+        _wg = wg;
+        _wg_running_query_token_ptr = _wg->make_running_query_token();
+    }
+}
+
+workgroup::WorkGroup* QueryContext::workgroup() {
+    return _wg.get();
 }
 
 void QueryContext::set_query_trace(std::shared_ptr<starrocks::debug::QueryTrace> query_trace) {

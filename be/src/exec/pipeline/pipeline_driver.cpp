@@ -37,11 +37,32 @@ namespace starrocks::pipeline {
     SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(_is_profile_enabled ? op->mem_tracker() \
                                                                : _runtime_state->instance_mem_tracker())
 
-PipelineDriver::~PipelineDriver() noexcept {
-    if (_workgroup != nullptr) {
-        _workgroup->decr_num_running_drivers();
+PipelineDriver::PipelineDriver(const Operators& operators, QueryContext* query_ctx, FragmentContext* fragment_ctx,
+                               Pipeline* pipeline, int32_t driver_id)
+        : _operators(operators),
+          _query_ctx(query_ctx),
+          _fragment_ctx(fragment_ctx),
+          _pipeline(pipeline),
+          _source_node_id(operators[0]->get_plan_node_id()),
+          _driver_id(driver_id),
+          _wg_running_token(nullptr) {
+    _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("PipelineDriver (id=$0)", _driver_id));
+    for (auto& op : _operators) {
+        _operator_stages[op->get_id()] = OperatorStage::INIT;
     }
+    _driver_name = fmt::sprintf("driver_%d_%d", _source_node_id, _driver_id);
 }
+
+PipelineDriver::PipelineDriver()
+        : _operators(),
+          _query_ctx(nullptr),
+          _fragment_ctx(nullptr),
+          _pipeline(nullptr),
+          _source_node_id(0),
+          _driver_id(0),
+          _wg_running_token(nullptr) {}
+
+PipelineDriver::~PipelineDriver() noexcept = default;
 
 Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _runtime_state = runtime_state;
@@ -487,20 +508,33 @@ std::string PipelineDriver::to_readable_string() const {
     return ss.str();
 }
 
+workgroup::WorkGroup* PipelineDriver::latest_workgroup() {
+    if (_query_ctx == nullptr) {
+        return nullptr;
+    }
+    return _query_ctx->workgroup();
+}
+
 workgroup::WorkGroup* PipelineDriver::workgroup() {
-    return _workgroup.get();
+    return _workgroup;
 }
 
 const workgroup::WorkGroup* PipelineDriver::workgroup() const {
-    return _workgroup.get();
+    return _workgroup;
 }
 
-void PipelineDriver::set_workgroup(workgroup::WorkGroupPtr wg) {
-    _workgroup = std::move(wg);
-    if (_workgroup == nullptr) {
-        return;
+void PipelineDriver::set_workgroup(workgroup::WorkGroup* wg) {
+    _workgroup = wg;
+    _wg_running_token = workgroup::WorkGroup::make_running_driver_token(_workgroup);
+}
+
+bool PipelineDriver::maybe_change_workgroup() {
+    auto* latest_wg = latest_workgroup();
+    bool changed = latest_wg != _workgroup;
+    if (changed) {
+        set_workgroup(latest_wg);
     }
-    _workgroup->incr_num_running_drivers();
+    return changed;
 }
 
 bool PipelineDriver::_check_fragment_is_canceled(RuntimeState* runtime_state) {

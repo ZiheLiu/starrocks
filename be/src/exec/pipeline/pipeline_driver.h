@@ -170,20 +170,7 @@ class PipelineDriver {
 
 public:
     PipelineDriver(const Operators& operators, QueryContext* query_ctx, FragmentContext* fragment_ctx,
-                   Pipeline* pipeline, int32_t driver_id)
-            : _operators(operators),
-
-              _query_ctx(query_ctx),
-              _fragment_ctx(fragment_ctx),
-              _pipeline(pipeline),
-              _source_node_id(operators[0]->get_plan_node_id()),
-              _driver_id(driver_id) {
-        _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("PipelineDriver (id=$0)", _driver_id));
-        for (auto& op : _operators) {
-            _operator_stages[op->get_id()] = OperatorStage::INIT;
-        }
-        _driver_name = fmt::sprintf("driver_%d_%d", _source_node_id, _driver_id);
-    }
+                   Pipeline* pipeline, int32_t driver_id);
 
     PipelineDriver(const PipelineDriver& driver)
             : PipelineDriver(driver._operators, driver._query_ctx, driver._fragment_ctx, driver._pipeline,
@@ -386,7 +373,9 @@ public:
 
     workgroup::WorkGroup* workgroup();
     const workgroup::WorkGroup* workgroup() const;
-    void set_workgroup(workgroup::WorkGroupPtr wg);
+    workgroup::WorkGroup* latest_workgroup();
+    void set_workgroup(workgroup::WorkGroup* wg);
+    bool maybe_change_workgroup();
 
     void set_in_queue(DriverQueue* in_queue) { _in_queue = in_queue; }
     size_t get_driver_queue_level() const { return _driver_queue_level; }
@@ -410,13 +399,7 @@ public:
     }
 
 protected:
-    PipelineDriver()
-            : _operators(),
-              _query_ctx(nullptr),
-              _fragment_ctx(nullptr),
-              _pipeline(nullptr),
-              _source_node_id(0),
-              _driver_id(0) {}
+    PipelineDriver();
 
     // Yield PipelineDriver when maximum time in nano-seconds has spent in current execution round.
     static constexpr int64_t YIELD_MAX_TIME_SPENT = 100'000'000L;
@@ -467,7 +450,9 @@ protected:
 
     phmap::flat_hash_map<int32_t, OperatorStage> _operator_stages;
 
-    workgroup::WorkGroupPtr _workgroup = nullptr;
+    workgroup::WorkGroup* _workgroup = nullptr;
+    workgroup::RunningDriverTokenPtr _wg_running_token;
+
     DriverQueue* _in_queue = nullptr;
     // The index of QuerySharedDriverQueue._queues which this driver belongs to.
     size_t _driver_queue_level = 0;

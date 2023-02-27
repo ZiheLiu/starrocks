@@ -184,7 +184,7 @@ Status FragmentExecutor::_prepare_workgroup(const UnifiedExecPlanFragmentParams&
         wg = WorkGroupManager::instance()->get_default_workgroup();
     }
     DCHECK(wg != nullptr);
-    RETURN_IF_ERROR(_query_ctx->init_query_once(wg.get()));
+    RETURN_IF_ERROR(_query_ctx->init_workgroup_once(wg));
     _fragment_ctx->set_workgroup(wg);
     _wg = wg;
 

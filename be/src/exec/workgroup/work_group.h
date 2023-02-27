@@ -108,6 +108,17 @@ private:
 };
 using RunningQueryTokenPtr = std::unique_ptr<RunningQueryToken>;
 
+struct RunningDriverToken {
+public:
+    RunningDriverToken();
+    RunningDriverToken(WorkGroup* const wg);
+    ~RunningDriverToken();
+
+private:
+    WorkGroup* const wg;
+};
+using RunningDriverTokenPtr = std::unique_ptr<RunningDriverToken>;
+
 // WorkGroup is the unit of resource isolation, it has {CPU, Memory, Concurrency} quotas which limit the
 // resource usage of the queries belonging to the WorkGroup. Each user has be bound to a WorkGroup, when
 // the user issues a query, then the corresponding WorkGroup is chosen to manage the query.
@@ -146,10 +157,6 @@ public:
     WorkGroupScanSchedEntity* connector_scan_sched_entity() { return &_connector_scan_sched_entity; }
     const WorkGroupScanSchedEntity* connector_scan_sched_entity() const { return &_connector_scan_sched_entity; }
 
-    void incr_num_running_drivers();
-    void decr_num_running_drivers();
-    int num_running_drivers() const { return _num_running_drivers; }
-
     // mark the workgroup is deleted, but at the present, it can not be removed from WorkGroupManager, because
     // 1. there exists pending drivers
     // 2. there is a race condition that a driver is attached to the workgroup after it is marked del.
@@ -181,6 +188,7 @@ public:
 
     Status check_big_query(const QueryContext& query_context);
     StatusOr<RunningQueryTokenPtr> acquire_running_query_token();
+    RunningQueryTokenPtr make_running_query_token();
     void decr_num_queries();
     int64_t num_running_queries() const { return _num_running_queries; }
     int64_t num_total_queries() const { return _num_total_queries; }
@@ -196,6 +204,15 @@ public:
 
     static constexpr int64 DEFAULT_WG_ID = 0;
     static constexpr int64 DEFAULT_VERSION = 0;
+
+    static RunningDriverTokenPtr make_running_driver_token(WorkGroup* wg);
+
+private:
+    friend struct RunningQueryToken;
+    friend struct RunningDriverToken;
+
+    void incr_num_running_drivers();
+    void decr_num_running_drivers();
 
 private:
     static constexpr double ABSENT_MEMORY_LIMIT = -1;

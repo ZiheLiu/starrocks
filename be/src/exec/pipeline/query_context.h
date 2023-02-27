@@ -114,7 +114,9 @@ public:
     void init_mem_tracker(int64_t bytes_limit, MemTracker* parent);
     std::shared_ptr<MemTracker> mem_tracker() { return _mem_tracker; }
 
-    Status init_query_once(workgroup::WorkGroup* wg);
+    Status init_workgroup_once(const workgroup::WorkGroupPtr& wg);
+    void change_workgroup(const workgroup::WorkGroupPtr& wg);
+    workgroup::WorkGroup* workgroup();
 
     // Some statistic about the query, including cpu, scan_rows, scan_bytes
     int64_t mem_cost_bytes() const { return _mem_tracker->peak_consumption(); }
@@ -186,7 +188,7 @@ private:
     std::once_flag _query_trace_init_flag;
     std::shared_ptr<starrocks::debug::QueryTrace> _query_trace;
 
-    std::once_flag _init_query_once;
+    std::once_flag _init_workgroup_once;
     int64_t _query_begin_time = 0;
     std::atomic<int64_t> _total_cpu_cost_ns = 0;
     std::atomic<int64_t> _total_scan_rows_num = 0;
@@ -199,6 +201,8 @@ private:
 
     int64_t _scan_limit = 0;
     workgroup::RunningQueryTokenPtr _wg_running_query_token_ptr;
+    workgroup::WorkGroupPtr _wg = nullptr;
+    std::atomic<workgroup::WorkGroup*> _atomic_wg = nullptr;
 
     // STREAM MV
     std::shared_ptr<StreamEpochManager> _stream_epoch_manager;

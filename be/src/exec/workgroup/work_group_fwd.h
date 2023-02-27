@@ -37,5 +37,7 @@ class ScanExecutor;
 
 struct RunningQueryToken;
 using RunningQueryTokenPtr = std::unique_ptr<RunningQueryToken>;
+struct RunningDriverToken;
+using RunningDriverTokenPtr = std::unique_ptr<RunningDriverToken>;
 
 } // namespace starrocks::workgroup

@@ -70,7 +70,7 @@ void Pipeline::instantiate_drivers(RuntimeState* state) {
                                                       fragment_ctx->next_driver_id());
         }
         setup_drivers_profile(driver);
-        driver->set_workgroup(workgroup);
+        driver->maybe_change_workgroup();
         _drivers.emplace_back(std::move(driver));
     }
 

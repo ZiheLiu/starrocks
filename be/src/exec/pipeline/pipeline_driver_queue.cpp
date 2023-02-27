@@ -316,6 +316,10 @@ size_t WorkGroupDriverQueue::size() const {
 }
 
 bool WorkGroupDriverQueue::should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const {
+    if (driver->latest_workgroup() != driver->workgroup()) {
+        return true;
+    }
+
     if (_throttled(driver->workgroup()->driver_sched_entity(), unaccounted_runtime_ns)) {
         return true;
     }
