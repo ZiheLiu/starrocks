@@ -691,6 +691,9 @@ CONF_Int64(pipeline_sink_brpc_dop, "64");
 CONF_Int64(pipeline_max_num_drivers_per_exec_thread, "10240");
 CONF_mBool(pipeline_print_profile, "false");
 
+CONF_Int64(pipeline_sched_level_time_slice_ns, "100000000");
+CONF_Double(pipeline_sched_level_ratio, "1.5");
+
 CONF_mBool(resource_group_large_query_downgrade, "false");
 
 /// For parallel scan on the single tablet.
