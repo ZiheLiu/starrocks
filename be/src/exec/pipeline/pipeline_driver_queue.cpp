@@ -46,6 +46,13 @@ void QuerySharedDriverQueue::close() {
 
 void QuerySharedDriverQueue::put_back(const DriverRawPtr driver) {
     int level = _compute_driver_level(driver);
+    if (level != driver->get_driver_queue_level()) {
+        VLOG_ROW << "[Sched] driver level is changed "
+                 << "[old=" << driver->get_driver_queue_level() << "] "
+                 << "[new=" << level << "] "
+                 << "[time=" << driver->driver_acct().get_accumulated_time_spent() << "] "
+                 << "[driver=" << driver->to_readable_string() << "] ";
+    }
     driver->set_driver_queue_level(level);
     {
         std::lock_guard<std::mutex> lock(_global_mutex);
@@ -61,6 +68,13 @@ void QuerySharedDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) 
     std::vector<int> levels(drivers.size());
     for (int i = 0; i < drivers.size(); i++) {
         levels[i] = _compute_driver_level(drivers[i]);
+        if (levels[i] != drivers[i]->get_driver_queue_level()) {
+            VLOG_ROW << "[Sched] driver level is changed "
+                     << "[old=" << drivers[i]->get_driver_queue_level() << "] "
+                     << "[new=" << levels[i] << "] "
+                     << "[time=" << drivers[i]->driver_acct().get_accumulated_time_spent() << "] "
+                     << "[driver=" << drivers[i]->to_readable_string() << "] ";
+        }
         drivers[i]->set_driver_queue_level(levels[i]);
     }
     std::lock_guard<std::mutex> lock(_global_mutex);
