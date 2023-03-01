@@ -321,6 +321,21 @@ void ScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_sour
     }
 }
 
+int compute_priority(int64_t cost_ns) {
+    static constexpr int kLevels = 8;
+    static constexpr int64_t kLevelTimeSlice = 100'000'000L;
+    // 0.1s, 0.2s, 0.6s, 1.0s, 1.5s, 2.1s, 2.8s, and 3.6s,
+    int64_t level_time_slice = 0;
+    int priority = kLevels - 1;
+    for (int i = 0; i < kLevels; ++i, --priority) {
+        level_time_slice += kLevelTimeSlice * (i + 1);
+        if (cost_ns < level_time_slice) {
+            return priority;
+        }
+    }
+    return 0;
+}
+
 Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_index) {
     ChunkBufferTokenPtr buffer_token;
     if (buffer_token = pin_chunk(1); buffer_token == nullptr) {
@@ -339,7 +354,17 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
     workgroup::ScanTask task;
     task.workgroup = _workgroup.get();
     // TODO: consider more factors, such as scan bytes and i/o time.
-    task.priority = OlapScanNode::compute_priority(_submit_task_counter->value());
+    if (config::pipeline_scan_sched_use_scan_time) {
+        task.priority = OlapScanNode::compute_priority(_submit_task_counter->value());
+    } else {
+        int64_t cost_ns = 0;
+        for (const auto& c : _chunk_sources) {
+            if (c != nullptr) {
+                cost_ns += c->io_task_exec_timer()->value();
+            }
+        }
+        task.priority = compute_priority(cost_ns);
+    }
     const auto io_task_start_nano = MonotonicNanos();
     task.work_function = [wp = _query_ctx, this, state, chunk_source_index, query_trace_ctx, driver_id,
                           io_task_start_nano]() {
