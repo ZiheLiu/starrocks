@@ -694,6 +694,7 @@ CONF_mBool(pipeline_print_profile, "false");
 CONF_Int64(pipeline_sched_level_time_slice_ns, "100000000");
 CONF_Double(pipeline_sched_level_ratio, "1.5");
 CONF_mInt64(pipeline_scan_sched_use_scan_time, "1");
+CONF_mInt64(pipeline_scan_queue_mode, "1");
 
 /// For parallel scan on the single tablet.
 // These three configs are used to calculate the minimum number of rows picked up from a segment at one time.

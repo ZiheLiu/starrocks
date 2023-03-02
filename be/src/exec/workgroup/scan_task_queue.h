@@ -33,6 +33,7 @@ struct ScanTaskGroup {
 
     std::unique_ptr<ScanTaskQueue> queue;
     int64_t runtime_ns = 0;
+    int sub_queue_level = 0;
 };
 
 struct ScanTask {
@@ -101,6 +102,47 @@ private:
     bool _is_closed = false;
 
     std::queue<ScanTask> _queue;
+};
+
+class MultiLevelFeedScanTaskQueue final : public ScanTaskQueue {
+public:
+    MultiLevelFeedScanTaskQueue();
+    ~MultiLevelFeedScanTaskQueue() override = default;
+
+    void close() override;
+
+    StatusOr<ScanTask> take() override;
+    bool try_offer(ScanTask task) override;
+
+    size_t size() const override { return _num_tasks; }
+
+    void update_statistics(ScanTask& task, int64_t runtime_ns) override;
+    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override { return false; }
+
+private:
+    int _compute_queue_level(const ScanTask& task) const;
+
+    struct SubQueue {
+        void incr_cost_ns(int64_t delta) { cost_ns.fetch_add(delta); }
+        double normalized_cost() const { return cost_ns.load() / factor_for_normal; }
+
+        std::queue<ScanTask> queue;
+
+        int64_t level_time_slice = 0;
+        double factor_for_normal = 0;
+        std::atomic<int64_t> cost_ns = 0;
+    };
+
+    static constexpr int kNumQueues = 8;
+    const double RATIO_OF_ADJACENT_QUEUE = config::pipeline_sched_level_ratio;
+    const int64_t LEVEL_TIME_SLICE_BASE_NS = config::pipeline_sched_level_time_slice_ns;
+
+    mutable std::mutex _global_mutex;
+    std::condition_variable _cv;
+    bool _is_closed = false;
+
+    SubQueue _queues[kNumQueues];
+    std::atomic<size_t> _num_tasks = 0;
 };
 
 class PriorityScanTaskQueue final : public ScanTaskQueue {
@@ -232,5 +274,7 @@ private:
 
     std::atomic<size_t> _num_tasks = 0;
 };
+
+static std::unique_ptr<ScanTaskQueue> create_scan_task_queue();
 
 } // namespace starrocks::workgroup

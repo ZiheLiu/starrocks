@@ -144,8 +144,8 @@ void WorkGroup::init() {
     _mem_tracker = std::make_shared<starrocks::MemTracker>(_memory_limit_bytes, _name,
                                                            ExecEnv::GetInstance()->query_pool_mem_tracker());
     _driver_sched_entity.set_queue(std::make_unique<pipeline::QuerySharedDriverQueue>());
-    _scan_sched_entity.set_queue(std::make_unique<CFSScanTaskQueue>());
-    _connector_scan_sched_entity.set_queue(std::make_unique<CFSScanTaskQueue>());
+    _scan_sched_entity.set_queue(workgroup::create_scan_task_queue());
+    _connector_scan_sched_entity.set_queue(workgroup::create_scan_task_queue());
 }
 
 std::string WorkGroup::to_string() const {
