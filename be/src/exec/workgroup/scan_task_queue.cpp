@@ -217,6 +217,10 @@ StatusOr<ScanTask> CFSScanTaskQueue::take() {
 
     _num_tasks--;
 
+    VLOG_ROW << "[ScanTaskQueue] take "
+             << "[group=" << group << "] "
+             << "[group_ns=" << group->runtime_ns << "] ";
+
     return group->queue->take();
 }
 
@@ -371,6 +375,7 @@ void WorkGroupScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_n
         _wg_entities.emplace(wg_entity);
         _update_min_wg();
     }
+    wg_entity->queue()->update_statistics(task, runtime_ns);
 }
 
 bool WorkGroupScanTaskQueue::should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const {
