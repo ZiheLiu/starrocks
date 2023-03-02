@@ -272,7 +272,6 @@ void WorkGroupScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_n
 }
 
 bool WorkGroupScanTaskQueue::should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const {
-    const auto* wg = task.workgroup;
     if (_throttled(_sched_entity(wg), unaccounted_runtime_ns)) {
         return true;
     }
