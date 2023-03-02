@@ -275,6 +275,6 @@ private:
     std::atomic<size_t> _num_tasks = 0;
 };
 
-static std::unique_ptr<ScanTaskQueue> create_scan_task_queue();
+inline std::unique_ptr<ScanTaskQueue> create_scan_task_queue();
 
 } // namespace starrocks::workgroup
