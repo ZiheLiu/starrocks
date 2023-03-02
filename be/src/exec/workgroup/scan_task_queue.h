@@ -275,7 +275,7 @@ private:
     std::atomic<size_t> _num_tasks = 0;
 };
 
-std::unique_ptr<ScanTaskQueue> create_scan_task_queue() {
+inline std::unique_ptr<ScanTaskQueue> create_scan_task_queue() {
     switch (config::pipeline_scan_queue_mode) {
     case 0:
         return std::make_unique<PriorityScanTaskQueue>(config::pipeline_scan_thread_pool_queue_size);
