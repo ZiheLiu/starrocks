@@ -159,11 +159,7 @@ ScanTaskGroup* CFSScanTaskQueue::_take_next_group() {
 
 void CFSScanTaskQueue::_enqueue_group(ScanTaskGroup* group) {
     if (auto* min_group = _take_next_group(); min_group != nullptr) {
-        if (group->runtime_ns == 0) {
-            group->runtime_ns = min_group->runtime_ns;
-        } else {
-            group->runtime_ns = std::max(group->runtime_ns, min_group->runtime_ns - 100'000'000L);
-        }
+        group->runtime_ns = std::max(group->runtime_ns, min_group->runtime_ns - 100'000'000L);
     }
 
     _groups.emplace(group);
