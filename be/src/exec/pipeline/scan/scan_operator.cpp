@@ -333,9 +333,18 @@ int compute_priority1(int64_t cost_ns) {
     for (int i = 0; i < kLevels; ++i, --priority) {
         level_time_slice += kLevelTimeSlice * (i + 1);
         if (cost_ns < level_time_slice) {
+            VLOG_ROW << "[compute_priority1] "
+                     << "[cost_ns=" << cost_ns << "] "
+                     << "[kLevelTimeSlice=" << kLevelTimeSlice << "] "
+                     << "[level_time_slice=" << level_time_slice << "] "
+                     << "[priority=" << priority << "] ";
             return priority;
         }
     }
+    VLOG_ROW << "[compute_priority1] "
+             << "[cost_ns=" << cost_ns << "] "
+             << "[kLevelTimeSlice=" << kLevelTimeSlice << "] "
+             << "[priority=" << 0 << "] ";
     return 0;
 }
 
