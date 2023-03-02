@@ -150,6 +150,7 @@ bool MultiLevelFeedScanTaskQueue::try_offer(ScanTask task) {
 
 void MultiLevelFeedScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_ns) {
     std::lock_guard<std::mutex> lock(_global_mutex);
+    task.task_group->runtime_ns += runtime_ns;
     _queues[task.task_group->sub_queue_level].incr_cost_ns(runtime_ns);
 }
 
