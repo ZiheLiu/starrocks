@@ -275,6 +275,17 @@ private:
     std::atomic<size_t> _num_tasks = 0;
 };
 
-inline std::unique_ptr<ScanTaskQueue> create_scan_task_queue();
+std::unique_ptr<ScanTaskQueue> create_scan_task_queue() {
+    switch (config::pipeline_scan_queue_mode) {
+    case 0:
+        return std::make_unique<PriorityScanTaskQueue>(config::pipeline_scan_thread_pool_queue_size);
+    case 1:
+        return std::make_unique<CFSScanTaskQueue>();
+    case 2:
+        return std::make_unique<MultiLevelFeedScanTaskQueue>();
+    default:
+        return std::make_unique<PriorityScanTaskQueue>(config::pipeline_scan_thread_pool_queue_size);
+    }
+}
 
 } // namespace starrocks::workgroup
