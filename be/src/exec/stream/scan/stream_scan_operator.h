@@ -77,7 +77,7 @@ public:
 
     void _close_chunk_source_unlocked(RuntimeState* state, int index) override;
     void _finish_chunk_source_task(RuntimeState* state, int chunk_source_index, int64_t cpu_time_ns, int64_t scan_rows,
-                                   int64_t scan_bytes) override;
+                                   int64_t scan_bytes, int64_t io_task_exec_time_ns) override;
 
     bool is_epoch_finished() const override;
 

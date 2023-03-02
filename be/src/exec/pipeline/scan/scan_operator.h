@@ -101,7 +101,7 @@ protected:
     virtual void _close_chunk_source_unlocked(RuntimeState* state, int index);
     void _close_chunk_source(RuntimeState* state, int index);
     virtual void _finish_chunk_source_task(RuntimeState* state, int chunk_source_index, int64_t cpu_time_ns,
-                                           int64_t scan_rows, int64_t scan_bytes);
+                                           int64_t scan_rows, int64_t scan_bytes, int64_t io_task_exec_time_ns);
     void _detach_chunk_sources();
 
     void _merge_chunk_source_profiles(RuntimeState* state);
@@ -143,6 +143,7 @@ protected:
 
     std::atomic_int64_t _last_scan_rows_num = 0;
     std::atomic_int64_t _last_scan_bytes = 0;
+    std::atomic_int64_t _io_task_exec_time_ns = 0;
 
     // The number of morsels picked up by this scan operator.
     // A tablet may be divided into multiple morsels.
@@ -170,6 +171,7 @@ private:
     RuntimeProfile::Counter* _default_buffer_capacity_counter = nullptr;
     RuntimeProfile::Counter* _buffer_capacity_counter = nullptr;
     RuntimeProfile::HighWaterMarkCounter* _peak_buffer_size_counter = nullptr;
+    RuntimeProfile::HighWaterMarkCounter* _peak_scan_task_priority_counter = nullptr;
     // The total number of the original tablets in this fragment instance.
     RuntimeProfile::Counter* _tablets_counter = nullptr;
 };

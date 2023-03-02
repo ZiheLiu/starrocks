@@ -304,11 +304,13 @@ StatusOr<ChunkPtr> StreamScanOperator::pull_chunk(RuntimeState* state) {
 // there is lots of repetition with the method of _finish_chunk_source_task in scanOperator,
 // maybe can abstract a method contains the same code later
 void StreamScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_source_index, int64_t cpu_time_ns,
-                                                   int64_t scan_rows, int64_t scan_bytes) {
+                                                   int64_t scan_rows, int64_t scan_bytes,
+                                                   int64_t io_task_exec_time_ns) {
     _last_growth_cpu_time_ns += cpu_time_ns;
     _last_scan_rows_num += scan_rows;
     _last_scan_bytes += scan_bytes;
     _num_running_io_tasks--;
+    _io_task_exec_time_ns += io_task_exec_time_ns;
 
     DCHECK(_chunk_sources[chunk_source_index] != nullptr);
     {

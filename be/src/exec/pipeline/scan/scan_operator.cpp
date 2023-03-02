@@ -68,6 +68,8 @@ Status ScanOperator::prepare(RuntimeState* state) {
             "PeakChunkBufferSize", TUnit::UNIT,
             RuntimeProfile::Counter::create_strategy(TUnit::UNIT, TCounterMergeType::SKIP_ALL),
             RuntimeProfile::ROOT_COUNTER);
+    _peak_scan_task_priority_counter = _unique_metrics->AddHighWaterMarkCounter(
+            "PeakScanTaskPriority", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TUnit::UNIT));
     _morsels_counter = ADD_COUNTER(_unique_metrics, "MorselsCount", TUnit::UNIT);
     _buffer_unplug_counter = ADD_COUNTER(_unique_metrics, "BufferUnplugCount", TUnit::UNIT);
     _submit_task_counter = ADD_COUNTER(_unique_metrics, "SubmitTaskCount", TUnit::UNIT);
@@ -301,11 +303,12 @@ void ScanOperator::_close_chunk_source(RuntimeState* state, int chunk_source_ind
 }
 
 void ScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_source_index, int64_t cpu_time_ns,
-                                             int64_t scan_rows, int64_t scan_bytes) {
+                                             int64_t scan_rows, int64_t scan_bytes, int64_t io_task_exec_time_ns) {
     _last_growth_cpu_time_ns += cpu_time_ns;
     _last_scan_rows_num += scan_rows;
     _last_scan_bytes += scan_bytes;
     _num_running_io_tasks--;
+    _io_task_exec_time_ns += io_task_exec_time_ns;
 
     DCHECK(_chunk_sources[chunk_source_index] != nullptr);
     {
@@ -321,7 +324,7 @@ void ScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_sour
     }
 }
 
-int compute_priority(int64_t cost_ns) {
+int compute_priority1(int64_t cost_ns) {
     static constexpr int kLevels = 8;
     static constexpr int64_t kLevelTimeSlice = 100'000'000L;
     // 0.1s, 0.2s, 0.6s, 1.0s, 1.5s, 2.1s, 2.8s, and 3.6s,
@@ -334,6 +337,51 @@ int compute_priority(int64_t cost_ns) {
         }
     }
     return 0;
+}
+
+int compute_priority2(int64_t cost_ns) {
+    static constexpr int kLevels = 8;
+    static constexpr int64_t kLevelTimeSlice = 100'000'000L;
+    // 0.1s, 0.2s, 0.6s, 1.0s, 1.5s, 2.1s, 2.8s, and 3.6s,
+    int64_t level_time_slice = 0;
+    int priority = 0;
+    for (int i = 0; i < kLevels; ++i, ++priority) {
+        level_time_slice += kLevelTimeSlice * (i + 1);
+        if (cost_ns < level_time_slice) {
+            return priority;
+        }
+    }
+    return priority;
+}
+
+int compute_priority3(int64_t cost_ns) {
+    static constexpr int kLevels = 8;
+    static constexpr int64_t kLevelTimeSlice = 100'000'000L;
+    // 0.1s, 0.2s, 0.6s, 1.0s, 1.5s, 2.1s, 2.8s, and 3.6s,
+    int64_t level_time_slice = 0;
+    int priority = kLevels - 1;
+    for (int i = 0; i < kLevels; ++i, --priority) {
+        level_time_slice += kLevelTimeSlice;
+        if (cost_ns < level_time_slice) {
+            return priority;
+        }
+    }
+    return 0;
+}
+
+int compute_priority4(int64_t cost_ns) {
+    static constexpr int kLevels = 8;
+    static constexpr int64_t kLevelTimeSlice = 100'000'000L;
+    // 0.1s, 0.2s, 0.6s, 1.0s, 1.5s, 2.1s, 2.8s, and 3.6s,
+    int64_t level_time_slice = 0;
+    int priority = 0;
+    for (int i = 0; i < kLevels; ++i, ++priority) {
+        level_time_slice += kLevelTimeSlice;
+        if (cost_ns < level_time_slice) {
+            return priority;
+        }
+    }
+    return priority;
 }
 
 Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_index) {
@@ -354,17 +402,27 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
     workgroup::ScanTask task;
     task.workgroup = _workgroup.get();
     // TODO: consider more factors, such as scan bytes and i/o time.
-    if (config::pipeline_scan_sched_use_scan_time) {
+    switch (config::pipeline_scan_sched_use_scan_time) {
+    case 0:
         task.priority = OlapScanNode::compute_priority(_submit_task_counter->value());
-    } else {
-        int64_t cost_ns = 0;
-        for (const auto& c : _chunk_sources) {
-            if (c != nullptr) {
-                cost_ns += c->io_task_exec_timer()->value();
-            }
-        }
-        task.priority = compute_priority(cost_ns);
+        break;
+    case 1:
+        task.priority = compute_priority1(_io_task_exec_time_ns);
+        break;
+    case 2:
+        task.priority = compute_priority2(_io_task_exec_time_ns);
+        break;
+    case 3:
+        task.priority = compute_priority3(_io_task_exec_time_ns);
+        break;
+    case 4:
+        task.priority = compute_priority4(_io_task_exec_time_ns);
+        break;
+    default:
+        task.priority = OlapScanNode::compute_priority(_submit_task_counter->value());
+        break;
     }
+    _peak_scan_task_priority_counter->set(-task.priority);
     const auto io_task_start_nano = MonotonicNanos();
     task.work_function = [wp = _query_ctx, this, state, chunk_source_index, query_trace_ctx, driver_id,
                           io_task_start_nano]() {
@@ -385,20 +443,26 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
                             chunk_source->io_task_wait_timer()->value() + chunk_source->io_task_exec_timer()->value());
             });
             COUNTER_UPDATE(chunk_source->io_task_wait_timer(), MonotonicNanos() - io_task_start_nano);
-            SCOPED_TIMER(chunk_source->io_task_exec_timer());
 
             int64_t prev_cpu_time = chunk_source->get_cpu_time_spent();
             int64_t prev_scan_rows = chunk_source->get_scan_rows();
             int64_t prev_scan_bytes = chunk_source->get_scan_bytes();
-            auto status = chunk_source->buffer_next_batch_chunks_blocking(state, kIOTaskBatchSize, _workgroup.get());
-            if (!status.ok() && !status.is_end_of_file()) {
-                _set_scan_status(status);
+            int64_t prev_io_task_exec_time = chunk_source->io_task_exec_timer()->value();
+
+            {
+                SCOPED_TIMER(chunk_source->io_task_exec_timer());
+                auto status =
+                        chunk_source->buffer_next_batch_chunks_blocking(state, kIOTaskBatchSize, _workgroup.get());
+                if (!status.ok() && !status.is_end_of_file()) {
+                    _set_scan_status(status);
+                }
             }
 
             int64_t delta_cpu_time = chunk_source->get_cpu_time_spent() - prev_cpu_time;
             _finish_chunk_source_task(state, chunk_source_index, delta_cpu_time,
                                       chunk_source->get_scan_rows() - prev_scan_rows,
-                                      chunk_source->get_scan_bytes() - prev_scan_bytes);
+                                      chunk_source->get_scan_bytes() - prev_scan_bytes,
+                                      chunk_source->io_task_exec_timer()->value() - prev_io_task_exec_time);
 
             QUERY_TRACE_ASYNC_FINISH("io_task", category, query_trace_ctx);
             // make clang happy
