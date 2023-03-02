@@ -152,6 +152,10 @@ void MultiLevelFeedScanTaskQueue::update_statistics(ScanTask& task, int64_t runt
     std::lock_guard<std::mutex> lock(_global_mutex);
     task.task_group->runtime_ns += runtime_ns;
     _queues[task.task_group->sub_queue_level].incr_cost_ns(runtime_ns);
+
+    VLOG_ROW << "[ScanTaskQueue] update_statistics "
+             << "[group=" << task.task_group << "] "
+             << "[group_ns=" << task.task_group->runtime_ns << "] ";
 }
 
 int MultiLevelFeedScanTaskQueue::_compute_queue_level(const ScanTask& task) const {
@@ -243,6 +247,12 @@ void CFSScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_ns) {
     if (is_in_queue) {
         _groups.emplace(group);
     }
+
+    auto* min_group = _take_next_group();
+    VLOG_ROW << "[ScanTaskQueue] update_statistics "
+             << "[group=" << group << "] "
+             << "[group_ns=" << group->runtime_ns << "] "
+             << "[min_group_ns=" << (min_group == nullptr ? -1 : min_group->runtime_ns) << "] ";
 }
 
 ScanTaskGroup* CFSScanTaskQueue::_take_next_group() {
@@ -251,6 +261,10 @@ ScanTaskGroup* CFSScanTaskQueue::_take_next_group() {
 
 void CFSScanTaskQueue::_enqueue_group(ScanTaskGroup* group) {
     if (auto* min_group = _take_next_group(); min_group != nullptr) {
+        VLOG_ROW << "[ScanTaskQueue] _enqueue_group "
+                 << "[group=" << group << "] "
+                 << "[group_ns=" << group->runtime_ns << "] "
+                 << "[min_group_ns=" << min_group->runtime_ns << "] ";
         group->runtime_ns = std::max(group->runtime_ns, min_group->runtime_ns - 100'000'000L);
     }
 
