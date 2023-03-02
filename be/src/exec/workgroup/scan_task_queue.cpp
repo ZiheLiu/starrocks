@@ -36,6 +36,143 @@ bool PriorityScanTaskQueue::try_offer(ScanTask task) {
     return _queue.try_put(std::move(task));
 }
 
+/// FifoScanTaskQueue.
+void FifoScanTaskQueue::close() {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+
+    if (_is_closed) {
+        return;
+    }
+
+    _is_closed = true;
+    _cv.notify_all();
+}
+
+StatusOr<ScanTask> FifoScanTaskQueue::take() {
+    std::unique_lock<std::mutex> lock(_global_mutex);
+
+    while (_queue.empty()) {
+        if (_is_closed) {
+            return Status::Cancelled("Shutdown");
+        }
+
+        _cv.wait(lock);
+    }
+
+    auto task = std::move(_queue.front());
+    _queue.pop();
+    return task;
+}
+
+bool FifoScanTaskQueue::try_offer(ScanTask task) {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+
+    _queue.push(std::move(task));
+
+    _cv.notify_one();
+    return true;
+}
+
+/// CFSScanTaskQueue.
+ScanTaskGroup::ScanTaskGroup() : ScanTaskGroup(nullptr) {}
+ScanTaskGroup::ScanTaskGroup(std::unique_ptr<ScanTaskQueue> queue) : queue(std::move(queue)) {}
+
+bool CFSScanTaskQueue::Comparator::operator()(const ScanTaskGroupPtr& lhs_ptr, const ScanTaskGroupPtr& rhs_ptr) const {
+    int64_t lhs_val = lhs_ptr->runtime_ns;
+    int64_t rhs_val = rhs_ptr->runtime_ns;
+    if (lhs_val != rhs_val) {
+        return lhs_val < rhs_val;
+    }
+    return lhs_ptr < rhs_ptr;
+}
+
+void CFSScanTaskQueue::close() {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+
+    if (_is_closed) {
+        return;
+    }
+
+    _is_closed = true;
+    _cv.notify_all();
+}
+
+StatusOr<ScanTask> CFSScanTaskQueue::take() {
+    std::unique_lock<std::mutex> lock(_global_mutex);
+
+    ScanTaskGroup* group = nullptr;
+    while (group == nullptr) {
+        if (_is_closed) {
+            return Status::Cancelled("Shutdown");
+        }
+
+        if (_groups.empty()) {
+            _cv.wait(lock);
+        }
+
+        group = _take_next_group();
+    }
+
+    // If wg only contains one ready task, it will be not ready anymore
+    // after taking away the only one task.
+    if (group->queue->size() == 1) {
+        _dequeue_group(group);
+    }
+
+    _num_tasks--;
+
+    return group->queue->take();
+}
+
+bool CFSScanTaskQueue::try_offer(ScanTask task) {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+
+    auto* group = task.task_group.get();
+    RETURN_IF_UNLIKELY(!group->queue->try_offer(std::move(task)), false);
+    if (_groups.find(group) == _groups.end()) {
+        _enqueue_group(group);
+    }
+
+    _num_tasks++;
+    _cv.notify_one();
+    return true;
+}
+
+void CFSScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_ns) {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+    auto* group = task.task_group.get();
+
+    bool is_in_queue = _groups.find(group) != _groups.end();
+    if (is_in_queue) {
+        _groups.erase(group);
+    }
+    DCHECK(_groups.find(group) == _groups.end());
+    group->runtime_ns += runtime_ns;
+    if (is_in_queue) {
+        _groups.emplace(group);
+    }
+}
+
+ScanTaskGroup* CFSScanTaskQueue::_take_next_group() {
+    return _groups.empty() ? nullptr : *_groups.begin();
+}
+
+void CFSScanTaskQueue::_enqueue_group(ScanTaskGroup* group) {
+    if (auto* min_group = _take_next_group(); min_group != nullptr) {
+        if (group->runtime_ns == 0) {
+            group->runtime_ns = min_group->runtime_ns;
+        } else {
+            group->runtime_ns = std::max(group->runtime_ns, min_group->runtime_ns - 100'000'000L);
+        }
+    }
+
+    _groups.emplace(group);
+}
+
+void CFSScanTaskQueue::_dequeue_group(ScanTaskGroup* group) {
+    _groups.erase(group);
+}
+
 /// WorkGroupScanTaskQueue.
 bool WorkGroupScanTaskQueue::WorkGroupScanSchedEntityComparator::operator()(
         const WorkGroupScanSchedEntityPtr& lhs_ptr, const WorkGroupScanSchedEntityPtr& rhs_ptr) const {
@@ -110,9 +247,9 @@ bool WorkGroupScanTaskQueue::try_offer(ScanTask task) {
     return true;
 }
 
-void WorkGroupScanTaskQueue::update_statistics(WorkGroup* wg, int64_t runtime_ns) {
+void WorkGroupScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_ns) {
     std::lock_guard<std::mutex> lock(_global_mutex);
-
+    auto* wg = task.workgroup;
     auto* wg_entity = _sched_entity(wg);
 
     // Update bandwidth control information.
@@ -135,6 +272,7 @@ void WorkGroupScanTaskQueue::update_statistics(WorkGroup* wg, int64_t runtime_ns
 }
 
 bool WorkGroupScanTaskQueue::should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const {
+    const auto* wg = task.workgroup;
     if (_throttled(_sched_entity(wg), unaccounted_runtime_ns)) {
         return true;
     }

@@ -40,7 +40,9 @@ ScanOperator::ScanOperator(OperatorFactory* factory, int32_t id, int32_t driver_
           _io_tasks_per_scan_operator(scan_node->io_tasks_per_scan_operator()),
           _chunk_source_profiles(_io_tasks_per_scan_operator),
           _is_io_task_running(_io_tasks_per_scan_operator),
-          _chunk_sources(_io_tasks_per_scan_operator) {
+          _chunk_sources(_io_tasks_per_scan_operator),
+          _scan_task_group(
+                  std::make_shared<workgroup::ScanTaskGroup>(std::make_unique<workgroup::FifoScanTaskQueue>())) {
     for (auto i = 0; i < _io_tasks_per_scan_operator; i++) {
         _chunk_source_profiles[i] = std::make_shared<RuntimeProfile>(strings::Substitute("ChunkSource$0", i));
     }
@@ -431,6 +433,7 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
         task.priority = OlapScanNode::compute_priority(_submit_task_counter->value());
         break;
     }
+    task.task_group = _scan_task_group;
     _peak_scan_task_priority_counter->set(-task.priority);
     const auto io_task_start_nano = MonotonicNanos();
     task.work_function = [wp = _query_ctx, this, state, chunk_source_index, query_trace_ctx, driver_id,

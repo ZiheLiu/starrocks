@@ -145,6 +145,8 @@ protected:
     std::atomic_int64_t _last_scan_bytes = 0;
     std::atomic_int64_t _io_task_exec_time_ns = 0;
 
+    std::shared_ptr<workgroup::ScanTaskGroup> _scan_task_group;
+
     // The number of morsels picked up by this scan operator.
     // A tablet may be divided into multiple morsels.
     RuntimeProfile::Counter* _morsels_counter = nullptr;

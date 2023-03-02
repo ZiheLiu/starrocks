@@ -27,6 +27,14 @@
 
 namespace starrocks::workgroup {
 
+struct ScanTaskGroup {
+    ScanTaskGroup();
+    ScanTaskGroup(std::unique_ptr<ScanTaskQueue> queue);
+
+    std::unique_ptr<ScanTaskQueue> queue;
+    int64_t runtime_ns = 0;
+};
+
 struct ScanTask {
 public:
     using WorkFunction = std::function<void()>;
@@ -52,6 +60,7 @@ public:
     WorkGroup* workgroup;
     WorkFunction work_function;
     int priority = 0;
+    std::shared_ptr<ScanTaskGroup> task_group = nullptr;
 };
 
 class ScanTaskQueue {
@@ -67,8 +76,31 @@ public:
     virtual size_t size() const = 0;
     bool empty() const { return size() == 0; }
 
-    virtual void update_statistics(WorkGroup* wg, int64_t runtime_ns) = 0;
+    virtual void update_statistics(ScanTask& task, int64_t runtime_ns) = 0;
     virtual bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const = 0;
+};
+
+class FifoScanTaskQueue final : public ScanTaskQueue {
+public:
+    FifoScanTaskQueue() = default;
+    ~FifoScanTaskQueue() override = default;
+
+    void close() override;
+
+    StatusOr<ScanTask> take() override;
+    bool try_offer(ScanTask task) override;
+
+    size_t size() const override { return _queue.size(); }
+
+    void update_statistics(ScanTask& task, int64_t runtime_ns) override {}
+    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override { return false; }
+
+private:
+    mutable std::mutex _global_mutex;
+    std::condition_variable _cv;
+    bool _is_closed = false;
+
+    std::queue<ScanTask> _queue;
 };
 
 class PriorityScanTaskQueue final : public ScanTaskQueue {
@@ -83,11 +115,43 @@ public:
 
     size_t size() const override { return _queue.get_size(); }
 
-    void update_statistics(WorkGroup* wg, int64_t runtime_ns) override {}
+    void update_statistics(ScanTask& task, int64_t runtime_ns) override {}
     bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override { return false; }
 
 private:
     BlockingPriorityQueue<ScanTask> _queue;
+};
+
+class CFSScanTaskQueue final : public ScanTaskQueue {
+public:
+    CFSScanTaskQueue() = default;
+    ~CFSScanTaskQueue() override = default;
+
+    void close() override;
+
+    StatusOr<ScanTask> take() override;
+    bool try_offer(ScanTask task) override;
+
+    size_t size() const override { return _num_tasks.load(std::memory_order_acquire); }
+
+    void update_statistics(ScanTask& task, int64_t runtime_ns) override;
+    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override { return false; }
+
+private:
+    ScanTaskGroup* _take_next_group();
+    void _enqueue_group(ScanTaskGroup* wg_entity);
+    void _dequeue_group(ScanTaskGroup* group);
+
+    mutable std::mutex _global_mutex;
+    std::condition_variable _cv;
+    bool _is_closed = false;
+
+    struct Comparator {
+        using ScanTaskGroupPtr = ScanTaskGroup*;
+        bool operator()(const ScanTaskGroupPtr& lhs_ptr, const ScanTaskGroupPtr& rhs_ptr) const;
+    };
+    std::set<ScanTaskGroup*, Comparator> _groups;
+    std::atomic<size_t> _num_tasks = 0;
 };
 
 class WorkGroupScanTaskQueue final : public ScanTaskQueue {
@@ -104,7 +168,7 @@ public:
 
     size_t size() const override { return _num_tasks.load(std::memory_order_acquire); }
 
-    void update_statistics(WorkGroup* wg, int64_t runtime_ns) override;
+    void update_statistics(ScanTask& task, int64_t runtime_ns) override;
     bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override;
 
 private:
