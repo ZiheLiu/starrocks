@@ -641,7 +641,7 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
             auto* process_mem_counter = ADD_COUNTER(profile, "ProcessMemAtBeginning", TUnit::UNIT);
             COUNTER_SET(process_mem_counter, profiler.process_mem_bytes);
             auto* num_query_ctxs_counter = ADD_COUNTER(profile, "ProcessMemAtBeginning", TUnit::UNIT);
-            COUNTER_SET(num_query_ctxs_counter, profiler.num_query_ctxs);
+            COUNTER_SET(num_query_ctxs_counter, static_cast<int64_t>(profiler.num_query_ctxs));
         } else {
             _fail_cleanup();
         }
