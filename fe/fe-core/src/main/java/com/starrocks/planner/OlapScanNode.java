@@ -616,6 +616,10 @@ public class OlapScanNode extends ScanNode {
                     output.append(prefix).append(String.format("Pruned type: %d <-> [%s]\n", slotDescriptor.getId().asInt(), type));
                 }
             }
+
+            if (!bucketExprs.isEmpty()) {
+                output.append(prefix).append(getExplainString(bucketExprs));
+            }
         }
 
         return output.toString();
