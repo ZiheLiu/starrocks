@@ -10,6 +10,17 @@ namespace starrocks::pipeline {
 
 Status PartitionExchanger::Partitioner::partition_chunk(const vectorized::ChunkPtr& chunk,
                                                         std::vector<uint32_t>& partition_row_indexes) {
+
+                                                        
+    LOG(WARNING) << "[LocalShuffle] LocalShuffleSink before "
+        << "[num_slots=" << chunk->get_slot_id_to_index_map().size() << "] "
+        << "[num_columns=" << chunk->columns().size() << "] ";
+    for (const auto& [slot_id, index] : chunk->get_slot_id_to_index_map()) {
+        LOG(WARNING) << "[LocalShuffle] \t\tLocalShuffleSink before detail "
+            << "[slot_id=" << slot_id << "] "
+            << "[index=" << index << "] ";
+    }
+
     int32_t num_rows = chunk->num_rows();
     int32_t num_partitions = _source->get_sources().size();
 
@@ -54,6 +65,15 @@ Status PartitionExchanger::Partitioner::partition_chunk(const vectorized::ChunkP
     for (int32_t i = num_rows - 1; i >= 0; --i) {
         partition_row_indexes[_partition_row_indexes_start_points[_shuffle_channel_id[i]] - 1] = i;
         _partition_row_indexes_start_points[_shuffle_channel_id[i]]--;
+    }
+
+    LOG(WARNING) << "[LocalShuffle] LocalShuffleSink after "
+        << "[num_slots=" << chunk->get_slot_id_to_index_map().size() << "] "
+        << "[num_columns=" << chunk->columns().size() << "] ";
+    for (const auto& [slot_id, index] : chunk->get_slot_id_to_index_map()) {
+        LOG(WARNING) << "[LocalShuffle] \t\tLocalShuffleSink after detail "
+            << "[slot_id=" << slot_id << "] "
+            << "[index=" << index << "] ";
     }
 
     return Status::OK();

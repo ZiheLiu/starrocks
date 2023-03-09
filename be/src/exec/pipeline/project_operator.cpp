@@ -70,6 +70,17 @@ Status ProjectOperator::push_chunk(RuntimeState* state, const vectorized::ChunkP
         _cur_chunk->append_column(result_columns[i], _column_ids[i]);
     }
     TRY_CATCH_ALLOC_SCOPE_END()
+
+
+    LOG(WARNING) << "[LocalShuffle] Project "
+        << "[num_slots=" << _cur_chunk->get_slot_id_to_index_map().size() << "] "
+        << "[num_columns=" << _cur_chunk->columns().size() << "] ";
+    for (const auto& [slot_id, index] : _cur_chunk->get_slot_id_to_index_map()) {
+        LOG(WARNING) << "[LocalShuffle] \t\tProject detail "
+            << "[slot_id=" << slot_id << "] "
+            << "[index=" << index << "] ";
+    }
+
     return Status::OK();
 }
 

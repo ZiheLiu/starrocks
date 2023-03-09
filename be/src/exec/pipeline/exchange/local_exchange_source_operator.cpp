@@ -109,6 +109,19 @@ vectorized::ChunkPtr LocalExchangeSourceOperator::_pull_shuffle_chunk(RuntimeSta
     }
 
     // Unlock during merging partition chunks into a full chunk.
+
+    const auto& first_chunk = selected_partition_chunks[0].chunk;
+    LOG(WARNING) << "[LocalShuffle] LocalShuffleSource "
+        << "[num_chunks=" << selected_partition_chunks.size() << "] "
+        << "[num_slots=" << first_chunk->get_slot_id_to_index_map().size() << "] "
+        << "[num_columns=" << first_chunk->columns().size() << "] ";
+    for (const auto& [slot_id, index] : first_chunk->get_slot_id_to_index_map()) {
+        LOG(WARNING) << "[LocalShuffle] \t\tLocalShuffleSource detail "
+            << "[slot_id=" << slot_id << "] "
+            << "[index=" << index << "] ";
+    }
+
+
     vectorized::ChunkPtr chunk = selected_partition_chunks[0].chunk->clone_empty_with_slot();
     chunk->reserve(rows_num);
     for (const auto& partition_chunk : selected_partition_chunks) {
