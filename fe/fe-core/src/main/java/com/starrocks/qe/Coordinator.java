@@ -1344,7 +1344,7 @@ public class Coordinator {
             long numLimitRows = fragments.get(0).getPlanRoot().getLimit();
             boolean hasLimit = numLimitRows > 0;
             if (!isBlockQuery && coordinatorPreprocessor.getInstanceIds().size() > 1 && hasLimit &&
-                    numReceivedRows >= numLimitRows) {
+                    numReceivedRows >= 1) {
                 LOG.debug("no block query, return num >= limit rows, need cancel");
                 cancelInternal(PPlanFragmentCancelReason.LIMIT_REACH);
             }
