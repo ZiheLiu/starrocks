@@ -40,9 +40,13 @@ import com.starrocks.mysql.MysqlEofPacket;
 import com.starrocks.mysql.MysqlErrPacket;
 import com.starrocks.mysql.MysqlOkPacket;
 import com.starrocks.mysql.MysqlPacket;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 // query state used to record state of query, maybe query status is better
 public class QueryState {
+    private static final Logger LOG = LogManager.getLogger(QueryState.class);
+
     public enum MysqlStateType {
         NOOP,   // send nothing to remote
         OK,     // send OK packet to remote
@@ -111,6 +115,11 @@ public class QueryState {
     public void setError(String errorMsg) {
         this.stateType = MysqlStateType.ERR;
         this.errorMessage = errorMsg;
+
+        if (errorMsg == null) {
+            Exception e = new Exception("for log setError stack");
+            LOG.warn("[DEBUG] setError", e);
+        }
     }
 
     public boolean isError() {
@@ -127,6 +136,11 @@ public class QueryState {
 
     public void setMsg(String msg) {
         this.errorMessage = msg;
+
+        if (msg == null) {
+            Exception e = new Exception("for log setMsg stack");
+            LOG.warn("[DEBUG] setMsg", e);
+        }
     }
 
     public void setErrType(ErrType errType) {

@@ -440,6 +440,11 @@ public class ConnectContext {
 
     public void setState(QueryState state) {
         this.state = state;
+
+        if (state == null) {
+            Exception e = new Exception("for log setState stack");
+            LOG.warn("[DEBUG] setState", e);
+        }
     }
 
     public String getErrorCode() {

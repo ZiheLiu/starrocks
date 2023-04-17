@@ -1373,6 +1373,18 @@ public class Coordinator {
     }
 
     private void cancelInternal(PPlanFragmentCancelReason cancelReason) {
+        if (connectContext == null) {
+            LOG.warn("[DEBUG] [cancelInternal] [connectContext=null");
+        } else if (connectContext.getState() == null) {
+            LOG.warn("[DEBUG] [cancelInternal] [connectContext={}] [state=null]] ",
+                    connectContext);
+        } else if (connectContext.getState().getErrorMessage() == null) {
+            LOG.warn("[DEBUG] [cancelInternal] [connectContext={}] [state={}] [errorMessage=null] ",
+                    connectContext, connectContext.getState());
+        } else {
+            LOG.warn("[DEBUG] [cancelInternal] [connectContext={}] [state={}] [errorMessage={}] ",
+                    connectContext, connectContext.getState(), connectContext.getState().getErrorMessage());
+        }
         if (connectContext.getState().getErrorMessage().isEmpty()) {
             connectContext.getState().setError(cancelReason.toString());
         }
