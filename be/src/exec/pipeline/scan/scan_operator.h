@@ -36,7 +36,7 @@ public:
 
     ~ScanOperator() override;
 
-    static size_t max_buffer_capacity() { return kIOTaskBatchSize; }
+    static size_t max_buffer_capacity() { return config::max_task_scan_chunks; }
 
     Status prepare(RuntimeState* state) override;
 
