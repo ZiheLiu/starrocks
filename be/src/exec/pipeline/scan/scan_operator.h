@@ -84,7 +84,7 @@ public:
     virtual bool is_running_all_io_tasks() const;
 
 protected:
-    static constexpr size_t kIOTaskBatchSize = 64;
+    const size_t kIOTaskBatchSize = config::max_task_scan_chunks;
 
     // TODO: remove this to the base ScanContext.
     /// Shared scan
