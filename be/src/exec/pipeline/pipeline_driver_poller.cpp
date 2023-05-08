@@ -42,6 +42,7 @@ void PipelineDriverPoller::run_internal() {
     DriverList tmp_blocked_drivers;
     int spin_count = 0;
     std::vector<DriverRawPtr> ready_drivers;
+    int backoff = 64;
     while (!_is_shutdown.load(std::memory_order_acquire)) {
         {
             std::unique_lock<std::mutex> lock(_global_mutex);
@@ -151,19 +152,24 @@ void PipelineDriverPoller::run_internal() {
             spin_count += 1;
         } else {
             spin_count = 0;
+            backoff = 64;
 
             _driver_queue->put_back(ready_drivers);
             ready_drivers.clear();
         }
 
-        if (spin_count != 0 && spin_count % 64 == 0) {
+        if (spin_count > 0 && spin_count % backoff == 0) {
 #ifdef __x86_64__
             _mm_pause();
 #else
             // TODO: Maybe there's a better intrinsic like _mm_pause on non-x86_64 architecture.
             sched_yield();
 #endif
+
+            backoff = std::max(1, backoff / 2);
+            spin_count = 0;
         }
+
         if (spin_count == 640) {
             spin_count = 0;
             sched_yield();
