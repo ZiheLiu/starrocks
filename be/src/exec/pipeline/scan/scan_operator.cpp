@@ -257,6 +257,10 @@ int64_t ScanOperator::global_rf_wait_timeout_ns() const {
     return 1000'000L * global_rf_collector->scan_wait_timeout_ms();
 }
 Status ScanOperator::_try_to_trigger_next_scan(RuntimeState* state) {
+    if (_is_finished) {
+        return Status::OK();
+    }
+
     // to sure to put it here for updating state.
     // because we want to update state based on raw data.
     int total_cnt = available_pickup_morsel_count();
