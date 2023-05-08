@@ -222,18 +222,18 @@ Status ScanOperator::set_finishing(RuntimeState* state) {
 }
 
 StatusOr<ChunkPtr> ScanOperator::pull_chunk(RuntimeState* state) {
-    RETURN_IF_ERROR(_get_scan_status());
+    //    RETURN_IF_ERROR(_get_scan_status());
 
-    _peak_buffer_size_counter->set(buffer_size());
+    //    _peak_buffer_size_counter->set(buffer_size());
 
     RETURN_IF_ERROR(_try_to_trigger_next_scan(state));
     ChunkPtr res = get_chunk_from_buffer();
     if (res != nullptr) {
         begin_pull_chunk(res);
         // for query cache mechanism, we should emit EOS chunk when we receive the last chunk.
-        auto [tablet_id, is_eos] = _should_emit_eos(res);
+        //        auto [tablet_id, is_eos] = _should_emit_eos(res);
         eval_runtime_bloom_filters(res.get());
-        res->owner_info().set_owner_id(tablet_id, is_eos);
+        //        res->owner_info().set_owner_id(tablet_id, is_eos);
     }
 
     return res;
