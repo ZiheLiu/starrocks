@@ -76,6 +76,8 @@ public:
         return now > _query_deadline;
     }
 
+    bool is_query_expired(int64_t now) const { return now > _query_deadline; }
+
     bool is_dead() const { return _num_active_fragments == 0 && _num_fragments == _total_fragments; }
     // add expired seconds to deadline
     void extend_delivery_lifetime() {
