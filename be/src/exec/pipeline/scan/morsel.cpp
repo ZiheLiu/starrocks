@@ -27,6 +27,9 @@
 namespace starrocks::pipeline {
 
 /// Morsel.
+
+const std::vector<RowsetSharedPtr> Morsel::kEmptyRowsets;
+
 void PhysicalSplitScanMorsel::init_tablet_reader_params(TabletReaderParams* params) {
     params->rowid_range_option = _rowid_range_option;
 }
@@ -100,7 +103,7 @@ StatusOr<MorselPtr> FixedMorselQueue::try_get() {
     idx = _pop_index.fetch_add(1);
     if (idx < _num_morsels) {
         if (!_tablet_rowsets.empty()) {
-            _morsels[idx]->set_rowsets(std::move(_tablet_rowsets[idx]));
+            _morsels[idx]->set_rowsets(_tablet_rowsets[idx]);
         }
         return std::move(_morsels[idx]);
     } else {
