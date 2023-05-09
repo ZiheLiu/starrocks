@@ -78,6 +78,7 @@ Status ScanOperator::prepare(RuntimeState* state) {
 
     _pull_chunk_timer1 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1");
     _pull_chunk_timer1_1 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1.1");
+    _pull_chunk_timer1_1_1 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1.1.1");
     _pull_chunk_timer1_2 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1.2");
     _pull_chunk_timer2 = ADD_TIMER(_unique_metrics, "PullChunkTimer#2");
     _pull_chunk_timer3 = ADD_TIMER(_unique_metrics, "PullChunkTimer#3");
@@ -429,6 +430,7 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
         }
     };
 
+    SCOPED_TIMER(_pull_chunk_timer1_1_1);
     if (_scan_executor->submit(std::move(task))) {
         _io_task_retry_cnt = 0;
     } else {
