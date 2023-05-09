@@ -157,11 +157,11 @@ Status OlapScanNode::get_next(RuntimeState* state, ChunkPtr* chunk, bool* eos) {
         if ((num_pending > 0) && (num_running < kMaxConcurrency)) {
             // before we submit a new scanner to run, check whether it can fetch
             // at least _chunks_per_scanner chunks from _chunk_pool.
-            if (_chunk_pool.size() >= (num_running + 1) * _chunks_per_scanner) {
-                TabletScanner* scanner = _pending_scanners.pop();
-                l.unlock();
-                (void)_submit_scanner(scanner, true);
-            }
+            //            if (_chunk_pool.size() >= (num_running + 1) * _chunks_per_scanner) {
+            TabletScanner* scanner = _pending_scanners.pop();
+            l.unlock();
+            (void)_submit_scanner(scanner, true);
+            //            }
         }
     }
 
@@ -177,7 +177,7 @@ Status OlapScanNode::get_next(RuntimeState* state, ChunkPtr* chunk, bool* eos) {
         // is the first time of calling `get_next`, pass the second argument of `_fill_chunk_pool` as
         // true to ensure that the newly allocated column objects will be returned back into the column
         // pool.
-        TRY_CATCH_BAD_ALLOC(_fill_chunk_pool(1, first_call));
+        //        TRY_CATCH_BAD_ALLOC(_fill_chunk_pool(1, first_call));
         eval_join_runtime_filters(chunk);
         _num_rows_returned += (*chunk)->num_rows();
         COUNTER_SET(_rows_returned_counter, _num_rows_returned);
@@ -245,14 +245,14 @@ OlapScanNode::~OlapScanNode() {
 }
 
 void OlapScanNode::_fill_chunk_pool(int count, bool force_column_pool) {
-    const size_t capacity = runtime_state()->chunk_size();
-    for (int i = 0; i < count; i++) {
-        ChunkPtr chunk(ChunkHelper::new_chunk_pooled(*_chunk_schema, capacity, force_column_pool));
-        {
-            std::lock_guard<std::mutex> l(_mtx);
-            _chunk_pool.push(std::move(chunk));
-        }
-    }
+    //    const size_t capacity = runtime_state()->chunk_size();
+    //    for (int i = 0; i < count; i++) {
+    //        ChunkPtr chunk(ChunkHelper::new_chunk_pooled(*_chunk_schema, capacity, force_column_pool));
+    //        {
+    //            std::lock_guard<std::mutex> l(_mtx);
+    //            _chunk_pool.push(std::move(chunk));
+    //        }
+    //    }
 }
 
 void OlapScanNode::_scanner_thread(TabletScanner* scanner) {
@@ -283,24 +283,24 @@ void OlapScanNode::_scanner_thread(TabletScanner* scanner) {
     bool resubmit = false;
     int64_t raw_rows_threshold = scanner->raw_rows_read() + config::scanner_row_num;
     while (status.ok()) {
-        ChunkPtr chunk;
-        {
-            std::lock_guard<std::mutex> l(_mtx);
-            if (_chunk_pool.empty()) {
-                // NOTE: DO NOT move these operations out of current lock scope.
-                scanner->set_keep_priority(true);
-                _pending_scanners.push(scanner);
-                scanner = nullptr;
-                break;
-            }
-            chunk = _chunk_pool.pop();
-        }
+        ChunkPtr chunk(ChunkHelper::new_chunk_pooled(*_chunk_schema, runtime_state()->chunk_size(), true));
+        //        {
+        //            std::lock_guard<std::mutex> l(_mtx);
+        //            if (_chunk_pool.empty()) {
+        //                // NOTE: DO NOT move these operations out of current lock scope.
+        //                scanner->set_keep_priority(true);
+        //                _pending_scanners.push(scanner);
+        //                scanner = nullptr;
+        //                break;
+        //            }
+        //            chunk = _chunk_pool.pop();
+        //        }
         DCHECK_EQ(chunk->num_rows(), 0);
         status = scanner->get_chunk(runtime_state(), chunk.get());
         if (!status.ok()) {
             QUERY_LOG_IF(ERROR, !status.is_end_of_file()) << status;
             std::lock_guard<std::mutex> l(_mtx);
-            _chunk_pool.push(std::move(chunk));
+            //            _chunk_pool.push(std::move(chunk));
             break;
         }
         DCHECK_CHUNK(chunk);
@@ -663,8 +663,8 @@ Status OlapScanNode::_start_scan_thread(RuntimeState* state) {
     int concurrency = _scanner_concurrency();
     COUNTER_SET(_task_concurrency, (int64_t)concurrency);
     int chunks = _chunks_per_scanner * concurrency;
-    _chunk_pool.reserve(chunks);
-    TRY_CATCH_BAD_ALLOC(_fill_chunk_pool(chunks, true));
+    //    _chunk_pool.reserve(chunks);
+    //    TRY_CATCH_BAD_ALLOC(_fill_chunk_pool(chunks, true));
     std::lock_guard<std::mutex> l(_mtx);
     for (int i = 0; i < concurrency; i++) {
         CHECK(_submit_scanner(_pending_scanners.pop(), true));
