@@ -163,6 +163,7 @@ private:
 
     int32_t _chunk_source_idx = -1;
     mutable SpinLock _scan_status_mutex;
+    mutable SpinLock _trigger_mutex;
     Status _scan_status;
     // we should hold a weak ptr because query context may be released before running io task
     std::weak_ptr<QueryContext> _query_ctx;

@@ -277,13 +277,19 @@ Status ScanOperator::_try_to_trigger_next_scan(RuntimeState* state) {
         return Status::OK();
     }
 
-    // to sure to put it here for updating state.
-    // because we want to update state based on raw data.
-    int total_cnt = available_pickup_morsel_count();
+    if (_num_running_io_tasks >= _io_tasks_per_scan_operator) {
+        return Status::OK();
+    }
+
+    std::lock_guard<SpinLock> l(_trigger_mutex);
 
     if (_num_running_io_tasks >= _io_tasks_per_scan_operator) {
         return Status::OK();
     }
+
+    // to sure to put it here for updating state.
+    // because we want to update state based on raw data.
+    int total_cnt = available_pickup_morsel_count();
     if (_unpluging && num_buffered_chunks() >= _buffer_unplug_threshold()) {
         return Status::OK();
     }
@@ -423,6 +429,8 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
             _finish_chunk_source_task(state, chunk_source_index, delta_cpu_time,
                                       chunk_source->get_scan_rows() - prev_scan_rows,
                                       chunk_source->get_scan_bytes() - prev_scan_bytes);
+
+            _try_to_trigger_next_scan(state);
 
             QUERY_TRACE_ASYNC_FINISH("io_task", category, query_trace_ctx);
             // make clang happy
