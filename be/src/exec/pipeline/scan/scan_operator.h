@@ -181,6 +181,12 @@ private:
     // The total number of the original tablets in this fragment instance.
     RuntimeProfile::Counter* _tablets_counter = nullptr;
     RuntimeProfile::HighWaterMarkCounter* _peak_io_tasks_counter = nullptr;
+
+    RuntimeProfile::Counter* _pull_chunk_timer1 = nullptr;
+    RuntimeProfile::Counter* _pull_chunk_timer1_1 = nullptr;
+    RuntimeProfile::Counter* _pull_chunk_timer1_2 = nullptr;
+    RuntimeProfile::Counter* _pull_chunk_timer2 = nullptr;
+    RuntimeProfile::Counter* _pull_chunk_timer3 = nullptr;
 };
 
 class ScanOperatorFactory : public SourceOperatorFactory {

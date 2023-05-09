@@ -76,6 +76,12 @@ Status ScanOperator::prepare(RuntimeState* state) {
     _peak_io_tasks_counter = _unique_metrics->AddHighWaterMarkCounter(
             "PeakIOTasks", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TCounterAggregateType::AVG));
 
+    _pull_chunk_timer1 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1");
+    _pull_chunk_timer1_1 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1.1");
+    _pull_chunk_timer1_2 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1.2");
+    _pull_chunk_timer2 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1");
+    _pull_chunk_timer3 = ADD_TIMER(_unique_metrics, "PullChunkTimer#1");
+
     RETURN_IF_ERROR(do_prepare(state));
     return Status::OK();
 }
@@ -226,8 +232,17 @@ StatusOr<ChunkPtr> ScanOperator::pull_chunk(RuntimeState* state) {
 
     //    _peak_buffer_size_counter->set(buffer_size());
 
-    RETURN_IF_ERROR(_try_to_trigger_next_scan(state));
-    ChunkPtr res = get_chunk_from_buffer();
+    {
+        SCOPED_TIMER(_pull_chunk_timer1);
+        RETURN_IF_ERROR(_try_to_trigger_next_scan(state));
+    }
+    ChunkPtr res = nullptr;
+    {
+        SCOPED_TIMER(_pull_chunk_timer2);
+        res = get_chunk_from_buffer();
+    }
+
+    SCOPED_TIMER(_pull_chunk_timer3);
     if (res != nullptr) {
         begin_pull_chunk(res);
         // for query cache mechanism, we should emit EOS chunk when we receive the last chunk.
@@ -349,6 +364,8 @@ void ScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_sour
 }
 
 Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_index) {
+    SCOPED_TIMER(_pull_chunk_timer1_1);
+
     ChunkBufferTokenPtr buffer_token;
     if (buffer_token = pin_chunk(1); buffer_token == nullptr) {
         return Status::OK();
@@ -430,6 +447,8 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
 }
 
 Status ScanOperator::_pickup_morsel(RuntimeState* state, int chunk_source_index) {
+    SCOPED_TIMER(_pull_chunk_timer1_2);
+
     DCHECK(_morsel_queue != nullptr);
     _close_chunk_source(state, chunk_source_index);
 
