@@ -36,13 +36,6 @@ static bool is_json_start_char(char ch) {
 JsonValue::JsonValue(const JsonValue& rhs) {
     if (rhs._binary.data != nullptr) {
         MemChunkAllocator::instance()->allocate(rhs._binary.size, &_binary);
-
-        LOG(WARNING) << "[DEBUG] copy JsonValue::JsonValue "
-                     << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                     << "[binary.size=" << _binary.size << "] "
-                     << "[binary.core_id=" << _binary.core_id << "] "
-                     << "[src.data=" << (uintptr_t)rhs._binary.data << "] "
-                     << "[src.size=" << rhs._binary.size << "] ";
         memcpy(_binary.data, rhs._binary.data, rhs._binary.size);
     }
 }
@@ -66,13 +59,6 @@ JsonValue& JsonValue::operator=(const JsonValue& rhs) {
 
         if (rhs._binary.data != nullptr) {
             MemChunkAllocator::instance()->allocate(rhs._binary.size, &_binary);
-
-            LOG(WARNING) << "[DEBUG] copy JsonValue::= "
-                         << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                         << "[binary.size=" << _binary.size << "] "
-                         << "[binary.core_id=" << _binary.core_id << "] "
-                         << "[src.data=" << (uintptr_t)rhs._binary.data << "] "
-                         << "[src.size=" << rhs._binary.size << "] ";
             memcpy(_binary.data, rhs._binary.data, rhs._binary.size);
         }
     }
@@ -86,68 +72,28 @@ JsonValue& JsonValue::operator=(JsonValue&& rhs) noexcept {
             _binary.data = nullptr;
         }
 
-        LOG(WARNING) << "[DEBUG] move JsonValue::= before "
-                     << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                     << "[binary.size=" << _binary.size << "] "
-                     << "[binary.core_id=" << _binary.core_id << "] "
-                     << "[src.data=" << (uintptr_t)rhs._binary.data << "] "
-                     << "[src.size=" << rhs._binary.size << "] ";
-
         _binary = std::move(rhs._binary);
         rhs._binary.data = nullptr;
-
-        LOG(WARNING) << "[DEBUG] move JsonValue::= after "
-                     << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                     << "[binary.size=" << _binary.size << "] "
-                     << "[binary.core_id=" << _binary.core_id << "] "
-                     << "[src.data=" << (uintptr_t)rhs._binary.data << "] "
-                     << "[src.size=" << rhs._binary.size << "] ";
     }
     return *this;
 }
 
 void JsonValue::assign(const Slice& src) {
     if (_binary.data != nullptr) {
-        LOG(WARNING) << "[DEBUG] assign free previous"
-                     << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                     << "[binary.size=" << _binary.size << "] "
-                     << "[binary.core_id=" << _binary.core_id << "] ";
-
         MemChunkAllocator::instance()->free(_binary);
         _binary.data = nullptr;
     }
 
     MemChunkAllocator::instance()->allocate(src.get_size(), &_binary);
-
-    LOG(WARNING) << "[DEBUG] assign memcpy"
-                 << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                 << "[binary.size=" << _binary.size << "] "
-                 << "[binary.core_id=" << _binary.core_id << "] "
-                 << "[src.data=" << (uintptr_t)src.get_data() << "] "
-                 << "[src.size=" << src.get_size() << "] ";
-
     memcpy(_binary.data, (uint8_t*)src.get_data(), src.get_size());
 }
 void JsonValue::assign(const vpack::Builder& b) {
     if (_binary.data != nullptr) {
-        LOG(WARNING) << "[DEBUG] assign free previous"
-                     << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                     << "[binary.size=" << _binary.size << "] "
-                     << "[binary.core_id=" << _binary.core_id << "] ";
-
         MemChunkAllocator::instance()->free(_binary);
         _binary.data = nullptr;
     }
 
     MemChunkAllocator::instance()->allocate((size_t)b.size(), &_binary);
-
-    LOG(WARNING) << "[DEBUG] assign memcpy"
-                 << "[binary.data=" << (uintptr_t)_binary.data << "] "
-                 << "[binary.size=" << _binary.size << "] "
-                 << "[binary.core_id=" << _binary.core_id << "] "
-                 << "[src.data=" << (uintptr_t)b.data() << "] "
-                 << "[src.size=" << b.size() << "] ";
-
     memcpy(_binary.data, b.data(), (size_t)b.size());
 }
 
@@ -223,19 +169,7 @@ JsonValue JsonValue::from_string(const Slice& value) {
     builder.add(vpack::Value(std::string_view(value)));
 
     const VSlice slice = builder.slice();
-
-    LOG(WARNING) << "[DEBUG] from_string previous "
-                 << "[value.data=" << (uintptr_t)value.data << "] "
-                 << "[value.size=" << value.size << "] "
-                 << "[slice.data=" << (uintptr_t)slice.start() << "] "
-                 << "[slice.size=" << slice.byteSize() << "] ";
-
-    auto v = JsonValue(slice);
-    LOG(WARNING) << "[DEBUG] from_string after "
-                 << "[v.binary.data=" << (uintptr_t)v._binary.data << "] "
-                 << "[v.binary.size=" << v._binary.size << "] "
-                 << "[v.binary.core_id=" << v._binary.core_id << "] ";
-    return v;
+    return JsonValue(slice);
 }
 
 StatusOr<JsonValue> JsonValue::from_simdjson(simdjson::ondemand::value* value) {
