@@ -324,7 +324,7 @@ int64_t JsonValue::hash() const {
 }
 
 Slice JsonValue::get_slice() const {
-    return Slice(_binary.data, _binary.size);
+    return {_binary.data, _binary.size};
 }
 
 JsonType JsonValue::get_type() const {
