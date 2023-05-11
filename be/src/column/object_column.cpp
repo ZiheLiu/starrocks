@@ -302,12 +302,12 @@ void ObjectColumn<T>::_build_slices() const {
     }
 
     size_t size = byte_size();
-    _buffer.resize(size);
+    raw::stl_vector_resize_uninitialized(&_buffer, size);
     _slices.reserve(_pool.size());
     size_t old_size = 0;
     for (size_t i = 0; i < _pool.size(); ++i) {
         size_t slice_size = _pool[i].serialize(_buffer.data() + old_size);
-        _slices.emplace_back(Slice(_buffer.data() + old_size, slice_size));
+        _slices.emplace_back(_buffer.data() + old_size, slice_size);
         old_size += slice_size;
     }
 }
