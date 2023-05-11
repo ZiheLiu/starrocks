@@ -225,7 +225,7 @@ JsonValue JsonValue::from_string(const Slice& value) {
     const VSlice slice = builder.slice();
 
     LOG(WARNING) << "[DEBUG] from_string previous "
-                 << "[value.data=" << (uuintptr_t)value.data << "] "
+                 << "[value.data=" << (uintptr_t)value.data << "] "
                  << "[value.size=" << value.size << "] "
                  << "[slice.data=" << (uintptr_t)slice.start() << "] "
                  << "[slice.size=" << slice.byteSize() << "] ";
