@@ -12,6 +12,7 @@
 #include "common/statusor.h"
 #include "fmt/format.h"
 #include "glog/logging.h"
+#include "runtime/memory/mem_chunk.h"
 #include "simdjson.h"
 #include "types/constexpr.h"
 #include "util/coding.h"
@@ -39,24 +40,15 @@ public:
     using VBuilder = vpack::Builder;
 
     JsonValue() = default;
+    ~JsonValue();
 
-    JsonValue(const JsonValue& rhs) : binary_(rhs.binary_.data(), rhs.binary_.size()) {}
+    JsonValue(const JsonValue& rhs);
 
-    JsonValue(JsonValue&& rhs) noexcept : binary_(std::move(rhs.binary_)) {}
+    JsonValue(JsonValue&& rhs) noexcept;
 
-    JsonValue& operator=(const JsonValue& rhs) {
-        if (this != &rhs) {
-            binary_ = rhs.binary_;
-        }
-        return *this;
-    }
+    JsonValue& operator=(const JsonValue& rhs);
 
-    JsonValue& operator=(JsonValue&& rhs) noexcept {
-        if (this != &rhs) {
-            binary_ = std::move(rhs.binary_);
-        }
-        return *this;
-    }
+    JsonValue& operator=(JsonValue&& rhs) noexcept;
 
     // TODO(mofei) avoid copy data from slice ?
     explicit JsonValue(const Slice& src) { assign(src); }
@@ -64,8 +56,8 @@ public:
     // TODO(mofei) avoid copy data from slice ?
     explicit JsonValue(const VSlice& slice) { assign(Slice(slice.start(), slice.byteSize())); }
 
-    void assign(const Slice& src) { binary_.assign(src.get_data(), src.get_size()); }
-    void assign(const vpack::Builder& b) { binary_.assign((const char*)b.data(), (size_t)b.size()); }
+    void assign(const Slice& src);
+    void assign(const vpack::Builder& b);
 
     ////////////////// builder  //////////////////////
 
@@ -112,7 +104,7 @@ public:
     ////////////////// RAW accessor ////////////////////////////
     Slice get_slice() const;
     VSlice to_vslice() const;
-    const char* get_data() const { return binary_.data(); }
+    const char* get_data() const { return (const char*)_binary.data; }
 
     ////////////////// access json values ////////////////////////
     JsonType get_type() const;
@@ -139,7 +131,7 @@ private:
 
     // serialized binary of json
     // TODO(mofei) store vpack::Slice
-    std::string binary_;
+    MemChunk _binary;
 };
 
 inline Status fromVPackException(const vpack::Exception& e) {
