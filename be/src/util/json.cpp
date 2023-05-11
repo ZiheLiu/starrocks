@@ -36,6 +36,13 @@ static bool is_json_start_char(char ch) {
 JsonValue::JsonValue(const JsonValue& rhs) {
     if (rhs._binary.data != nullptr) {
         MemChunkAllocator::instance()->allocate(rhs._binary.size, &_binary);
+
+        LOG(WARNING) << "[DEBUG] copy JsonValue::JsonValue "
+                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.size=" << _binary.size << "] "
+                     << "[binary.core_id=" << _binary.core_id << "] "
+                     << "[src.data=" << rhs._binary.data << "] "
+                     << "[src.size=" << rhs._binary.size << "] ";
         memcpy(_binary.data, rhs._binary.data, rhs._binary.size);
     }
 }
@@ -57,6 +64,13 @@ JsonValue& JsonValue::operator=(const JsonValue& rhs) {
 
         if (rhs._binary.data != nullptr) {
             MemChunkAllocator::instance()->allocate(rhs._binary.size, &_binary);
+
+            LOG(WARNING) << "[DEBUG] copy JsonValue::= "
+                         << "[binary.data=" << _binary.data << "] "
+                         << "[binary.size=" << _binary.size << "] "
+                         << "[binary.core_id=" << _binary.core_id << "] "
+                         << "[src.data=" << rhs._binary.data << "] "
+                         << "[src.size=" << rhs._binary.size << "] ";
             memcpy(_binary.data, rhs._binary.data, rhs._binary.size);
         }
     }
@@ -70,7 +84,21 @@ JsonValue& JsonValue::operator=(JsonValue&& rhs) noexcept {
             _binary.data = nullptr;
         }
 
+        LOG(WARNING) << "[DEBUG] move JsonValue::= before "
+                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.size=" << _binary.size << "] "
+                     << "[binary.core_id=" << _binary.core_id << "] "
+                     << "[src.data=" << rhs._binary.data << "] "
+                     << "[src.size=" << rhs._binary.size << "] ";
+
         _binary = std::move(rhs._binary);
+
+        LOG(WARNING) << "[DEBUG] move JsonValue::= after "
+                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.size=" << _binary.size << "] "
+                     << "[binary.core_id=" << _binary.core_id << "] "
+                     << "[src.data=" << rhs._binary.data << "] "
+                     << "[src.size=" << rhs._binary.size << "] ";
     }
     return *this;
 }
