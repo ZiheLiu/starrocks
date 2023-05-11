@@ -38,10 +38,10 @@ JsonValue::JsonValue(const JsonValue& rhs) {
         MemChunkAllocator::instance()->allocate(rhs._binary.size, &_binary);
 
         LOG(WARNING) << "[DEBUG] copy JsonValue::JsonValue "
-                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.data=" << (intptr_t)_binary.data << "] "
                      << "[binary.size=" << _binary.size << "] "
                      << "[binary.core_id=" << _binary.core_id << "] "
-                     << "[src.data=" << rhs._binary.data << "] "
+                     << "[src.data=" << (intptr_t)rhs._binary.data << "] "
                      << "[src.size=" << rhs._binary.size << "] ";
         memcpy(_binary.data, rhs._binary.data, rhs._binary.size);
     }
@@ -66,10 +66,10 @@ JsonValue& JsonValue::operator=(const JsonValue& rhs) {
             MemChunkAllocator::instance()->allocate(rhs._binary.size, &_binary);
 
             LOG(WARNING) << "[DEBUG] copy JsonValue::= "
-                         << "[binary.data=" << _binary.data << "] "
+                         << "[binary.data=" << (intptr_t)_binary.data << "] "
                          << "[binary.size=" << _binary.size << "] "
                          << "[binary.core_id=" << _binary.core_id << "] "
-                         << "[src.data=" << rhs._binary.data << "] "
+                         << "[src.data=" << (intptr_t)rhs._binary.data << "] "
                          << "[src.size=" << rhs._binary.size << "] ";
             memcpy(_binary.data, rhs._binary.data, rhs._binary.size);
         }
@@ -85,19 +85,19 @@ JsonValue& JsonValue::operator=(JsonValue&& rhs) noexcept {
         }
 
         LOG(WARNING) << "[DEBUG] move JsonValue::= before "
-                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.data=" << (intptr_t)_binary.data << "] "
                      << "[binary.size=" << _binary.size << "] "
                      << "[binary.core_id=" << _binary.core_id << "] "
-                     << "[src.data=" << rhs._binary.data << "] "
+                     << "[src.data=" << (intptr_t)rhs._binary.data << "] "
                      << "[src.size=" << rhs._binary.size << "] ";
 
         _binary = std::move(rhs._binary);
 
         LOG(WARNING) << "[DEBUG] move JsonValue::= after "
-                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.data=" << (intptr_t)_binary.data << "] "
                      << "[binary.size=" << _binary.size << "] "
                      << "[binary.core_id=" << _binary.core_id << "] "
-                     << "[src.data=" << rhs._binary.data << "] "
+                     << "[src.data=" << (intptr_t)rhs._binary.data << "] "
                      << "[src.size=" << rhs._binary.size << "] ";
     }
     return *this;
@@ -106,7 +106,7 @@ JsonValue& JsonValue::operator=(JsonValue&& rhs) noexcept {
 void JsonValue::assign(const Slice& src) {
     if (_binary.data != nullptr) {
         LOG(WARNING) << "[DEBUG] assign free previous"
-                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.data=" << (intptr_t)_binary.data << "] "
                      << "[binary.size=" << _binary.size << "] "
                      << "[binary.core_id=" << _binary.core_id << "] ";
 
@@ -117,10 +117,10 @@ void JsonValue::assign(const Slice& src) {
     MemChunkAllocator::instance()->allocate(src.get_size(), &_binary);
 
     LOG(WARNING) << "[DEBUG] assign memcpy"
-                 << "[binary.data=" << _binary.data << "] "
+                 << "[binary.data=" << (intptr_t)_binary.data << "] "
                  << "[binary.size=" << _binary.size << "] "
                  << "[binary.core_id=" << _binary.core_id << "] "
-                 << "[src.data=" << src.get_data() << "] "
+                 << "[src.data=" << (intptr_t)src.get_data() << "] "
                  << "[src.size=" << src.get_size() << "] ";
 
     memcpy(_binary.data, (uint8_t*)src.get_data(), src.get_size());
@@ -128,7 +128,7 @@ void JsonValue::assign(const Slice& src) {
 void JsonValue::assign(const vpack::Builder& b) {
     if (_binary.data != nullptr) {
         LOG(WARNING) << "[DEBUG] assign free previous"
-                     << "[binary.data=" << _binary.data << "] "
+                     << "[binary.data=" << (intptr_t)_binary.data << "] "
                      << "[binary.size=" << _binary.size << "] "
                      << "[binary.core_id=" << _binary.core_id << "] ";
 
@@ -139,10 +139,10 @@ void JsonValue::assign(const vpack::Builder& b) {
     MemChunkAllocator::instance()->allocate((size_t)b.size(), &_binary);
 
     LOG(WARNING) << "[DEBUG] assign memcpy"
-                 << "[binary.data=" << _binary.data << "] "
+                 << "[binary.data=" << (intptr_t)_binary.data << "] "
                  << "[binary.size=" << _binary.size << "] "
                  << "[binary.core_id=" << _binary.core_id << "] "
-                 << "[src.data=" << b.data() << "] "
+                 << "[src.data=" << (intptr_t)b.data() << "] "
                  << "[src.size=" << b.size() << "] ";
 
     memcpy(_binary.data, b.data(), (size_t)b.size());
@@ -222,14 +222,14 @@ JsonValue JsonValue::from_string(const Slice& value) {
     const VSlice slice = builder.slice();
 
     LOG(WARNING) << "[DEBUG] from_string previous "
-                 << "[value.data=" << (uint8_t*)value.data << "] "
+                 << "[value.data=" << (intptr_t)value.data << "] "
                  << "[value.size=" << value.size << "] "
-                 << "[slice.data=" << slice.start() << "] "
+                 << "[slice.data=" << (intptr_t)slice.start() << "] "
                  << "[slice.size=" << slice.byteSize() << "] ";
 
     auto v = JsonValue(slice);
     LOG(WARNING) << "[DEBUG] from_string after "
-                 << "[v.binary.data=" << v._binary.data << "] "
+                 << "[v.binary.data=" << (intptr_t)v._binary.data << "] "
                  << "[v.binary.size=" << v._binary.size << "] "
                  << "[v.binary.core_id=" << v._binary.core_id << "] ";
     return v;
