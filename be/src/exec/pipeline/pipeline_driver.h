@@ -434,6 +434,8 @@ public:
         return source_operator()->is_epoch_finishing() || sink_operator()->is_epoch_finishing();
     }
 
+    RuntimeProfile::Counter* queue_lock_timer() { return _queue_lock_timer; }
+
 protected:
     PipelineDriver()
             : _operators(),
@@ -520,6 +522,8 @@ protected:
     RuntimeProfile::Counter* _followup_input_empty_timer = nullptr;
     RuntimeProfile::Counter* _output_full_timer = nullptr;
     RuntimeProfile::Counter* _pending_finish_timer = nullptr;
+
+    RuntimeProfile::Counter* _queue_lock_timer = nullptr;
 
     MonotonicStopWatch* _total_timer_sw = nullptr;
     MonotonicStopWatch* _pending_timer_sw = nullptr;
