@@ -75,6 +75,7 @@ Status ScanOperator::prepare(RuntimeState* state) {
             "PeakScanTaskQueueSize", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TUnit::UNIT));
     _peak_io_tasks_counter = _unique_metrics->AddHighWaterMarkCounter(
             "PeakIOTasks", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TCounterAggregateType::AVG));
+    _submit_timer = ADD_TIMER(_unique_metrics, "SubmitTimer");
 
     RETURN_IF_ERROR(do_prepare(state));
     return Status::OK();
@@ -408,17 +409,20 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
         }
     };
 
-    if (_scan_executor->submit(std::move(task))) {
-        _io_task_retry_cnt = 0;
-    } else {
-        _chunk_sources[chunk_source_index]->unpin_chunk_token();
-        _num_running_io_tasks--;
-        _is_io_task_running[chunk_source_index] = false;
-        // TODO(hcf) set a proper retry times
-        LOG(WARNING) << "ScanOperator failed to offer io task due to thread pool overload, retryCnt="
-                     << _io_task_retry_cnt;
-        if (++_io_task_retry_cnt > 100) {
-            return Status::RuntimeError("ScanOperator failed to offer io task due to thread pool overload");
+    {
+        SCOPED_TIMER(_submit_timer);
+        if (_scan_executor->submit(std::move(task))) {
+            _io_task_retry_cnt = 0;
+        } else {
+            _chunk_sources[chunk_source_index]->unpin_chunk_token();
+            _num_running_io_tasks--;
+            _is_io_task_running[chunk_source_index] = false;
+            // TODO(hcf) set a proper retry times
+            LOG(WARNING) << "ScanOperator failed to offer io task due to thread pool overload, retryCnt="
+                         << _io_task_retry_cnt;
+            if (++_io_task_retry_cnt > 100) {
+                return Status::RuntimeError("ScanOperator failed to offer io task due to thread pool overload");
+            }
         }
     }
 
