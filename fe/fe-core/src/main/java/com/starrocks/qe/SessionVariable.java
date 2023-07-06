@@ -179,6 +179,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String ENABLE_PIPELINE_ENGINE = "enable_pipeline_engine";
 
+    public static final String ENABLE_NEW_SCHEDULER = "enable_new_scheduler";
+
     public static final String ENABLE_MV_PLANNER = "enable_mv_planner";
     public static final String ENABLE_INCREMENTAL_REFRESH_MV = "enable_incremental_mv";
 
@@ -312,6 +314,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
             "enable_multicolumn_global_runtime_filter";
     public static final String ENABLE_OPTIMIZER_TRACE_LOG = "enable_optimizer_trace_log";
     public static final String ENABLE_MV_OPTIMIZER_TRACE_LOG = "enable_mv_optimizer_trace_log";
+    public static final String ENABLE_SCHEDULER_TRACE_LOG = "enable_scheduler_trace_log";
     public static final String JOIN_IMPLEMENTATION_MODE = "join_implementation_mode";
     public static final String JOIN_IMPLEMENTATION_MODE_V2 = "join_implementation_mode_v2";
 
@@ -460,6 +463,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VariableMgr.VarAttr(name = ENABLE_RUNTIME_ADAPTIVE_DOP)
     private boolean enableRuntimeAdaptiveDop = false;
+
+    @VariableMgr.VarAttr(name = ENABLE_NEW_SCHEDULER)
+    private boolean enableNewScheduler = false;
 
     @VariableMgr.VarAttr(name = ADAPTIVE_DOP_MAX_BLOCK_ROWS_PER_DRIVER_SEQ, flag = VariableMgr.INVISIBLE)
     private long adaptiveDopMaxBlockRowsPerDriverSeq = 4096L * 4;
@@ -913,9 +919,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VariableMgr.VarAttr(name = ENABLE_OPTIMIZER_TRACE_LOG, flag = VariableMgr.INVISIBLE)
     private boolean enableOptimizerTraceLog = false;
-
     @VariableMgr.VarAttr(name = ENABLE_MV_OPTIMIZER_TRACE_LOG, flag = VariableMgr.INVISIBLE)
     private boolean enableMVOptimizerTraceLog = false;
+    @VariableMgr.VarAttr(name = ENABLE_SCHEDULER_TRACE_LOG, flag = VariableMgr.INVISIBLE)
+    private boolean enableSchedulerTraceLog = false;
 
     @VariableMgr.VarAttr(name = ENABLE_QUERY_DEBUG_TRACE, flag = VariableMgr.INVISIBLE)
     private boolean enableQueryDebugTrace = false;
@@ -1288,6 +1295,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public int getQueryTimeoutS() {
         return queryTimeoutS;
+    }
+
+    public int getQueryDeliveryTimeoutS() {
+        return queryDeliveryTimeoutS;
+    }
+
+    public void setQueryDeliveryTimeoutS(int queryDeliveryTimeoutS) {
+        this.queryDeliveryTimeoutS = queryDeliveryTimeoutS;
     }
 
     public boolean isEnableProfile() {
@@ -1686,6 +1701,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enablePipelineEngine && enableRuntimeAdaptiveDop;
     }
 
+    public boolean isEnableNewScheduler() {
+        return enableNewScheduler;
+    }
+
     public long getAdaptiveDopMaxBlockRowsPerDriverSeq() {
         return adaptiveDopMaxBlockRowsPerDriverSeq;
     }
@@ -1708,6 +1727,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableTabletInternalParallel() {
         return enableTabletInternalParallel;
+    }
+
+    public void setEnableTabletInternalParallel(boolean enableTabletInternalParallel) {
+        this.enableTabletInternalParallel = enableTabletInternalParallel;
     }
 
     public boolean isEnableResourceGroup() {
@@ -1900,13 +1923,20 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public void setEnableOptimizerTraceLog(boolean val) {
         this.enableOptimizerTraceLog = val;
     }
-
     public boolean isEnableMVOptimizerTraceLog() {
         return enableMVOptimizerTraceLog || enableOptimizerTraceLog;
     }
 
     public void setEnableMVOptimizerTraceLog(boolean val) {
         this.enableMVOptimizerTraceLog = val;
+    }
+
+    public boolean isEnableSchedulerTraceLog() {
+        return enableSchedulerTraceLog;
+    }
+
+    public void setEnableSchedulerTraceLog(boolean enableSchedulerTraceLog) {
+        this.enableSchedulerTraceLog = enableSchedulerTraceLog;
     }
 
     public boolean isRuntimeFilterOnExchangeNode() {

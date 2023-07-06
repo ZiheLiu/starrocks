@@ -2254,7 +2254,7 @@ restoreTableDesc
     ;
 
 explainDesc
-    : (DESC | DESCRIBE | EXPLAIN) (LOGICAL | VERBOSE | COSTS)?
+    : (DESC | DESCRIBE | EXPLAIN) (LOGICAL | VERBOSE | COSTS | SCHEDULER)?
     ;
 
 optimizerTrace
