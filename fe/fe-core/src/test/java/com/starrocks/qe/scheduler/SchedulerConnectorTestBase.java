@@ -12,35 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package com.starrocks.sql.plan;
+package com.starrocks.qe.scheduler;
 
 import com.google.common.collect.Maps;
 import com.starrocks.common.DdlException;
-import com.starrocks.common.FeConstants;
 import com.starrocks.connector.MockedMetadataMgr;
 import com.starrocks.connector.hive.MockedHiveMetadata;
-import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import org.junit.BeforeClass;
 
 import java.util.Map;
 
-public class ConnectorPlanTestBase extends PlanTestBase {
+public class SchedulerConnectorTestBase extends SchedulerTestBase {
     @BeforeClass
     public static void beforeClass() throws Exception {
-        PlanTestBase.beforeClass();
-        FeConstants.runningUnitTest = true;
+        SchedulerTestBase.beforeClass();
+
         GlobalStateMgr gsmMgr = connectContext.getGlobalStateMgr();
         MockedMetadataMgr metadataMgr = new MockedMetadataMgr(gsmMgr.getLocalMetastore(), gsmMgr.getConnectorMgr());
         gsmMgr.setMetadataMgr(metadataMgr);
 
-        mockHiveCatalogImpl(metadataMgr);
-    }
-
-    public static void mockHiveCatalog(ConnectContext ctx) throws DdlException {
-        GlobalStateMgr gsmMgr = ctx.getGlobalStateMgr();
-        MockedMetadataMgr metadataMgr = new MockedMetadataMgr(gsmMgr.getLocalMetastore(), gsmMgr.getConnectorMgr());
-        gsmMgr.setMetadataMgr(metadataMgr);
         mockHiveCatalogImpl(metadataMgr);
     }
 

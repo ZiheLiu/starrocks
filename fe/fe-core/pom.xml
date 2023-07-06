@@ -69,11 +69,11 @@ under the License.
             <id>thirdparty</id>
             <activation>
                 <file>
-                    <exists>${env.STARROCKS_THIRDPARTY}/installed/bin/thrift</exists>
+                    <exists>thrift</exists>
                 </file>
             </activation>
             <properties>
-                <starrocks.thrift>${env.STARROCKS_THIRDPARTY}/installed/bin/thrift</starrocks.thrift>
+                <starrocks.thrift>thrift</starrocks.thrift>
             </properties>
         </profile>
         <profile>
@@ -239,6 +239,14 @@ under the License.
             <groupId>org.junit.vintage</groupId>
             <artifactId>junit-vintage-engine</artifactId>
             <version>5.8.2</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/org.assertj/assertj-core -->
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.24.2</version>
             <scope>test</scope>
         </dependency>
 
