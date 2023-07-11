@@ -809,6 +809,8 @@ public class OlapScanNode extends ScanNode {
             if (ConnectContext.get() != null) {
                 msg.olap_scan_node.setEnable_column_expr_predicate(
                         ConnectContext.get().getSessionVariable().isEnableColumnExprPredicate());
+                msg.olap_scan_node.setEnable_or_predicate(
+                        ConnectContext.get().getSessionVariable().isEnableOrPredicate());
                 msg.olap_scan_node.setMax_parallel_scan_instance_num(
                         ConnectContext.get().getSessionVariable().getMaxParallelScanInstanceNum());
             }

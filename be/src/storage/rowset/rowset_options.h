@@ -34,6 +34,7 @@ class RuntimeState;
 class TabletSchema;
 
 class ColumnPredicate;
+class DisjunctivePredicates;
 class DeletePredicates;
 struct RowidRangeOption;
 struct ShortKeyRangeOption;
@@ -51,6 +52,7 @@ public:
 
     std::unordered_map<ColumnId, PredicateList> predicates;
     std::unordered_map<ColumnId, PredicateList> predicates_for_zone_map;
+    std::vector<const DisjunctivePredicates*> disjunctive_predicates;
 
     // whether rowset should return rows in sorted order.
     bool sorted = true;

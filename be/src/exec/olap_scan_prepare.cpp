@@ -17,12 +17,15 @@
 #include <variant>
 
 #include "column/type_traits.h"
+#include "common/statusor.h"
 #include "exprs/dictmapping_expr.h"
 #include "exprs/expr_context.h"
 #include "exprs/in_const_predicate.hpp"
+#include "gen_cpp/Opcodes_types.h"
 #include "gutil/map_util.h"
 #include "runtime/descriptors.h"
 #include "storage/column_predicate.h"
+#include "storage/conjunctive_predicates.h"
 #include "storage/olap_runtime_range_pruner.h"
 #include "storage/olap_runtime_range_pruner.hpp"
 #include "storage/predicate_parser.h"
@@ -687,6 +690,36 @@ Status OlapScanConjunctsManager::get_column_predicates(PredicateParser* parser,
     return Status::OK();
 }
 
+Status OlapScanConjunctsManager::get_disjunctive_predicates(
+        PredicateParser* parser, std::vector<std::unique_ptr<DisjunctivePredicates>>* preds) {
+    for (auto& disjunct_exprs : disjuncts) {
+        auto disjunct_pred = std::make_unique<DisjunctivePredicates>();
+
+        for (auto& conjunct_exprs : disjunct_exprs) {
+            ConjunctivePredicates conjunct_pred;
+            for (auto& [ctx, slot_desc] : conjunct_exprs) {
+                ASSIGN_OR_RETURN(auto p, parser->parse_expr_ctx(*slot_desc, runtime_state, ctx));
+                if (p == nullptr) {
+                    std::stringstream ss;
+                    ss << "invalid filter, slot=" << slot_desc->debug_string();
+                    if (ctx != nullptr) {
+                        ss << ", expr=" << ctx->root()->debug_string();
+                    }
+                    LOG(WARNING) << ss.str();
+                    return Status::RuntimeError("invalid filter");
+                } else {
+                    obj_pool->add(p);
+                    conjunct_pred.add(p);
+                }
+            }
+        }
+
+        preds->emplace_back(std::move(disjunct_pred));
+    }
+
+    return Status::OK();
+}
+
 Status OlapScanConjunctsManager::eval_const_conjuncts(const std::vector<ExprContext*>& conjunct_ctxs, Status* status) {
     *status = Status::OK();
     for (const auto& ctx : conjunct_ctxs) {
@@ -729,7 +762,7 @@ void OlapScanConjunctsManager::build_column_expr_predicates() {
     for (int i = 0; i < slots.size(); i++) {
         const SlotDescriptor* slot_desc = slots[i];
         SlotId slot_id = slot_desc->id();
-        slot_id_to_index.insert(std::make_pair(slot_id, i));
+        slot_id_to_index.emplace(slot_id, i);
     }
 
     const auto& conjunct_ctxs = (*conjunct_ctxs_ptr);
@@ -754,24 +787,126 @@ void OlapScanConjunctsManager::build_column_expr_predicates() {
             continue;
         }
 
-        auto iter = slot_index_to_expr_ctxs.find(index);
-        if (iter == slot_index_to_expr_ctxs.end()) {
-            slot_index_to_expr_ctxs.insert(make_pair(index, std::vector<ExprContext*>{}));
-            iter = slot_index_to_expr_ctxs.find(index);
-        }
-        iter->second.emplace_back(ctx);
+        slot_index_to_expr_ctxs[index].emplace_back(ctx);
         normalized_conjuncts[i] = true;
     }
 }
 
+static StatusOr<OlapScanConjunctsManager::ConjunctiveExprContexts> build_conjunctive_exprs(
+        Expr* expr, const std::vector<SlotDescriptor*>& slots, std::map<SlotId, int>& slot_id_to_index,
+        ObjectPool* obj_pool, RuntimeState* runtime_state) {
+    OlapScanConjunctsManager::ConjunctiveExprContexts res;
+
+    std::vector<SlotId> slot_ids;
+    expr->get_slot_ids(&slot_ids);
+    if (slot_ids.size() < 1) {
+        return res;
+    } else if (slot_ids.size() == 1) {
+        int index = -1;
+        if (auto iter = slot_id_to_index.find(slot_ids[0]); iter == slot_id_to_index.end()) {
+            return res;
+        } else {
+            index = iter->second;
+        }
+
+        // note(yan): we only handles scalar type now to avoid complex type mismatch.
+        // otherwise we don't need this limitation.
+        const SlotDescriptor* slot_desc = slots[index];
+        LogicalType ltype = slot_desc->type().type;
+        if (!support_column_expr_predicate(ltype)) {
+            return res;
+        }
+
+        ExprContext* expr_ctx = obj_pool->add(new ExprContext(expr));
+        RETURN_IF_ERROR(expr_ctx->prepare(runtime_state));
+        RETURN_IF_ERROR(expr_ctx->open(runtime_state));
+        res.emplace_back(expr_ctx, slot_desc);
+    } else if (TExprOpcode::COMPOUND_AND == expr->op()) {
+        for (Expr* child : expr->children()) {
+            ASSIGN_OR_RETURN(auto child_contexts,
+                             build_conjunctive_exprs(child, slots, slot_id_to_index, obj_pool, runtime_state));
+            if (child_contexts.empty()) {
+                res.clear();
+                return res;
+            }
+            res.insert(res.end(), child_contexts.begin(), child_contexts.end());
+        }
+    }
+
+    return res;
+}
+
+static StatusOr<OlapScanConjunctsManager::DisjunctiveExprContexts> build_disjunctive_exprs(
+        ExprContext* ctx, const std::vector<SlotDescriptor*>& slots, std::map<SlotId, int>& slot_id_to_index,
+        ObjectPool* obj_pool, RuntimeState* runtime_state) {
+    OlapScanConjunctsManager::DisjunctiveExprContexts res;
+
+    const Expr* root_expr = ctx->root();
+    if (TExprOpcode::COMPOUND_OR != root_expr->op()) {
+        return res;
+    }
+
+    for (Expr* child : root_expr->children()) {
+        ASSIGN_OR_RETURN(auto conjunctive_exprs,
+                         build_conjunctive_exprs(child, slots, slot_id_to_index, obj_pool, runtime_state));
+        if (conjunctive_exprs.empty()) {
+            res.clear();
+            return res;
+        }
+
+        res.emplace_back(std::move(conjunctive_exprs));
+    }
+
+    return res;
+}
+
+Status OlapScanConjunctsManager::build_disjunctive_predicates() {
+    std::map<SlotId, int> slot_id_to_index;
+    const auto& slots = tuple_desc->decoded_slots();
+    for (int i = 0; i < slots.size(); i++) {
+        const SlotDescriptor* slot_desc = slots[i];
+        SlotId slot_id = slot_desc->id();
+        slot_id_to_index.emplace(slot_id, i);
+    }
+
+    const auto& conjunct_ctxs = (*conjunct_ctxs_ptr);
+    for (size_t i = 0; i < conjunct_ctxs.size(); i++) {
+        if (normalized_conjuncts[i]) {
+            continue;
+        }
+
+        ExprContext* ctx = conjunct_ctxs[i];
+
+        std::vector<SlotId> slot_ids;
+        ctx->root()->get_slot_ids(&slot_ids);
+        if (slot_ids.size() <= 1) {
+            continue;
+        }
+
+        ASSIGN_OR_RETURN(auto disjunctive_exprs,
+                         build_disjunctive_exprs(ctx, slots, slot_id_to_index, obj_pool, runtime_state));
+        if (disjunctive_exprs.empty()) {
+            continue;
+        }
+
+        disjuncts.emplace_back(std::move(disjunctive_exprs));
+        normalized_conjuncts[i] = true;
+    }
+
+    return Status::OK();
+}
+
 Status OlapScanConjunctsManager::parse_conjuncts(bool scan_keys_unlimited, int32_t max_scan_key_num,
-                                                 bool enable_column_expr_predicate) {
+                                                 bool enable_column_expr_predicate, bool enable_or_predicate) {
     normalize_conjuncts();
     RETURN_IF_ERROR(build_olap_filters());
     build_scan_keys(scan_keys_unlimited, max_scan_key_num);
     if (enable_column_expr_predicate) {
         VLOG_FILE << "OlapScanConjunctsManager: enable_column_expr_predicate = true. push down column expr predicates";
         build_column_expr_predicates();
+    }
+    if (enable_or_predicate) {
+        build_disjunctive_predicates();
     }
     return Status::OK();
 }

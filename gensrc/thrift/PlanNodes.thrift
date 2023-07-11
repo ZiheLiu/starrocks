@@ -484,6 +484,8 @@ struct TOlapScanNode {
   28: optional i32 max_parallel_scan_instance_num
   29: optional list<TColumnAccessPath> column_access_paths
   30: optional bool use_pk_index
+
+  31: optional bool enable_or_predicate
 }
 
 struct TJDBCScanNode {
@@ -511,6 +513,8 @@ struct TLakeScanNode {
   11: optional list<string> sort_key_column_names
   12: optional list<Exprs.TExpr> bucket_exprs
   13: optional list<TColumnAccessPath> column_access_paths
+
+  14: optional bool enable_or_predicate
 }
 
 struct TEqJoinCondition {

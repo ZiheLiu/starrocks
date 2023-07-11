@@ -169,8 +169,10 @@ Status OlapChunkSource::_init_reader_params(const std::vector<std::unique_ptr<Ol
     _params.runtime_range_pruner =
             OlapRuntimeScanRangePruner(parser, _scan_ctx->conjuncts_manager().unarrived_runtime_filters());
     _morsel->init_tablet_reader_params(&_params);
+
     std::vector<PredicatePtr> preds;
     RETURN_IF_ERROR(_scan_ctx->conjuncts_manager().get_column_predicates(parser, &preds));
+    // TODO(lzh): use the real conjuncts
     _decide_chunk_size(!preds.empty());
     for (auto& p : preds) {
         if (parser->can_pushdown(p.get())) {
@@ -185,6 +187,14 @@ Status OlapChunkSource::_init_reader_params(const std::vector<std::unique_ptr<Ol
         GlobalDictPredicatesRewriter not_pushdown_predicate_rewriter(_not_push_down_predicates,
                                                                      *_params.global_dictmaps);
         not_pushdown_predicate_rewriter.rewrite_predicate(&_obj_pool);
+    }
+
+    std::vector<DisjunctivePredicatePtr> disjunct_predicates;
+    RETURN_IF_ERROR(_scan_ctx->conjuncts_manager().get_disjunctive_predicates(parser, &disjunct_predicates));
+    for (auto& p : disjunct_predicates) {
+        // TODO(lzh): check can_push_down
+        _params.disjunctive_predicates.emplace_back(p.get());
+        _disjunct_predicate_pool.emplace_back(std::move(p));
     }
 
     // Range

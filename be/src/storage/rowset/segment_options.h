@@ -27,7 +27,6 @@
 #include "storage/seek_range.h"
 
 namespace starrocks {
-class Condition;
 struct OlapReaderStatistics;
 class RuntimeProfile;
 class TabletSchema;
@@ -53,6 +52,7 @@ public:
 
     std::unordered_map<ColumnId, PredicateList> predicates;
     std::unordered_map<ColumnId, PredicateList> predicates_for_zone_map;
+    std::vector<const DisjunctivePredicates*> disjunctive_predicates;
 
     DisjunctivePredicates delete_predicates;
 

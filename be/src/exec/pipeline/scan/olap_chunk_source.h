@@ -88,6 +88,8 @@ private:
     // For release memory.
     using PredicatePtr = std::unique_ptr<ColumnPredicate>;
     std::vector<PredicatePtr> _predicate_free_pool;
+    using DisjunctivePredicatePtr = std::unique_ptr<DisjunctivePredicates>;
+    std::vector<DisjunctivePredicatePtr> _disjunct_predicate_pool;
 
     // NOTE: _reader may reference the _predicate_free_pool, it should be released before the _predicate_free_pool
     std::shared_ptr<TabletReader> _reader;

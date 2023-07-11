@@ -72,6 +72,7 @@ public:
         return Status::OK();
     }
 
+    const std::vector<ConjunctivePredicates>& predicate_list() const { return _preds; }
     std::vector<ConjunctivePredicates>& predicate_list() { return _preds; }
 
 private:

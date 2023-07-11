@@ -86,6 +86,7 @@ public:
 
     std::string debug_string() const;
 
+    const std::vector<const ColumnPredicate*>& vec_preds() const { return _vec_preds; }
     std::vector<const ColumnPredicate*>& vec_preds() { return _vec_preds; }
     std::vector<const ColumnPredicate*>& non_vec_preds() { return _non_vec_preds; }
 

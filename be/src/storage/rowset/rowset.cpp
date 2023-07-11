@@ -471,6 +471,7 @@ Status Rowset::get_segment_iterators(const Schema& schema, const RowsetReadOptio
     seg_options.stats = options.stats;
     seg_options.ranges = options.ranges;
     seg_options.predicates = options.predicates;
+    seg_options.disjunctive_predicates = options.disjunctive_predicates;
     seg_options.predicates_for_zone_map = options.predicates_for_zone_map;
     seg_options.use_page_cache = options.use_page_cache;
     seg_options.profile = options.profile;

@@ -18,7 +18,7 @@ namespace starrocks {
 
 class Column;
 
-// This class is a bridge to connect ColumnPredicatew which is used in scan/storage layer, and ExprContext which is
+// This class is a bridge to connect ColumnPredicate which is used in scan/storage layer, and ExprContext which is
 // used in computation layer. By bridging that, we can push more predicates from computation layer onto storage layer,
 // hopefully to scan less data and boost performance.
 
@@ -26,7 +26,7 @@ class Column;
 // 1. ExprContext* requires it and
 // 2. we use `_tmp_select` when doing `evaluate_and` and `evaluate_or`.
 
-// And this class has a big limitation that it does not support range evaluatation. In another word, `from` supposed to be 0 always.
+// And this class has a big limitation that it does not support range evaluation. In another word, `from` supposed to be 0 always.
 // The fundamental reason is `ExprContext` requires `Column*` as a total piece, unless we can create a class to represent `ColumnSlice`.
 // And that task is almost impossible.
 class ColumnExprPredicate : public ColumnPredicate {

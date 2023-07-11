@@ -191,6 +191,11 @@ private:
     Status _get_row_ranges_by_bloom_filter();
     Status _get_row_ranges_by_rowid_range();
 
+    StatusOr<SparseRange> _get_row_ranges_by_zone_map_of_disjunctive_pred(
+            const DisjunctivePredicates& disjunctive_pred);
+    StatusOr<SparseRange> _get_row_ranges_by_zone_map_of_conjunctive_pred(
+            const ConjunctivePredicates& conjunctive_pred);
+
     uint32_t segment_id() const { return _segment->id(); }
     uint32_t num_rows() const { return _segment->num_rows(); }
 
@@ -659,6 +664,38 @@ Status SegmentIterator::_get_row_ranges_by_short_key_ranges() {
     return Status::OK();
 }
 
+StatusOr<SparseRange> SegmentIterator::_get_row_ranges_by_zone_map_of_disjunctive_pred(
+        const DisjunctivePredicates& disjunctive_pred) {
+    SparseRange row_ranges;
+
+    const auto& conjunctive_preds = disjunctive_pred.predicate_list();
+    for (const auto& conjunctive_pred : conjunctive_preds) {
+        ASSIGN_OR_RETURN(auto r, _get_row_ranges_by_zone_map_of_conjunctive_pred(conjunctive_pred));
+        row_ranges |= r;
+    }
+
+    return row_ranges;
+}
+
+StatusOr<SparseRange> SegmentIterator::_get_row_ranges_by_zone_map_of_conjunctive_pred(
+        const ConjunctivePredicates& conjunctive_pred) {
+    SparseRange row_ranges(0, num_rows());
+
+    std::vector<const ColumnPredicate*> pred_placeholder(1, nullptr);
+    const auto& col_preds = conjunctive_pred.vec_preds();
+    for (const auto* col_pred : col_preds) {
+        const ColumnId cid = col_pred->column_id();
+        pred_placeholder[0] = col_pred;
+
+        SparseRange r;
+        RETURN_IF_ERROR(_column_iterators[cid]->get_row_ranges_by_zone_map(pred_placeholder, nullptr, &r));
+
+        row_ranges &= r;
+    }
+
+    return row_ranges;
+}
+
 Status SegmentIterator::_get_row_ranges_by_zone_map() {
     SparseRange zm_range(0, num_rows());
 
@@ -688,21 +725,33 @@ Status SegmentIterator::_get_row_ranges_by_zone_map() {
     }
 
     std::vector<const ColumnPredicate*> query_preds;
+    const ColumnPredicate* del_pred;
     for (ColumnId cid : columns) {
-        auto iter1 = _opts.predicates_for_zone_map.find(cid);
-        if (iter1 != _opts.predicates_for_zone_map.end()) {
-            query_preds = iter1->second;
+        if (auto it = _opts.predicates_for_zone_map.find(cid); it != _opts.predicates_for_zone_map.end()) {
+            query_preds = it->second;
         } else {
             query_preds.clear();
         }
 
-        const ColumnPredicate* del_pred;
-        auto iter = _del_predicates.find(cid);
-        del_pred = iter != _del_predicates.end() ? &(iter->second) : nullptr;
+        if (auto it = _del_predicates.find(cid); it != _del_predicates.end()) {
+            del_pred = &(it->second);
+        } else {
+            del_pred = nullptr;
+        }
+
         SparseRange r;
         RETURN_IF_ERROR(_column_iterators[cid]->get_row_ranges_by_zone_map(query_preds, del_pred, &r));
         zm_range = zm_range.intersection(r);
     }
+
+    // -------------------------------------------------------------
+    // prune data pages by zone map index of disjunctive predicates.
+    // -------------------------------------------------------------
+    for (const auto& disjunctive_pred : _opts.disjunctive_predicates) {
+        ASSIGN_OR_RETURN(auto r, _get_row_ranges_by_zone_map_of_disjunctive_pred(disjunctive_pred));
+        zm_range &= r;
+    }
+
     StarRocksMetrics::instance()->segment_rows_read_by_zone_map.increment(zm_range.span_size());
     size_t prev_size = _scan_range.span_size();
     _scan_range = _scan_range.intersection(zm_range);

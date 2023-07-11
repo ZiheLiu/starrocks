@@ -113,13 +113,13 @@ Status OlapScanContext::parse_conjuncts(RuntimeState* state, const std::vector<E
     } else {
         max_scan_key_num = config::max_scan_key_num;
     }
-    bool enable_column_expr_predicate = false;
-    if (thrift_olap_scan_node.__isset.enable_column_expr_predicate) {
-        enable_column_expr_predicate = thrift_olap_scan_node.enable_column_expr_predicate;
-    }
+    bool enable_column_expr_predicate = thrift_olap_scan_node.__isset.enable_column_expr_predicate &&
+                                        thrift_olap_scan_node.enable_column_expr_predicate;
+    bool enable_or_predicate =
+            thrift_olap_scan_node.__isset.enable_or_predicate && thrift_olap_scan_node.enable_or_predicate;
 
     // Parse conjuncts via _conjuncts_manager.
-    RETURN_IF_ERROR(cm.parse_conjuncts(true, max_scan_key_num, enable_column_expr_predicate));
+    RETURN_IF_ERROR(cm.parse_conjuncts(true, max_scan_key_num, enable_column_expr_predicate, enable_or_predicate));
 
     // Get key_ranges and not_push_down_conjuncts from _conjuncts_manager.
     RETURN_IF_ERROR(_conjuncts_manager.get_key_ranges(&_key_ranges));

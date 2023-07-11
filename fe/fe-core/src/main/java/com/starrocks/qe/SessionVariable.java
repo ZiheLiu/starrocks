@@ -286,6 +286,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String RUNTIME_FILTER_EARLY_RETURN_SELECTIVITY = "runtime_filter_early_return_selectivity";
 
     public static final String ENABLE_COLUMN_EXPR_PREDICATE = "enable_column_expr_predicate";
+    public static final String ENABLE_OR_PREDICATE = "enable_or_predicate";
     public static final String ENABLE_EXCHANGE_PASS_THROUGH = "enable_exchange_pass_through";
     public static final String ENABLE_EXCHANGE_PERF = "enable_exchange_perf";
 
@@ -884,6 +885,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VariableMgr.VarAttr(name = ENABLE_COLUMN_EXPR_PREDICATE, flag = VariableMgr.INVISIBLE)
     private boolean enableColumnExprPredicate = true;
+
+    @VariableMgr.VarAttr(name = ENABLE_OR_PREDICATE, flag = VariableMgr.INVISIBLE)
+    private boolean enableOrPredicate = true;
 
     @VariableMgr.VarAttr(name = ENABLE_EXCHANGE_PASS_THROUGH, flag = VariableMgr.INVISIBLE)
     private boolean enableExchangePassThrough = true;
@@ -1821,6 +1825,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableColumnExprPredicate() {
         return enableColumnExprPredicate;
+    }
+
+    public boolean isEnableOrPredicate() {
+        return enableOrPredicate;
     }
 
     public boolean isEnableExchangePassThrough() {

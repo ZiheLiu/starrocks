@@ -31,6 +31,7 @@ class RuntimeProfile;
 class RuntimeState;
 
 class ColumnPredicate;
+class DisjunctivePredicates;
 struct RowidRangeOption;
 using RowidRangeOptionPtr = std::shared_ptr<RowidRangeOption>;
 struct ShortKeyRangeOption;
@@ -66,6 +67,7 @@ struct TabletReaderParams {
     std::vector<OlapTuple> start_key;
     std::vector<OlapTuple> end_key;
     std::vector<const ColumnPredicate*> predicates;
+    std::vector<const DisjunctivePredicates*> disjunctive_predicates;
 
     RuntimeState* runtime_state = nullptr;
 
