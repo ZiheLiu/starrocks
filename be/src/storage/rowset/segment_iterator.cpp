@@ -192,7 +192,7 @@ private:
     Status _get_row_ranges_by_rowid_range();
 
     StatusOr<SparseRange> _get_row_ranges_by_zone_map_of_disjunctive_pred(
-            const DisjunctivePredicates& disjunctive_pred);
+            const DisjunctivePredicates* disjunctive_pred);
     StatusOr<SparseRange> _get_row_ranges_by_zone_map_of_conjunctive_pred(
             const ConjunctivePredicates& conjunctive_pred);
 
@@ -665,10 +665,10 @@ Status SegmentIterator::_get_row_ranges_by_short_key_ranges() {
 }
 
 StatusOr<SparseRange> SegmentIterator::_get_row_ranges_by_zone_map_of_disjunctive_pred(
-        const DisjunctivePredicates& disjunctive_pred) {
+        const DisjunctivePredicates* disjunctive_pred) {
     SparseRange row_ranges;
 
-    const auto& conjunctive_preds = disjunctive_pred.predicate_list();
+    const auto& conjunctive_preds = disjunctive_pred->predicate_list();
     for (const auto& conjunctive_pred : conjunctive_preds) {
         ASSIGN_OR_RETURN(auto r, _get_row_ranges_by_zone_map_of_conjunctive_pred(conjunctive_pred));
         row_ranges |= r;
@@ -747,7 +747,7 @@ Status SegmentIterator::_get_row_ranges_by_zone_map() {
     // -------------------------------------------------------------
     // prune data pages by zone map index of disjunctive predicates.
     // -------------------------------------------------------------
-    for (const auto& disjunctive_pred : _opts.disjunctive_predicates) {
+    for (const auto* disjunctive_pred : _opts.disjunctive_predicates) {
         ASSIGN_OR_RETURN(auto r, _get_row_ranges_by_zone_map_of_disjunctive_pred(disjunctive_pred));
         zm_range &= r;
     }
