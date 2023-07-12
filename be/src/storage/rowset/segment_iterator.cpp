@@ -207,6 +207,7 @@ private:
 
     StatusOr<uint16_t> _filter(Chunk* chunk, vector<rowid_t>* rowid, uint16_t from, uint16_t to);
     StatusOr<uint16_t> _filter_by_expr_predicates(Chunk* chunk, vector<rowid_t>* rowid);
+    StatusOr<uint16_t> _filter_by_disjunct_predicates(Chunk* chunk, vector<rowid_t>* rowid);
 
     void _init_column_predicates();
 
@@ -309,6 +310,7 @@ private:
 
     // initial size of |_opts.predicates|.
     int _predicate_columns = 0;
+    int _only_in_disjunct_columns = 0;
 
     // the next rowid to read
     rowid_t _cur_rowid = 0;
@@ -326,6 +328,16 @@ SegmentIterator::SegmentIterator(std::shared_ptr<Segment> segment, Schema schema
           _segment(std::move(segment)),
           _opts(std::move(options)),
           _predicate_columns(_opts.predicates.size()) {
+    std::unordered_set<ColumnId> disjunct_pred_column_ids;
+    for (const DisjunctivePredicates* disjunct_pred : _opts.disjunctive_predicates) {
+        disjunct_pred->get_column_ids(&disjunct_pred_column_ids);
+    }
+    for (ColumnId col_id : disjunct_pred_column_ids) {
+        if (!_opts.predicates.count(col_id)) {
+            _only_in_disjunct_columns++;
+        }
+    }
+
     // For small segment file (the number of rows is less than chunk_size),
     // the segment iterator will reserve a large amount of memory,
     // especially when there are many columns, many small files, many versions,
@@ -1005,6 +1017,7 @@ Status SegmentIterator::_do_get_next(Chunk* result, vector<rowid_t>* rowid) {
     size_t raw_chunk_size = chunk->num_rows();
 
     ASSIGN_OR_RETURN(size_t chunk_size, _filter_by_expr_predicates(chunk, rowid));
+    ASSIGN_OR_RETURN(chunk_size, _filter_by_disjunct_predicates(chunk, rowid));
 
     _opts.stats->block_load_ns += sw.elapsed_time();
 
@@ -1230,6 +1243,39 @@ StatusOr<uint16_t> SegmentIterator::_filter_by_expr_predicates(Chunk* chunk, vec
     return chunk_size;
 }
 
+StatusOr<uint16_t> SegmentIterator::_filter_by_disjunct_predicates(Chunk* chunk, vector<rowid_t>* rowid) {
+    size_t chunk_size = chunk->num_rows();
+    if (!_opts.disjunctive_predicates.empty() && chunk_size > 0) {
+        SCOPED_RAW_TIMER(&_opts.stats->expr_cond_evaluate_ns);
+        const auto* pred = _opts.disjunctive_predicates[0];
+        pred->evaluate(chunk, _selection.data(), 0, chunk_size);
+
+        for (int i = 1; i < _opts.disjunctive_predicates.size(); ++i) {
+            pred = _opts.disjunctive_predicates[i];
+            pred->evaluate_and(chunk, _selection.data(), 0, chunk_size);
+        }
+
+        size_t hit_count = SIMD::count_nonzero(_selection.data(), chunk_size);
+        size_t new_size = chunk_size;
+        if (hit_count == 0) {
+            chunk->set_num_rows(0);
+            new_size = 0;
+            if (rowid != nullptr) {
+                rowid->resize(0);
+            }
+        } else if (hit_count != chunk_size) {
+            new_size = chunk->filter_range(_selection, 0, chunk_size);
+            if (rowid != nullptr) {
+                auto size = ColumnHelper::filter_range<uint32_t>(_selection, rowid->data(), 0, chunk_size);
+                rowid->resize(size);
+            }
+        }
+        _opts.stats->rows_vec_cond_filtered += (chunk_size - new_size);
+        chunk_size = new_size;
+    }
+    return chunk_size;
+}
+
 inline bool SegmentIterator::_can_using_dict_code(const FieldPtr& field) const {
     if (_opts.predicates.find(field->id()) != _opts.predicates.end()) {
         return _predicate_need_rewrite[field->id()];
@@ -1247,7 +1293,7 @@ bool SegmentIterator::_can_using_global_dict(const FieldPtr& field) const {
 
 template <bool late_materialization>
 Status SegmentIterator::_build_context(ScanContext* ctx) {
-    const size_t predicate_count = _predicate_columns;
+    const size_t predicate_count = _predicate_columns + _only_in_disjunct_columns;
     const size_t num_fields = _schema.num_fields();
 
     const size_t ctx_fields = late_materialization ? predicate_count + 1 : num_fields;
@@ -1364,7 +1410,8 @@ Status SegmentIterator::_init_context() {
 
     RETURN_IF_ERROR(_init_global_dict_decoder());
 
-    if (_predicate_columns == 0 || _predicate_columns >= _schema.num_fields()) {
+    if ((_predicate_columns == 0 && _only_in_disjunct_columns == 0) ||
+        _predicate_columns + _only_in_disjunct_columns >= _schema.num_fields()) {
         // non or all field has predicate, disable late materialization.
         RETURN_IF_ERROR(_build_context<false>(&_context_list[0]));
     } else {
@@ -1777,18 +1824,24 @@ void SegmentIterator::close() {
 
 // put the field that has predicated on it ahead of those without one, for handle late
 // materialization easier.
-inline Schema reorder_schema(const Schema& input, const std::unordered_map<ColumnId, PredicateList>& predicates) {
+inline Schema reorder_schema(const Schema& input, const std::unordered_map<ColumnId, PredicateList>& predicates,
+                             const std::vector<const DisjunctivePredicates*>& disjunctive_predicates) {
+    std::unordered_set<ColumnId> disjunct_pred_column_ids;
+    for (const DisjunctivePredicates* disjunct_pred : disjunctive_predicates) {
+        disjunct_pred->get_column_ids(&disjunct_pred_column_ids);
+    }
+
     const std::vector<FieldPtr>& fields = input.fields();
 
     Schema output;
     output.reserve(fields.size());
     for (const auto& field : fields) {
-        if (predicates.count(field->id())) {
+        if (predicates.count(field->id()) || disjunct_pred_column_ids.count(field->id())) {
             output.append(field);
         }
     }
     for (const auto& field : fields) {
-        if (!predicates.count(field->id())) {
+        if (!predicates.count(field->id()) && !disjunct_pred_column_ids.count(field->id())) {
             output.append(field);
         }
     }
@@ -1800,7 +1853,7 @@ ChunkIteratorPtr new_segment_iterator(const std::shared_ptr<Segment>& segment, c
     if (options.predicates.empty() || options.predicates.size() >= schema.num_fields()) {
         return std::make_shared<SegmentIterator>(segment, schema, options);
     } else {
-        Schema ordered_schema = reorder_schema(schema, options.predicates);
+        Schema ordered_schema = reorder_schema(schema, options.predicates, options.disjunctive_predicates);
         auto seg_iter = std::make_shared<SegmentIterator>(segment, ordered_schema, options);
         return new_projection_iterator(schema, seg_iter);
     }

@@ -41,6 +41,9 @@ public:
     DisjunctivePredicates() = default;
     ~DisjunctivePredicates() = default;
 
+    Status evaluate_and(const Chunk* chunk, uint8_t* selection) const;
+    Status evaluate_and(const Chunk* chunk, uint8_t* selection, uint16_t from, uint16_t to) const;
+
     Status evaluate(const Chunk* chunk, uint8_t* selection) const;
 
     Status evaluate(const Chunk* chunk, uint8_t* selection, uint16_t from, uint16_t to) const;
