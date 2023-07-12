@@ -1717,7 +1717,6 @@ Status SegmentIterator::_get_row_ranges_by_rowid_range() {
 void SegmentIterator::_update_stats(RandomAccessFile* rfile) {
     auto stats_or = rfile->get_numeric_statistics();
     if (!stats_or.ok()) {
-        LOG(WARNING) << "failed to get statistics: " << stats_or.status();
         return;
     }
 

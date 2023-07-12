@@ -712,6 +712,7 @@ Status OlapScanConjunctsManager::get_disjunctive_predicates(
                     conjunct_pred.add(p);
                 }
             }
+            disjunct_pred->add(std::move(conjunct_pred));
         }
 
         preds->emplace_back(std::move(disjunct_pred));
