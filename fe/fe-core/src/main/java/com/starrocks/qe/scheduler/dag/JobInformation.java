@@ -58,6 +58,7 @@ public class JobInformation {
     private final boolean enablePipeline;
     private final boolean enableStreamPipeline;
     private final boolean isBlockQuery;
+    private final boolean enableTraceLog;
 
     // Why we use query global?
     // When `NOW()` function is in sql, we need only one now(),
@@ -79,6 +80,7 @@ public class JobInformation {
         this.enablePipeline = builder.enablePipeline;
         this.enableStreamPipeline = builder.enableStreamPipeline;
         this.isBlockQuery = builder.isBlockQuery;
+        this.enableTraceLog = builder.enableTraceLog;
 
         this.queryGlobals = builder.queryGlobals;
         this.queryOptions = builder.queryOptions;
@@ -171,6 +173,10 @@ public class JobInformation {
 
     public boolean isStreamLoad() {
         return queryOptions.getLoad_job_type() == TLoadJobType.STREAM_LOAD;
+    }
+
+    public boolean isEnableTraceLog() {
+        return enableTraceLog;
     }
 
     public void reset() {
@@ -328,6 +334,8 @@ public class JobInformation {
         }
 
         public static JobInformation fromSyncStreamLoadInfo(StreamLoadPlanner planner) {
+            ConnectContext context = planner.getConnectContext();
+
             TExecPlanFragmentParams params = planner.getExecPlanFragmentParams();
             TUniqueId queryId = params.getParams().getFragment_instance_id();
 
@@ -341,6 +349,7 @@ public class JobInformation {
                     .queryGlobals(null)
                     .queryOptions(null)
                     .enablePipeline(false)
+                    .enableTraceLog(context.getSessionVariable().isEnableSchedulerTraceLog())
                     .resourceGroup(null)
                     .build();
         }
@@ -366,6 +375,7 @@ public class JobInformation {
                     .queryGlobals(queryGlobals)
                     .queryOptions(queryOptions)
                     .enablePipeline(true)
+                    .enableTraceLog(context.getSessionVariable().isEnableSchedulerTraceLog())
                     .resourceGroup(null)
                     .build();
         }
@@ -423,6 +433,8 @@ public class JobInformation {
         private boolean enableStreamPipeline;
         private boolean isBlockQuery;
 
+        private boolean enableTraceLog;
+
         private TQueryGlobals queryGlobals;
         private TQueryOptions queryOptions;
         private TWorkGroup resourceGroup;
@@ -438,6 +450,7 @@ public class JobInformation {
             TWorkGroup resourceGroup = prepareResourceGroup(
                     context, ResourceGroupClassifier.QueryType.fromTQueryType(queryOptions.getQuery_type()));
             this.enablePipeline(isEnablePipeline(context, fragments))
+                    .enableTraceLog(context.getSessionVariable().isEnableSchedulerTraceLog())
                     .resourceGroup(resourceGroup);
 
             return this;
@@ -490,6 +503,11 @@ public class JobInformation {
 
         private Builder enablePipeline(boolean enablePipeline) {
             this.enablePipeline = enablePipeline;
+            return this;
+        }
+
+        private Builder enableTraceLog(boolean enableTraceLog) {
+            this.enableTraceLog = enableTraceLog;
             return this;
         }
 

@@ -75,10 +75,14 @@ public interface ICoordinator {
     // ------------------------------------------------------------------------------------
 
     default void exec() throws Exception {
-        startScheduling();
+        startScheduling(true);
     }
 
-    void startScheduling() throws Exception;
+    default void exec(boolean needDeploy) throws Exception {
+        startScheduling(needDeploy);
+    }
+
+    void startScheduling(boolean needDeploy) throws Exception;
 
     void updateFragmentExecStatus(TReportExecStatusParams params);
 

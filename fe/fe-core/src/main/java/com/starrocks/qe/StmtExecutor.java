@@ -99,6 +99,7 @@ import com.starrocks.privilege.PrivilegeType;
 import com.starrocks.proto.PQueryStatistics;
 import com.starrocks.proto.QueryStatisticsItemPB;
 import com.starrocks.qe.QueryState.MysqlStateType;
+import com.starrocks.qe.scheduler.DefaultSchedulerFactory;
 import com.starrocks.qe.scheduler.ICoordinator;
 import com.starrocks.rpc.RpcException;
 import com.starrocks.server.CatalogMgr;
@@ -838,7 +839,9 @@ public class StmtExecutor {
     }
 
     private ICoordinator.Factory getCoordinatorFactory() {
-        return new Coordinator.Factory();
+        return context.getSessionVariable().isEnableNewScheduler()
+                ? new DefaultSchedulerFactory()
+                : new Coordinator.Factory();
     }
 
     // Process a select statement.
@@ -848,17 +851,22 @@ public class StmtExecutor {
 
         boolean isExplainAnalyze = parsedStmt.isExplain()
                 && StatementBase.ExplainLevel.ANALYZE.equals(parsedStmt.getExplainLevel());
+        boolean isSchedulerExplain = parsedStmt.isExplain()
+                && StatementBase.ExplainLevel.SCHEDULER.equals(parsedStmt.getExplainLevel());
 
         if (isExplainAnalyze) {
             context.getSessionVariable().setEnableProfile(true);
             context.getSessionVariable().setPipelineProfileLevel(1);
             context.getSessionVariable().setProfileLimitFold(false);
+        } else if (isSchedulerExplain) {
+            // Do nothing.
         } else if (parsedStmt.isExplain()) {
             handleExplainStmt(buildExplainString(execPlan, ResourceGroupClassifier.QueryType.SELECT));
             return;
         }
         if (context.getQueryDetail() != null) {
-            context.getQueryDetail().setExplain(buildExplainString(execPlan, ResourceGroupClassifier.QueryType.SELECT));
+            context.getQueryDetail()
+                    .setExplain(buildExplainString(execPlan, ResourceGroupClassifier.QueryType.SELECT));
         }
 
         StatementBase queryStmt = parsedStmt;
@@ -873,7 +881,12 @@ public class StmtExecutor {
         QeProcessorImpl.INSTANCE.registerQuery(context.getExecutionId(),
                 new QeProcessorImpl.QueryInfo(context, originStmt.originStmt, coord));
 
-        coord.exec();
+        boolean needDeploy = !isSchedulerExplain;
+        coord.exec(needDeploy);
+        if (isSchedulerExplain) {
+            handleExplainStmt(buildExplainString(execPlan, ResourceGroupClassifier.QueryType.SELECT));
+            return;
+        }
         coord.setTopProfileSupplier(this::buildTopLevelProfile);
 
         RowBatch batch;
@@ -979,14 +992,16 @@ public class StmtExecutor {
                     catalogName, db.getOriginName(), table.getName(),
                     table.getUUID(),
                     analyzeStmt.getColumnNames(),
-                    analyzeType, StatsConstants.ScheduleType.ONCE, analyzeStmt.getProperties(), LocalDateTime.now());
+                    analyzeType, StatsConstants.ScheduleType.ONCE, analyzeStmt.getProperties(),
+                    LocalDateTime.now());
             analyzeStatus.setStatus(StatsConstants.ScheduleStatus.PENDING);
             GlobalStateMgr.getCurrentAnalyzeMgr().addOrUpdateAnalyzeStatus(analyzeStatus);
         } else {
             //Only for send sync command to client
             analyzeStatus = new NativeAnalyzeStatus(GlobalStateMgr.getCurrentState().getNextId(),
                     db.getId(), table.getId(), analyzeStmt.getColumnNames(),
-                    analyzeType, StatsConstants.ScheduleType.ONCE, analyzeStmt.getProperties(), LocalDateTime.now());
+                    analyzeType, StatsConstants.ScheduleType.ONCE, analyzeStmt.getProperties(),
+                    LocalDateTime.now());
             analyzeStatus.setStatus(StatsConstants.ScheduleStatus.FAILED);
             GlobalStateMgr.getCurrentAnalyzeMgr().addAnalyzeStatus(analyzeStatus);
             analyzeStatus.setStatus(StatsConstants.ScheduleStatus.PENDING);
@@ -1045,7 +1060,8 @@ public class StmtExecutor {
         executeAnalyze(statsConnectCtx, analyzeStmt, analyzeStatus, db, table);
     }
 
-    private void executeAnalyze(ConnectContext statsConnectCtx, AnalyzeStmt analyzeStmt, AnalyzeStatus analyzeStatus,
+    private void executeAnalyze(ConnectContext statsConnectCtx, AnalyzeStmt analyzeStmt, AnalyzeStatus
+            analyzeStatus,
                                 Database db, Table table) {
         StatisticExecutor statisticExecutor = new StatisticExecutor();
         if (analyzeStmt.isExternal()) {
@@ -1071,8 +1087,9 @@ public class StmtExecutor {
                         // Sync load cache, auto-populate column statistic cache after Analyze table manually
                         false);
             } else {
-                StatsConstants.AnalyzeType analyzeType = analyzeStmt.isSample() ? StatsConstants.AnalyzeType.SAMPLE :
-                        StatsConstants.AnalyzeType.FULL;
+                StatsConstants.AnalyzeType analyzeType =
+                        analyzeStmt.isSample() ? StatsConstants.AnalyzeType.SAMPLE :
+                                StatsConstants.AnalyzeType.FULL;
                 statisticExecutor.collectStatistics(statsConnectCtx,
                         StatisticsCollectJobFactory.buildStatisticsCollectJob(db, table, null,
                                 analyzeStmt.getColumnNames(),
@@ -1091,12 +1108,14 @@ public class StmtExecutor {
         if (dropStatsStmt.isExternal()) {
             GlobalStateMgr.getCurrentAnalyzeMgr().dropExternalStats(table.getUUID());
         } else {
-            List<String> columns = table.getBaseSchema().stream().filter(d -> !d.isAggregated()).map(Column::getName)
-                    .collect(Collectors.toList());
+            List<String> columns =
+                    table.getBaseSchema().stream().filter(d -> !d.isAggregated()).map(Column::getName)
+                            .collect(Collectors.toList());
 
             GlobalStateMgr.getCurrentAnalyzeMgr().dropAnalyzeStatus(table.getId());
             GlobalStateMgr.getCurrentAnalyzeMgr()
-                    .dropBasicStatsMetaAndData(StatisticUtils.buildConnectContext(), Sets.newHashSet(table.getId()));
+                    .dropBasicStatsMetaAndData(StatisticUtils.buildConnectContext(),
+                            Sets.newHashSet(table.getId()));
             GlobalStateMgr.getCurrentStatisticStorage().expireTableAndColumnStatistics(table, columns);
         }
     }
@@ -1109,7 +1128,8 @@ public class StmtExecutor {
 
         GlobalStateMgr.getCurrentAnalyzeMgr().dropAnalyzeStatus(table.getId());
         GlobalStateMgr.getCurrentAnalyzeMgr()
-                .dropHistogramStatsMetaAndData(StatisticUtils.buildConnectContext(), Sets.newHashSet(table.getId()));
+                .dropHistogramStatsMetaAndData(StatisticUtils.buildConnectContext(),
+                        Sets.newHashSet(table.getId()));
         GlobalStateMgr.getCurrentStatisticStorage().expireHistogramStatistics(table.getId(), columns);
     }
 
@@ -1491,7 +1511,8 @@ public class StmtExecutor {
             return;
         }
         if (context.getQueryDetail() != null) {
-            context.getQueryDetail().setExplain(buildExplainString(execPlan, ResourceGroupClassifier.QueryType.INSERT));
+            context.getQueryDetail()
+                    .setExplain(buildExplainString(execPlan, ResourceGroupClassifier.QueryType.INSERT));
         }
 
         // special handling for delete of non-primary key table, using old handler
@@ -1517,7 +1538,8 @@ public class StmtExecutor {
         if (stmt instanceof InsertStmt && ((InsertStmt) stmt).getTargetTable() != null) {
             targetTable = ((InsertStmt) stmt).getTargetTable();
         } else {
-            targetTable = GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(catalogName, dbName, tableName);
+            targetTable =
+                    GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(catalogName, dbName, tableName);
         }
 
         if (parsedStmt instanceof InsertStmt && ((InsertStmt) parsedStmt).isOverwrite() &&
@@ -1648,7 +1670,8 @@ public class StmtExecutor {
             coord.setLoadJobId(jobId);
             trackingSql = "select tracking_log from information_schema.load_tracking_logs where job_id=" + jobId;
 
-            QeProcessorImpl.QueryInfo queryInfo = new QeProcessorImpl.QueryInfo(context, originStmt.originStmt, coord);
+            QeProcessorImpl.QueryInfo queryInfo =
+                    new QeProcessorImpl.QueryInfo(context, originStmt.originStmt, coord);
             QeProcessorImpl.INSTANCE.registerQuery(context.getExecutionId(), queryInfo);
             coord.exec();
 
@@ -1732,8 +1755,9 @@ public class StmtExecutor {
                                 TabletFailInfo.fromThrift(coord.getFailInfos())
                         );
                     }
-                    context.getState().setError("Insert has filtered data in strict mode, txn_id = " + transactionId +
-                            " tracking sql = " + trackingSql);
+                    context.getState()
+                            .setError("Insert has filtered data in strict mode, txn_id = " + transactionId +
+                                    " tracking sql = " + trackingSql);
                     insertError = true;
                     return;
                 }
@@ -1763,7 +1787,8 @@ public class StmtExecutor {
                     }
                 }
 
-                context.getGlobalStateMgr().getMetadataMgr().finishSink(catalogName, dbName, tableName, commitInfos);
+                context.getGlobalStateMgr().getMetadataMgr()
+                        .finishSink(catalogName, dbName, tableName, commitInfos);
                 txnStatus = TransactionStatus.VISIBLE;
                 label = "FAKE_ICEBERG_SINK_LABEL";
             } else {
@@ -1797,7 +1822,8 @@ public class StmtExecutor {
             LOG.warn("failed to handle stmt [{}] label: {}", failedSql, label, t);
             String errMsg = t.getMessage();
             if (errMsg == null) {
-                errMsg = "A problem occurred while executing the [ " + failedSql + "] statement with label:" + label;
+                errMsg =
+                        "A problem occurred while executing the [ " + failedSql + "] statement with label:" + label;
             }
 
             try {

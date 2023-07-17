@@ -482,7 +482,10 @@ public class Coordinator implements ICoordinator {
     }
 
     @Override
-    public void startScheduling() throws Exception {
+    public void startScheduling(boolean needDeploy) throws Exception {
+        if (!needDeploy) {
+            return;
+        }
 
         QueryQueueManager.getInstance().maybeWait(connectContext, this);
         try (PlannerProfile.ScopedTimer timer = PlannerProfile.getScopedTimer("CoordPrepareExec")) {

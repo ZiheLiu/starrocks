@@ -37,6 +37,7 @@ import com.starrocks.connector.iceberg.IcebergConnector;
 import com.starrocks.credential.CloudConfiguration;
 import com.starrocks.credential.CloudConfigurationFactory;
 import com.starrocks.credential.CloudType;
+import com.starrocks.qe.scheduler.SchedulerException;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.Field;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
@@ -392,5 +393,10 @@ public class IcebergScanNode extends ScanNode {
     @Override
     public boolean canUseRuntimeAdaptiveDop() {
         return true;
+    }
+
+    @Override
+    public <R, C> R accept(PlanNodeVisitor<R, C> visitor, C ctx) throws SchedulerException {
+        return visitor.visitIcebergScanNode(this, ctx);
     }
 }

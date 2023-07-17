@@ -24,6 +24,7 @@ import com.starrocks.catalog.Type;
 import com.starrocks.connector.Connector;
 import com.starrocks.connector.RemoteScanRangeLocations;
 import com.starrocks.credential.CloudConfiguration;
+import com.starrocks.qe.scheduler.SchedulerException;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.plan.HDFSScanNodePredicates;
 import com.starrocks.thrift.TCloudConfiguration;
@@ -197,5 +198,10 @@ public class HudiScanNode extends ScanNode {
     @Override
     public boolean canUseRuntimeAdaptiveDop() {
         return true;
+    }
+
+    @Override
+    public <R, C> R accept(PlanNodeVisitor<R, C> visitor, C ctx) throws SchedulerException {
+        return visitor.visitHudiScanNode(this, ctx);
     }
 }
