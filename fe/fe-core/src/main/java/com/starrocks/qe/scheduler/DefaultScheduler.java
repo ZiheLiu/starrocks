@@ -41,7 +41,7 @@ import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.assignment.FragmentAssignmentStrategyFactory;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
-import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
+import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance2;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.qe.scheduler.dag.JobInformation;
 import com.starrocks.qe.scheduler.state.CancelledState;
@@ -186,7 +186,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
 
         TUniqueId queryId = jobInfo.getQueryId();
         this.executionDAGProfile = new ExecutionDAGProfile(connectContext, executionDAG, true, queryId, 1);
-        ExecutionFragmentInstance fakeExecution = ExecutionFragmentInstance.createFakeExecution(queryId, address);
+        ExecutionFragmentInstance2 fakeExecution = ExecutionFragmentInstance2.createFakeExecution(queryId, address);
         executionDAGProfile.prepareProfileDoneSignal(Collections.singletonList(fakeExecution.getFragmentInstanceId()));
         executionDAGProfile.attachInstanceProfiles(Collections.singletonList(fakeExecution));
 
@@ -237,7 +237,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
 
     @Override
     public void updateFragmentExecStatus(TReportExecStatusParams params) {
-        ExecutionFragmentInstance execution = executionDAG.getExecution(params.backend_num);
+        ExecutionFragmentInstance2 execution = executionDAG.getExecution(params.backend_num);
         if (execution == null) {
             LOG.warn("unknown backend number: {}, valid backend numbers: {}", params.backend_num,
                     executionDAG.getExecutionIndexesInJob());
@@ -328,7 +328,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
         }
     }
 
-    private void onExecutionSuccess(ExecutionFragmentInstance execution) {
+    private void onExecutionSuccess(ExecutionFragmentInstance2 execution) {
         SchedulerTraceUtil.log(jobInfo, "updateFragmentExecStatus: onExecutionFinished [execution={}]",
                 execution.getInstance());
 
@@ -340,7 +340,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
         }
     }
 
-    private void onExecutionFailed(ExecutionFragmentInstance execution, Status executionStatus) {
+    private void onExecutionFailed(ExecutionFragmentInstance2 execution, Status executionStatus) {
         SchedulerTraceUtil.log(jobInfo,
                 "updateFragmentExecStatus: onExecutionFailed [execution={}] [executionStatus={}]",
                 execution.getInstance(), executionStatus);
@@ -371,7 +371,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
         onFailure(status, null, failure);
     }
 
-    public void onFailure(Status status, ExecutionFragmentInstance execution, Throwable failure) {
+    public void onFailure(Status status, ExecutionFragmentInstance2 execution, Throwable failure) {
         handle(new FailureJobEvent(status, execution, failure));
     }
 
@@ -765,7 +765,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
      */
     @Override
     public boolean checkBackendState() {
-        for (ExecutionFragmentInstance execution : executionDAG.getNeedCheckExecutions()) {
+        for (ExecutionFragmentInstance2 execution : executionDAG.getNeedCheckExecutions()) {
             if (!execution.isBackendStateHealthy()) {
                 setStatus(new Status(TStatusCode.INTERNAL_ERROR,
                         "backend " + execution.getBackend().getId() + " is down"));
@@ -868,7 +868,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
     }
 
     private void cancelRemoteFragmentsAsync(PPlanFragmentCancelReason cancelReason) {
-        for (ExecutionFragmentInstance execution : executionDAG.getExecutions()) {
+        for (ExecutionFragmentInstance2 execution : executionDAG.getExecutions()) {
             if (!execution.cancelFragmentInstance(cancelReason) &&
                     (!execution.hasBeenDeployed() || execution.isFinished())) {
                 // If the execution fails to be cancelled, and it has been finished or not been deployed,

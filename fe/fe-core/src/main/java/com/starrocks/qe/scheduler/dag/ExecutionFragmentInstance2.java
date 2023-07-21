@@ -49,15 +49,15 @@ import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
 // record backend execute state
-public class ExecutionFragmentInstance {
-    private static final Logger LOG = LogManager.getLogger(ExecutionFragmentInstance.class);
+public class ExecutionFragmentInstance2 {
+    private static final Logger LOG = LogManager.getLogger(ExecutionFragmentInstance2.class);
 
     private State state = State.CREATED;
 
     private final JobInformation jobInfo;
     private final FragmentInstance instance;
 
-    private TExecPlanFragmentParams deployRequest;
+    private TExecPlanFragmentParams requestToDeploy;
     private Future<PExecPlanFragmentResult> deployFuture = null;
 
     private final int profileFragmentId;
@@ -71,41 +71,41 @@ public class ExecutionFragmentInstance {
     /**
      * Create a fake backendExecState, only user for stream load profile.
      */
-    public static ExecutionFragmentInstance createFakeExecution(TUniqueId fragmentInstanceId,
-                                                                TNetworkAddress address) {
+    public static ExecutionFragmentInstance2 createFakeExecution(TUniqueId fragmentInstanceId,
+                                                                 TNetworkAddress address) {
         String name = "Instance " + DebugUtil.printId(fragmentInstanceId);
         RuntimeProfile profile = new RuntimeProfile(name);
         profile.addInfoString("Address", String.format("%s:%s", address.hostname, address.port));
 
-        return new ExecutionFragmentInstance(null, null, null, 0, profile, null, null, -1);
+        return new ExecutionFragmentInstance2(null, null, null, 0, profile, null, null, -1);
     }
 
-    public static ExecutionFragmentInstance createExecution(JobInformation jobInfo,
-                                                            FragmentInstance instance,
-                                                            TExecPlanFragmentParams request,
-                                                            int profileFragmentId,
-                                                            ComputeNode worker) {
+    public static ExecutionFragmentInstance2 createExecution(JobInformation jobInfo,
+                                                             FragmentInstance instance,
+                                                             TExecPlanFragmentParams request,
+                                                             int profileFragmentId,
+                                                             ComputeNode worker) {
         TNetworkAddress address = worker.getAddress();
         String name = "Instance " + DebugUtil.printId(request.params.fragment_instance_id) + " (host=" + address + ")";
         RuntimeProfile profile = new RuntimeProfile(name);
         profile.addInfoString("Address", String.format("%s:%s", address.hostname, address.port));
 
-        return new ExecutionFragmentInstance(jobInfo, instance, request, profileFragmentId, profile, worker, address,
+        return new ExecutionFragmentInstance2(jobInfo, instance, request, profileFragmentId, profile, worker, address,
                 worker.getLastMissingHeartbeatTime());
 
     }
 
-    public ExecutionFragmentInstance(JobInformation jobInfo,
-                                     FragmentInstance instance,
-                                     TExecPlanFragmentParams deployRequest,
-                                     int profileFragmentId,
-                                     RuntimeProfile profile,
-                                     ComputeNode worker,
-                                     TNetworkAddress address,
-                                     long lastMissingHeartbeatTime) {
+    public ExecutionFragmentInstance2(JobInformation jobInfo,
+                                      FragmentInstance instance,
+                                      TExecPlanFragmentParams requestToDeploy,
+                                      int profileFragmentId,
+                                      RuntimeProfile profile,
+                                      ComputeNode worker,
+                                      TNetworkAddress address,
+                                      long lastMissingHeartbeatTime) {
         this.jobInfo = jobInfo;
         this.instance = instance;
-        this.deployRequest = deployRequest;
+        this.requestToDeploy = requestToDeploy;
         this.profileFragmentId = profileFragmentId;
         this.profile = profile;
         this.address = address;
@@ -118,7 +118,7 @@ public class ExecutionFragmentInstance {
 
         TNetworkAddress brpcAddress = worker.getBrpcAddress();
         try {
-            deployFuture = BackendServiceClient.getInstance().execPlanFragmentAsync(brpcAddress, deployRequest);
+            deployFuture = BackendServiceClient.getInstance().execPlanFragmentAsync(brpcAddress, requestToDeploy);
         } catch (RpcException | TException e) {
             // DO NOT throw exception here, return a complete future with error code,
             // so that the following logic will cancel the fragment.
@@ -225,7 +225,7 @@ public class ExecutionFragmentInstance {
                     errMsg, code, getFragmentId(), address.hostname, address.port);
         }
 
-        deployRequest = null;
+        requestToDeploy = null;
         deployFuture = null;
         return new DeploymentResult(code, errMsg, failure);
     }
@@ -342,15 +342,15 @@ public class ExecutionFragmentInstance {
     }
 
     public List<TPlanFragmentDestination> getDestinations() {
-        if (deployRequest == null) {
+        if (requestToDeploy == null) {
             return Collections.emptyList();
         }
-        if (!deployRequest.getParams().getDestinations().isEmpty()) {
-            return deployRequest.getParams().getDestinations();
+        if (!requestToDeploy.getParams().getDestinations().isEmpty()) {
+            return requestToDeploy.getParams().getDestinations();
         }
-        if (deployRequest.getFragment().isSetOutput_sink() &&
-                deployRequest.getFragment().getOutput_sink().isSetMulti_cast_stream_sink()) {
-            return deployRequest.getFragment().getOutput_sink().getMulti_cast_stream_sink()
+        if (requestToDeploy.getFragment().isSetOutput_sink() &&
+                requestToDeploy.getFragment().getOutput_sink().isSetMulti_cast_stream_sink()) {
+            return requestToDeploy.getFragment().getOutput_sink().getMulti_cast_stream_sink()
                     .getDestinations().stream()
                     .flatMap(Collection::stream)
                     .collect(Collectors.toList());

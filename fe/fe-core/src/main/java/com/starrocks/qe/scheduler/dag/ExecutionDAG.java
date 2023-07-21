@@ -58,12 +58,12 @@ public class ExecutionDAG {
 
     private final Map<TUniqueId, FragmentInstance> instanceIdToInstance;
     private Map<Long, Integer> workerIdToNumInstances = Maps.newHashMap();
-    private final ConcurrentNavigableMap<Integer, ExecutionFragmentInstance> indexInJobToExecution =
+    private final ConcurrentNavigableMap<Integer, ExecutionFragmentInstance2> indexInJobToExecution =
             new ConcurrentSkipListMap<>();
 
     // backend which state need to be checked when joining this coordinator.
     // It is supposed to be the subset of backendExecStates.
-    private final List<ExecutionFragmentInstance> needCheckExecutions = Lists.newArrayList();
+    private final List<ExecutionFragmentInstance2> needCheckExecutions = Lists.newArrayList();
     // Used by stream load.
     private final Map<Integer, TNetworkAddress> channelIdToBEHTTP = Maps.newHashMap();
     private final Map<Integer, TNetworkAddress> channelIdToBEPort = Maps.newHashMap();
@@ -457,7 +457,7 @@ public class ExecutionDAG {
         return workerIdToNumInstances.get(addr);
     }
 
-    public void addExecution(ExecutionFragmentInstance execution) {
+    public void addExecution(ExecutionFragmentInstance2 execution) {
         FragmentInstance instance = execution.getInstance();
         if (instance != null) {
             instance.setExecution(execution);
@@ -465,11 +465,11 @@ public class ExecutionDAG {
         indexInJobToExecution.put(execution.getIndexInJob(), execution);
     }
 
-    public void addNeedCheckExecution(ExecutionFragmentInstance execution) {
+    public void addNeedCheckExecution(ExecutionFragmentInstance2 execution) {
         needCheckExecutions.add(execution);
     }
 
-    public List<ExecutionFragmentInstance> getNeedCheckExecutions() {
+    public List<ExecutionFragmentInstance2> getNeedCheckExecutions() {
         return needCheckExecutions;
     }
 
@@ -477,11 +477,11 @@ public class ExecutionDAG {
         return indexInJobToExecution.keySet();
     }
 
-    public Collection<ExecutionFragmentInstance> getExecutions() {
+    public Collection<ExecutionFragmentInstance2> getExecutions() {
         return indexInJobToExecution.values();
     }
 
-    public ExecutionFragmentInstance getExecution(int indexInJob) {
+    public ExecutionFragmentInstance2 getExecution(int indexInJob) {
         return indexInJobToExecution.get(indexInJob);
     }
 
@@ -490,7 +490,7 @@ public class ExecutionDAG {
                 .flatMap(fragment -> fragment.getInstances().stream())
                 .map(FragmentInstance::getExecution)
                 .filter(Objects::nonNull)
-                .map(ExecutionFragmentInstance::buildFragmentInstanceInfo)
+                .map(ExecutionFragmentInstance2::buildFragmentInstanceInfo)
                 .collect(Collectors.toList());
     }
 

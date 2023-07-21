@@ -17,7 +17,7 @@ package com.starrocks.qe.scheduler.state;
 import com.google.common.base.Preconditions;
 import com.starrocks.proto.PPlanFragmentCancelReason;
 import com.starrocks.qe.SimpleScheduler;
-import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
+import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance2;
 import com.starrocks.qe.scheduler.state.event.FailureJobEvent;
 import com.starrocks.qe.scheduler.state.event.JobEvent;
 import com.starrocks.qe.scheduler.state.statemachine.StateContext;
@@ -40,7 +40,7 @@ public class FailingState implements JobState {
 
             ctx.cancelInternal(PPlanFragmentCancelReason.INTERNAL_ERROR, event.getStatus(), failureEvent.getFailure());
 
-            ExecutionFragmentInstance execution = failureEvent.getExecution();
+            ExecutionFragmentInstance2 execution = failureEvent.getExecution();
             if (execution != null && event.getStatus().getErrorCode() == TStatusCode.THRIFT_RPC_ERROR) {
                 SimpleScheduler.addToBlacklist(execution.getBackend().getId());
             }

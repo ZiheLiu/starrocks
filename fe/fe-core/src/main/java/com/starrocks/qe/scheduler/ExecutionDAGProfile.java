@@ -29,7 +29,7 @@ import com.starrocks.proto.PQueryStatistics;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
+import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance2;
 import com.starrocks.task.LoadEtlTask;
 import com.starrocks.thrift.TPipelineProfileLevel;
 import com.starrocks.thrift.TReportExecStatusParams;
@@ -106,8 +106,8 @@ public class ExecutionDAGProfile {
         this.profileDoneSignal = profileDoneSignal;
     }
 
-    public void attachInstanceProfiles(Collection<ExecutionFragmentInstance> executions) {
-        for (ExecutionFragmentInstance execution : executions) {
+    public void attachInstanceProfiles(Collection<ExecutionFragmentInstance2> executions) {
+        for (ExecutionFragmentInstance2 execution : executions) {
             if (!execution.computeTimeInProfile(fragmentProfiles.size())) {
                 continue;
             }
@@ -388,7 +388,7 @@ public class ExecutionDAGProfile {
                 .collect(Collectors.toList());
     }
 
-    public void updateLoadInformation(ExecutionFragmentInstance execution, TReportExecStatusParams params) {
+    public void updateLoadInformation(ExecutionFragmentInstance2 execution, TReportExecStatusParams params) {
         if (params.isSetDelta_urls()) {
             deltaUrls.addAll(params.getDelta_urls());
         }

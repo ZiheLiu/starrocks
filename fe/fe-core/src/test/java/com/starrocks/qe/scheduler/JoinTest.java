@@ -20,7 +20,7 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.starrocks.load.loadv2.LoadJob;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
+import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance2;
 import com.starrocks.qe.scheduler.state.JobStateType;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.task.LoadEtlTask;
@@ -134,7 +134,7 @@ public class JoinTest extends SchedulerTestBase {
 
             scheduler.updateFragmentExecStatus(request);
         });
-        for (ExecutionFragmentInstance execution : executionDAG.getExecutions()) {
+        for (ExecutionFragmentInstance2 execution : executionDAG.getExecutions()) {
             Assert.assertFalse(execution.isFinished());
         }
         Assert.assertFalse(joinFinished.get());
@@ -204,7 +204,7 @@ public class JoinTest extends SchedulerTestBase {
                 scheduler.updateFragmentExecStatus(request);
             });
         }
-        for (ExecutionFragmentInstance execution : executionDAG.getExecutions()) {
+        for (ExecutionFragmentInstance2 execution : executionDAG.getExecutions()) {
             Assert.assertTrue(execution.isFinished());
         }
 
