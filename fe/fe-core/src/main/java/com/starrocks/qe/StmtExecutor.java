@@ -99,6 +99,7 @@ import com.starrocks.privilege.PrivilegeType;
 import com.starrocks.proto.PQueryStatistics;
 import com.starrocks.proto.QueryStatisticsItemPB;
 import com.starrocks.qe.QueryState.MysqlStateType;
+import com.starrocks.qe.scheduler.ICoordinator;
 import com.starrocks.rpc.RpcException;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
@@ -162,7 +163,6 @@ import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TLoadJobType;
 import com.starrocks.thrift.TQueryOptions;
-import com.starrocks.thrift.TQueryType;
 import com.starrocks.thrift.TResultBatch;
 import com.starrocks.thrift.TSinkCommitInfo;
 import com.starrocks.thrift.TUniqueId;
@@ -209,7 +209,7 @@ public class StmtExecutor {
     private final OriginStatement originStmt;
     private StatementBase parsedStmt;
     private RuntimeProfile profile;
-    private Coordinator coord = null;
+    private ICoordinator coord = null;
     private LeaderOpExecutor leaderOpExecutor = null;
     private RedirectStatus redirectStatus = null;
     private final boolean isProxy;
@@ -245,7 +245,7 @@ public class StmtExecutor {
         this.isProxy = false;
     }
 
-    public Coordinator getCoordinator() {
+    public ICoordinator getCoordinator() {
         return this.coord;
     }
 
@@ -795,7 +795,7 @@ public class StmtExecutor {
                     sub.cancel();
                 }
             }
-            Coordinator coordRef = coord;
+            ICoordinator coordRef = coord;
             if (coordRef != null) {
                 coordRef.cancel();
             }
@@ -837,6 +837,10 @@ public class StmtExecutor {
         context.getState().setOk();
     }
 
+    private ICoordinator.Factory getCoordinatorFactory() {
+        return new Coordinator.Factory();
+    }
+
     // Process a select statement.
     private void handleQueryStmt(ExecPlan execPlan) throws Exception {
         // Every time set no send flag and clean all data in buffer
@@ -864,7 +868,7 @@ public class StmtExecutor {
         List<String> colNames = execPlan.getColNames();
         List<Expr> outputExprs = execPlan.getOutputExprs();
 
-        coord = new Coordinator(context, fragments, scanNodes, descTable);
+        coord = getCoordinatorFactory().createQueryScheduler(context, fragments, scanNodes, descTable);
 
         QeProcessorImpl.INSTANCE.registerQuery(context.getExecutionId(),
                 new QeProcessorImpl.QueryInfo(context, originStmt.originStmt, coord));
@@ -1119,7 +1123,7 @@ public class StmtExecutor {
     }
 
     private void checkTblPrivilegeForKillAnalyzeStmt(ConnectContext context, String catalogName, String dbName,
-                                                            String tableName, long analyzeId) {
+                                                     String tableName, long analyzeId) {
         MetaUtils.getDatabase(catalogName, dbName);
         MetaUtils.getTable(catalogName, dbName, tableName);
 
@@ -1606,9 +1610,8 @@ public class StmtExecutor {
                 dataSink.complete();
             }
 
-            coord = new Coordinator(context, execPlan.getFragments(), execPlan.getScanNodes(),
-                    execPlan.getDescTbl().toThrift());
-            coord.setQueryType(TQueryType.LOAD);
+            coord = getCoordinatorFactory().createInsertScheduler(
+                    context, execPlan.getFragments(), execPlan.getScanNodes(), execPlan.getDescTbl().toThrift());
 
             List<ScanNode> scanNodes = execPlan.getScanNodes();
 
@@ -1642,7 +1645,7 @@ public class StmtExecutor {
                         ConnectContext.get().getSessionVariable().getQueryTimeoutS());
             }
 
-            coord.setJobId(jobId);
+            coord.setLoadJobId(jobId);
             trackingSql = "select tracking_log from information_schema.load_tracking_logs where job_id=" + jobId;
 
             QeProcessorImpl.QueryInfo queryInfo = new QeProcessorImpl.QueryInfo(context, originStmt.originStmt, coord);
@@ -1898,7 +1901,10 @@ public class StmtExecutor {
         try {
             UUID uuid = context.getQueryId();
             context.setExecutionId(UUIDUtil.toTUniqueId(uuid));
-            coord = new Coordinator(context, plan.getFragments(), plan.getScanNodes(), plan.getDescTbl().toThrift());
+
+            ICoordinator.Factory coordFactory = new Coordinator.Factory();
+            coord = coordFactory.createQueryScheduler(
+                    context, plan.getFragments(), plan.getScanNodes(), plan.getDescTbl().toThrift());
             QeProcessorImpl.INSTANCE.registerQuery(context.getExecutionId(), coord);
 
             coord.exec();
