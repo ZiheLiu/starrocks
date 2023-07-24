@@ -129,8 +129,8 @@ public class Deployer {
         int totalTableSinkDop = 0;
         if (enablePipelineTableSinkDop) {
             totalTableSinkDop = fragment.getInstances().stream()
-                    .map(FragmentInstance2::getTableSinkDop)
-                    .reduce(0, Integer::sum);
+                    .mapToInt(FragmentInstance2::getTableSinkDop)
+                    .sum();
         }
         if (totalTableSinkDop < 0) {
             throw new UserException(

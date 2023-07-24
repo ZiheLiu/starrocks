@@ -21,9 +21,8 @@ import com.starrocks.planner.MultiCastPlanFragment;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
-import com.starrocks.qe.scheduler.dag.FragmentInstance2;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.qe.scheduler.dag.JobInformation;
 import com.starrocks.thrift.InternalServiceVersion;
 import com.starrocks.thrift.TAdaptiveDopParam;
@@ -35,26 +34,49 @@ import com.starrocks.thrift.TPlanFragmentDestination;
 import com.starrocks.thrift.TPlanFragmentExecParams;
 import com.starrocks.thrift.TQueryOptions;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public class TExecPlanFragmentParamsFactory {
     private final ConnectContext context;
     private final JobInformation jobInfo;
-    private final ExecutionDAG executionDAG;
+    private final Map<Long, Integer> workerIdToNumInstances;
     private final TNetworkAddress coordAddress;
 
     public TExecPlanFragmentParamsFactory(ConnectContext context,
                                           JobInformation jobInfo,
-                                          ExecutionDAG executionDAG,
+                                          Map<Long, Integer> workerIdToNumInstances,
                                           TNetworkAddress coordAddress) {
         this.jobInfo = jobInfo;
-        this.executionDAG = executionDAG;
+        this.workerIdToNumInstances = workerIdToNumInstances;
         this.context = context;
         this.coordAddress = coordAddress;
     }
 
-    public TExecPlanFragmentParams create(FragmentInstance2 instance,
+    public List<TExecPlanFragmentParams> create(ExecutionFragment fragment,
+                                                List<FragmentInstance> instances,
+                                                TDescriptorTable descTable,
+                                                int accTabletSinkDop,
+                                                int totalTableSinkDop) {
+        // if pipeline is enable and current fragment contain olap table sink, in fe we will
+        // calculate the number of all tablet sinks in advance and assign them to each fragment instance
+        boolean enablePipelineTableSinkDop = jobInfo.isEnablePipeline() && fragment.getPlanFragment().hasTableSink();
+
+        List<TExecPlanFragmentParams> res = new ArrayList<>(instances.size());
+        for (FragmentInstance instance : instances) {
+            res.add(create(instance, descTable, accTabletSinkDop, totalTableSinkDop));
+
+            if (enablePipelineTableSinkDop) {
+                accTabletSinkDop += instance.getTableSinkDop();
+            }
+        }
+
+        return res;
+    }
+
+    public TExecPlanFragmentParams create(FragmentInstance instance,
                                           TDescriptorTable descTable,
                                           int accTabletSinkDop,
                                           int totalTableSinkDop) {
@@ -67,7 +89,7 @@ public class TExecPlanFragmentParamsFactory {
     }
 
     public void toThriftFromCommonParams(TExecPlanFragmentParams result,
-                                         ExecutionFragment2 execFragment,
+                                         ExecutionFragment execFragment,
                                          TDescriptorTable descTable,
                                          int totalTableSinkDop) {
         PlanFragment fragment = execFragment.getPlanFragment();
@@ -130,9 +152,9 @@ public class TExecPlanFragmentParamsFactory {
     }
 
     private void toThriftForUniqueParams(TExecPlanFragmentParams result,
-                                         FragmentInstance2 instance,
+                                         FragmentInstance instance,
                                          int accTabletSinkDop) {
-        ExecutionFragment2 execFragment = instance.getExecFragment();
+        ExecutionFragment execFragment = instance.getExecFragment();
         PlanFragment fragment = execFragment.getPlanFragment();
 
         boolean isEnablePipeline = jobInfo.isEnablePipeline();
@@ -169,7 +191,7 @@ public class TExecPlanFragmentParamsFactory {
                     .setDestinations(newDestinations);
         }
 
-        result.params.setInstances_number(executionDAG.getNumInstancesOfWorkerId(instance.getWorkerId()));
+        result.params.setInstances_number(workerIdToNumInstances.get(instance.getWorkerId()));
         result.params.setFragment_instance_id(instance.getInstanceId());
         result.params.setPer_node_scan_ranges(instance.getNode2ScanRanges());
         result.params.setNode_to_per_driver_seq_scan_ranges(instance.getNode2DriverSeqToScanRanges());
