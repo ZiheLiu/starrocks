@@ -15,13 +15,13 @@
 package com.starrocks.qe.scheduler.state.event;
 
 import com.starrocks.common.Status;
-import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance2;
+import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
 
 public class FailureJobEvent extends DefaultJobEvent {
-    private final ExecutionFragmentInstance2 execution;
+    private final ExecutionFragmentInstance execution;
     private final Throwable failure;
 
-    public FailureJobEvent(Status status, ExecutionFragmentInstance2 execution, Throwable failure) {
+    public FailureJobEvent(Status status, ExecutionFragmentInstance execution, Throwable failure) {
         super(JobEventType.FAIL, status);
         this.execution = execution;
         this.failure = failure;
@@ -31,7 +31,7 @@ public class FailureJobEvent extends DefaultJobEvent {
         this(status, null, null);
     }
 
-    public ExecutionFragmentInstance2 getExecution() {
+    public ExecutionFragmentInstance getExecution() {
         return execution;
     }
 

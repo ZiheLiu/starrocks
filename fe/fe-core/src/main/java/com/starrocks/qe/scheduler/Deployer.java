@@ -22,7 +22,7 @@ import com.starrocks.common.UserException;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
-import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance2;
+import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.qe.scheduler.dag.JobInformation;
 import com.starrocks.thrift.TDescriptorTable;
@@ -38,7 +38,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-import static com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance2.DeploymentResult;
+import static com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance.DeploymentResult;
 
 public class Deployer {
     private static final Logger LOG = LogManager.getLogger(Deployer.class);
@@ -81,7 +81,7 @@ public class Deployer {
 
     public boolean deployFragments(List<ExecutionFragment> concurrentFragments, boolean needDeploy) {
         int groupIndex = nextGroupIndex++;
-        List<List<ExecutionFragmentInstance2>> twoDeployStageExecutions =
+        List<List<ExecutionFragmentInstance>> twoDeployStageExecutions =
                 ImmutableList.of(new ArrayList<>(), new ArrayList<>());
 
         for (ExecutionFragment fragment : concurrentFragments) {
@@ -98,8 +98,8 @@ public class Deployer {
             return true;
         }
 
-        for (List<ExecutionFragmentInstance2> executions : twoDeployStageExecutions) {
-            executions.forEach(ExecutionFragmentInstance2::deployAsync);
+        for (List<ExecutionFragmentInstance> executions : twoDeployStageExecutions) {
+            executions.forEach(ExecutionFragmentInstance::deployAsync);
             if (!waitForDeploymentCompletion(executions)) {
                 return false;
             }
@@ -109,11 +109,11 @@ public class Deployer {
     }
 
     public interface FailureHandler {
-        void apply(Status status, ExecutionFragmentInstance2 execution, Throwable failure);
+        void apply(Status status, ExecutionFragmentInstance execution, Throwable failure);
     }
 
     private void createExecutionFragmentInstances(ExecutionFragment fragment, int groupIndex, int profileFragmentIndex,
-                                                  List<List<ExecutionFragmentInstance2>> twoDeployStageExecutions)
+                                                  List<List<ExecutionFragmentInstance>> twoDeployStageExecutions)
             throws UserException {
         Preconditions.checkState(!fragment.getInstances().isEmpty());
 
@@ -175,9 +175,9 @@ public class Deployer {
                     accTabletSinkDop += instance.getTableSinkDop();
                 }
 
-                ExecutionFragmentInstance2 execution = ExecutionFragmentInstance2.createExecution(
+                ExecutionFragmentInstance execution = ExecutionFragmentInstance.createExecution(
                         jobInfo,
-                        instance,
+                        instance.getFragmentId(),
                         request,
                         profileFragmentIndex,
                         workerProvider.getWorkerById(workerId));
@@ -188,7 +188,7 @@ public class Deployer {
                     executionDAG.addNeedCheckExecution(execution);
                     if (LOG.isDebugEnabled()) {
                         LOG.debug("add need check backend {} for fragment, {} job: {}",
-                                execution.getBackend().getId(),
+                                execution.getWorker().getId(),
                                 fragment.getFragmentId().asInt(),
                                 jobInfo.getLoadJobId());
                     }
@@ -197,10 +197,10 @@ public class Deployer {
         }
     }
 
-    private boolean waitForDeploymentCompletion(List<ExecutionFragmentInstance2> executions) {
+    private boolean waitForDeploymentCompletion(List<ExecutionFragmentInstance> executions) {
         DeploymentResult firstErrorResult = null;
-        ExecutionFragmentInstance2 firstErrExecution = null;
-        for (ExecutionFragmentInstance2 execution : executions) {
+        ExecutionFragmentInstance firstErrExecution = null;
+        for (ExecutionFragmentInstance execution : executions) {
             DeploymentResult res = execution.waitForDeploymentCompletion(deliveryTimeoutMs);
             if (res.getStatusCode() == TStatusCode.OK) {
                 continue;

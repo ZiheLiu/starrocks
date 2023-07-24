@@ -58,12 +58,12 @@ public class ExecutionDAG {
 
     private final Map<TUniqueId, FragmentInstance> instanceIdToInstance;
     private Map<Long, Integer> workerIdToNumInstances = Maps.newHashMap();
-    private final ConcurrentNavigableMap<Integer, ExecutionFragmentInstance2> indexInJobToExecution =
+    private final ConcurrentNavigableMap<Integer, ExecutionFragmentInstance> indexInJobToExecution =
             new ConcurrentSkipListMap<>();
 
     // backend which state need to be checked when joining this coordinator.
     // It is supposed to be the subset of backendExecStates.
-    private final List<ExecutionFragmentInstance2> needCheckExecutions = Lists.newArrayList();
+    private final List<ExecutionFragmentInstance> needCheckExecutions = Lists.newArrayList();
     // Used by stream load.
     private final Map<Integer, TNetworkAddress> channelIdToBEHTTP = Maps.newHashMap();
     private final Map<Integer, TNetworkAddress> channelIdToBEPort = Maps.newHashMap();
@@ -112,6 +112,7 @@ public class ExecutionDAG {
      * Initialize the execution fragment.
      * The mainly work is to compute destinations and # senders per exchange node
      * (the root fragment doesn't have a destination).
+     *
      * @param execFragment The fragment to be initialized.
      * @throws SchedulerException when there is something wrong for the plan or execution informatino.
      */
@@ -457,19 +458,18 @@ public class ExecutionDAG {
         return workerIdToNumInstances.get(addr);
     }
 
-    public void addExecution(ExecutionFragmentInstance2 execution) {
-        FragmentInstance instance = execution.getInstance();
+    public void addExecution(FragmentInstance instance, ExecutionFragmentInstance execution) {
         if (instance != null) {
             instance.setExecution(execution);
         }
         indexInJobToExecution.put(execution.getIndexInJob(), execution);
     }
 
-    public void addNeedCheckExecution(ExecutionFragmentInstance2 execution) {
+    public void addNeedCheckExecution(ExecutionFragmentInstance execution) {
         needCheckExecutions.add(execution);
     }
 
-    public List<ExecutionFragmentInstance2> getNeedCheckExecutions() {
+    public List<ExecutionFragmentInstance> getNeedCheckExecutions() {
         return needCheckExecutions;
     }
 
@@ -477,11 +477,11 @@ public class ExecutionDAG {
         return indexInJobToExecution.keySet();
     }
 
-    public Collection<ExecutionFragmentInstance2> getExecutions() {
+    public Collection<ExecutionFragmentInstance> getExecutions() {
         return indexInJobToExecution.values();
     }
 
-    public ExecutionFragmentInstance2 getExecution(int indexInJob) {
+    public ExecutionFragmentInstance getExecution(int indexInJob) {
         return indexInJobToExecution.get(indexInJob);
     }
 
@@ -490,7 +490,7 @@ public class ExecutionDAG {
                 .flatMap(fragment -> fragment.getInstances().stream())
                 .map(FragmentInstance::getExecution)
                 .filter(Objects::nonNull)
-                .map(ExecutionFragmentInstance2::buildFragmentInstanceInfo)
+                .map(ExecutionFragmentInstance::buildFragmentInstanceInfo)
                 .collect(Collectors.toList());
     }
 

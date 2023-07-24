@@ -62,7 +62,7 @@ public class FragmentInstance {
     private final Map<Integer, List<TScanRangeParams>> node2ScanRanges = Maps.newHashMap();
     private final Map<Integer, Map<Integer, List<TScanRangeParams>>> node2DriverSeqToScanRanges = Maps.newHashMap();
 
-    private ExecutionFragmentInstance2 execution = null;
+    private ExecutionFragmentInstance execution = null;
 
     public FragmentInstance(ComputeNode worker, Long workerId, ExecutionFragment execFragment) {
         this.worker = worker;
@@ -205,11 +205,11 @@ public class FragmentInstance {
         this.pipelineDop = pipelineDop;
     }
 
-    public ExecutionFragmentInstance2 getExecution() {
+    public ExecutionFragmentInstance getExecution() {
         return execution;
     }
 
-    public void setExecution(ExecutionFragmentInstance2 execution) {
+    public void setExecution(ExecutionFragmentInstance execution) {
         this.execution = execution;
     }
 
