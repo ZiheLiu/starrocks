@@ -67,6 +67,7 @@ import com.starrocks.proto.PPlanFragmentCancelReason;
 import com.starrocks.proto.PQueryStatistics;
 import com.starrocks.qe.QueryStatisticsItem.FragmentInstanceInfo;
 import com.starrocks.qe.scheduler.ICoordinator;
+import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
@@ -76,8 +77,6 @@ import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.LoadPlanner;
 import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.ast.UserIdentity;
-import com.starrocks.sql.common.ErrorType;
-import com.starrocks.sql.common.StarRocksPlannerException;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.task.LoadEtlTask;
 import com.starrocks.thrift.TDescriptorTable;
@@ -108,7 +107,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -130,6 +128,7 @@ public class Coordinator implements ICoordinator {
     Status queryStatus = new Status();
 
     private final JobInformation jobInfo;
+    private final ExecutionDAG executionDAG;
 
     // protects all fields below
     private final Lock lock = new ReentrantLock();
@@ -266,6 +265,7 @@ public class Coordinator implements ICoordinator {
     public Coordinator(JobInformation jobInfo, StreamLoadPlanner planner, TNetworkAddress address) {
         this.connectContext = planner.getConnectContext();
         this.jobInfo = jobInfo;
+        this.executionDAG = ExecutionDAG.build(jobInfo);
 
         TUniqueId queryId = jobInfo.getQueryId();
 
@@ -291,7 +291,6 @@ public class Coordinator implements ICoordinator {
         this.needReport = true;
     }
 
-    // Used for new planner
     Coordinator(ConnectContext context, JobInformation jobInfo, boolean needReport) {
         this.connectContext = context;
         this.jobInfo = jobInfo;
@@ -299,6 +298,7 @@ public class Coordinator implements ICoordinator {
         this.needReport = needReport;
 
         this.coordinatorPreprocessor = new CoordinatorPreprocessor(context, jobInfo);
+        this.executionDAG = coordinatorPreprocessor.getExecutionDAG();
     }
 
     @Override
@@ -364,10 +364,6 @@ public class Coordinator implements ICoordinator {
     @Override
     public void setTimeoutSecond(int timeoutSecond) {
         jobInfo.setQueryTimeout(timeoutSecond);
-    }
-
-    public void addReplicateScanId(Integer scanId) {
-        this.coordinatorPreprocessor.getReplicateScanIds().add(scanId);
     }
 
     @Override
@@ -457,8 +453,8 @@ public class Coordinator implements ICoordinator {
         return coordinatorPreprocessor;
     }
 
-    public Map<PlanFragmentId, ExecutionFragment> getFragmentExecParamsMap() {
-        return coordinatorPreprocessor.getFragmentExecParamsMap();
+    public Map<PlanFragmentId, ExecutionFragment> getIdToFragment() {
+        return coordinatorPreprocessor.getIdToFragment();
     }
 
     public List<PlanFragment> getFragments() {
@@ -514,8 +510,7 @@ public class Coordinator implements ICoordinator {
     }
 
     private void prepareResultSink() throws Exception {
-        PlanFragmentId topId = jobInfo.getFragments().get(0).getFragmentId();
-        ExecutionFragment rootExecFragment = coordinatorPreprocessor.getFragmentExecParamsMap().get(topId);
+        ExecutionFragment rootExecFragment = executionDAG.getRootFragment();
         if (rootExecFragment.getPlanFragment().getSink() instanceof ResultSink) {
             long workerId = rootExecFragment.getInstances().get(0).getWorkerId();
             ComputeNode worker = coordinatorPreprocessor.getWorkerProvider().getWorkerById(workerId);
@@ -578,104 +573,12 @@ public class Coordinator implements ICoordinator {
     }
 
     /**
-     * Compute the topological order of the fragment tree.
-     * It will divide fragments to several groups.
-     * - There is no data dependency among fragments in a group.
-     * - All the upstream fragments of the fragments in a group must belong to the previous groups.
-     * - Each group should be delivered sequentially, and fragments in a group can be delivered concurrently.
-     * <p>
-     * For example, the following tree will produce four groups: [[1], [2, 3, 4], [5, 6], [7]]
-     * -     *         1
-     * -     *         │
-     * -     *    ┌────┼────┐
-     * -     *    │    │    │
-     * -     *    2    3    4
-     * -     *    │    │    │
-     * -     * ┌──┴─┐  │    │
-     * -     * │    │  │    │
-     * -     * 5    6  │    │
-     * -     *      │  │    │
-     * -     *      └──┼────┘
-     * -     *         │
-     * -     *         7
-     *
-     * @return multiple fragment groups.
-     */
-    private List<List<PlanFragment>> computeTopologicalOrderFragments() {
-        Queue<PlanFragment> queue = Lists.newLinkedList();
-        Map<PlanFragment, Integer> inDegrees = Maps.newHashMap();
-
-        PlanFragment root = jobInfo.getFragments().get(0);
-
-        // Compute in-degree of each fragment by BFS.
-        // `queue` contains the fragments need to visit its in-edges.
-        inDegrees.put(root, 0);
-        queue.add(root);
-        while (!queue.isEmpty()) {
-            PlanFragment fragment = queue.poll();
-            for (PlanFragment child : fragment.getChildren()) {
-                Integer v = inDegrees.get(child);
-                if (v != null) {
-                    // Has added this child to queue before, don't add again.
-                    inDegrees.put(child, v + 1);
-                } else {
-                    inDegrees.put(child, 1);
-                    queue.add(child);
-                }
-            }
-        }
-
-        if (jobInfo.getFragments().size() != inDegrees.size()) {
-            for (PlanFragment fragment : jobInfo.getFragments()) {
-                if (!inDegrees.containsKey(fragment)) {
-                    LOG.warn("This fragment does not belong to the fragment tree: {}", fragment.getFragmentId());
-                }
-            }
-            throw new StarRocksPlannerException("Some fragments do not belong to the fragment tree",
-                    ErrorType.INTERNAL_ERROR);
-        }
-
-        // Compute fragment groups by BFS.
-        // `queue` contains the fragments whose in-degree is zero.
-        queue.add(root);
-        List<List<PlanFragment>> groups = Lists.newArrayList();
-        int numOutputFragments = 0;
-        while (!queue.isEmpty()) {
-            int groupSize = queue.size();
-            List<PlanFragment> group = new ArrayList<>(groupSize);
-            // The next `groupSize` fragments can be delivered concurrently, because zero in-degree indicates that
-            // they don't depend on each other and all the fragments depending on them have been delivered.
-            for (int i = 0; i < groupSize; ++i) {
-                PlanFragment fragment = queue.poll();
-                group.add(fragment);
-
-                for (PlanFragment child : fragment.getChildren()) {
-                    int degree = inDegrees.compute(child, (k, v) -> v - 1);
-                    if (degree == 0) {
-                        queue.add(child);
-                    }
-                }
-            }
-
-            groups.add(group);
-            numOutputFragments += groupSize;
-        }
-
-        if (jobInfo.getFragments().size() != numOutputFragments) {
-            throw new StarRocksPlannerException("There are some circles in the fragment tree",
-                    ErrorType.INTERNAL_ERROR);
-        }
-
-        return groups;
-    }
-
-    /**
      * Deliver multiple fragments concurrently according to the topological order.
      */
     private void deliverExecFragmentsRequests(boolean enablePipelineEngine) throws Exception {
         TQueryOptions queryOptions = jobInfo.getQueryOptions();
         long queryDeliveryTimeoutMs = Math.min(queryOptions.query_timeout, queryOptions.query_delivery_timeout) * 1000L;
-        List<List<PlanFragment>> fragmentGroups = computeTopologicalOrderFragments();
+        List<List<ExecutionFragment>> fragmentGroups = executionDAG.getFragmentsInTopologicalOrderFromRoot();
 
         lock();
         try {
@@ -690,26 +593,14 @@ public class Coordinator implements ICoordinator {
             List<List<ExecutionFragmentInstance>> twoStageExecutionsToDeploy =
                     ImmutableList.of(new ArrayList<>(), new ArrayList<>());
             Set<Long> deployedWorkerIds = new HashSet<>();
-            for (List<PlanFragment> fragmentGroup : fragmentGroups) {
+            for (List<ExecutionFragment> fragmentGroup : fragmentGroups) {
                 // Divide requests of fragments in the current group to two stages.
                 // - stage 1, the first request to a host, which need send descTable.
                 // - stage 2, the non-first requests to a host, which needn't send descTable.
-                for (PlanFragment fragment : fragmentGroup) {
+                for (ExecutionFragment execFragment : fragmentGroup) {
+                    PlanFragment fragment = execFragment.getPlanFragment();
                     int profileFragmentId = fragmentId2fragmentProfileIds.get(fragment.getFragmentId());
-                    ExecutionFragment execFragment =
-                            coordinatorPreprocessor.getFragmentExecParamsMap().get(fragment.getFragmentId());
                     Preconditions.checkState(!execFragment.getInstances().isEmpty());
-
-                    // Fragment instances' ordinals in FragmentExecParams.instanceExecParams determine
-                    // shuffle partitions' ordinals in DataStreamSink. backendIds of Fragment instances that
-                    // contain shuffle join determine the ordinals of GRF components in the GRF. For a
-                    // shuffle join, its shuffle partitions and corresponding one-map-one GRF components
-                    // should have the same ordinals. so here assign monotonic unique backendIds to
-                    // Fragment instances to keep consistent order with Fragment instances in
-                    // FragmentExecParams.instanceExecParams.
-                    for (FragmentInstance instance : execFragment.getInstances()) {
-                        instance.setIndexInJob(backendNum++);
-                    }
 
                     List<List<FragmentInstance>> twoStageInstancesToDeploy =
                             ImmutableList.of(new ArrayList<>(), new ArrayList<>());
@@ -883,8 +774,7 @@ public class Coordinator implements ICoordinator {
         for (PlanFragment fragment : jobInfo.getFragments()) {
             fragment.collectBuildRuntimeFilters(fragment.getPlanRoot());
             fragment.collectProbeRuntimeFilters(fragment.getPlanRoot());
-            ExecutionFragment params =
-                    coordinatorPreprocessor.getFragmentExecParamsMap().get(fragment.getFragmentId());
+            ExecutionFragment params = executionDAG.getFragment(fragment.getFragmentId());
             for (Map.Entry<Integer, RuntimeFilterDescription> kv : fragment.getProbeRuntimeFilters().entrySet()) {
                 List<TRuntimeFilterProberParams> probeParamList = Lists.newArrayList();
                 for (final FragmentInstance instance : params.getInstances()) {

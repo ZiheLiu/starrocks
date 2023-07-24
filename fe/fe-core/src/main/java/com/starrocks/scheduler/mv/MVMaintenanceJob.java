@@ -28,7 +28,6 @@ import com.starrocks.persist.gson.GsonPreProcessable;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.planner.OlapTableSink;
 import com.starrocks.planner.PlanFragment;
-import com.starrocks.planner.PlanFragmentId;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.proto.PMVMaintenanceTaskResult;
 import com.starrocks.qe.ConnectContext;
@@ -275,7 +274,7 @@ public class MVMaintenanceJob implements Writable, GsonPreProcessable, GsonPostP
         }
         queryCoordinator.prepareExec();
 
-        Map<PlanFragmentId, ExecutionFragment> fragmentExecParams = queryCoordinator.getFragmentExecParamsMap();
+        List<ExecutionFragment> execFragments = queryCoordinator.getFragmentsInPreorder();
         TDescriptorTable descTable = queryCoordinator.getDescriptorTable();
         int tabletSinkDop = 1;
 
@@ -287,8 +286,7 @@ public class MVMaintenanceJob implements Writable, GsonPreProcessable, GsonPostP
         int backendIdGen = 0;
         TExecPlanFragmentParamsFactory execPlanFragmentParamsFactory =
                 queryCoordinator.getExecPlanFragmentParamsFactory();
-        for (Map.Entry<PlanFragmentId, ExecutionFragment> kv : fragmentExecParams.entrySet()) {
-            ExecutionFragment execParams = kv.getValue();
+        for (ExecutionFragment execParams : execFragments) {
             List<TExecPlanFragmentParams> tParams = execPlanFragmentParamsFactory.create(
                     execParams, execParams.getInstances(), descTable, tabletSinkDop, tabletSinkDop);
             for (int i = 0; i < execParams.getInstances().size(); i++) {

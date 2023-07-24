@@ -21,6 +21,7 @@ import com.starrocks.planner.MultiCastPlanFragment;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.qe.scheduler.dag.JobInformation;
@@ -37,20 +38,19 @@ import com.starrocks.thrift.TQueryOptions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 public class TExecPlanFragmentParamsFactory {
     private final ConnectContext context;
     private final JobInformation jobInfo;
-    private final Map<Long, Integer> workerIdToNumInstances;
+    private final ExecutionDAG executionDAG;
     private final TNetworkAddress coordAddress;
 
     public TExecPlanFragmentParamsFactory(ConnectContext context,
                                           JobInformation jobInfo,
-                                          Map<Long, Integer> workerIdToNumInstances,
+                                          ExecutionDAG executionDAG,
                                           TNetworkAddress coordAddress) {
         this.jobInfo = jobInfo;
-        this.workerIdToNumInstances = workerIdToNumInstances;
+        this.executionDAG = executionDAG;
         this.context = context;
         this.coordAddress = coordAddress;
     }
@@ -191,7 +191,7 @@ public class TExecPlanFragmentParamsFactory {
                     .setDestinations(newDestinations);
         }
 
-        result.params.setInstances_number(workerIdToNumInstances.get(instance.getWorkerId()));
+        result.params.setInstances_number(executionDAG.getNumInstancesOfWorkerId(instance.getWorkerId()));
         result.params.setFragment_instance_id(instance.getInstanceId());
         result.params.setPer_node_scan_ranges(instance.getNode2ScanRanges());
         result.params.setNode_to_per_driver_seq_scan_ranges(instance.getNode2DriverSeqToScanRanges());

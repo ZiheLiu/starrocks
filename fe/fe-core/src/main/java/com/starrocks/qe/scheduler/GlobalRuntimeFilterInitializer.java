@@ -21,8 +21,8 @@ import com.starrocks.planner.RuntimeFilterDescription;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
-import com.starrocks.qe.scheduler.dag.FragmentInstance2;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TRuntimeFilterDestination;
 import com.starrocks.thrift.TRuntimeFilterProberParams;
@@ -48,12 +48,12 @@ public class GlobalRuntimeFilterInitializer {
         this.usePipeline = usePipeline;
     }
 
-    public void setGlobalRuntimeFilterParams(ExecutionFragment2 rootFragment, TNetworkAddress mergeHost) {
+    public void setGlobalRuntimeFilterParams(ExecutionFragment rootFragment, TNetworkAddress mergeHost) {
         Map<Integer, List<TRuntimeFilterProberParams>> broadcastGRFProbersMap = Maps.newHashMap();
         List<RuntimeFilterDescription> broadcastGRFList = Lists.newArrayList();
         Map<Integer, List<TRuntimeFilterProberParams>> idToProbePrams = new HashMap<>();
 
-        for (ExecutionFragment2 execFragment : executionDAG.getFragmentsInPreorder()) {
+        for (ExecutionFragment execFragment : executionDAG.getFragmentsInPreorder()) {
             PlanFragment fragment = execFragment.getPlanFragment();
 
             fragment.collectBuildRuntimeFilters(fragment.getPlanRoot());
@@ -74,7 +74,7 @@ public class GlobalRuntimeFilterInitializer {
 
             Set<TUniqueId> broadcastGRfSenders = pickupInstancesOnDifferentHosts(execFragment.getInstances(), 3)
                     .stream()
-                    .map(FragmentInstance2::getInstanceId)
+                    .map(FragmentInstance::getInstanceId)
                     .collect(Collectors.toSet());
             for (Map.Entry<Integer, RuntimeFilterDescription> kv : fragment.getBuildRuntimeFilters().entrySet()) {
                 int rid = kv.getKey();
@@ -117,20 +117,20 @@ public class GlobalRuntimeFilterInitializer {
     }
 
     // choose at most num FInstances on difference BEs
-    private List<FragmentInstance2> pickupInstancesOnDifferentHosts(List<FragmentInstance2> instances, int num) {
+    private List<FragmentInstance> pickupInstancesOnDifferentHosts(List<FragmentInstance> instances, int num) {
         if (instances.size() <= num) {
             return instances;
         }
 
-        Map<Long, List<FragmentInstance2>> host2instances = instances.stream()
+        Map<Long, List<FragmentInstance>> host2instances = instances.stream()
                 .collect(Collectors.groupingBy(
-                        FragmentInstance2::getWorkerId,
+                        FragmentInstance::getWorkerId,
                         Collectors.mapping(Function.identity(), Collectors.toList())
                 ));
 
-        List<FragmentInstance2> picked = Lists.newArrayList();
+        List<FragmentInstance> picked = Lists.newArrayList();
         while (picked.size() < num) {
-            for (List<FragmentInstance2> instancesPerHost : host2instances.values()) {
+            for (List<FragmentInstance> instancesPerHost : host2instances.values()) {
                 if (instancesPerHost.isEmpty()) {
                     continue;
                 }

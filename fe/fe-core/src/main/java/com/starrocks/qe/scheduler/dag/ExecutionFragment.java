@@ -47,6 +47,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ExecutionFragment {
+    private final ExecutionDAG executionDAG;
     private final PlanFragment planFragment;
     private final Map<PlanNodeId, ScanNode> scanNodes;
 
@@ -69,8 +70,8 @@ public class ExecutionFragment {
 
     private boolean isRightOrFullBucketShuffle = false;
 
-
-    public ExecutionFragment(PlanFragment planFragment) {
+    public ExecutionFragment(ExecutionDAG executionDAG, PlanFragment planFragment) {
+        this.executionDAG = executionDAG;
         this.planFragment = planFragment;
         this.scanNodes = planFragment.collectScanNodes();
 
@@ -96,7 +97,6 @@ public class ExecutionFragment {
     public ScanNode getScanNode(PlanNodeId scanId) {
         return scanNodes.get(scanId);
     }
-
 
     public void setBucketSeqToInstanceForRuntimeFilters() {
         if (bucketSeqToInstanceForFilterIsSet) {
@@ -177,6 +177,14 @@ public class ExecutionFragment {
         return destinations;
     }
 
+    public int childrenSize() {
+        return planFragment.getChildren().size();
+    }
+
+    public ExecutionFragment getChild(int i) {
+        return executionDAG.getFragment(planFragment.getChild(i).getFragmentId());
+    }
+
     public List<FragmentInstance> getInstances() {
         return instances;
     }
@@ -193,6 +201,7 @@ public class ExecutionFragment {
         }
     }
 
+    // Returns the id of the leftmost node of any of the gives types in 'plan_root'.
     public PlanNode getLeftMostNode() {
         PlanNode node = planFragment.getPlanRoot();
         while (node.getChildren().size() != 0 && !(node instanceof ExchangeNode)) {

@@ -40,9 +40,9 @@ import com.starrocks.qe.RowBatch;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.assignment.FragmentAssignmentStrategyFactory;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
-import com.starrocks.qe.scheduler.dag.FragmentInstance2;
+import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.qe.scheduler.dag.JobInformation;
 import com.starrocks.qe.scheduler.state.CancelledState;
 import com.starrocks.qe.scheduler.state.CancellingState;
@@ -522,7 +522,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
 
     @Override
     public void initializeExecutionDAG() throws UserException {
-        for (ExecutionFragment2 execFragment : executionDAG.getFragmentsInPostorder()) {
+        for (ExecutionFragment execFragment : executionDAG.getFragmentsInPostorder()) {
             fragmentAssignmentStrategyFactory.create(execFragment, workerProvider).assignWorkerToFragment(execFragment);
         }
 
@@ -535,7 +535,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
 
         validateExecutionDAG();
 
-        for (ExecutionFragment2 execFragment : executionDAG.getFragmentsInPreorder()) {
+        for (ExecutionFragment execFragment : executionDAG.getFragmentsInPreorder()) {
             executionDAG.initFragment(execFragment);
         }
 
@@ -543,7 +543,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
     }
 
     private void validateExecutionDAG() throws StarRocksPlannerException {
-        for (ExecutionFragment2 execFragment : executionDAG.getFragmentsInPreorder()) {
+        for (ExecutionFragment execFragment : executionDAG.getFragmentsInPreorder()) {
             if (execFragment.getPlanFragment().getSink() instanceof ResultSink &&
                     execFragment.getInstances().size() > 1) {
                 throw new StarRocksPlannerException("This sql plan has multi result sinks", ErrorType.INTERNAL_ERROR);
@@ -553,13 +553,13 @@ public class DefaultScheduler implements ICoordinator, StateContext {
 
     @Override
     public void initializeResultSink() throws AnalysisException {
-        ExecutionFragment2 rootFragment = executionDAG.getRootFragment();
+        ExecutionFragment rootFragment = executionDAG.getRootFragment();
         if (!(rootFragment.getPlanFragment().getSink() instanceof ResultSink)) {
             return;
         }
 
         ResultSink resultSink = (ResultSink) rootFragment.getPlanFragment().getSink();
-        FragmentInstance2 rootInstance = rootFragment.getInstances().get(0);
+        FragmentInstance rootInstance = rootFragment.getInstances().get(0);
         ComputeNode rootWorker = rootInstance.getWorker();
 
         receiver = new ResultReceiver(rootInstance.getInstanceId(), rootWorker.getId(), rootWorker.getBrpcAddress(),
@@ -607,7 +607,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
         Deployer deployer =
                 new Deployer(connectContext, jobInfo, workerProvider, executionDAG, schedulerAddress,
                         this::onFailure);
-        for (List<ExecutionFragment2> concurrentFragments : executionDAG.getFragmentsInTopologicalOrderFromRoot()) {
+        for (List<ExecutionFragment> concurrentFragments : executionDAG.getFragmentsInTopologicalOrderFromRoot()) {
             if (!deployer.deployFragments(concurrentFragments, needDeploy)) {
                 return;
             }

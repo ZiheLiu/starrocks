@@ -50,7 +50,7 @@ public class FragmentInstance2 {
     private int indexInFragment = -1;
     private TUniqueId instanceId = null;
 
-    private final ExecutionFragment2 execFragment;
+    private final ExecutionFragment execFragment;
 
     private int pipelineDop = ABSENT_PIPELINE_DOP;
 
@@ -64,7 +64,7 @@ public class FragmentInstance2 {
 
     private ExecutionFragmentInstance execution = null;
 
-    public FragmentInstance2(ComputeNode worker, Long workerId, ExecutionFragment2 execFragment) {
+    public FragmentInstance(ComputeNode worker, Long workerId, ExecutionFragment execFragment) {
         this.worker = worker;
         this.workerId = workerId;
         this.execFragment = execFragment;
@@ -173,7 +173,7 @@ public class FragmentInstance2 {
                 ", execution=" + execution + '}';
     }
 
-    public ExecutionFragment2 getExecFragment() {
+    public ExecutionFragment getExecFragment() {
         return execFragment;
     }
 

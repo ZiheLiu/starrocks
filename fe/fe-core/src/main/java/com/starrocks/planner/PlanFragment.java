@@ -43,7 +43,6 @@ import com.starrocks.common.Pair;
 import com.starrocks.common.TreeNode;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
 import com.starrocks.sql.optimizer.Utils;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
 import com.starrocks.thrift.TCacheParam;
@@ -161,8 +160,6 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
     private boolean useRuntimeAdaptiveDop = false;
 
-    ExecutionFragment2 executionFragment = null;
-
     /**
      * C'tor for fragment with specific partition; the output is by default broadcast.
      */
@@ -176,10 +173,6 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         setPlanRoot(root);
         setParallelExecNumIfExists();
         setFragmentInPlanTree(planRoot);
-    }
-
-    public void setExecutionFragment(ExecutionFragment2 executionFragment) {
-        this.executionFragment = executionFragment;
     }
 
     /**
@@ -432,16 +425,6 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         return result;
     }
 
-    public String getSchedulerExplain() {
-        StringBuilder str = new StringBuilder();
-
-        if (executionFragment != null) {
-            str.append(executionFragment.getExplainString(1));
-        }
-
-        return str.toString();
-    }
-
     public String getExplainString(TExplainLevel explainLevel) {
         StringBuilder str = new StringBuilder();
         Preconditions.checkState(dataPartition != null);
@@ -688,7 +671,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
                 continue;
             }
             if (node instanceof ScanNode) {
-                scanNodes.put(node.getId(), (ScanNode)node);
+                scanNodes.put(node.getId(), (ScanNode) node);
             }
 
             queue.addAll(node.getChildren());

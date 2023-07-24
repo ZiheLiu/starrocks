@@ -41,8 +41,8 @@ import com.starrocks.qe.scheduler.NonRecoverableException;
 import com.starrocks.qe.scheduler.SchedulerException;
 import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
-import com.starrocks.qe.scheduler.dag.FragmentInstance2;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.qe.scheduler.dag.JobInformation;
 import com.starrocks.thrift.TScanRangeLocations;
 import com.starrocks.thrift.TScanRangeParams;
@@ -81,7 +81,7 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
     }
 
     @Override
-    public void assignWorkerToFragment(ExecutionFragment2 execFragment) throws UserException {
+    public void assignWorkerToFragment(ExecutionFragment execFragment) throws UserException {
         for (ScanNode scanNode : execFragment.getScanNodes()) {
             assignScanRangesToWorkers(execFragment, scanNode);
         }
@@ -92,13 +92,13 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
         // such as SchemaScanNode, is assigned to an arbitrary worker.
         if (execFragment.getInstances().isEmpty()) {
             Long workerId = workerProvider.selectNextWorker();
-            FragmentInstance2 instance =
-                    new FragmentInstance2(workerProvider.getWorkerById(workerId), workerId, execFragment);
+            FragmentInstance instance =
+                    new FragmentInstance(workerProvider.getWorkerById(workerId), workerId, execFragment);
             execFragment.addInstance(instance);
         }
     }
 
-    private void assignWorkerScanRangeToFragmentInstance(ExecutionFragment2 execFragment) {
+    private void assignWorkerScanRangeToFragmentInstance(ExecutionFragment execFragment) {
         ColocatedBackendSelector.Assignment colocatedAssignment = execFragment.getColocatedAssignment();
         boolean hasColocate = execFragment.isColocated()
                 && colocatedAssignment != null
@@ -155,7 +155,7 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
         return true;
     }
 
-    private void assignToLocalColocatedFragment(ExecutionFragment2 execFragment,
+    private void assignToLocalColocatedFragment(ExecutionFragment execFragment,
                                                 Map<Integer, Long> bucketSeqToWorkerId,
                                                 ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange) {
         final PlanFragment fragment = execFragment.getPlanFragment();
@@ -178,8 +178,8 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
 
             // 3.construct instanceExecParam add the scanRange should be scanned by instance
             bucketSeqsPerInstance.forEach(bucketSeqsOfInstance -> {
-                FragmentInstance2 instance =
-                        new FragmentInstance2(workerProvider.getWorkerById(workerId), workerId, execFragment);
+                FragmentInstance instance =
+                        new FragmentInstance(workerProvider.getWorkerById(workerId), workerId, execFragment);
                 execFragment.addInstance(instance);
 
                 // record each instance replicate scan id in set, to avoid add replicate scan range repeatedly when they are in different buckets
@@ -216,7 +216,7 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
         });
     }
 
-    private void assignToLocalNormalFragment(ExecutionFragment2 execFragment) {
+    private void assignToLocalNormalFragment(ExecutionFragment execFragment) {
         final PlanFragment fragment = execFragment.getPlanFragment();
         int parallelExecInstanceNum = fragment.getParallelExecNum();
         int pipelineDop = fragment.getPipelineDop();
@@ -232,8 +232,8 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
                         parallelExecInstanceNum);
 
                 for (List<TScanRangeParams> scanRanges : scanRangesPerInstance) {
-                    FragmentInstance2 instance =
-                            new FragmentInstance2(workerProvider.getWorkerById(workerId), workerId, execFragment);
+                    FragmentInstance instance =
+                            new FragmentInstance(workerProvider.getWorkerById(workerId), workerId, execFragment);
                     execFragment.addInstance(instance);
 
                     if (!enableAssignScanRangesPerDriverSeq(fragment, scanRanges)) {
@@ -264,7 +264,7 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
                         return;
                     }
 
-                    for (FragmentInstance2 instance : execFragment.getInstances()) {
+                    for (FragmentInstance instance : execFragment.getInstances()) {
                         instance.addScanRanges(scanId, scanRangesPerNode);
                     }
                 });
@@ -272,7 +272,7 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
         });
     }
 
-    private void assignScanRangesToWorkers(ExecutionFragment2 executionFragment, ScanNode scanNode)
+    private void assignScanRangesToWorkers(ExecutionFragment executionFragment, ScanNode scanNode)
             throws UserException {
         List<TScanRangeLocations> locations = scanNode.getScanRangeLocations(0);
         if (locations == null) {
@@ -292,10 +292,10 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
 
     private class BackendSelectorFactory implements PlanNodeVisitor<BackendSelector, BackendSelectorFactory.Context> {
         private class Context {
-            private final ExecutionFragment2 executionFragment;
+            private final ExecutionFragment executionFragment;
             private final List<TScanRangeLocations> locations;
 
-            public Context(ExecutionFragment2 executionFragment, List<TScanRangeLocations> locations) {
+            public Context(ExecutionFragment executionFragment, List<TScanRangeLocations> locations) {
                 this.executionFragment = executionFragment;
                 this.locations = locations;
             }

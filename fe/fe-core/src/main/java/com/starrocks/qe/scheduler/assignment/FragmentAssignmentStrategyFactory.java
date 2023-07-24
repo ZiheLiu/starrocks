@@ -19,7 +19,7 @@ import com.starrocks.planner.ScanNode;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 
 import java.util.Random;
 
@@ -38,7 +38,7 @@ public class FragmentAssignmentStrategyFactory {
         this.usePipeline = usePipeline;
     }
 
-    public FragmentAssignmentStrategy create(ExecutionFragment2 execFragment, WorkerProvider workerProvider) {
+    public FragmentAssignmentStrategy create(ExecutionFragment execFragment, WorkerProvider workerProvider) {
         PlanNode leftMostNode = execFragment.getLeftMostNode();
         boolean isRemoteFragment = !(leftMostNode instanceof ScanNode);
         if (isRemoteFragment) {

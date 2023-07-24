@@ -49,7 +49,7 @@ public class ExecutionFragment2 {
     private final List<TPlanFragmentDestination> destinations;
     private final Map<Integer, Integer> numSendersPerExchange;
 
-    private final List<FragmentInstance2> instances;
+    private final List<FragmentInstance> instances;
 
     private final FragmentScanRangeAssignment scanRangeAssignment;
     private ColocatedBackendSelector.Assignment colocatedAssignment = null;
@@ -103,14 +103,14 @@ public class ExecutionFragment2 {
         return scanNodes.get(scanId);
     }
 
-    public List<FragmentInstance2> getInstances() {
+    public List<FragmentInstance> getInstances() {
         return instances;
     }
 
-    public Map<Long, List<FragmentInstance2>> geWorkerIdToInstances() {
+    public Map<Long, List<FragmentInstance>> geWorkerIdToInstances() {
         return instances.stream()
                 .collect(Collectors.groupingBy(
-                        FragmentInstance2::getWorkerId,
+                        FragmentInstance::getWorkerId,
                         Collectors.mapping(Function.identity(), Collectors.toList())
                 ));
     }
@@ -153,7 +153,7 @@ public class ExecutionFragment2 {
         // some buckets are pruned, so set the corresponding instance ordinal to BUCKET_ABSENT to indicate
         // absence of buckets.
         Arrays.fill(bucketSeqToInstance, CoordinatorPreprocessor.BUCKET_ABSENT);
-        for (FragmentInstance2 instance : instances) {
+        for (FragmentInstance instance : instances) {
             for (Integer bucketSeq : instance.getBucketSeqs()) {
                 Preconditions.checkState(bucketSeq < numBuckets,
                         "bucketSeq exceeds bucketNum in colocate Fragment");
@@ -177,11 +177,11 @@ public class ExecutionFragment2 {
         return planFragment.getChildren().size();
     }
 
-    public ExecutionFragment2 getChild(int i) {
+    public ExecutionFragment getChild(int i) {
         return executionDAG.getFragment(planFragment.getChild(i).getFragmentId());
     }
 
-    public void addInstance(FragmentInstance2 instance) {
+    public void addInstance(FragmentInstance instance) {
         instance.setIndexInFragment(instances.size());
         instances.add(instance);
     }
