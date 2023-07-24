@@ -23,8 +23,8 @@ import com.starrocks.planner.PlanFragment;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment;
-import com.starrocks.qe.scheduler.dag.FragmentInstance;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
+import com.starrocks.qe.scheduler.dag.FragmentInstance2;
 
 import java.util.Collections;
 import java.util.List;
@@ -50,7 +50,7 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
     }
 
     @Override
-    public void assignWorkerToFragment(ExecutionFragment execFragment) throws UserException {
+    public void assignWorkerToFragment(ExecutionFragment2 execFragment) throws UserException {
         final PlanFragment fragment = execFragment.getPlanFragment();
 
         // If left child is MultiCastDataFragment(only support left now), will keep same instance with child.
@@ -70,24 +70,24 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
         assignToRemoteFragment(execFragment);
     }
 
-    private void assignToCTEConsumerFragment(ExecutionFragment execFragment) {
-        ExecutionFragment childFragment = execFragment.getChild(0);
-        for (FragmentInstance childInstance : childFragment.getInstances()) {
+    private void assignToCTEConsumerFragment(ExecutionFragment2 execFragment) {
+        ExecutionFragment2 childFragment = execFragment.getChild(0);
+        for (FragmentInstance2 childInstance : childFragment.getInstances()) {
             Long workerId = childInstance.getWorkerId();
-            FragmentInstance instance =
-                    new FragmentInstance(workerProvider.getWorkerById(workerId), workerId, execFragment);
+            FragmentInstance2 instance =
+                    new FragmentInstance2(workerProvider.getWorkerById(workerId), workerId, execFragment);
             execFragment.addInstance(instance);
         }
     }
 
-    private void assignToGatherFragment(ExecutionFragment execFragment) throws UserException {
+    private void assignToGatherFragment(ExecutionFragment2 execFragment) throws UserException {
         Long workerId = workerProvider.selectNextWorker();
-        FragmentInstance instance =
-                new FragmentInstance(workerProvider.getWorkerById(workerId), workerId, execFragment);
+        FragmentInstance2 instance =
+                new FragmentInstance2(workerProvider.getWorkerById(workerId), workerId, execFragment);
         execFragment.addInstance(instance);
     }
 
-    private void assignToRemoteFragment(ExecutionFragment execFragment) {
+    private void assignToRemoteFragment(ExecutionFragment2 execFragment) {
         final boolean dopAdaptionEnabled =
                 usePipeline && connectContext.getSessionVariable().isEnablePipelineAdaptiveDop();
         final boolean isGatherOutput = executionDAG.isGatherOutput();
@@ -108,9 +108,9 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
             // union fragment use all children's host
             // if output fragment isn't gather, all fragment must keep 1 instance
             for (int i = 0; i < execFragment.childrenSize(); i++) {
-                ExecutionFragment childExecFragment = execFragment.getChild(i);
+                ExecutionFragment2 childExecFragment = execFragment.getChild(i);
                 childExecFragment.getInstances().stream()
-                        .map(FragmentInstance::getWorkerId)
+                        .map(FragmentInstance2::getWorkerId)
                         .forEach(workerIdSet::add);
             }
             maxParallelism = workerIdSet.size() * fragment.getParallelExecNum();
@@ -132,9 +132,9 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
                 }
             }
 
-            ExecutionFragment maxInputExecFragment = execFragment.getChild(inputFragmentIndex);
+            ExecutionFragment2 maxInputExecFragment = execFragment.getChild(inputFragmentIndex);
             maxInputExecFragment.getInstances().stream()
-                    .map(FragmentInstance::getWorkerId)
+                    .map(FragmentInstance2::getWorkerId)
                     .forEach(workerIdSet::add);
         }
 
@@ -159,8 +159,8 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
 
         for (int i = 0; i < maxParallelism; i++) {
             Long workerId = workerIds.get(i % workerIds.size());
-            FragmentInstance instance =
-                    new FragmentInstance(workerProvider.getWorkerById(workerId), workerId, execFragment);
+            FragmentInstance2 instance =
+                    new FragmentInstance2(workerProvider.getWorkerById(workerId), workerId, execFragment);
             execFragment.addInstance(instance);
         }
 

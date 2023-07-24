@@ -15,8 +15,8 @@
 package com.starrocks.qe.scheduler.assignment;
 
 import com.starrocks.common.UserException;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
 
 public interface FragmentAssignmentStrategy {
-    void assignWorkerToFragment(ExecutionFragment executionFragment) throws UserException;
+    void assignWorkerToFragment(ExecutionFragment2 executionFragment) throws UserException;
 }

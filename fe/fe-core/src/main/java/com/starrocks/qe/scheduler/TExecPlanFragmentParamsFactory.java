@@ -22,8 +22,8 @@ import com.starrocks.planner.PlanFragment;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment;
-import com.starrocks.qe.scheduler.dag.FragmentInstance;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
+import com.starrocks.qe.scheduler.dag.FragmentInstance2;
 import com.starrocks.qe.scheduler.dag.JobInformation;
 import com.starrocks.thrift.InternalServiceVersion;
 import com.starrocks.thrift.TAdaptiveDopParam;
@@ -54,7 +54,7 @@ public class TExecPlanFragmentParamsFactory {
         this.coordAddress = coordAddress;
     }
 
-    public TExecPlanFragmentParams create(FragmentInstance instance,
+    public TExecPlanFragmentParams create(FragmentInstance2 instance,
                                           TDescriptorTable descTable,
                                           int accTabletSinkDop,
                                           int totalTableSinkDop) {
@@ -67,7 +67,7 @@ public class TExecPlanFragmentParamsFactory {
     }
 
     public void toThriftFromCommonParams(TExecPlanFragmentParams result,
-                                         ExecutionFragment execFragment,
+                                         ExecutionFragment2 execFragment,
                                          TDescriptorTable descTable,
                                          int totalTableSinkDop) {
         PlanFragment fragment = execFragment.getPlanFragment();
@@ -130,9 +130,9 @@ public class TExecPlanFragmentParamsFactory {
     }
 
     private void toThriftForUniqueParams(TExecPlanFragmentParams result,
-                                         FragmentInstance instance,
+                                         FragmentInstance2 instance,
                                          int accTabletSinkDop) {
-        ExecutionFragment execFragment = instance.getExecFragment();
+        ExecutionFragment2 execFragment = instance.getExecFragment();
         PlanFragment fragment = execFragment.getPlanFragment();
 
         boolean isEnablePipeline = jobInfo.isEnablePipeline();

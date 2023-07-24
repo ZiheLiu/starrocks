@@ -53,10 +53,10 @@ public class ExecutionDAG {
     private static final Logger LOG = LogManager.getLogger(ExecutionDAG.class);
 
     private final JobInformation jobInfo;
-    private final List<ExecutionFragment> fragments;
-    private final Map<PlanFragmentId, ExecutionFragment> idToFragment;
+    private final List<ExecutionFragment2> fragments;
+    private final Map<PlanFragmentId, ExecutionFragment2> idToFragment;
 
-    private final Map<TUniqueId, FragmentInstance> instanceIdToInstance;
+    private final Map<TUniqueId, FragmentInstance2> instanceIdToInstance;
     private Map<Long, Integer> workerIdToNumInstances = Maps.newHashMap();
     private final ConcurrentNavigableMap<Integer, ExecutionFragmentInstance> indexInJobToExecution =
             new ConcurrentSkipListMap<>();
@@ -80,9 +80,9 @@ public class ExecutionDAG {
         StringBuilder builder = new StringBuilder();
 
         builder.append("ExecutionDAG{\n");
-        for (ExecutionFragment fragment : fragments) {
+        for (ExecutionFragment2 fragment : fragments) {
             builder.append(fragment.getFragmentId()).append(":\n");
-            for (FragmentInstance instance : fragment.getInstances()) {
+            for (FragmentInstance2 instance : fragment.getInstances()) {
                 builder.append("\t- ").append(instance).append("\n");
             }
         }
@@ -101,7 +101,7 @@ public class ExecutionDAG {
 
     public void attachFragments(List<PlanFragment> planFragments) {
         for (PlanFragment planFragment : planFragments) {
-            ExecutionFragment fragment = new ExecutionFragment(this, planFragment);
+            ExecutionFragment2 fragment = new ExecutionFragment2(this, planFragment);
             planFragment.setExecutionFragment(fragment);
             this.fragments.add(fragment);
             this.idToFragment.put(planFragment.getFragmentId(), fragment);
@@ -116,8 +116,8 @@ public class ExecutionDAG {
      * @param execFragment The fragment to be initialized.
      * @throws SchedulerException when there is something wrong for the plan or execution informatino.
      */
-    public void initFragment(ExecutionFragment execFragment) throws SchedulerException {
-        for (FragmentInstance instance : execFragment.getInstances()) {
+    public void initFragment(ExecutionFragment2 execFragment) throws SchedulerException {
+        for (FragmentInstance2 instance : execFragment.getInstances()) {
             setInstanceId(instance);
         }
 
@@ -132,7 +132,7 @@ public class ExecutionDAG {
         return jobInfo;
     }
 
-    private boolean needScheduleByBucketShuffleJoin(ExecutionFragment destFragment, DataSink sourceSink) {
+    private boolean needScheduleByBucketShuffleJoin(ExecutionFragment2 destFragment, DataSink sourceSink) {
         if (destFragment.isBucketShuffleJoin()) {
             if (sourceSink instanceof DataStreamSink) {
                 DataStreamSink streamSink = (DataStreamSink) sourceSink;
@@ -142,7 +142,7 @@ public class ExecutionDAG {
         return false;
     }
 
-    private void initMultiCastFragment(ExecutionFragment execFragment, MultiCastPlanFragment fragment)
+    private void initMultiCastFragment(ExecutionFragment2 execFragment, MultiCastPlanFragment fragment)
             throws SchedulerException {
         Preconditions.checkState(fragment.getSink() instanceof MultiCastDataSink);
         MultiCastDataSink multiSink = (MultiCastDataSink) fragment.getSink();
@@ -156,7 +156,7 @@ public class ExecutionDAG {
                 continue;
             }
 
-            ExecutionFragment destExecFragment = idToFragment.get(destFragment.getFragmentId());
+            ExecutionFragment2 destExecFragment = idToFragment.get(destFragment.getFragmentId());
             DataStreamSink sink = multiSink.getDataStreamSinks().get(i);
 
             // Set params for pipeline level shuffle.
@@ -173,7 +173,7 @@ public class ExecutionDAG {
                 throw new NonRecoverableException("CTE consumer fragment cannot be bucket shuffle join");
             } else {
                 // add destination host to this fragment's destination
-                for (FragmentInstance destInstance : destExecFragment.getInstances()) {
+                for (FragmentInstance2 destInstance : destExecFragment.getInstances()) {
                     TPlanFragmentDestination dest = new TPlanFragmentDestination();
 
                     dest.setFragment_instance_id(destInstance.getInstanceId());
@@ -188,7 +188,7 @@ public class ExecutionDAG {
         }
     }
 
-    private void initNormalFragment(ExecutionFragment execFragment) {
+    private void initNormalFragment(ExecutionFragment2 execFragment) {
         PlanFragment fragment = execFragment.getPlanFragment();
         PlanFragment destFragment = fragment.getDestFragment();
 
@@ -197,7 +197,7 @@ public class ExecutionDAG {
             return;
         }
 
-        ExecutionFragment destExecFragment = idToFragment.get(destFragment.getFragmentId());
+        ExecutionFragment2 destExecFragment = idToFragment.get(destFragment.getFragmentId());
         DataSink sink = fragment.getSink();
 
         // Set params for pipeline level shuffle.
@@ -220,8 +220,8 @@ public class ExecutionDAG {
 
         // We can only handle unpartitioned (= broadcast) and hash-partitioned output at the moment.
         if (needScheduleByBucketShuffleJoin(destExecFragment, sink)) {
-            Map<Integer, FragmentInstance> bucketSeqToDestInstance = Maps.newHashMap();
-            for (FragmentInstance destInstance : destExecFragment.getInstances()) {
+            Map<Integer, FragmentInstance2> bucketSeqToDestInstance = Maps.newHashMap();
+            for (FragmentInstance2 destInstance : destExecFragment.getInstances()) {
                 for (int bucketSeq : destInstance.getBucketSeqs()) {
                     bucketSeqToDestInstance.put(bucketSeq, destInstance);
                 }
@@ -232,7 +232,7 @@ public class ExecutionDAG {
             for (int bucketSeq = 0; bucketSeq < bucketNum; bucketSeq++) {
                 TPlanFragmentDestination dest = new TPlanFragmentDestination();
 
-                FragmentInstance destInstance = bucketSeqToDestInstance.get(bucketSeq);
+                FragmentInstance2 destInstance = bucketSeqToDestInstance.get(bucketSeq);
                 if (destInstance == null) {
                     // dest bucket may be pruned, these bucket dest should be set an invalid value
                     // and will be deal with in BE's DataStreamSender
@@ -248,7 +248,7 @@ public class ExecutionDAG {
                     dest.setBrpc_server(worker.getBrpcAddress());
 
                     int driverSeq = destInstance.getDriverSeqOfBucketSeq(bucketSeq);
-                    if (driverSeq != FragmentInstance.ABSENT_DRIVER_SEQUENCE) {
+                    if (driverSeq != FragmentInstance2.ABSENT_DRIVER_SEQUENCE) {
                         dest.setPipeline_driver_sequence(driverSeq);
                     }
                 }
@@ -256,7 +256,7 @@ public class ExecutionDAG {
             }
         } else {
             // add destination host to this fragment's destination
-            for (FragmentInstance destInstance : destExecFragment.getInstances()) {
+            for (FragmentInstance2 destInstance : destExecFragment.getInstances()) {
                 TPlanFragmentDestination dest = new TPlanFragmentDestination();
 
                 dest.setFragment_instance_id(destInstance.getInstanceId());
@@ -270,7 +270,7 @@ public class ExecutionDAG {
         }
     }
 
-    public void setInstanceId(FragmentInstance instance) {
+    public void setInstanceId(FragmentInstance2 instance) {
         TUniqueId jobId = jobInfo.getQueryId();
         TUniqueId instanceId = new TUniqueId();
         instanceId.setHi(jobId.hi);
@@ -284,15 +284,15 @@ public class ExecutionDAG {
         return instanceIdToInstance.keySet();
     }
 
-    public Collection<FragmentInstance> getInstances() {
+    public Collection<FragmentInstance2> getInstances() {
         return instanceIdToInstance.values();
     }
 
-    public FragmentInstance getInstanceByInstanceId(TUniqueId instanceId) {
+    public FragmentInstance2 getInstanceByInstanceId(TUniqueId instanceId) {
         return instanceIdToInstance.get(instanceId);
     }
 
-    public ExecutionFragment getRootFragment() {
+    public ExecutionFragment2 getRootFragment() {
         return fragments.get(0);
     }
 
@@ -306,11 +306,11 @@ public class ExecutionDAG {
         return fragments.size();
     }
 
-    public List<ExecutionFragment> getFragmentsInPreorder() {
+    public List<ExecutionFragment2> getFragmentsInPreorder() {
         return fragments;
     }
 
-    public List<ExecutionFragment> getFragmentsInPostorder() {
+    public List<ExecutionFragment2> getFragmentsInPostorder() {
         return Lists.reverse(fragments);
     }
 
@@ -338,20 +338,20 @@ public class ExecutionDAG {
      *
      * @return multiple fragment groups.
      */
-    public List<List<ExecutionFragment>> getFragmentsInTopologicalOrderFromRoot() {
-        Queue<ExecutionFragment> queue = Lists.newLinkedList();
-        Map<ExecutionFragment, Integer> inDegrees = Maps.newHashMap();
+    public List<List<ExecutionFragment2>> getFragmentsInTopologicalOrderFromRoot() {
+        Queue<ExecutionFragment2> queue = Lists.newLinkedList();
+        Map<ExecutionFragment2, Integer> inDegrees = Maps.newHashMap();
 
-        ExecutionFragment root = getRootFragment();
+        ExecutionFragment2 root = getRootFragment();
 
         // Compute in-degree of each fragment by BFS.
         // `queue` contains the fragments need to visit its in-edges.
         inDegrees.put(root, 0);
         queue.add(root);
         while (!queue.isEmpty()) {
-            ExecutionFragment fragment = queue.poll();
+            ExecutionFragment2 fragment = queue.poll();
             for (int i = 0; i < fragment.childrenSize(); i++) {
-                ExecutionFragment child = fragment.getChild(i);
+                ExecutionFragment2 child = fragment.getChild(i);
                 Integer v = inDegrees.get(child);
                 if (v != null) {
                     // Has added this child to queue before, don't add again.
@@ -364,7 +364,7 @@ public class ExecutionDAG {
         }
 
         if (fragments.size() != inDegrees.size()) {
-            for (ExecutionFragment fragment : fragments) {
+            for (ExecutionFragment2 fragment : fragments) {
                 if (!inDegrees.containsKey(fragment)) {
                     LOG.warn("This fragment does not belong to the fragment tree: {}", fragment.getFragmentId());
                 }
@@ -376,19 +376,19 @@ public class ExecutionDAG {
         // Compute fragment groups by BFS.
         // `queue` contains the fragments whose in-degree is zero.
         queue.add(root);
-        List<List<ExecutionFragment>> groups = Lists.newArrayList();
+        List<List<ExecutionFragment2>> groups = Lists.newArrayList();
         int numOutputFragments = 0;
         while (!queue.isEmpty()) {
             int groupSize = queue.size();
-            List<ExecutionFragment> group = new ArrayList<>(groupSize);
+            List<ExecutionFragment2> group = new ArrayList<>(groupSize);
             // The next `groupSize` fragments can be delivered concurrently, because zero in-degree indicates that
             // they don't depend on each other and all the fragments depending on them have been delivered.
             for (int i = 0; i < groupSize; ++i) {
-                ExecutionFragment fragment = queue.poll();
+                ExecutionFragment2 fragment = queue.poll();
                 group.add(fragment);
 
                 for (int j = 0; j < fragment.childrenSize(); j++) {
-                    ExecutionFragment child = fragment.getChild(j);
+                    ExecutionFragment2 child = fragment.getChild(j);
                     int degree = inDegrees.compute(child, (k, v) -> v - 1);
                     if (degree == 0) {
                         queue.add(child);
@@ -408,7 +408,7 @@ public class ExecutionDAG {
         return groups;
     }
 
-    public ExecutionFragment getFragment(PlanFragmentId fragmentId) {
+    public ExecutionFragment2 getFragment(PlanFragmentId fragmentId) {
         return idToFragment.get(fragmentId);
     }
 
@@ -420,7 +420,7 @@ public class ExecutionDAG {
         workerIdToNumInstances = fragments.stream()
                 .flatMap(fragment -> fragment.getInstances().stream())
                 .collect(Collectors.groupingBy(
-                        FragmentInstance::getWorkerId,
+                        FragmentInstance2::getWorkerId,
                         Collectors.summingInt(instance -> 1)
                 ));
 
@@ -430,8 +430,8 @@ public class ExecutionDAG {
         // Therefore, here assign monotonic unique indexInJob to Fragment instances to keep consistent order with Fragment
         // instances in ExecutionFragment.instances.
         int index = 0;
-        for (ExecutionFragment fragment : fragments) {
-            for (FragmentInstance instance : fragment.getInstances()) {
+        for (ExecutionFragment2 fragment : fragments) {
+            for (FragmentInstance2 instance : fragment.getInstances()) {
                 instance.setIndexInJob(index++);
             }
         }
@@ -458,7 +458,7 @@ public class ExecutionDAG {
         return workerIdToNumInstances.get(addr);
     }
 
-    public void addExecution(FragmentInstance instance, ExecutionFragmentInstance execution) {
+    public void addExecution(FragmentInstance2 instance, ExecutionFragmentInstance execution) {
         if (instance != null) {
             instance.setExecution(execution);
         }
@@ -488,7 +488,7 @@ public class ExecutionDAG {
     public List<QueryStatisticsItem.FragmentInstanceInfo> getFragmentInstanceInfos() {
         return fragments.stream()
                 .flatMap(fragment -> fragment.getInstances().stream())
-                .map(FragmentInstance::getExecution)
+                .map(FragmentInstance2::getExecution)
                 .filter(Objects::nonNull)
                 .map(ExecutionFragmentInstance::buildFragmentInstanceInfo)
                 .collect(Collectors.toList());

@@ -21,9 +21,9 @@ import com.starrocks.common.Status;
 import com.starrocks.common.UserException;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
 import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
-import com.starrocks.qe.scheduler.dag.FragmentInstance;
+import com.starrocks.qe.scheduler.dag.FragmentInstance2;
 import com.starrocks.qe.scheduler.dag.JobInformation;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TExecPlanFragmentParams;
@@ -79,12 +79,12 @@ public class Deployer {
         this.failureHandler = failureHandler;
     }
 
-    public boolean deployFragments(List<ExecutionFragment> concurrentFragments, boolean needDeploy) {
+    public boolean deployFragments(List<ExecutionFragment2> concurrentFragments, boolean needDeploy) {
         int groupIndex = nextGroupIndex++;
         List<List<ExecutionFragmentInstance>> twoDeployStageExecutions =
                 ImmutableList.of(new ArrayList<>(), new ArrayList<>());
 
-        for (ExecutionFragment fragment : concurrentFragments) {
+        for (ExecutionFragment2 fragment : concurrentFragments) {
             int profileFragmentIndex = nextProfileFragmentIndex++;
             try {
                 createExecutionFragmentInstances(fragment, groupIndex, profileFragmentIndex, twoDeployStageExecutions);
@@ -112,7 +112,7 @@ public class Deployer {
         void apply(Status status, ExecutionFragmentInstance execution, Throwable failure);
     }
 
-    private void createExecutionFragmentInstances(ExecutionFragment fragment, int groupIndex, int profileFragmentIndex,
+    private void createExecutionFragmentInstances(ExecutionFragment2 fragment, int groupIndex, int profileFragmentIndex,
                                                   List<List<ExecutionFragmentInstance>> twoDeployStageExecutions)
             throws UserException {
         Preconditions.checkState(!fragment.getInstances().isEmpty());
@@ -129,7 +129,7 @@ public class Deployer {
         int totalTableSinkDop = 0;
         if (enablePipelineTableSinkDop) {
             totalTableSinkDop = fragment.getInstances().stream()
-                    .map(FragmentInstance::getTableSinkDop)
+                    .map(FragmentInstance2::getTableSinkDop)
                     .reduce(0, Integer::sum);
         }
         if (totalTableSinkDop < 0) {
@@ -138,10 +138,10 @@ public class Deployer {
         }
 
         int accTabletSinkDop = 0;
-        Map<Long, List<FragmentInstance>> addrToInstances = fragment.geWorkerIdToInstances();
-        for (Map.Entry<Long, List<FragmentInstance>> entry : addrToInstances.entrySet()) {
+        Map<Long, List<FragmentInstance2>> addrToInstances = fragment.geWorkerIdToInstances();
+        for (Map.Entry<Long, List<FragmentInstance2>> entry : addrToInstances.entrySet()) {
             Long workerId = entry.getKey();
-            List<FragmentInstance> instances = entry.getValue();
+            List<FragmentInstance2> instances = entry.getValue();
 
             if (instances.isEmpty()) {
                 return;
@@ -167,7 +167,7 @@ public class Deployer {
                 }
             }
 
-            for (FragmentInstance instance : instances) {
+            for (FragmentInstance2 instance : instances) {
                 TExecPlanFragmentParams request =
                         execPlanFragmentParamsFactory.create(instance, curDescTable, accTabletSinkDop,
                                 totalTableSinkDop);

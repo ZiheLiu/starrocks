@@ -39,7 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class FragmentInstance {
+public class FragmentInstance2 {
     static final int ABSENT_PIPELINE_DOP = -1;
     static final int ABSENT_DRIVER_SEQUENCE = -1;
 
@@ -50,7 +50,7 @@ public class FragmentInstance {
     private int indexInFragment = -1;
     private TUniqueId instanceId = null;
 
-    private final ExecutionFragment execFragment;
+    private final ExecutionFragment2 execFragment;
 
     private int pipelineDop = ABSENT_PIPELINE_DOP;
 
@@ -64,7 +64,7 @@ public class FragmentInstance {
 
     private ExecutionFragmentInstance execution = null;
 
-    public FragmentInstance(ComputeNode worker, Long workerId, ExecutionFragment execFragment) {
+    public FragmentInstance2(ComputeNode worker, Long workerId, ExecutionFragment2 execFragment) {
         this.worker = worker;
         this.workerId = workerId;
         this.execFragment = execFragment;
@@ -173,7 +173,7 @@ public class FragmentInstance {
                 ", execution=" + execution + '}';
     }
 
-    public ExecutionFragment getExecFragment() {
+    public ExecutionFragment2 getExecFragment() {
         return execFragment;
     }
 

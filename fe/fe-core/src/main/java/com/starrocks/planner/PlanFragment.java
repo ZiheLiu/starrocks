@@ -43,7 +43,7 @@ import com.starrocks.common.Pair;
 import com.starrocks.common.TreeNode;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment2;
 import com.starrocks.sql.optimizer.Utils;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
 import com.starrocks.thrift.TCacheParam;
@@ -161,7 +161,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
     private boolean useRuntimeAdaptiveDop = false;
 
-    ExecutionFragment executionFragment = null;
+    ExecutionFragment2 executionFragment = null;
 
     /**
      * C'tor for fragment with specific partition; the output is by default broadcast.
@@ -178,7 +178,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         setFragmentInPlanTree(planRoot);
     }
 
-    public void setExecutionFragment(ExecutionFragment executionFragment) {
+    public void setExecutionFragment(ExecutionFragment2 executionFragment) {
         this.executionFragment = executionFragment;
     }
 
