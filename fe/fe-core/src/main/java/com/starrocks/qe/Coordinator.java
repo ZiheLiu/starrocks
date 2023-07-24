@@ -144,10 +144,10 @@ public class Coordinator implements ICoordinator {
     private List<RuntimeProfile> fragmentProfiles;
     private final Map<PlanFragmentId, Integer> fragmentId2fragmentProfileIds = Maps.newHashMap();
     // backend execute state
-    private final ConcurrentNavigableMap<Integer, BackendExecState> backendExecStates = new ConcurrentSkipListMap<>();
+    private final ConcurrentNavigableMap<Integer, ExecutionFragmentInstance> backendExecStates = new ConcurrentSkipListMap<>();
     // backend which state need to be checked when joining this coordinator.
     // It is supposed to be the subset of backendExecStates.
-    private final List<BackendExecState> needCheckBackendExecStates = Lists.newArrayList();
+    private final List<ExecutionFragmentInstance> needCheckExecutionFragmentInstances = Lists.newArrayList();
     private ResultReceiver receiver;
     // number of instances of this query, equals to
     // number of backends executing plan fragments on behalf of this query;
@@ -279,8 +279,8 @@ public class Coordinator implements ICoordinator {
         profileDoneSignal = new MarkedCountDownLatch<>(1);
         profileDoneSignal.addMark(queryId, -1L /* value is meaningless */);
 
-        BackendExecState backendExecState = new BackendExecState(queryId, address);
-        backendExecStates.put(0, backendExecState);
+        ExecutionFragmentInstance executionFragmentInstance = new ExecutionFragmentInstance(queryId, address);
+        backendExecStates.put(0, executionFragmentInstance);
 
         attachInstanceProfileToFragmentProfile();
 
@@ -380,7 +380,7 @@ public class Coordinator implements ICoordinator {
                 this.exportFiles = Lists.newArrayList();
             }
             this.exportFiles.clear();
-            this.needCheckBackendExecStates.clear();
+            this.needCheckExecutionFragmentInstances.clear();
         } finally {
             lock.unlock();
         }
@@ -562,19 +562,19 @@ public class Coordinator implements ICoordinator {
         deliverExecFragmentsRequests(coordinatorPreprocessor.isUsePipeline());
     }
 
-    private void handleErrorBackendExecState(BackendExecState errorBackendExecState, TStatusCode errorCode,
+    private void handleErrorBackendExecState(ExecutionFragmentInstance errorExecutionFragmentInstance, TStatusCode errorCode,
                                              String errMessage)
             throws UserException, RpcException {
-        if (errorBackendExecState != null) {
+        if (errorExecutionFragmentInstance != null) {
             cancelInternal(PPlanFragmentCancelReason.INTERNAL_ERROR);
             switch (Objects.requireNonNull(errorCode)) {
                 case TIMEOUT:
-                    throw new UserException("query timeout. backend id: " + errorBackendExecState.backend.getId());
+                    throw new UserException("query timeout. backend id: " + errorExecutionFragmentInstance.backend.getId());
                 case THRIFT_RPC_ERROR:
-                    SimpleScheduler.addToBlacklist(errorBackendExecState.backend.getId());
-                    throw new RpcException(errorBackendExecState.backend.getHost(), "rpc failed");
+                    SimpleScheduler.addToBlacklist(errorExecutionFragmentInstance.backend.getId());
+                    throw new RpcException(errorExecutionFragmentInstance.backend.getHost(), "rpc failed");
                 default:
-                    throw new UserException(errMessage + " backend:" + errorBackendExecState.address.hostname);
+                    throw new UserException(errMessage + " backend:" + errorExecutionFragmentInstance.address.hostname);
             }
         }
     }
@@ -689,7 +689,7 @@ public class Coordinator implements ICoordinator {
             emptyDescTable.setIs_cached(true);
             emptyDescTable.setTupleDescriptors(Collections.emptyList());
 
-            List<List<BackendExecState>> twoStageExecutionsToDeploy =
+            List<List<ExecutionFragmentInstance>> twoStageExecutionsToDeploy =
                     ImmutableList.of(new ArrayList<>(), new ArrayList<>());
             Set<Long> deployedWorkerIds = new HashSet<>();
             for (List<PlanFragment> fragmentGroup : fragmentGroups) {
@@ -779,13 +779,13 @@ public class Coordinator implements ICoordinator {
                             // TODO: pool of pre-formatted BackendExecStates?
                             Long workerId = instanceId2WorkerId.get(tRequest.params.fragment_instance_id);
                             ComputeNode worker = coordinatorPreprocessor.getWorkerProvider().getWorkerById(workerId);
-                            BackendExecState execState =
-                                    new BackendExecState(fragment.getFragmentId(), worker.getAddress(),
+                            ExecutionFragmentInstance execState =
+                                    new ExecutionFragmentInstance(fragment.getFragmentId(), worker.getAddress(),
                                             profileFragmentId, tRequest,
                                             worker);
                             backendExecStates.put(tRequest.backend_num, execState);
                             if (needCheckBackendState) {
-                                needCheckBackendExecStates.add(execState);
+                                needCheckExecutionFragmentInstances.add(execState);
                                 if (LOG.isDebugEnabled()) {
                                     LOG.debug("add need check backend {} for fragment, {} job: {}",
                                             execState.backend.getId(),
@@ -797,20 +797,20 @@ public class Coordinator implements ICoordinator {
                     }
                 }
 
-                for (List<BackendExecState> stageExecutions : twoStageExecutionsToDeploy) {
+                for (List<ExecutionFragmentInstance> stageExecutions : twoStageExecutionsToDeploy) {
                     // Send requests of the executions in this stage.
-                    List<Pair<BackendExecState, Future<PExecPlanFragmentResult>>> futures =
+                    List<Pair<ExecutionFragmentInstance, Future<PExecPlanFragmentResult>>> futures =
                             new ArrayList<>(stageExecutions.size());
-                    for (BackendExecState execution : stageExecutions) {
+                    for (ExecutionFragmentInstance execution : stageExecutions) {
                         futures.add(Pair.create(execution, execution.execRemoteFragmentAsync()));
                     }
 
                     // Wait responses of the executions in this stage.
-                    BackendExecState errorBackendExecState = null;
+                    ExecutionFragmentInstance errorExecutionFragmentInstance = null;
                     TStatusCode errorCode = null;
                     String errMessage = null;
-                    for (Pair<BackendExecState, Future<PExecPlanFragmentResult>> pair : futures) {
-                        BackendExecState execution = pair.first;
+                    for (Pair<ExecutionFragmentInstance, Future<PExecPlanFragmentResult>> pair : futures) {
+                        ExecutionFragmentInstance execution = pair.first;
                         Future<PExecPlanFragmentResult> future = pair.second;
 
                         TStatusCode code;
@@ -840,8 +840,8 @@ public class Coordinator implements ICoordinator {
                             LOG.warn("exec plan fragment failed, errmsg={}, code: {}, fragmentId={}, backend={}:{}",
                                     errMsg, code, execution.fragmentId,
                                     execution.address.hostname, execution.address.port);
-                            if (errorBackendExecState == null) {
-                                errorBackendExecState = execution;
+                            if (errorExecutionFragmentInstance == null) {
+                                errorExecutionFragmentInstance = execution;
                                 errorCode = code;
                                 errMessage = errMsg;
                             }
@@ -855,7 +855,7 @@ public class Coordinator implements ICoordinator {
                     // until all the delivered fragment instances are completed.
                     // Otherwise, the cancellation RPC may arrive at BE before the delivery fragment instance RPC,
                     // causing the instances to become stale and only able to be released after a timeout.
-                    handleErrorBackendExecState(errorBackendExecState, errorCode, errMessage);
+                    handleErrorBackendExecState(errorExecutionFragmentInstance, errorCode, errMessage);
                 }
             }
 
@@ -1219,14 +1219,14 @@ public class Coordinator implements ICoordinator {
     }
 
     private void cancelRemoteFragmentsAsync(PPlanFragmentCancelReason cancelReason) {
-        for (BackendExecState backendExecState : backendExecStates.values()) {
-            backendExecState.cancelFragmentInstance(cancelReason);
+        for (ExecutionFragmentInstance executionFragmentInstance : backendExecStates.values()) {
+            executionFragmentInstance.cancelFragmentInstance(cancelReason);
         }
     }
 
     @Override
     public void updateFragmentExecStatus(TReportExecStatusParams params) {
-        BackendExecState execState = backendExecStates.get(params.backend_num);
+        ExecutionFragmentInstance execState = backendExecStates.get(params.backend_num);
         if (execState == null) {
             LOG.warn("unknown backend number: {}, valid backend numbers: {}", params.backend_num,
                     backendExecStates.keySet());
@@ -1642,10 +1642,10 @@ public class Coordinator implements ICoordinator {
      */
     @Override
     public boolean checkBackendState() {
-        for (BackendExecState backendExecState : needCheckBackendExecStates) {
-            if (!backendExecState.isBackendStateHealthy()) {
+        for (ExecutionFragmentInstance executionFragmentInstance : needCheckExecutionFragmentInstances) {
+            if (!executionFragmentInstance.isBackendStateHealthy()) {
                 queryStatus = new Status(TStatusCode.INTERNAL_ERROR,
-                        "backend " + backendExecState.backend.getId() + " is down");
+                        "backend " + executionFragmentInstance.backend.getId() + " is down");
                 return false;
             }
         }
@@ -1667,11 +1667,11 @@ public class Coordinator implements ICoordinator {
     public List<QueryStatisticsItem.FragmentInstanceInfo> getFragmentInstanceInfos() {
         final List<QueryStatisticsItem.FragmentInstanceInfo> result = Lists.newArrayList();
         for (PlanFragment fragment : jobInfo.getFragments()) {
-            for (BackendExecState backendExecState : backendExecStates.values()) {
-                if (fragment.getFragmentId() != backendExecState.fragmentId) {
+            for (ExecutionFragmentInstance executionFragmentInstance : backendExecStates.values()) {
+                if (fragment.getFragmentId() != executionFragmentInstance.fragmentId) {
                     continue;
                 }
-                final FragmentInstanceInfo info = backendExecState.buildFragmentInstanceInfo();
+                final FragmentInstanceInfo info = executionFragmentInstance.buildFragmentInstanceInfo();
                 result.add(info);
             }
         }
@@ -1679,11 +1679,11 @@ public class Coordinator implements ICoordinator {
     }
 
     private void attachInstanceProfileToFragmentProfile() {
-        for (BackendExecState backendExecState : backendExecStates.values()) {
-            if (!backendExecState.computeTimeInProfile(fragmentProfiles.size())) {
+        for (ExecutionFragmentInstance executionFragmentInstance : backendExecStates.values()) {
+            if (!executionFragmentInstance.computeTimeInProfile(fragmentProfiles.size())) {
                 return;
             }
-            fragmentProfiles.get(backendExecState.profileFragmentId).addChild(backendExecState.profile);
+            fragmentProfiles.get(executionFragmentInstance.profileFragmentId).addChild(executionFragmentInstance.profile);
         }
     }
 
@@ -1699,7 +1699,7 @@ public class Coordinator implements ICoordinator {
 
     // record backend execute state
     // TODO(zhaochun): add profile information and others
-    public class BackendExecState {
+    public class ExecutionFragmentInstance {
         TExecPlanFragmentParams commonRpcParams;
         TExecPlanFragmentParams uniqueRpcParams;
         PlanFragmentId fragmentId;
@@ -1713,22 +1713,22 @@ public class Coordinator implements ICoordinator {
         long lastMissingHeartbeatTime = -1;
 
         // fake backendExecState, only user for stream load profile
-        public BackendExecState(TUniqueId fragmentInstanceId, TNetworkAddress address) {
+        public ExecutionFragmentInstance(TUniqueId fragmentInstanceId, TNetworkAddress address) {
             String name = "Instance " + DebugUtil.printId(fragmentInstanceId);
             this.profile = new RuntimeProfile(name);
             this.profile.addInfoString("Address", String.format("%s:%s", address.hostname, address.port));
             this.backend = null;
         }
 
-        public BackendExecState(PlanFragmentId fragmentId, TNetworkAddress host, int profileFragmentId,
-                                TExecPlanFragmentParams rpcParams,
-                                ComputeNode backend) {
+        public ExecutionFragmentInstance(PlanFragmentId fragmentId, TNetworkAddress host, int profileFragmentId,
+                                         TExecPlanFragmentParams rpcParams,
+                                         ComputeNode backend) {
             this(fragmentId, host, profileFragmentId, rpcParams, rpcParams, backend);
         }
 
-        public BackendExecState(PlanFragmentId fragmentId, TNetworkAddress host, int profileFragmentId,
-                                TExecPlanFragmentParams commonRpcParams, TExecPlanFragmentParams uniqueRpcParams,
-                                ComputeNode backend) {
+        public ExecutionFragmentInstance(PlanFragmentId fragmentId, TNetworkAddress host, int profileFragmentId,
+                                         TExecPlanFragmentParams commonRpcParams, TExecPlanFragmentParams uniqueRpcParams,
+                                         ComputeNode backend) {
             this.profileFragmentId = profileFragmentId;
             this.fragmentId = fragmentId;
             this.commonRpcParams = commonRpcParams;
