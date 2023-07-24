@@ -274,7 +274,7 @@ public class MVMaintenanceJob implements Writable, GsonPreProcessable, GsonPostP
         }
         queryCoordinator.prepareExec();
 
-        Map<PlanFragmentId, CoordinatorPreprocessor.FragmentExecParams> fragmentExecParams =
+        Map<PlanFragmentId, CoordinatorPreprocessor.ExecutionFragment> fragmentExecParams =
                 queryCoordinator.getFragmentExecParamsMap();
         TDescriptorTable descTable = queryCoordinator.getDescriptorTable();
         boolean enablePipeline = true;
@@ -286,17 +286,17 @@ public class MVMaintenanceJob implements Writable, GsonPreProcessable, GsonPostP
         Map<Long, MVMaintenanceTask> tasksByBe = new HashMap<>();
         long taskIdGen = 0;
         int backendIdGen = 0;
-        for (Map.Entry<PlanFragmentId, CoordinatorPreprocessor.FragmentExecParams> kv : fragmentExecParams.entrySet()) {
-            CoordinatorPreprocessor.FragmentExecParams execParams = kv.getValue();
+        for (Map.Entry<PlanFragmentId, CoordinatorPreprocessor.ExecutionFragment> kv : fragmentExecParams.entrySet()) {
+            CoordinatorPreprocessor.ExecutionFragment execParams = kv.getValue();
             Set<TUniqueId> inflightInstanceSet =
                     execParams.instanceExecParams.stream()
-                            .map(CoordinatorPreprocessor.FInstanceExecParam::getInstanceId)
+                            .map(CoordinatorPreprocessor.FragmentInstance::getInstanceId)
                             .collect(Collectors.toSet());
             List<TExecPlanFragmentParams> tParams =
                     execParams.toThrift(inflightInstanceSet, descTable, enablePipeline, tabletSinkDop,
                             tabletSinkDop, true);
             for (int i = 0; i < execParams.instanceExecParams.size(); i++) {
-                CoordinatorPreprocessor.FInstanceExecParam instanceParam = execParams.instanceExecParams.get(i);
+                CoordinatorPreprocessor.FragmentInstance instanceParam = execParams.instanceExecParams.get(i);
                 // Get brpc address instead of the default address
                 TNetworkAddress beRpcAddr = queryCoordinator.getBrpcAddress(instanceParam.getWorkerId());
                 Long taskId = addr2TaskId.get(beRpcAddr);
