@@ -24,7 +24,7 @@ import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TExecPlanFragmentParams;
 import com.starrocks.thrift.TNetworkAddress;
@@ -43,7 +43,7 @@ import static com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance.Deploymen
 public class Deployer {
     private static final Logger LOG = LogManager.getLogger(Deployer.class);
 
-    private final JobInformation jobInfo;
+    private final JobSpec jobInfo;
     private final ExecutionDAG executionDAG;
     private final WorkerProvider workerProvider;
 
@@ -58,7 +58,7 @@ public class Deployer {
     private int nextProfileFragmentIndex = 0;
 
     public Deployer(ConnectContext context,
-                    JobInformation jobInfo,
+                    JobSpec jobInfo,
                     WorkerProvider workerProvider,
                     ExecutionDAG executionDAG,
                     TNetworkAddress coordAddress,

@@ -43,7 +43,7 @@ import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.thrift.TScanRangeLocations;
 import com.starrocks.thrift.TScanRangeParams;
 import org.apache.logging.log4j.LogManager;
@@ -76,7 +76,7 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
         this.executionDAG = executionDAG;
         this.usePipeline = usePipeline;
 
-        JobInformation jobInfo = executionDAG.getJobInformation();
+        JobSpec jobInfo = executionDAG.getJobInformation();
         this.isLoad = jobInfo.isLoadType();
     }
 

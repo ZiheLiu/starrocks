@@ -43,7 +43,7 @@ import java.util.Map;
 import static com.starrocks.qe.CoordinatorPreprocessor.genQueryGlobals;
 import static com.starrocks.qe.CoordinatorPreprocessor.prepareResourceGroup;
 
-public class JobInformation {
+public class JobSpec {
 
     private static final long UNINITIALIZED_LOAD_JOB_ID = -1;
     private long loadJobId;
@@ -68,7 +68,7 @@ public class JobInformation {
     private final TQueryOptions queryOptions;
     private final TWorkGroup resourceGroup;
 
-    public JobInformation(Builder builder) {
+    public JobSpec(Builder builder) {
         this.loadJobId = builder.loadJobId;
 
         this.queryId = builder.queryId;
@@ -184,11 +184,11 @@ public class JobInformation {
     }
 
     public static class Factory {
-        public static JobInformation fromQueryInfo(ConnectContext context,
-                                                   List<PlanFragment> fragments,
-                                                   List<ScanNode> scanNodes,
-                                                   TDescriptorTable descTable,
-                                                   TQueryType queryType) {
+        public static JobSpec fromQueryInfo(ConnectContext context,
+                                            List<PlanFragment> fragments,
+                                            List<ScanNode> scanNodes,
+                                            TDescriptorTable descTable,
+                                            TQueryType queryType) {
             TQueryOptions queryOptions = context.getSessionVariable().toThrift();
             queryOptions.setQuery_type(queryType);
 
@@ -211,10 +211,10 @@ public class JobInformation {
                     .build();
         }
 
-        public static JobInformation fromMVMaintenanceJobInfo(ConnectContext context,
-                                                              List<PlanFragment> fragments,
-                                                              List<ScanNode> scanNodes,
-                                                              TDescriptorTable descTable) {
+        public static JobSpec fromMVMaintenanceJobInfo(ConnectContext context,
+                                                       List<PlanFragment> fragments,
+                                                       List<ScanNode> scanNodes,
+                                                       TDescriptorTable descTable) {
             TQueryOptions queryOptions = context.getSessionVariable().toThrift();
 
             TQueryGlobals queryGlobals = genQueryGlobals(context.getStartTime(),
@@ -236,7 +236,7 @@ public class JobInformation {
                     .build();
         }
 
-        public static JobInformation fromBrokerLoadJobInfo(LoadPlanner loadPlanner) {
+        public static JobSpec fromBrokerLoadJobInfo(LoadPlanner loadPlanner) {
             ConnectContext context = loadPlanner.getContext();
 
             TQueryOptions queryOptions = createBrokerLoadQueryOptions(loadPlanner);
@@ -247,7 +247,7 @@ public class JobInformation {
                 queryGlobals.setLast_query_id(context.getLastQueryId().toString());
             }
 
-            return new JobInformation.Builder()
+            return new JobSpec.Builder()
                     .loadJobId(loadPlanner.getLoadJobId())
                     .queryId(loadPlanner.getLoadId())
                     .fragments(loadPlanner.getFragments())
@@ -261,27 +261,27 @@ public class JobInformation {
                     .build();
         }
 
-        public static JobInformation fromStreamLoadJobInfo(LoadPlanner loadPlanner) {
-            JobInformation jobInfo = fromBrokerLoadJobInfo(loadPlanner);
+        public static JobSpec fromStreamLoadJobInfo(LoadPlanner loadPlanner) {
+            JobSpec jobInfo = fromBrokerLoadJobInfo(loadPlanner);
             jobInfo.getQueryOptions().setLoad_job_type((TLoadJobType.STREAM_LOAD));
             return jobInfo;
         }
 
-        public static JobInformation fromBrokerExportInfo(ConnectContext context,
-                                                          Long loadJobId, TUniqueId queryId,
-                                                          DescriptorTable descTable,
-                                                          List<PlanFragment> fragments,
-                                                          List<ScanNode> scanNodes, String timezone,
-                                                          long startTime,
-                                                          Map<String, String> sessionVariables,
-                                                          long execMemLimit) {
+        public static JobSpec fromBrokerExportInfo(ConnectContext context,
+                                                   Long loadJobId, TUniqueId queryId,
+                                                   DescriptorTable descTable,
+                                                   List<PlanFragment> fragments,
+                                                   List<ScanNode> scanNodes, String timezone,
+                                                   long startTime,
+                                                   Map<String, String> sessionVariables,
+                                                   long execMemLimit) {
             TQueryOptions queryOptions = new TQueryOptions();
             setSessionVariablesToQueryOptions(queryOptions, sessionVariables);
             queryOptions.setMem_limit(execMemLimit);
 
             TQueryGlobals queryGlobals = genQueryGlobals(startTime, timezone);
 
-            return new JobInformation.Builder()
+            return new JobSpec.Builder()
                     .loadJobId(loadJobId)
                     .queryId(queryId)
                     .fragments(fragments)
@@ -295,15 +295,15 @@ public class JobInformation {
                     .build();
         }
 
-        public static JobInformation fromNonPipelineBrokerLoadJobInfo(ConnectContext context,
-                                                                      Long loadJobId, TUniqueId queryId,
-                                                                      DescriptorTable descTable,
-                                                                      List<PlanFragment> fragments,
-                                                                      List<ScanNode> scanNodes,
-                                                                      String timezone,
-                                                                      long startTime,
-                                                                      Map<String, String> sessionVariables,
-                                                                      long execMemLimit) {
+        public static JobSpec fromNonPipelineBrokerLoadJobInfo(ConnectContext context,
+                                                               Long loadJobId, TUniqueId queryId,
+                                                               DescriptorTable descTable,
+                                                               List<PlanFragment> fragments,
+                                                               List<ScanNode> scanNodes,
+                                                               String timezone,
+                                                               long startTime,
+                                                               Map<String, String> sessionVariables,
+                                                               long execMemLimit) {
             TQueryOptions queryOptions = new TQueryOptions();
             setSessionVariablesToQueryOptions(queryOptions, sessionVariables);
             queryOptions.setQuery_type(TQueryType.LOAD);
@@ -319,7 +319,7 @@ public class JobInformation {
 
             TQueryGlobals queryGlobals = genQueryGlobals(startTime, timezone);
 
-            return new JobInformation.Builder()
+            return new JobSpec.Builder()
                     .loadJobId(loadJobId)
                     .queryId(queryId)
                     .fragments(fragments)
@@ -333,7 +333,7 @@ public class JobInformation {
                     .build();
         }
 
-        public static JobInformation fromSyncStreamLoadInfo(StreamLoadPlanner planner) {
+        public static JobSpec fromSyncStreamLoadInfo(StreamLoadPlanner planner) {
             ConnectContext context = planner.getConnectContext();
 
             TExecPlanFragmentParams params = planner.getExecPlanFragmentParams();
@@ -354,9 +354,9 @@ public class JobInformation {
                     .build();
         }
 
-        public static JobInformation mockJobInformation(ConnectContext context,
-                                                        List<PlanFragment> fragments,
-                                                        List<ScanNode> scanNodes) {
+        public static JobSpec mockJobInformation(ConnectContext context,
+                                                 List<PlanFragment> fragments,
+                                                 List<ScanNode> scanNodes) {
             TQueryOptions queryOptions = context.getSessionVariable().toThrift();
 
             TQueryGlobals queryGlobals = genQueryGlobals(context.getStartTime(),
@@ -442,8 +442,8 @@ public class JobInformation {
         public Builder() {
         }
 
-        public JobInformation build() {
-            return new JobInformation(this);
+        public JobSpec build() {
+            return new JobSpec(this);
         }
 
         public Builder commonProperties(ConnectContext context) {

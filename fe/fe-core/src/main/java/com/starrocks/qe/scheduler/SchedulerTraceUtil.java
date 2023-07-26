@@ -16,26 +16,26 @@ package com.starrocks.qe.scheduler;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.common.util.DebugUtil;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 public class SchedulerTraceUtil {
     private static final Logger LOG = LogManager.getLogger(SchedulerTraceUtil.class);
 
-    public static void log(JobInformation info, Object object) {
+    public static void log(JobSpec info, Object object) {
         if (info.isEnableTraceLog()) {
             doLog(info, "{}", object);
         }
     }
 
-    public static void log(JobInformation info, String format, Object... params) {
+    public static void log(JobSpec info, String format, Object... params) {
         if (info.isEnableTraceLog()) {
             doLog(info, format, params);
         }
     }
 
-    private static void doLog(JobInformation info, String format, Object... params) {
+    private static void doLog(JobSpec info, String format, Object... params) {
         Preconditions.checkState(info.isEnableTraceLog(), "Use schedulerTraceLog when it is disabled");
         String prefix;
         if (info.isSetLoadJobId()) {

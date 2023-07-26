@@ -48,7 +48,7 @@ import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.FrontendOptions;
 import com.starrocks.sql.common.ErrorType;
@@ -94,22 +94,22 @@ public class CoordinatorPreprocessor {
 
     private final Set<Integer> replicateScanIds = Sets.newHashSet();
 
-    private final JobInformation jobInfo;
+    private final JobSpec jobSpec;
     private final ExecutionDAG executionDAG;
     private final TExecPlanFragmentParamsFactory execPlanFragmentParamsFactory;
 
     private final WorkerProvider.Factory workerProviderFactory = new DefaultWorkerProvider.Factory();
     private WorkerProvider workerProvider;
 
-    public CoordinatorPreprocessor(ConnectContext context, JobInformation jobInfo) {
+    public CoordinatorPreprocessor(ConnectContext context, JobSpec jobSpec) {
         this.coordAddress = new TNetworkAddress(LOCAL_IP, Config.rpc_port);
 
         this.connectContext = Preconditions.checkNotNull(context);
-        this.jobInfo = jobInfo;
-        this.executionDAG = ExecutionDAG.build(jobInfo);
+        this.jobSpec = jobSpec;
+        this.executionDAG = ExecutionDAG.build(jobSpec);
 
         this.execPlanFragmentParamsFactory =
-                new TExecPlanFragmentParamsFactory(connectContext, jobInfo, executionDAG, coordAddress);
+                new TExecPlanFragmentParamsFactory(connectContext, jobSpec, executionDAG, coordAddress);
 
         SessionVariable sessionVariable = connectContext.getSessionVariable();
         this.workerProvider = workerProviderFactory.captureAvailableWorkers(GlobalStateMgr.getCurrentSystemInfo(),
@@ -122,11 +122,11 @@ public class CoordinatorPreprocessor {
         this.coordAddress = new TNetworkAddress(LOCAL_IP, Config.rpc_port);
 
         this.connectContext = StatisticUtils.buildConnectContext();
-        this.jobInfo = JobInformation.Factory.mockJobInformation(connectContext, fragments, scanNodes);
-        this.executionDAG = ExecutionDAG.build(jobInfo);
+        this.jobSpec = JobSpec.Factory.mockJobInformation(connectContext, fragments, scanNodes);
+        this.executionDAG = ExecutionDAG.build(jobSpec);
 
         this.execPlanFragmentParamsFactory =
-                new TExecPlanFragmentParamsFactory(connectContext, jobInfo, executionDAG, coordAddress);
+                new TExecPlanFragmentParamsFactory(connectContext, jobSpec, executionDAG, coordAddress);
 
         SessionVariable sessionVariable = connectContext.getSessionVariable();
         this.workerProvider = workerProviderFactory.captureAvailableWorkers(GlobalStateMgr.getCurrentSystemInfo(),
@@ -164,7 +164,7 @@ public class CoordinatorPreprocessor {
     }
 
     public TUniqueId getQueryId() {
-        return jobInfo.getQueryId();
+        return jobSpec.getQueryId();
     }
 
     public ConnectContext getConnectContext() {
@@ -172,7 +172,7 @@ public class CoordinatorPreprocessor {
     }
 
     public boolean isUsePipeline() {
-        return jobInfo.isEnablePipeline();
+        return jobSpec.isEnablePipeline();
     }
 
     public Set<TUniqueId> getInstanceIds() {
@@ -184,15 +184,15 @@ public class CoordinatorPreprocessor {
     }
 
     public TDescriptorTable getDescriptorTable() {
-        return jobInfo.getDescTable();
+        return jobSpec.getDescTable();
     }
 
     public List<PlanFragment> getFragments() {
-        return jobInfo.getFragments();
+        return jobSpec.getFragments();
     }
 
     public List<ScanNode> getScanNodes() {
-        return jobInfo.getScanNodes();
+        return jobSpec.getScanNodes();
     }
 
     public Map<PlanFragmentId, ExecutionFragment> getIdToFragment() {
@@ -212,11 +212,11 @@ public class CoordinatorPreprocessor {
     }
 
     public TWorkGroup getResourceGroup() {
-        return jobInfo.getResourceGroup();
+        return jobSpec.getResourceGroup();
     }
 
     public boolean isLoadType() {
-        return jobInfo.isLoadType();
+        return jobSpec.isLoadType();
     }
 
     public void prepareExec() throws Exception {
@@ -238,7 +238,7 @@ public class CoordinatorPreprocessor {
         workerProvider = workerProviderFactory.captureAvailableWorkers(GlobalStateMgr.getCurrentSystemInfo(),
                 sessionVariable.isPreferComputeNode(), sessionVariable.getUseComputeNodes());
 
-        jobInfo.getFragments().forEach(PlanFragment::reset);
+        jobSpec.getFragments().forEach(PlanFragment::reset);
     }
 
     private void traceInstance() {
@@ -246,7 +246,7 @@ public class CoordinatorPreprocessor {
             // TODO(zc): add a switch to close this function
             StringBuilder sb = new StringBuilder();
             int idx = 0;
-            sb.append("query id=").append(DebugUtil.printId(jobInfo.getQueryId())).append(",");
+            sb.append("query id=").append(DebugUtil.printId(jobSpec.getQueryId())).append(",");
             sb.append("fragment=[");
             for (ExecutionFragment execFragment : executionDAG.getFragmentsInPreorder()) {
                 if (idx++ != 0) {
@@ -310,12 +310,12 @@ public class CoordinatorPreprocessor {
         // compute hosts of producer fragment before those of consumer fragment(s),
         // the latter might inherit the set of hosts from the former
         // compute hosts *bottom up*.
-        boolean isGatherOutput = jobInfo.getFragments().get(0).getDataPartition() == DataPartition.UNPARTITIONED;
+        boolean isGatherOutput = jobSpec.getFragments().get(0).getDataPartition() == DataPartition.UNPARTITIONED;
 
         for (ExecutionFragment execFragment : executionDAG.getFragmentsInPostorder()) {
             PlanFragment fragment = execFragment.getPlanFragment();
 
-            boolean dopAdaptionEnabled = jobInfo.isEnablePipeline() &&
+            boolean dopAdaptionEnabled = jobSpec.isEnablePipeline() &&
                     connectContext.getSessionVariable().isEnablePipelineAdaptiveDop();
 
             // If left child is MultiCastDataFragment(only support left now), will keep same instance with child.
@@ -447,9 +447,9 @@ public class CoordinatorPreprocessor {
             if (hasColocate || hasBucketShuffle) {
                 computeColocatedJoinInstanceParam(colocatedAssignment.getSeqToWorkerId(),
                         colocatedAssignment.getSeqToScanRange(),
-                        parallelExecInstanceNum, pipelineDop, jobInfo.isEnablePipeline(), execFragment);
+                        parallelExecInstanceNum, pipelineDop, jobSpec.isEnablePipeline(), execFragment);
             } else {
-                boolean assignScanRangesPerDriverSeq = jobInfo.isEnablePipeline() &&
+                boolean assignScanRangesPerDriverSeq = jobSpec.isEnablePipeline() &&
                         (fragment.isAssignScanRangesPerDriverSeq() || fragment.isForceAssignScanRangesPerDriverSeq());
                 for (Map.Entry<Long, Map<Integer, List<TScanRangeParams>>> workerIdMapEntry :
                         execFragment.getScanRangeAssignment().entrySet()) {
@@ -657,7 +657,7 @@ public class CoordinatorPreprocessor {
         SessionVariable sv = connectContext.getSessionVariable();
 
         // set scan ranges/locations for scan nodes
-        for (ScanNode scanNode : jobInfo.getScanNodes()) {
+        for (ScanNode scanNode : jobSpec.getScanNodes()) {
             // the parameters of getScanRangeLocations may ignore, It dosn't take effect
             List<TScanRangeLocations> locations = scanNode.getScanRangeLocations(0);
             if (locations == null) {
@@ -738,14 +738,14 @@ public class CoordinatorPreprocessor {
     }
 
     public Map<Integer, TNetworkAddress> getChannelIdToBEHTTPMap() {
-        if (jobInfo.isStreamLoad()) {
+        if (jobSpec.isStreamLoad()) {
             return executionDAG.getChannelIdToBEHTTP();
         }
         return null;
     }
 
     public Map<Integer, TNetworkAddress> getChannelIdToBEPortMap() {
-        if (jobInfo.isStreamLoad()) {
+        if (jobSpec.isStreamLoad()) {
             return executionDAG.getChannelIdToBEPort();
         }
         return null;

@@ -49,7 +49,7 @@ public class ExecutionFragmentInstance {
 
     private State state = State.CREATED;
 
-    private final JobInformation jobInfo;
+    private final JobSpec jobInfo;
     private final PlanFragmentId fragmentId;
     private final TUniqueId fragmentInstanceId;
 
@@ -76,7 +76,7 @@ public class ExecutionFragmentInstance {
         return new ExecutionFragmentInstance(null, null, fragmentInstanceId, null, 0, profile, null, null, -1);
     }
 
-    public static ExecutionFragmentInstance createExecution(JobInformation jobInfo,
+    public static ExecutionFragmentInstance createExecution(JobSpec jobInfo,
                                                             PlanFragmentId fragmentId,
                                                             TExecPlanFragmentParams request,
                                                             int profileFragmentId,
@@ -92,7 +92,7 @@ public class ExecutionFragmentInstance {
 
     }
 
-    private ExecutionFragmentInstance(JobInformation jobInfo,
+    private ExecutionFragmentInstance(JobSpec jobInfo,
                                       PlanFragmentId fragmentId,
                                       TUniqueId fragmentInstanceId,
                                       TExecPlanFragmentParams requestToDeploy,

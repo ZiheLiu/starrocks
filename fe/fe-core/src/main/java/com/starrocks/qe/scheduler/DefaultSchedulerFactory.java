@@ -22,7 +22,7 @@ import com.starrocks.planner.ScanNode;
 import com.starrocks.planner.StreamLoadPlanner;
 import com.starrocks.privilege.PrivilegeBuiltinConstants;
 import com.starrocks.qe.ConnectContext;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.sql.LoadPlanner;
 import com.starrocks.sql.ast.UserIdentity;
 import com.starrocks.thrift.TDescriptorTable;
@@ -40,8 +40,8 @@ public class DefaultSchedulerFactory implements ICoordinator.Factory {
                                                  List<ScanNode> scanNodes,
                                                  TDescriptorTable descTable) {
 
-        JobInformation jobInfo =
-                JobInformation.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.SELECT);
+        JobSpec jobInfo =
+                JobSpec.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.SELECT);
 
         return new DefaultScheduler(context, jobInfo, context.getSessionVariable().isEnableProfile());
     }
@@ -50,8 +50,8 @@ public class DefaultSchedulerFactory implements ICoordinator.Factory {
     public DefaultScheduler createInsertScheduler(ConnectContext context, List<PlanFragment> fragments,
                                                   List<ScanNode> scanNodes,
                                                   TDescriptorTable descTable) {
-        JobInformation jobInfo =
-                JobInformation.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.LOAD);
+        JobSpec jobInfo =
+                JobSpec.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.LOAD);
 
         return new DefaultScheduler(context, jobInfo, context.getSessionVariable().isEnableProfile());
     }
@@ -59,7 +59,7 @@ public class DefaultSchedulerFactory implements ICoordinator.Factory {
     @Override
     public DefaultScheduler createBrokerLoadScheduler(LoadPlanner loadPlanner) {
         ConnectContext context = loadPlanner.getContext();
-        JobInformation jobInfo = JobInformation.Factory.fromBrokerLoadJobInfo(loadPlanner);
+        JobSpec jobInfo = JobSpec.Factory.fromBrokerLoadJobInfo(loadPlanner);
 
         return new DefaultScheduler(context, jobInfo, true);
     }
@@ -67,14 +67,14 @@ public class DefaultSchedulerFactory implements ICoordinator.Factory {
     @Override
     public DefaultScheduler createStreamLoadScheduler(LoadPlanner loadPlanner) {
         ConnectContext context = loadPlanner.getContext();
-        JobInformation jobInfo = JobInformation.Factory.fromStreamLoadJobInfo(loadPlanner);
+        JobSpec jobInfo = JobSpec.Factory.fromStreamLoadJobInfo(loadPlanner);
 
         return new DefaultScheduler(context, jobInfo, true);
     }
 
     @Override
     public DefaultScheduler createSyncStreamLoadScheduler(StreamLoadPlanner planner, TNetworkAddress address) {
-        JobInformation jobInfo = JobInformation.Factory.fromSyncStreamLoadInfo(planner);
+        JobSpec jobInfo = JobSpec.Factory.fromSyncStreamLoadInfo(planner);
 
         return new DefaultScheduler(planner.getConnectContext(), jobInfo, address);
     }
@@ -87,8 +87,8 @@ public class DefaultSchedulerFactory implements ICoordinator.Factory {
                                                                  long startTime, Map<String, String> sessionVariables,
                                                                  ConnectContext context,
                                                                  long execMemLimit) {
-        JobInformation jobInfo =
-                JobInformation.Factory.fromNonPipelineBrokerLoadJobInfo(context, jobId, queryId, descTable,
+        JobSpec jobInfo =
+                JobSpec.Factory.fromNonPipelineBrokerLoadJobInfo(context, jobId, queryId, descTable,
                         fragments, scanNodes, timezone,
                         startTime, sessionVariables, execMemLimit);
 
@@ -108,8 +108,8 @@ public class DefaultSchedulerFactory implements ICoordinator.Factory {
         context.getSessionVariable().setEnablePipelineEngine(true);
         context.getSessionVariable().setPipelineDop(0);
 
-        JobInformation jobInfo =
-                JobInformation.Factory.fromBrokerExportInfo(context, jobId, queryId, descTable,
+        JobSpec jobInfo =
+                JobSpec.Factory.fromBrokerExportInfo(context, jobId, queryId, descTable,
                         fragments, scanNodes, timezone,
                         startTime, sessionVariables, execMemLimit);
 

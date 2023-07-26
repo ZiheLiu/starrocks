@@ -71,7 +71,7 @@ import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.rpc.RpcException;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.LoadPlanner;
@@ -127,7 +127,7 @@ public class Coordinator implements ICoordinator {
     // status or to CANCELLED, if Cancel() is called.
     Status queryStatus = new Status();
 
-    private final JobInformation jobInfo;
+    private final JobSpec jobSpec;
     private final ExecutionDAG executionDAG;
 
     // protects all fields below
@@ -188,40 +188,40 @@ public class Coordinator implements ICoordinator {
         public Coordinator createQueryScheduler(ConnectContext context, List<PlanFragment> fragments,
                                                 List<ScanNode> scanNodes,
                                                 TDescriptorTable descTable) {
-            JobInformation jobInfo =
-                    JobInformation.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.SELECT);
-            return new Coordinator(context, jobInfo, context.getSessionVariable().isEnableProfile());
+            JobSpec jobSpec =
+                    JobSpec.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.SELECT);
+            return new Coordinator(context, jobSpec, context.getSessionVariable().isEnableProfile());
         }
 
         @Override
         public Coordinator createInsertScheduler(ConnectContext context, List<PlanFragment> fragments,
                                                  List<ScanNode> scanNodes,
                                                  TDescriptorTable descTable) {
-            JobInformation jobInfo =
-                    JobInformation.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.LOAD);
-            return new Coordinator(context, jobInfo, context.getSessionVariable().isEnableProfile());
+            JobSpec jobSpec =
+                    JobSpec.Factory.fromQueryInfo(context, fragments, scanNodes, descTable, TQueryType.LOAD);
+            return new Coordinator(context, jobSpec, context.getSessionVariable().isEnableProfile());
         }
 
         @Override
         public Coordinator createBrokerLoadScheduler(LoadPlanner loadPlanner) {
             ConnectContext context = loadPlanner.getContext();
-            JobInformation jobInfo = JobInformation.Factory.fromBrokerLoadJobInfo(loadPlanner);
+            JobSpec jobSpec = JobSpec.Factory.fromBrokerLoadJobInfo(loadPlanner);
 
-            return new Coordinator(context, jobInfo, true);
+            return new Coordinator(context, jobSpec, true);
         }
 
         @Override
         public Coordinator createStreamLoadScheduler(LoadPlanner loadPlanner) {
             ConnectContext context = loadPlanner.getContext();
-            JobInformation jobInfo = JobInformation.Factory.fromStreamLoadJobInfo(loadPlanner);
+            JobSpec jobSpec = JobSpec.Factory.fromStreamLoadJobInfo(loadPlanner);
 
-            return new Coordinator(context, jobInfo, true);
+            return new Coordinator(context, jobSpec, true);
         }
 
         @Override
         public Coordinator createSyncStreamLoadScheduler(StreamLoadPlanner planner, TNetworkAddress address) {
-            JobInformation jobInfo = JobInformation.Factory.fromSyncStreamLoadInfo(planner);
-            return new Coordinator(jobInfo, planner, address);
+            JobSpec jobSpec = JobSpec.Factory.fromSyncStreamLoadInfo(planner);
+            return new Coordinator(jobSpec, planner, address);
         }
 
         @Override
@@ -237,11 +237,11 @@ public class Coordinator implements ICoordinator {
             context.getSessionVariable().setEnablePipelineEngine(true);
             context.getSessionVariable().setPipelineDop(0);
 
-            JobInformation jobInfo = JobInformation.Factory.fromBrokerExportInfo(context, jobId, queryId, descTable,
+            JobSpec jobSpec = JobSpec.Factory.fromBrokerExportInfo(context, jobId, queryId, descTable,
                     fragments, scanNodes, timezone,
                     startTime, sessionVariables, execMemLimit);
 
-            return new Coordinator(context, jobInfo, true);
+            return new Coordinator(context, jobSpec, true);
         }
 
         @Override
@@ -251,23 +251,23 @@ public class Coordinator implements ICoordinator {
                                                                 String timezone,
                                                                 long startTime, Map<String, String> sessionVariables,
                                                                 ConnectContext context, long execMemLimit) {
-            JobInformation jobInfo =
-                    JobInformation.Factory.fromNonPipelineBrokerLoadJobInfo(context, jobId, queryId, descTable,
+            JobSpec jobSpec =
+                    JobSpec.Factory.fromNonPipelineBrokerLoadJobInfo(context, jobId, queryId, descTable,
                             fragments, scanNodes, timezone,
                             startTime, sessionVariables, execMemLimit);
 
-            return new Coordinator(context, jobInfo, true);
+            return new Coordinator(context, jobSpec, true);
         }
     }
 
     // only used for sync stream load profile
     // so only init relative data structure
-    public Coordinator(JobInformation jobInfo, StreamLoadPlanner planner, TNetworkAddress address) {
+    public Coordinator(JobSpec jobSpec, StreamLoadPlanner planner, TNetworkAddress address) {
         this.connectContext = planner.getConnectContext();
-        this.jobInfo = jobInfo;
-        this.executionDAG = ExecutionDAG.build(jobInfo);
+        this.jobSpec = jobSpec;
+        this.executionDAG = ExecutionDAG.build(jobSpec);
 
-        TUniqueId queryId = jobInfo.getQueryId();
+        TUniqueId queryId = jobSpec.getQueryId();
 
         LOG.info("Execution Profile " + DebugUtil.printId(queryId));
         queryProfile = new RuntimeProfile("Execution");
@@ -291,39 +291,39 @@ public class Coordinator implements ICoordinator {
         this.needReport = true;
     }
 
-    Coordinator(ConnectContext context, JobInformation jobInfo, boolean needReport) {
+    Coordinator(ConnectContext context, JobSpec jobSpec, boolean needReport) {
         this.connectContext = context;
-        this.jobInfo = jobInfo;
+        this.jobSpec = jobSpec;
         this.returnedAllResults = false;
         this.needReport = needReport;
 
-        this.coordinatorPreprocessor = new CoordinatorPreprocessor(context, jobInfo);
+        this.coordinatorPreprocessor = new CoordinatorPreprocessor(context, jobSpec);
         this.executionDAG = coordinatorPreprocessor.getExecutionDAG();
     }
 
     @Override
     public long getLoadJobId() {
-        return jobInfo.getLoadJobId();
+        return jobSpec.getLoadJobId();
     }
 
     @Override
     public void setLoadJobId(Long jobId) {
-        jobInfo.setLoadJobId(jobId);
+        jobSpec.setLoadJobId(jobId);
     }
 
     @Override
     public TUniqueId getQueryId() {
-        return jobInfo.getQueryId();
+        return jobSpec.getQueryId();
     }
 
     @Override
     public void setQueryId(TUniqueId queryId) {
-        jobInfo.setQueryId(queryId);
+        jobSpec.setQueryId(queryId);
     }
 
     @Override
     public void setLoadJobType(TLoadJobType type) {
-        jobInfo.setLoadJobType(type);
+        jobSpec.setLoadJobType(type);
     }
 
     @Override
@@ -358,12 +358,12 @@ public class Coordinator implements ICoordinator {
 
     @Override
     public long getStartTimeMs() {
-        return jobInfo.getStartTimeMs();
+        return jobSpec.getStartTimeMs();
     }
 
     @Override
     public void setTimeoutSecond(int timeoutSecond) {
-        jobInfo.setQueryTimeout(timeoutSecond);
+        jobSpec.setQueryTimeout(timeoutSecond);
     }
 
     @Override
@@ -422,18 +422,18 @@ public class Coordinator implements ICoordinator {
     // A call to Exec() must precede all other member function calls.
     public void prepareExec() throws Exception {
         if (LOG.isDebugEnabled()) {
-            if (!jobInfo.getScanNodes().isEmpty()) {
+            if (!jobSpec.getScanNodes().isEmpty()) {
                 LOG.debug("debug: in Coordinator::exec. query id: {}, planNode: {}",
-                        DebugUtil.printId(jobInfo.getQueryId()),
-                        jobInfo.getScanNodes().get(0).treeToThrift());
+                        DebugUtil.printId(jobSpec.getQueryId()),
+                        jobSpec.getScanNodes().get(0).treeToThrift());
             }
-            if (!jobInfo.getFragments().isEmpty()) {
+            if (!jobSpec.getFragments().isEmpty()) {
                 LOG.debug("debug: in Coordinator::exec. query id: {}, fragment: {}",
-                        DebugUtil.printId(jobInfo.getQueryId()),
-                        jobInfo.getFragments().get(0).toThrift());
+                        DebugUtil.printId(jobSpec.getQueryId()),
+                        jobSpec.getFragments().get(0).toThrift());
             }
             LOG.debug("debug: in Coordinator::exec. query id: {}, desc table: {}",
-                    DebugUtil.printId(jobInfo.getQueryId()), jobInfo.getDescTable());
+                    DebugUtil.printId(jobSpec.getQueryId()), jobSpec.getDescTable());
         }
 
         coordinatorPreprocessor.prepareExec();
@@ -458,20 +458,20 @@ public class Coordinator implements ICoordinator {
     }
 
     public List<PlanFragment> getFragments() {
-        return jobInfo.getFragments();
+        return jobSpec.getFragments();
     }
 
     public TDescriptorTable getDescTable() {
-        return jobInfo.getDescTable();
+        return jobSpec.getDescTable();
     }
 
     public boolean isLoadType() {
-        return jobInfo.isLoadType();
+        return jobSpec.isLoadType();
     }
 
     @Override
     public List<ScanNode> getScanNodes() {
-        return jobInfo.getScanNodes();
+        return jobSpec.getScanNodes();
     }
 
     @Override
@@ -494,9 +494,9 @@ public class Coordinator implements ICoordinator {
         queryProfile = new RuntimeProfile("Execution");
 
         fragmentProfiles = new ArrayList<>();
-        for (int i = 0; i < jobInfo.getFragments().size(); i++) {
+        for (int i = 0; i < jobSpec.getFragments().size(); i++) {
             fragmentProfiles.add(new RuntimeProfile("Fragment " + i));
-            fragmentId2fragmentProfileIds.put(jobInfo.getFragments().get(i).getFragmentId(), i);
+            fragmentId2fragmentProfileIds.put(jobSpec.getFragments().get(i).getFragmentId(), i);
             queryProfile.addChild(fragmentProfiles.get(i));
         }
 
@@ -519,13 +519,13 @@ public class Coordinator implements ICoordinator {
                     rootExecFragment.getInstances().get(0).getInstanceId(),
                     workerId,
                     worker.getBrpcAddress(),
-                    jobInfo.getQueryOptions().query_timeout * 1000);
+                    jobSpec.getQueryOptions().query_timeout * 1000);
 
             // Select top fragment as global runtime filter merge address
             setGlobalRuntimeFilterParams(rootExecFragment, worker.getBrpcAddress());
 
             if (LOG.isDebugEnabled()) {
-                LOG.debug("dispatch query job: {} to {}", DebugUtil.printId(jobInfo.getQueryId()), execBeAddr);
+                LOG.debug("dispatch query job: {} to {}", DebugUtil.printId(jobSpec.getQueryId()), execBeAddr);
             }
 
             // set the broker address for OUTFILE sink
@@ -539,15 +539,15 @@ public class Coordinator implements ICoordinator {
 
         } else {
             // This is a load process.
-            this.jobInfo.getQueryOptions().setEnable_profile(true);
+            this.jobSpec.getQueryOptions().setEnable_profile(true);
             deltaUrls = Lists.newArrayList();
             loadCounters = Maps.newHashMap();
             List<Long> relatedBackendIds = coordinatorPreprocessor.getWorkerProvider().getSelectedWorkerIds();
             GlobalStateMgr.getCurrentState().getLoadMgr()
-                    .initJobProgress(jobInfo.getLoadJobId(), jobInfo.getQueryId(),
+                    .initJobProgress(jobSpec.getLoadJobId(), jobSpec.getQueryId(),
                             coordinatorPreprocessor.getInstanceIds(),
                             relatedBackendIds);
-            LOG.info("dispatch load job: {} to {}", DebugUtil.printId(jobInfo.getQueryId()),
+            LOG.info("dispatch load job: {} to {}", DebugUtil.printId(jobSpec.getQueryId()),
                     coordinatorPreprocessor.getWorkerProvider().getSelectedWorkerIds());
         }
     }
@@ -576,7 +576,7 @@ public class Coordinator implements ICoordinator {
      * Deliver multiple fragments concurrently according to the topological order.
      */
     private void deliverExecFragmentsRequests(boolean enablePipelineEngine) throws Exception {
-        TQueryOptions queryOptions = jobInfo.getQueryOptions();
+        TQueryOptions queryOptions = jobSpec.getQueryOptions();
         long queryDeliveryTimeoutMs = Math.min(queryOptions.query_timeout, queryOptions.query_delivery_timeout) * 1000L;
         List<List<ExecutionFragment>> fragmentGroups = executionDAG.getFragmentsInTopologicalOrderFromRoot();
 
@@ -585,7 +585,7 @@ public class Coordinator implements ICoordinator {
             // execute all instances from up to bottom
             int backendNum = 0;
 
-            jobInfo.getDescTable().setIs_cached(false);
+            jobSpec.getDescTable().setIs_cached(false);
             TDescriptorTable emptyDescTable = new TDescriptorTable();
             emptyDescTable.setIs_cached(true);
             emptyDescTable.setTupleDescriptors(Collections.emptyList());
@@ -640,7 +640,7 @@ public class Coordinator implements ICoordinator {
 
                         TDescriptorTable descTable;
                         if (stageIndex == 0) {
-                            descTable = jobInfo.getDescTable();
+                            descTable = jobSpec.getDescTable();
                         } else {
                             descTable = emptyDescTable;
                         }
@@ -668,7 +668,7 @@ public class Coordinator implements ICoordinator {
                             Long workerId = instanceId2WorkerId.get(tRequest.params.fragment_instance_id);
                             ComputeNode worker = coordinatorPreprocessor.getWorkerProvider().getWorkerById(workerId);
                             ExecutionFragmentInstance execState = ExecutionFragmentInstance.createExecution(
-                                    jobInfo,
+                                    jobSpec,
                                     fragment.getFragmentId(),
                                     tRequest,
                                     profileFragmentId,
@@ -679,7 +679,7 @@ public class Coordinator implements ICoordinator {
                                 if (LOG.isDebugEnabled()) {
                                     LOG.debug("add need check backend {} for fragment, {} job: {}",
                                             execState.getWorker().getId(),
-                                            fragment.getFragmentId().asInt(), jobInfo.getLoadJobId());
+                                            fragment.getFragmentId().asInt(), jobSpec.getLoadJobId());
                                 }
                             }
                             twoStageExecutionsToDeploy.get(stageIndex).add(execState);
@@ -771,7 +771,7 @@ public class Coordinator implements ICoordinator {
         List<RuntimeFilterDescription> broadcastGRFList = Lists.newArrayList();
         Map<Integer, List<TRuntimeFilterProberParams>> idToProbePrams = new HashMap<>();
 
-        for (PlanFragment fragment : jobInfo.getFragments()) {
+        for (PlanFragment fragment : jobSpec.getFragments()) {
             fragment.collectBuildRuntimeFilters(fragment.getPlanRoot());
             fragment.collectProbeRuntimeFilters(fragment.getPlanRoot());
             ExecutionFragment params = executionDAG.getFragment(fragment.getFragmentId());
@@ -955,7 +955,7 @@ public class Coordinator implements ICoordinator {
             queryStatus.setStatus(status);
             LOG.warn(
                     "one instance report fail throw updateStatus(), need cancel. job id: {}, query id: {}, instance id: {}",
-                    jobInfo.getLoadJobId(), DebugUtil.printId(jobInfo.getQueryId()),
+                    jobSpec.getLoadJobId(), DebugUtil.printId(jobSpec.getQueryId()),
                     instanceId != null ? DebugUtil.printId(instanceId) : "NaN");
             cancelInternal(PPlanFragmentCancelReason.INTERNAL_ERROR);
         } finally {
@@ -976,7 +976,7 @@ public class Coordinator implements ICoordinator {
         if (!status.ok()) {
             connectContext.setErrorCodeOnce(status.getErrorCodeString());
             LOG.warn("get next fail, need cancel. status {}, query id: {}", status.toString(),
-                    DebugUtil.printId(jobInfo.getQueryId()));
+                    DebugUtil.printId(jobSpec.getQueryId()));
         }
         updateStatus(status, null /* no instance id */);
 
@@ -1016,9 +1016,9 @@ public class Coordinator implements ICoordinator {
             this.returnedAllResults = true;
 
             // if this query is a block query do not cancel.
-            long numLimitRows = jobInfo.getFragments().get(0).getPlanRoot().getLimit();
+            long numLimitRows = jobSpec.getFragments().get(0).getPlanRoot().getLimit();
             boolean hasLimit = numLimitRows > 0;
-            if (!jobInfo.isBlockQuery() && coordinatorPreprocessor.getInstanceIds().size() > 1 && hasLimit &&
+            if (!jobSpec.isBlockQuery() && coordinatorPreprocessor.getInstanceIds().size() > 1 && hasLimit &&
                     numReceivedRows >= numLimitRows) {
                 LOG.debug("no block query, return num >= limit rows, need cancel");
                 cancelInternal(PPlanFragmentCancelReason.LIMIT_REACH);
@@ -1054,7 +1054,7 @@ public class Coordinator implements ICoordinator {
                         && message.equals(FeConstants.BACKEND_NODE_NOT_FOUND_ERROR)) {
                     profileDoneSignal.countDownToZero(new Status());
                     LOG.info("count down profileDoneSignal since backend has crashed, query id: {}",
-                            DebugUtil.printId(jobInfo.getQueryId()));
+                            DebugUtil.printId(jobSpec.getQueryId()));
                 }
             } finally {
                 unlock();
@@ -1145,7 +1145,7 @@ public class Coordinator implements ICoordinator {
             StringBuilder builder = new StringBuilder();
             execState.printProfile(builder);
             LOG.debug("profile for query_id={} instance_id={}\n{}",
-                    DebugUtil.printId(jobInfo.getQueryId()),
+                    DebugUtil.printId(jobSpec.getQueryId()),
                     DebugUtil.printId(params.getFragment_instance_id()),
                     builder.toString());
         }
@@ -1160,7 +1160,7 @@ public class Coordinator implements ICoordinator {
                 ctx.setErrorCodeOnce(status.getErrorCodeString());
             }
             LOG.warn("exec state report failed status={}, query_id={}, instance_id={}",
-                    status, DebugUtil.printId(jobInfo.getQueryId()),
+                    status, DebugUtil.printId(jobSpec.getQueryId()),
                     DebugUtil.printId(params.getFragment_instance_id()));
             updateStatus(status, params.getFragment_instance_id());
         }
@@ -1200,14 +1200,14 @@ public class Coordinator implements ICoordinator {
                 if (params.isSetSink_load_bytes() && params.isSetSource_load_rows()
                         && params.isSetSource_load_bytes()) {
                     GlobalStateMgr.getCurrentState().getLoadMgr().updateJobPrgress(
-                            jobInfo.getLoadJobId(), params);
+                            jobSpec.getLoadJobId(), params);
                 }
             }
         } else {
             if (params.isSetSink_load_bytes() && params.isSetSource_load_rows()
                     && params.isSetSource_load_bytes()) {
                 GlobalStateMgr.getCurrentState().getLoadMgr().updateJobPrgress(
-                        jobInfo.getLoadJobId(), params);
+                        jobSpec.getLoadJobId(), params);
             }
         }
     }
@@ -1534,7 +1534,7 @@ public class Coordinator implements ICoordinator {
     @Override
     public List<QueryStatisticsItem.FragmentInstanceInfo> getFragmentInstanceInfos() {
         final List<QueryStatisticsItem.FragmentInstanceInfo> result = Lists.newArrayList();
-        for (PlanFragment fragment : jobInfo.getFragments()) {
+        for (PlanFragment fragment : jobSpec.getFragments()) {
             for (ExecutionFragmentInstance execution : backendExecStates.values()) {
                 if (fragment.getFragmentId() != execution.getFragmentId()) {
                     continue;

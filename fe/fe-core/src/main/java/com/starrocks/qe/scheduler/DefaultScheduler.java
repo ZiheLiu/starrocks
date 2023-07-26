@@ -43,7 +43,7 @@ import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.ExecutionFragmentInstance;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.qe.scheduler.state.CancelledState;
 import com.starrocks.qe.scheduler.state.CancellingState;
 import com.starrocks.qe.scheduler.state.CreatedState;
@@ -146,7 +146,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
 
     private final ConnectContext connectContext;
 
-    private final JobInformation jobInfo;
+    private final JobSpec jobInfo;
     private final ExecutionDAG executionDAG;
 
     private final Status status = Status.createOK();
@@ -174,7 +174,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
     private boolean profileAlreadyReported = false;
 
     // Fake.
-    public DefaultScheduler(ConnectContext context, JobInformation jobInfo, TNetworkAddress address) {
+    public DefaultScheduler(ConnectContext context, JobSpec jobInfo, TNetworkAddress address) {
         this.stateMachine = STATE_MACHINE_FACTORY.create(this, new CreatedState());
 
         this.schedulerAddress = new TNetworkAddress(LOCAL_IP, Config.rpc_port);
@@ -194,7 +194,7 @@ public class DefaultScheduler implements ICoordinator, StateContext {
         this.workerProvider = null;
     }
 
-    public DefaultScheduler(ConnectContext context, JobInformation jobInfo, boolean needReport) {
+    public DefaultScheduler(ConnectContext context, JobSpec jobInfo, boolean needReport) {
         this.stateMachine = STATE_MACHINE_FACTORY.create(this, new CreatedState());
 
         this.schedulerAddress = new TNetworkAddress(LOCAL_IP, Config.rpc_port);

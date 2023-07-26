@@ -36,7 +36,7 @@ import com.starrocks.qe.QeProcessorImpl;
 import com.starrocks.qe.scheduler.TExecPlanFragmentParamsFactory;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.rpc.BackendServiceClient;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.common.UnsupportedException;
@@ -242,8 +242,8 @@ public class MVMaintenanceJob implements Writable, GsonPreProcessable, GsonPostP
         List<PlanFragment> fragments = execPlan.getFragments();
         List<ScanNode> scanNodes = execPlan.getScanNodes();
         TDescriptorTable descTable = execPlan.getDescTbl().toThrift();
-        JobInformation jobInfo =
-                JobInformation.Factory.fromMVMaintenanceJobInfo(connectContext, fragments, scanNodes, descTable);
+        JobSpec jobInfo =
+                JobSpec.Factory.fromMVMaintenanceJobInfo(connectContext, fragments, scanNodes, descTable);
         this.queryCoordinator =
                 new CoordinatorPreprocessor(connectContext, jobInfo);
         this.epochCoordinator = new TxnBasedEpochCoordinator(this);

@@ -24,7 +24,7 @@ import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.dag.ExecutionDAG;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
-import com.starrocks.qe.scheduler.dag.JobInformation;
+import com.starrocks.qe.scheduler.dag.JobSpec;
 import com.starrocks.thrift.InternalServiceVersion;
 import com.starrocks.thrift.TAdaptiveDopParam;
 import com.starrocks.thrift.TDescriptorTable;
@@ -41,12 +41,12 @@ import java.util.List;
 
 public class TExecPlanFragmentParamsFactory {
     private final ConnectContext context;
-    private final JobInformation jobInfo;
+    private final JobSpec jobInfo;
     private final ExecutionDAG executionDAG;
     private final TNetworkAddress coordAddress;
 
     public TExecPlanFragmentParamsFactory(ConnectContext context,
-                                          JobInformation jobInfo,
+                                          JobSpec jobInfo,
                                           ExecutionDAG executionDAG,
                                           TNetworkAddress coordAddress) {
         this.jobInfo = jobInfo;

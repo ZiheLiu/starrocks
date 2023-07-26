@@ -52,7 +52,7 @@ import java.util.stream.Stream;
 public class ExecutionDAG {
     private static final Logger LOG = LogManager.getLogger(ExecutionDAG.class);
 
-    private final JobInformation jobInfo;
+    private final JobSpec jobInfo;
     private final List<ExecutionFragment> fragments;
     private final Map<PlanFragmentId, ExecutionFragment> idToFragment;
 
@@ -68,14 +68,14 @@ public class ExecutionDAG {
     private final Map<Integer, TNetworkAddress> channelIdToBEHTTP = Maps.newHashMap();
     private final Map<Integer, TNetworkAddress> channelIdToBEPort = Maps.newHashMap();
 
-    private ExecutionDAG(JobInformation jobInfo) {
+    private ExecutionDAG(JobSpec jobInfo) {
         this.jobInfo = jobInfo;
         this.fragments = Lists.newArrayList();
         this.idToFragment = Maps.newHashMap();
         this.instanceIdToInstance = Maps.newHashMap();
     }
 
-    public static ExecutionDAG build(JobInformation jobInfo) {
+    public static ExecutionDAG build(JobSpec jobInfo) {
         ExecutionDAG executionDAG = new ExecutionDAG(jobInfo);
 
         executionDAG.attachFragments(jobInfo.getFragments());
@@ -135,7 +135,7 @@ public class ExecutionDAG {
         }
     }
 
-    public JobInformation getJobInformation() {
+    public JobSpec getJobInformation() {
         return jobInfo;
     }
 
