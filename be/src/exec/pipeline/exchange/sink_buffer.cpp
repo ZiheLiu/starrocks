@@ -88,13 +88,13 @@ Status SinkBuffer::add_request(const TransmitChunkInfo& request) {
         _request_enqueued++;
     }
     {
-        auto instance_id = request.fragment_instance_id;
-        RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [this, req = request]() {
-            //            LOG(WARNING) << "[DEBUG] add_request "
-            //                         << "[instance_id=" << print_id(req.fragment_instance_id) << "] "
-            //                         << "[params=" << req.params.get() << "] "
-            //                         << "[attachment_physical_bytes=" << req.attachment_physical_bytes << "] ";
-            _buffers[req.fragment_instance_id.lo].push(req);
+        const auto& instance_id = request.fragment_instance_id;
+        {
+            std::lock_guard<Mutex> l(*_mutexes[instance_id.lo]);
+            _buffers[instance_id.lo].push(request);
+        }
+        RETURN_IF_ERROR(_try_to_send_rpc(instance_id, []() {
+
         }));
     }
 
