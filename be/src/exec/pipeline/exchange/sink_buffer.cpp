@@ -78,7 +78,7 @@ void SinkBuffer::incr_sinker(RuntimeState* state) {
     _num_remaining_eos += _num_sinkers.size();
 }
 
-Status SinkBuffer::add_request(TransmitChunkInfo&& request) {
+Status SinkBuffer::add_request(const TransmitChunkInfo& request) {
     DCHECK(_num_remaining_eos > 0);
     if (_is_finishing) {
         return Status::OK();
@@ -89,7 +89,7 @@ Status SinkBuffer::add_request(TransmitChunkInfo&& request) {
     }
     {
         auto instance_id = request.fragment_instance_id;
-        RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [this, req = std::move(request)]() {
+        RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [this, req = request]() {
             //            LOG(WARNING) << "[DEBUG] add_request "
             //                         << "[instance_id=" << print_id(req.fragment_instance_id) << "] "
             //                         << "[params=" << req.params.get() << "] "

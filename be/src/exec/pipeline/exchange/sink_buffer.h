@@ -84,7 +84,7 @@ public:
                bool is_dest_merge);
     ~SinkBuffer();
 
-    Status add_request(TransmitChunkInfo&& request);
+    Status add_request(const TransmitChunkInfo& request);
     bool is_full() const;
 
     void set_finishing();
