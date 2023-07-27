@@ -90,10 +90,10 @@ Status SinkBuffer::add_request(TransmitChunkInfo&& request) {
     {
         auto instance_id = request.fragment_instance_id;
         RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [this, req = std::move(request)]() {
-            LOG(WARNING) << "[DEBUG] add_request "
-                         << "[instance_id=" << print_id(req.fragment_instance_id) << "] "
-                         << "[params=" << req.params.get() << "] "
-                         << "[attachment_physical_bytes=" << req.attachment_physical_bytes << "] ";
+            //            LOG(WARNING) << "[DEBUG] add_request "
+            //                         << "[instance_id=" << print_id(req.fragment_instance_id) << "] "
+            //                         << "[params=" << req.params.get() << "] "
+            //                         << "[attachment_physical_bytes=" << req.attachment_physical_bytes << "] ";
             _buffers[req.fragment_instance_id.lo].push(req);
         }));
     }
@@ -137,7 +137,7 @@ bool SinkBuffer::is_finished() const {
         return false;
     }
 
-    return _num_sending_rpc == 0 && _total_in_flight_rpc == 0;
+    return _num_sending_rpc == 0 && _total_in_flight_rpc == 0 && _num_waiting_tasks == 0;
 }
 
 void SinkBuffer::update_profile(RuntimeProfile* profile) {
@@ -263,14 +263,17 @@ void SinkBuffer::_try_to_merge_query_statistics(TransmitChunkInfo& request) {
 }
 
 Status SinkBuffer::_try_to_send_rpc(const TUniqueId& instance_id, const std::function<void()>& pre_works) {
+    _num_waiting_tasks++;
+
     workgroup::ScanTask task;
     task.workgroup = _workgroup.get();
     task.priority = 20;
-    LOG(WARNING) << "[DEBUG] _try_to_send_rpc "
-                 << "[instance_id" << print_id(instance_id) << "] ";
+    //    LOG(WARNING) << "[DEBUG] _try_to_send_rpc "
+    //                 << "[instance_id" << print_id(instance_id) << "] ";
     task.work_function = [this, instance_id = instance_id, pre_works = pre_works] {
-        LOG(WARNING) << "[DEBUG] _try_to_send_rpc in "
-                     << "[instance_id" << print_id(instance_id) << "] ";
+        _num_waiting_tasks--;
+        //        LOG(WARNING) << "[DEBUG] _try_to_send_rpc in "
+        //                     << "[instance_id" << print_id(instance_id) << "] ";
         _do_try_to_send_rpc(instance_id, pre_works);
     };
 
@@ -283,8 +286,8 @@ Status SinkBuffer::_try_to_send_rpc(const TUniqueId& instance_id, const std::fun
 }
 
 Status SinkBuffer::_do_try_to_send_rpc(const TUniqueId& instance_id, const std::function<void()>& pre_works) {
-    LOG(WARNING) << "[DEBUG] _do_try_to_send_rpc "
-                 << "[instance_id" << print_id(instance_id) << "] ";
+    //    LOG(WARNING) << "[DEBUG] _do_try_to_send_rpc "
+    //                 << "[instance_id" << print_id(instance_id) << "] ";
     std::lock_guard<Mutex> l(*_mutexes[instance_id.lo]);
     pre_works();
 
@@ -446,10 +449,10 @@ Status SinkBuffer::_do_try_to_send_rpc(const TUniqueId& instance_id, const std::
 
 Status SinkBuffer::_send_rpc(DisposableClosure<PTransmitChunkResult, ClosureContext>* closure,
                              const TransmitChunkInfo& request) {
-    LOG(WARNING) << "[DEBUG] _send_rpc "
-                 << "[instance_id=" << print_id(request.fragment_instance_id) << "] "
-                 << "[params=" << request.params.get() << "] "
-                 << "[attachment_physical_bytes=" << request.attachment_physical_bytes << "] ";
+    //    LOG(WARNING) << "[DEBUG] _send_rpc "
+    //                 << "[instance_id=" << print_id(request.fragment_instance_id) << "] "
+    //                 << "[params=" << request.params.get() << "] "
+    //                 << "[attachment_physical_bytes=" << request.attachment_physical_bytes << "] ";
 
     auto expected_iobuf_size = request.attachment.size() + request.params->ByteSizeLong() + sizeof(size_t) * 2;
     if (UNLIKELY(expected_iobuf_size > _rpc_http_min_size)) {

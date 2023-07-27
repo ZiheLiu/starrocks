@@ -184,6 +184,7 @@ private:
     std::atomic<int64_t> _request_enqueued = 0;
     std::atomic<int64_t> _bytes_sent = 0;
     std::atomic<int64_t> _request_sent = 0;
+    std::atomic<int64_t> _num_waiting_tasks = 0;
 
     int64_t _pending_timestamp = -1;
     mutable std::atomic<int64_t> _last_full_timestamp = -1;
