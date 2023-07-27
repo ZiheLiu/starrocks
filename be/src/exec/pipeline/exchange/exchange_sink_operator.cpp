@@ -260,7 +260,7 @@ Status ExchangeSinkOperator::Channel::send_one_chunk(RuntimeState* state, const 
         int64_t attachment_physical_bytes = _parent->construct_brpc_attachment(_chunk_request, attachment);
         TransmitChunkInfo info = {this->_fragment_instance_id, _brpc_stub,     std::move(_chunk_request), attachment,
                                   attachment_physical_bytes,   _brpc_dest_addr};
-        RETURN_IF_ERROR(_parent->_buffer->add_request(info));
+        RETURN_IF_ERROR(_parent->_buffer->add_request(std::move(info)));
         _current_request_bytes = 0;
         _chunk_request.reset();
         *is_real_sent = true;
@@ -287,7 +287,7 @@ Status ExchangeSinkOperator::Channel::send_chunk_request(RuntimeState* state, PT
 
     TransmitChunkInfo info = {this->_fragment_instance_id, _brpc_stub,     std::move(chunk_request), attachment,
                               attachment_physical_bytes,   _brpc_dest_addr};
-    RETURN_IF_ERROR(_parent->_buffer->add_request(info));
+    RETURN_IF_ERROR(_parent->_buffer->add_request(std::move(info)));
 
     return Status::OK();
 }

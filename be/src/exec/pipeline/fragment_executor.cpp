@@ -712,10 +712,10 @@ void FragmentExecutor::_fail_cleanup() {
     }
 }
 
-std::shared_ptr<ExchangeSinkOperatorFactory> _create_exchange_sink_operator(PipelineBuilderContext* context,
-                                                                            const TDataStreamSink& stream_sink,
-                                                                            const DataStreamSender* sender,
-                                                                            size_t dop) {
+static std::shared_ptr<ExchangeSinkOperatorFactory> _create_exchange_sink_operator(PipelineBuilderContext* context,
+                                                                                   const TDataStreamSink& stream_sink,
+                                                                                   const DataStreamSender* sender,
+                                                                                   size_t dop, const WorkGroupPtr& wg) {
     auto fragment_ctx = context->fragment_context();
 
     bool is_dest_merge = stream_sink.__isset.is_merge && stream_sink.is_merge;
@@ -731,6 +731,7 @@ std::shared_ptr<ExchangeSinkOperatorFactory> _create_exchange_sink_operator(Pipe
 
     std::shared_ptr<SinkBuffer> sink_buffer =
             std::make_shared<SinkBuffer>(fragment_ctx, sender->destinations(), is_dest_merge);
+    sink_buffer->set_workgroup(wg);
 
     auto exchange_sink = std::make_shared<ExchangeSinkOperatorFactory>(
             context->next_operator_id(), stream_sink.dest_node_id, sink_buffer, sender->get_partition_type(),
@@ -770,7 +771,7 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
         auto dop = fragment_ctx->pipelines().back()->source_operator_factory()->degree_of_parallelism();
         auto& t_stream_sink = request.output_sink().stream_sink;
 
-        auto exchange_sink = _create_exchange_sink_operator(context, t_stream_sink, sender, dop);
+        auto exchange_sink = _create_exchange_sink_operator(context, t_stream_sink, sender, dop, _wg);
         fragment_ctx->pipelines().back()->add_op_factory(exchange_sink);
 
     } else if (typeid(*datasink) == typeid(starrocks::MultiCastDataStreamSink)) {
@@ -816,7 +817,7 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
             source_op->set_group_leader(upstream_pipeline->source_operator_factory());
 
             // sink op
-            auto sink_op = _create_exchange_sink_operator(context, t_stream_sink, sender.get(), dop);
+            auto sink_op = _create_exchange_sink_operator(context, t_stream_sink, sender.get(), dop, _wg);
 
             ops.emplace_back(source_op);
             ops.emplace_back(sink_op);

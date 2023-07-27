@@ -18,6 +18,8 @@
 
 #include <chrono>
 
+#include "exec/workgroup/scan_executor.h"
+#include "exec/workgroup/scan_task_queue.h"
 #include "fmt/core.h"
 #include "util/time.h"
 #include "util/uid_util.h"
@@ -76,7 +78,7 @@ void SinkBuffer::incr_sinker(RuntimeState* state) {
     _num_remaining_eos += _num_sinkers.size();
 }
 
-Status SinkBuffer::add_request(TransmitChunkInfo& request) {
+Status SinkBuffer::add_request(TransmitChunkInfo&& request) {
     DCHECK(_num_remaining_eos > 0);
     if (_is_finishing) {
         return Status::OK();
@@ -86,8 +88,14 @@ Status SinkBuffer::add_request(TransmitChunkInfo& request) {
         _request_enqueued++;
     }
     {
-        auto& instance_id = request.fragment_instance_id;
-        RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [&]() { _buffers[instance_id.lo].push(request); }));
+        auto instance_id = request.fragment_instance_id;
+        RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [this, req = std::move(request)]() {
+            LOG(WARNING) << "[DEBUG] add_request "
+                         << "[instance_id=" << print_id(req.fragment_instance_id) << "] "
+                         << "[params=" << req.params.get() << "] "
+                         << "[attachment_physical_bytes=" << req.attachment_physical_bytes << "] ";
+            _buffers[req.fragment_instance_id.lo].push(req);
+        }));
     }
 
     return Status::OK();
@@ -255,6 +263,28 @@ void SinkBuffer::_try_to_merge_query_statistics(TransmitChunkInfo& request) {
 }
 
 Status SinkBuffer::_try_to_send_rpc(const TUniqueId& instance_id, const std::function<void()>& pre_works) {
+    workgroup::ScanTask task;
+    task.workgroup = _workgroup.get();
+    task.priority = 20;
+    LOG(WARNING) << "[DEBUG] _try_to_send_rpc "
+                 << "[instance_id" << print_id(instance_id) << "] ";
+    task.work_function = [this, instance_id = instance_id, pre_works = pre_works] {
+        LOG(WARNING) << "[DEBUG] _try_to_send_rpc in "
+                     << "[instance_id" << print_id(instance_id) << "] ";
+        _do_try_to_send_rpc(instance_id, pre_works);
+    };
+
+    bool res = ExecEnv::GetInstance()->scan_executor()->submit(std::move(task));
+    if (!res) {
+        LOG(WARNING) << "SinkBuffer failed to offer io task due to thread pool overload";
+        return Status::RuntimeError("SinkBuffer failed to offer io task due to thread pool overload");
+    }
+    return Status::OK();
+}
+
+Status SinkBuffer::_do_try_to_send_rpc(const TUniqueId& instance_id, const std::function<void()>& pre_works) {
+    LOG(WARNING) << "[DEBUG] _do_try_to_send_rpc "
+                 << "[instance_id" << print_id(instance_id) << "] ";
     std::lock_guard<Mutex> l(*_mutexes[instance_id.lo]);
     pre_works();
 
@@ -379,8 +409,9 @@ Status SinkBuffer::_try_to_send_rpc(const TUniqueId& instance_id, const std::fun
                 LOG(WARNING) << fmt::format("transmit chunk rpc failed:{}, msg:{}", print_id(ctx.instance_id),
                                             status.message());
             } else {
-                _try_to_send_rpc(ctx.instance_id, [&]() {
-                    _update_network_time(ctx.instance_id, ctx.send_timestamp, result.receiver_post_process_time());
+                _try_to_send_rpc(ctx.instance_id, [this, ctx = ctx,
+                                                   receiver_post_process_time = result.receiver_post_process_time()]() {
+                    _update_network_time(ctx.instance_id, ctx.send_timestamp, receiver_post_process_time);
                     _process_send_window(ctx.instance_id, ctx.sequence);
                 });
             }
@@ -415,6 +446,11 @@ Status SinkBuffer::_try_to_send_rpc(const TUniqueId& instance_id, const std::fun
 
 Status SinkBuffer::_send_rpc(DisposableClosure<PTransmitChunkResult, ClosureContext>* closure,
                              const TransmitChunkInfo& request) {
+    LOG(WARNING) << "[DEBUG] _send_rpc "
+                 << "[instance_id=" << print_id(request.fragment_instance_id) << "] "
+                 << "[params=" << request.params.get() << "] "
+                 << "[attachment_physical_bytes=" << request.attachment_physical_bytes << "] ";
+
     auto expected_iobuf_size = request.attachment.size() + request.params->ByteSizeLong() + sizeof(size_t) * 2;
     if (UNLIKELY(expected_iobuf_size > _rpc_http_min_size)) {
         butil::IOBuf iobuf;

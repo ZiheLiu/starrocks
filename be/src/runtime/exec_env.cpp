@@ -385,15 +385,15 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
                 << "hdfs_client_hedged_read_threadpool_size should greater than 0";
     }
 
-    std::unique_ptr<ThreadPool> connector_scan_worker_thread_pool_with_workgroup;
+    std::unique_ptr<ThreadPool> connector_scan_worker_thread_pool;
     RETURN_IF_ERROR(ThreadPoolBuilder("con_wg_scan_io")
                             .set_min_threads(0)
                             .set_max_threads(connector_num_io_threads)
                             .set_max_queue_size(1000)
                             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .build(&connector_scan_worker_thread_pool_with_workgroup));
+                            .build(&connector_scan_worker_thread_pool));
     _connector_scan_executor =
-            new workgroup::ScanExecutor(std::move(connector_scan_worker_thread_pool_with_workgroup),
+            new workgroup::ScanExecutor(std::move(connector_scan_worker_thread_pool),
                                         std::make_unique<workgroup::WorkGroupScanTaskQueue>(
                                                 workgroup::WorkGroupScanTaskQueue::SchedEntityType::CONNECTOR));
     _connector_scan_executor->initialize(connector_num_io_threads);
@@ -430,14 +430,14 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
                                  ? CpuInfo::num_cores()
                                  : config::pipeline_scan_thread_pool_thread_num;
 
-    std::unique_ptr<ThreadPool> scan_worker_thread_pool_with_workgroup;
+    std::unique_ptr<ThreadPool> scan_worker_thread_pool;
     RETURN_IF_ERROR(ThreadPoolBuilder("pip_wg_scan_io")
                             .set_min_threads(0)
                             .set_max_threads(num_io_threads)
                             .set_max_queue_size(1000)
                             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .build(&scan_worker_thread_pool_with_workgroup));
-    _scan_executor = new workgroup::ScanExecutor(std::move(scan_worker_thread_pool_with_workgroup),
+                            .build(&scan_worker_thread_pool));
+    _scan_executor = new workgroup::ScanExecutor(std::move(scan_worker_thread_pool),
                                                  std::make_unique<workgroup::WorkGroupScanTaskQueue>(
                                                          workgroup::WorkGroupScanTaskQueue::SchedEntityType::OLAP));
     _scan_executor->initialize(num_io_threads);

@@ -26,6 +26,7 @@
 #include "column/chunk.h"
 #include "common/compiler_util.h"
 #include "exec/pipeline/fragment_context.h"
+#include "exec/workgroup/work_group_fwd.h"
 #include "gen_cpp/BackendService.h"
 #include "runtime/current_thread.h"
 #include "runtime/query_statistics.h"
@@ -83,7 +84,7 @@ public:
                bool is_dest_merge);
     ~SinkBuffer();
 
-    Status add_request(TransmitChunkInfo& request);
+    Status add_request(TransmitChunkInfo&& request);
     bool is_full() const;
 
     void set_finishing();
@@ -97,6 +98,8 @@ public:
     void cancel_one_sinker(RuntimeState* const state);
 
     void incr_sinker(RuntimeState* state);
+
+    void set_workgroup(workgroup::WorkGroupPtr wg) { _workgroup = std::move(wg); }
 
 private:
     using Mutex = bthread::Mutex;
@@ -112,6 +115,7 @@ private:
     // Try to send rpc if buffer is not empty and channel is not busy
     // And we need to put this function and other extra works(pre_works) together as an atomic operation
     Status _try_to_send_rpc(const TUniqueId& instance_id, const std::function<void()>& pre_works);
+    Status _do_try_to_send_rpc(const TUniqueId& instance_id, const std::function<void()>& pre_works);
 
     // send by rpc or http
     Status _send_rpc(DisposableClosure<PTransmitChunkResult, ClosureContext>* closure, const TransmitChunkInfo& req);
@@ -191,6 +195,8 @@ private:
     int64_t _last_receive_time = -1;
     int64_t _rpc_http_min_size = 0;
     std::shared_ptr<QueryStatistics> _eos_query_stats = std::make_shared<QueryStatistics>();
+
+    workgroup::WorkGroupPtr _workgroup = nullptr;
 };
 
 } // namespace starrocks::pipeline
