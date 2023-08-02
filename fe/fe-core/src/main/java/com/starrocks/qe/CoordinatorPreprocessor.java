@@ -72,7 +72,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -284,14 +283,16 @@ public class CoordinatorPreprocessor {
             if (fragment.getChildren().size() > 0 && fragment.getChild(0) instanceof MultiCastPlanFragment) {
                 ExecutionFragment childExecFragment = execFragment.getChild(0);
                 for (FragmentInstance childInstance : childExecFragment.getInstances()) {
-                    execFragment.addInstance(new FragmentInstance(childInstance.getWorker(), execFragment));
+                    execFragment.addInstance(new FragmentInstance(childInstance.getWorker(), execFragment,
+                            execFragment.getWorkerStatsTracker().createTaskWorkerStatsTracker()));
                 }
                 continue;
             }
 
             if (fragment.getDataPartition() == DataPartition.UNPARTITIONED) {
                 long workerId = workerProvider.selectNextWorker();
-                FragmentInstance instance = new FragmentInstance(workerProvider.getWorkerById(workerId), execFragment);
+                FragmentInstance instance = new FragmentInstance(workerProvider.getWorkerById(workerId), execFragment,
+                        execFragment.getWorkerStatsTracker().createTaskWorkerStatsTracker());
                 execFragment.addInstance(instance);
                 continue;
             }
@@ -375,7 +376,8 @@ public class CoordinatorPreprocessor {
                     for (int index = 0; index < exchangeInstances; index++) {
                         Long workerId = workerIds.get(index % workerIds.size());
                         FragmentInstance instance =
-                                new FragmentInstance(workerProvider.getWorkerById(workerId), execFragment);
+                                new FragmentInstance(workerProvider.getWorkerById(workerId), execFragment,
+                                        execFragment.getWorkerStatsTracker().createTaskWorkerStatsTracker());
                         execFragment.addInstance(instance);
                     }
                 } else {
@@ -383,7 +385,8 @@ public class CoordinatorPreprocessor {
                     for (int index = 0; index < maxParallelism; ++index) {
                         Long workerId = workerIds.get(index % workerIds.size());
                         FragmentInstance instance =
-                                new FragmentInstance(workerProvider.getWorkerById(workerId), execFragment);
+                                new FragmentInstance(workerProvider.getWorkerById(workerId), execFragment,
+                                        execFragment.getWorkerStatsTracker().createTaskWorkerStatsTracker());
                         execFragment.addInstance(instance);
                     }
                 }
@@ -434,7 +437,8 @@ public class CoordinatorPreprocessor {
                                 expectedInstanceNum);
 
                         for (List<TScanRangeParams> scanRangeParams : perInstanceScanRanges) {
-                            FragmentInstance instance = new FragmentInstance(worker, execFragment);
+                            FragmentInstance instance = new FragmentInstance(worker, execFragment,
+                                    execFragment.getWorkerStatsTracker().createTaskWorkerStatsTracker());
                             execFragment.addInstance(instance);
 
                             boolean assignPerDriverSeq = assignScanRangesPerDriverSeq &&
@@ -485,7 +489,8 @@ public class CoordinatorPreprocessor {
             if (execFragment.getInstances().isEmpty()) {
                 long workerId = workerProvider.selectNextWorker();
                 ComputeNode worker = workerProvider.getWorkerById(workerId);
-                FragmentInstance instance = new FragmentInstance(worker, execFragment);
+                FragmentInstance instance = new FragmentInstance(worker, execFragment,
+                        execFragment.getWorkerStatsTracker().createTaskWorkerStatsTracker());
                 execFragment.addInstance(instance);
             }
         }
@@ -543,7 +548,8 @@ public class CoordinatorPreprocessor {
 
             // 3.construct instanceExecParam add the scanRange should be scan by instance
             for (List<Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>>> scanRangePerInstance : scanRangesPerInstance) {
-                FragmentInstance instance = new FragmentInstance(worker, execFragment);
+                FragmentInstance instance = new FragmentInstance(worker, execFragment,
+                        execFragment.getWorkerStatsTracker().createTaskWorkerStatsTracker());
                 // record each instance replicate scan id in set, to avoid add replicate scan range repeatedly when they are in different buckets
                 Set<Integer> instanceReplicateScanSet = new HashSet<>();
 

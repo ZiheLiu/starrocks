@@ -21,6 +21,7 @@ import com.starrocks.planner.IcebergTableSink;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.PlanFragmentId;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.qe.scheduler.assignment.WorkerAssignmentStatsMgr;
 import com.starrocks.sql.optimizer.Utils;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TScanRangeParams;
@@ -63,15 +64,18 @@ public class FragmentInstance {
 
     private final ComputeNode worker;
 
+    private final WorkerAssignmentStatsMgr.WorkerStatsTracker taskStatsTracker;
     private final Map<Integer, Integer> bucketSeqToDriverSeq = Maps.newHashMap();
     private final Map<Integer, List<TScanRangeParams>> node2ScanRanges = Maps.newHashMap();
     private final Map<Integer, Map<Integer, List<TScanRangeParams>>> node2DriverSeqToScanRanges = Maps.newHashMap();
 
     private FragmentInstanceExecState execution = null;
 
-    public FragmentInstance(ComputeNode worker, ExecutionFragment execFragment) {
+    public FragmentInstance(ComputeNode worker, ExecutionFragment execFragment,
+                            WorkerAssignmentStatsMgr.WorkerStatsTracker taskStatsTracker) {
         this.worker = worker;
         this.execFragment = execFragment;
+        this.taskStatsTracker = taskStatsTracker;
     }
 
     @Override
@@ -87,6 +91,10 @@ public class FragmentInstance {
 
     public Long getWorkerId() {
         return worker.getId();
+    }
+
+    public WorkerAssignmentStatsMgr.WorkerStatsTracker getTaskStatsTracker() {
+        return taskStatsTracker;
     }
 
     public ComputeNode getWorker() {
@@ -174,10 +182,22 @@ public class FragmentInstance {
     }
 
     public void addScanRanges(Integer scanId, List<TScanRangeParams> scanRanges) {
+        scanRanges.forEach(scanRange -> {
+            if (scanRange.isSetScan_range() && scanRange.getScan_range().isSetInternal_scan_range()) {
+                taskStatsTracker.consume(worker.getId(), 1L, scanRange.getScan_range().getInternal_scan_range().getRow_count());
+            }
+        });
+
         node2ScanRanges.computeIfAbsent(scanId, k -> new ArrayList<>()).addAll(scanRanges);
     }
 
     public void addScanRanges(Integer scanId, Integer driverSeq, List<TScanRangeParams> scanRanges) {
+        scanRanges.forEach(scanRange -> {
+            if (scanRange.isSetScan_range() && scanRange.getScan_range().isSetInternal_scan_range()) {
+                taskStatsTracker.consume(worker.getId(), 1L, scanRange.getScan_range().getInternal_scan_range().getRow_count());
+            }
+        });
+
         node2DriverSeqToScanRanges.computeIfAbsent(scanId, k -> new HashMap<>())
                 .computeIfAbsent(driverSeq, k -> new ArrayList<>()).addAll(scanRanges);
     }

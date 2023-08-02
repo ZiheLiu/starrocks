@@ -88,9 +88,9 @@ public class CoordinatorTest extends PlanTestBase {
     private void testComputeBucketSeq2InstanceOrdinal(JoinNode.DistributionMode mode) throws IOException {
         PlanFragment fragment = genFragment();
         ExecutionFragment execFragment = new ExecutionFragment(null, fragment, 0, null);
-        FragmentInstance instance0 = new FragmentInstance(null, execFragment);
-        FragmentInstance instance1 = new FragmentInstance(null, execFragment);
-        FragmentInstance instance2 = new FragmentInstance(null, execFragment);
+        FragmentInstance instance0 = new FragmentInstance(null, execFragment, null);
+        FragmentInstance instance1 = new FragmentInstance(null, execFragment, null);
+        FragmentInstance instance2 = new FragmentInstance(null, execFragment, null);
         instance0.addBucketSeq(2);
         instance0.addBucketSeq(0);
         instance1.addBucketSeq(1);

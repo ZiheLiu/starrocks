@@ -160,7 +160,8 @@ public class Deployer {
                         instance.getFragmentId(),
                         fragment.getFragmentIndex(),
                         request,
-                        instance.getWorker());
+                        instance.getWorker(),
+                        instance.getTaskStatsTracker());
 
                 twoStageExecutionsToDeploy.get(stageIndex).add(execution);
                 executionDAG.addExecution(execution);

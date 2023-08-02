@@ -25,6 +25,7 @@ import com.starrocks.proto.PPlanFragmentCancelReason;
 import com.starrocks.proto.StatusPB;
 import com.starrocks.qe.QueryStatisticsItem;
 import com.starrocks.qe.SimpleScheduler;
+import com.starrocks.qe.scheduler.assignment.WorkerAssignmentStatsMgr;
 import com.starrocks.rpc.BackendServiceClient;
 import com.starrocks.rpc.RpcException;
 import com.starrocks.system.ComputeNode;
@@ -83,6 +84,7 @@ public class FragmentInstanceExecState {
     private final int fragmentIndex;
     private final RuntimeProfile profile;
 
+    private final WorkerAssignmentStatsMgr.WorkerStatsTracker taskStatsTracker;
     private final ComputeNode worker;
     private final TNetworkAddress address;
     private final long lastMissingHeartbeatTime;
@@ -96,14 +98,15 @@ public class FragmentInstanceExecState {
         RuntimeProfile profile = new RuntimeProfile(name);
         profile.addInfoString("Address", String.format("%s:%s", address.hostname, address.port));
 
-        return new FragmentInstanceExecState(null, null, 0, fragmentInstanceId, 0, null, profile, null, null, -1);
+        return new FragmentInstanceExecState(null, null, 0, fragmentInstanceId, 0, null, profile, null, null, -1, null);
     }
 
     public static FragmentInstanceExecState createExecution(JobSpec jobSpec,
                                                             PlanFragmentId fragmentId,
                                                             int fragmentIndex,
                                                             TExecPlanFragmentParams request,
-                                                            ComputeNode worker) {
+                                                            ComputeNode worker,
+                                                            WorkerAssignmentStatsMgr.WorkerStatsTracker taskStatsTracker) {
         TNetworkAddress address = worker.getAddress();
         String name = "Instance " + DebugUtil.printId(request.params.fragment_instance_id) + " (host=" + address + ")";
         RuntimeProfile profile = new RuntimeProfile(name);
@@ -114,7 +117,8 @@ public class FragmentInstanceExecState {
                 request.params.getFragment_instance_id(), request.getBackend_num(),
                 request,
                 profile,
-                worker, address, worker.getLastMissingHeartbeatTime());
+                worker, address, worker.getLastMissingHeartbeatTime(),
+                taskStatsTracker);
 
     }
 
@@ -127,7 +131,8 @@ public class FragmentInstanceExecState {
                                       RuntimeProfile profile,
                                       ComputeNode worker,
                                       TNetworkAddress address,
-                                      long lastMissingHeartbeatTime) {
+                                      long lastMissingHeartbeatTime,
+                                      WorkerAssignmentStatsMgr.WorkerStatsTracker taskStatsTracker) {
         this.jobSpec = jobSpec;
         this.fragmentId = fragmentId;
         this.fragmentIndex = fragmentIndex;
@@ -138,6 +143,7 @@ public class FragmentInstanceExecState {
 
         this.profile = profile;
 
+        this.taskStatsTracker = taskStatsTracker;
         this.address = address;
         this.worker = worker;
         this.lastMissingHeartbeatTime = lastMissingHeartbeatTime;
@@ -412,12 +418,15 @@ public class FragmentInstanceExecState {
     }
 
     private synchronized void transitionState(State to) {
+        if (to.isTerminal()) {
+            taskStatsTracker.releaseAll();
+        }
         state = to;
     }
 
     private synchronized void transitionState(State from, State to) {
         if (state == from) {
-            state = to;
+            transitionState(to);
         }
     }
 

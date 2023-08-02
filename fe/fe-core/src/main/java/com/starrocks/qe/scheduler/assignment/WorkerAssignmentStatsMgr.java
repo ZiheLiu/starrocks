@@ -49,6 +49,69 @@ public class WorkerAssignmentStatsMgr {
         void consume(Long workerId, Long numRunningTablets, Long numRunningTabletRows);
 
         void releaseAll();
+
+        WorkerStatsTracker createTaskWorkerStatsTracker();
+    }
+
+    public static class TaskWorkerStatsTracker implements WorkerStatsTracker {
+        private final Map<Long, WorkerStats> localWorkerToStats = Maps.newHashMap();
+        private final WorkerStatsTracker parent;
+
+        public TaskWorkerStatsTracker(WorkerStatsTracker parent) {
+            this.parent = parent;
+        }
+
+        @Override
+        public TaskWorkerStatsTracker createTaskWorkerStatsTracker() {
+            return new TaskWorkerStatsTracker(this);
+        }
+
+        @Override
+        public Long getNumRunningTablets(Long workerId) {
+            WorkerStats stats = localWorkerToStats.get(workerId);
+            if (stats == null) {
+                return 0L;
+            }
+            return stats.numRunningTablets.get();
+        }
+
+        @Override
+        public Long getNumTotalTablets(Long workerId) {
+            WorkerStats stats = localWorkerToStats.get(workerId);
+            if (stats == null) {
+                return 0L;
+            }
+            return stats.numTotalTablets.get();
+        }
+
+        @Override
+        public Long getNumRunningTabletRows(Long workerId) {
+            WorkerStats stats = localWorkerToStats.get(workerId);
+            if (stats == null) {
+                return 0L;
+            }
+            return stats.numRunningTabletRows.get();
+        }
+
+        @Override
+        public boolean tryConsume(Long workerId, Long expectedNumRunningTablets, Long numRunningTablets,
+                                  Long numRunningTabletRows) {
+            consume(workerId, numRunningTabletRows, numRunningTabletRows);
+            return true;
+        }
+
+        @Override
+        public void consume(Long workerId, Long numRunningTablets, Long numRunningTabletRows) {
+            localWorkerToStats.computeIfAbsent(workerId, k -> new WorkerStats())
+                    .consume(numRunningTablets, numRunningTabletRows);
+        }
+
+        @Override
+        public void releaseAll() {
+            localWorkerToStats.forEach((workerId, stats) ->
+                    parent.consume(workerId, -stats.numRunningTablets.get(), -stats.numRunningTabletRows.get()));
+            localWorkerToStats.clear();
+        }
     }
 
     private abstract static class BaseWorkerStatsTracker implements WorkerStatsTracker {
@@ -60,6 +123,11 @@ public class WorkerAssignmentStatsMgr {
         }
 
         protected abstract Map<Long, WorkerStats> getWorkerToStats();
+
+        @Override
+        public TaskWorkerStatsTracker createTaskWorkerStatsTracker() {
+            return new TaskWorkerStatsTracker(this);
+        }
 
         @Override
         public Long getNumRunningTablets(Long workerId) {
@@ -101,6 +169,7 @@ public class WorkerAssignmentStatsMgr {
         public void releaseAll() {
             localWorkerToStats.forEach((workerId, stats) ->
                     globalWorkerToStats.get(workerId).consume(-stats.numRunningTablets.get(), -stats.numRunningTabletRows.get()));
+            localWorkerToStats.clear();
         }
 
         @Override
