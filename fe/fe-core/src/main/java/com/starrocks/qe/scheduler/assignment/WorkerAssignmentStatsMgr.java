@@ -48,7 +48,7 @@ public class WorkerAssignmentStatsMgr {
 
         void consume(Long workerId, Long numRunningTablets, Long numRunningTabletRows);
 
-        void release();
+        void releaseAll();
     }
 
     private abstract static class BaseWorkerStatsTracker implements WorkerStatsTracker {
@@ -98,7 +98,7 @@ public class WorkerAssignmentStatsMgr {
         }
 
         @Override
-        public void release() {
+        public void releaseAll() {
             localWorkerToStats.forEach((workerId, stats) ->
                     globalWorkerToStats.get(workerId).consume(-stats.numRunningTablets.get(), -stats.numRunningTabletRows.get()));
         }

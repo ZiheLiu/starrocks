@@ -441,7 +441,7 @@ public class CoordinatorPreprocessor {
                                     (enableAssignScanRangesPerDriverSeq(scanRangeParams, pipelineDop)
                                             || fragment.isForceAssignScanRangesPerDriverSeq());
                             if (!assignPerDriverSeq) {
-                                instance.getNode2ScanRanges().put(planNodeId, scanRangeParams);
+                                instance.addScanRanges(planNodeId, scanRangeParams);
                             } else {
                                 int expectedDop = Math.max(1, Math.min(pipelineDop, scanRangeParams.size()));
                                 List<List<TScanRangeParams>> scanRangeParamsPerDriverSeq;
@@ -458,15 +458,10 @@ public class CoordinatorPreprocessor {
                                     fragment.setPipelineDop(scanRangeParamsPerDriverSeq.size());
                                 }
                                 instance.setPipelineDop(scanRangeParamsPerDriverSeq.size());
-                                Map<Integer, List<TScanRangeParams>> scanRangesPerDriverSeq = new HashMap<>();
-                                instance.getNode2DriverSeqToScanRanges().put(planNodeId, scanRangesPerDriverSeq);
                                 for (int driverSeq = 0; driverSeq < scanRangeParamsPerDriverSeq.size(); ++driverSeq) {
-                                    scanRangesPerDriverSeq.put(driverSeq, scanRangeParamsPerDriverSeq.get(driverSeq));
+                                    instance.addScanRanges(planNodeId, driverSeq, scanRangeParamsPerDriverSeq.get(driverSeq));
                                 }
-                                for (int driverSeq = scanRangeParamsPerDriverSeq.size();
-                                        driverSeq < instance.getPipelineDop(); ++driverSeq) {
-                                    scanRangesPerDriverSeq.put(driverSeq, Lists.newArrayList());
-                                }
+                                instance.paddingScanRanges();
                             }
                         }
                     }
@@ -479,8 +474,8 @@ public class CoordinatorPreprocessor {
                                 continue;
                             }
                             List<TScanRangeParams> perNodeScanRanges = value.get(planNodeId);
-                            for (FragmentInstance instanceParam : execFragment.getInstances()) {
-                                instanceParam.getNode2ScanRanges().put(planNodeId, perNodeScanRanges);
+                            for (FragmentInstance instance : execFragment.getInstances()) {
+                                instance.addScanRanges(planNodeId, perNodeScanRanges);
                             }
                         }
                     }
@@ -573,34 +568,28 @@ public class CoordinatorPreprocessor {
                         }
 
                         bucketSeqAndScanRanges.getValue().forEach((scanId, scanRanges) -> {
-                            List<TScanRangeParams> destScanRanges;
-                            if (!assignPerDriverSeq) {
-                                destScanRanges = instance.getNode2ScanRanges()
-                                        .computeIfAbsent(scanId, k -> new ArrayList<>());
-                            } else {
-                                destScanRanges = instance.getNode2DriverSeqToScanRanges()
-                                        .computeIfAbsent(scanId, k -> new HashMap<>())
-                                        .computeIfAbsent(finalDriverSeq, k -> new ArrayList<>());
-                            }
-
+                            boolean shouldAddScanRanges = true;
                             if (replicateScanIds.contains(scanId)) {
                                 if (!instanceReplicateScanSet.contains(scanId)) {
-                                    destScanRanges.addAll(scanRanges);
                                     instanceReplicateScanSet.add(scanId);
+                                } else {
+                                    shouldAddScanRanges = false;
                                 }
-                            } else {
-                                destScanRanges.addAll(scanRanges);
+                            }
+
+                            if (shouldAddScanRanges) {
+                                if (!assignPerDriverSeq) {
+                                    instance.addScanRanges(scanId, scanRanges);
+                                } else {
+                                    instance.addScanRanges(scanId, finalDriverSeq, scanRanges);
+                                }
                             }
                         });
                     });
                 }
 
                 if (assignPerDriverSeq) {
-                    instance.getNode2DriverSeqToScanRanges().forEach((scanId, perDriverSeqScanRanges) -> {
-                        for (int driverSeq = 0; driverSeq < instance.getPipelineDop(); ++driverSeq) {
-                            perDriverSeqScanRanges.computeIfAbsent(driverSeq, k -> new ArrayList<>());
-                        }
-                    });
+                    instance.paddingScanRanges();
                 }
 
                 execFragment.addInstance(instance);

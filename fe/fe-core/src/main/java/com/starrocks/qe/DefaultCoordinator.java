@@ -443,7 +443,7 @@ public class DefaultCoordinator extends Coordinator {
 
     @Override
     public void onFinished() {
-        executionDAG.getFragmentsInCreatedOrder().forEach(execFragment -> execFragment.getWorkerStatsTracker().release());
+        executionDAG.getFragmentsInCreatedOrder().forEach(execFragment -> execFragment.getWorkerStatsTracker().releaseAll());
     }
 
     public CoordinatorPreprocessor getPrepareInfo() {
