@@ -114,6 +114,8 @@ public class DefaultCoordinator extends Coordinator {
 
     private final CoordinatorPreprocessor coordinatorPreprocessor;
 
+    private final
+
     /**
      * Protects all the fields below.
      */
@@ -440,7 +442,10 @@ public class DefaultCoordinator extends Coordinator {
     }
 
     @Override
-    public void startScheduling(boolean needDeploy) throws Exception {
+    public void startScheduling() throws Exception {
+        startScheduling(true);
+    }
+    private void startScheduling(boolean needDeploy) throws Exception {
         try (PlannerProfile.ScopedTimer timer = PlannerProfile.getScopedTimer("Scheduler.Pending")) {
             QueryQueueManager.getInstance().maybeWait(connectContext, this);
         }
@@ -460,7 +465,8 @@ public class DefaultCoordinator extends Coordinator {
     }
 
     @Override
-    public String getSchedulerExplain() {
+    public String getSchedulerExplain() throws Exception {
+        startScheduling(false);
         return executionDAG.getFragmentsInPreorder().stream()
                 .map(ExecutionFragment::getExplainString)
                 .collect(Collectors.joining("\n"));

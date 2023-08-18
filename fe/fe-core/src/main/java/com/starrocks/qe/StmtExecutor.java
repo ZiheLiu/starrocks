@@ -897,7 +897,6 @@ public class StmtExecutor {
                 new QeProcessorImpl.QueryInfo(context, originStmt.originStmt, coord));
 
         if (isSchedulerExplain) {
-            coord.startSchedulingWithoutDeploy();
             handleExplainStmt(coord.getSchedulerExplain());
             return;
         }
@@ -1720,7 +1719,6 @@ public class StmtExecutor {
             QeProcessorImpl.INSTANCE.registerQuery(context.getExecutionId(), queryInfo);
 
             if (isSchedulerExplain) {
-                coord.startSchedulingWithoutDeploy();
                 handleExplainStmt(coord.getSchedulerExplain());
                 return;
             }
