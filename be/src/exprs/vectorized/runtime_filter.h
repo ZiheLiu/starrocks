@@ -322,7 +322,7 @@ public:
                 return false;
             }
         }
-        size_t hash = compute_hash(value);
+        size_t hash = RuntimeBloomFilter::compute_hash(value);
         return _bf.test_hash(hash);
     }
 
@@ -338,7 +338,7 @@ public:
         }
         // module has been done outside, so actually here is bucket idx.
         const uint32_t bucket_idx = shuffle_hash;
-        size_t hash = compute_hash(value);
+        size_t hash = RuntimeBloomFilter::compute_hash(value);
         return _hash_partition_bf[bucket_idx].test_hash(hash);
     }
 
