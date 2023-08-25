@@ -149,7 +149,7 @@ bool ScanOperator::has_output() const {
             return true;
         }
     }
-    return num_buffered_chunks() > 0;
+    return _num_running_io_tasks == 0 && num_buffered_chunks() > 0;
 }
 
 bool ScanOperator::pending_finish() const {
