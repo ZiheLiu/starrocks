@@ -787,6 +787,7 @@ private:
     }
 
     using HashValues = std::vector<uint32_t>;
+
     template <bool hash_partition, class DataType>
     void _rf_test_data(uint8_t* selection, const DataType* input_data, const HashValues& hash_values, int idx) const {
         if (selection[idx]) {
@@ -794,6 +795,41 @@ private:
                 selection[idx] = _test_data_with_hash(input_data[idx], hash_values[idx]);
             } else {
                 selection[idx] = _test_data(input_data[idx]);
+            }
+        }
+    }
+
+    template <bool hash_partition, class DataType>
+    void _rf_test_data_batch(uint8_t* selection, const DataType* values, const HashValues& shuffle_hash_values,
+                             size_t size) const {
+        std::vector<size_t> hash_values(size);
+        for (int i = 0; i < size; i++) {
+            if (!selection[i]) {
+                continue;
+            }
+
+            if constexpr (hash_partition) {
+                static constexpr uint32_t BUCKET_ABSENT = 2147483647;
+                if (shuffle_hash_values[i] == BUCKET_ABSENT) {
+                    selection[i] = false;
+                } else {
+                    hash_values[i] = compute_hash(values[i]);
+                }
+            } else {
+                hash_values[i] = compute_hash(values[i]);
+            }
+        }
+
+        for (int i = 0; i < size; i++) {
+            if (!selection[i]) {
+                continue;
+            }
+
+            if constexpr (hash_partition) {
+                const uint32_t bucket_idx = shuffle_hash_values[i];
+                selection[i] = _hash_partition_bf[bucket_idx].test_hash(hash_values[i]);
+            } else {
+                selection[i] = _bf.test_hash(hash_values[i]);
             }
         }
     }
@@ -822,7 +858,7 @@ private:
             } else {
                 auto* input_data = down_cast<const ColumnType*>(const_column->data_column().get())->get_data().data();
                 _evaluate_min_max(input_data, _selection, 1);
-                _rf_test_data<hash_partition>(_selection, input_data, _hash_values, 0);
+                _rf_test_data_batch<hash_partition>(_selection, input_data, _hash_values, 1);
             }
             uint8_t sel = _selection[0];
             memset(_selection, sel, size);
@@ -840,16 +876,12 @@ private:
                     }
                 }
             } else {
-                for (int i = 0; i < size; ++i) {
-                    _rf_test_data<hash_partition>(_selection, input_data, _hash_values, i);
-                }
+                _rf_test_data_batch<hash_partition>(_selection, input_data, _hash_values, size);
             }
         } else {
             auto* input_data = down_cast<const ColumnType*>(input_column)->get_data().data();
             _evaluate_min_max(input_data, _selection, size);
-            for (int i = 0; i < size; ++i) {
-                _rf_test_data<hash_partition>(_selection, input_data, _hash_values, i);
-            }
+            _rf_test_data_batch<hash_partition>(_selection, input_data, _hash_values, size);
         }
     }
 
