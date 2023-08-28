@@ -284,6 +284,7 @@ public:
         bool use_merged_selection;
         std::vector<uint32_t> hash_values;
         const std::vector<int32_t>* bucketseq_to_partition;
+        std::vector<size_t> buffer_hash_values;
         bool compatibility = true;
     };
 
@@ -800,9 +801,9 @@ private:
     }
 
     template <bool hash_partition, class DataType>
-    void _rf_test_data_batch(uint8_t* selection, const DataType* values, const HashValues& shuffle_hash_values,
+    void _rf_test_data_batch(uint8_t* __restrict__ selection, const DataType* __restrict__ values,
+                             size_t* __restrict__ hash_values, const HashValues& shuffle_hash_values,
                              size_t size) const {
-        std::vector<size_t> hash_values(size);
         for (int i = 0; i < size; i++) {
             if (!selection[i]) {
                 continue;
@@ -846,6 +847,9 @@ private:
         _selection_filter.resize(size);
         uint8_t* _selection = _selection_filter.data();
 
+        ctx->buffer_hash_values.resize(size);
+        size_t* buffer_hash_values = ctx->buffer_hash_values.data();
+
         // reuse ctx's hash_values object.
         HashValues& _hash_values = ctx->hash_values;
         if constexpr (hash_partition) {
@@ -858,7 +862,7 @@ private:
             } else {
                 auto* input_data = down_cast<const ColumnType*>(const_column->data_column().get())->get_data().data();
                 _evaluate_min_max(input_data, _selection, 1);
-                _rf_test_data_batch<hash_partition>(_selection, input_data, _hash_values, 1);
+                _rf_test_data_batch<hash_partition>(_selection, input_data, buffer_hash_values, _hash_values, 1);
             }
             uint8_t sel = _selection[0];
             memset(_selection, sel, size);
@@ -876,12 +880,12 @@ private:
                     }
                 }
             } else {
-                _rf_test_data_batch<hash_partition>(_selection, input_data, _hash_values, size);
+                _rf_test_data_batch<hash_partition>(_selection, input_data, buffer_hash_values, _hash_values, size);
             }
         } else {
             auto* input_data = down_cast<const ColumnType*>(input_column)->get_data().data();
             _evaluate_min_max(input_data, _selection, size);
-            _rf_test_data_batch<hash_partition>(_selection, input_data, _hash_values, size);
+            _rf_test_data_batch<hash_partition>(_selection, input_data, buffer_hash_values, _hash_values, size);
         }
     }
 
