@@ -1187,6 +1187,11 @@ showResourceGroupStatement
     | SHOW RESOURCE GROUPS ALL?
     ;
 
+showResourceGroupUsageStatement
+    : SHOW USAGE RESOURCE GROUP identifier
+    | SHOW USAGE RESOURCE GROUPS
+    ;
+
 createResourceStatement
     : CREATE EXTERNAL? RESOURCE resourceName=identifierOrString properties?
     ;
