@@ -45,6 +45,7 @@
 #include <vector>
 
 #include "common/status.h"
+#include "util/stack_util.h"
 
 namespace starrocks {
 
@@ -157,6 +158,10 @@ Status deserialize_thrift_msg(const uint8_t* buf, uint32_t* len, TProtocolType t
     } catch (std::exception& e) {
         std::stringstream msg;
         msg << "couldn't deserialize thrift msg:\n" << e.what();
+
+        LOG(WARNING) << "[BUG] [stack=" << get_stack_trace() << "] "
+                     << "[e=" << e.what() << "] ";
+
         return Status::InternalError(msg.str());
     } catch (...) {
         // TODO: Find the right exception for 0 bytes
