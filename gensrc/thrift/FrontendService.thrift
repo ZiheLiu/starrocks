@@ -558,7 +558,7 @@ struct TReportExecStatusParams {
 
   23: optional i64 unselected_rows
 
-  24: optional i64 source_scan_bytes
+  26: optional i64 source_scan_bytes
 }
 
 struct TReportAuditStatisticsParams {
