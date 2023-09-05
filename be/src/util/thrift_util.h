@@ -161,7 +161,9 @@ Status deserialize_thrift_msg(const uint8_t* buf, uint32_t* len, TProtocolType t
 
         LOG(WARNING) << "[BUG] [stack=" << get_stack_trace() << "] "
                      << "[e=" << e.what() << "] "
-                     << "[buf=" << std::string_view((const char*)(buf), *len) << "] ";
+                     << "[buf=" << std::string_view((const char*)(buf), *len) << "] "
+                     << "[len=" << len << "] "
+                     << "[type=" << type << "] ";
 
         return Status::InternalError(msg.str());
     } catch (...) {
