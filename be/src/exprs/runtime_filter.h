@@ -120,6 +120,16 @@ public:
 #endif
     }
 
+    void prefetch_hash(const uint64_t hash) const noexcept {
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+        const uint32_t bucket_idx = hash & _directory_mask;
+        _mm_prefetch((const char*)(_directory + bucket_idx), _MM_HINT_NTA);
+#elif defined(__GNUC__)
+        const uint32_t bucket_idx = hash & _directory_mask;
+        __builtin_prefetch(static_cast<const void*>(_directory + bucket_idx));
+#endif // __GNUC__
+    }
+
     bool test_hash(const uint64_t hash) const noexcept {
         const uint32_t bucket_idx = hash & _directory_mask;
 #ifdef __AVX2__
@@ -282,6 +292,7 @@ public:
         Filter selection;
         Filter merged_selection;
         bool use_merged_selection;
+        std::vector<size_t> buffer_hash_values;
         std::vector<uint32_t> hash_values;
         const std::vector<int32_t>* bucketseq_to_partition;
         bool compatibility = true;
@@ -691,7 +702,8 @@ private:
         }
     }
 
-    void _evaluate_min_max(const CppType* values, uint8_t* selection, size_t size) const {
+    template <typename Container>
+    void _evaluate_min_max(const Container& values, uint8_t* selection, size_t size) const {
         if constexpr (!IsSlice<CppType>) {
             for (size_t i = 0; i < size; i++) {
                 selection[i] = (values[i] >= _min && values[i] <= _max);
@@ -770,31 +782,72 @@ private:
         }
     }
 
-    bool _test_data(CppType value) const {
-        size_t hash = compute_hash(value);
-        return _bf.test_hash(hash);
-    }
-
-    bool _test_data_with_hash(CppType value, const uint32_t shuffle_hash) const {
-        static constexpr uint32_t BUCKET_ABSENT = 2147483647;
-        if (shuffle_hash == BUCKET_ABSENT) {
-            return false;
-        }
-        // module has been done outside, so actually here is bucket idx.
-        const uint32_t bucket_idx = shuffle_hash;
-        size_t hash = compute_hash(value);
-        return _hash_partition_bf[bucket_idx].test_hash(hash);
-    }
-
     using HashValues = std::vector<uint32_t>;
-    template <bool hash_partition, class DataType>
-    void _rf_test_data(uint8_t* selection, const DataType* input_data, const HashValues& hash_values, int idx) const {
-        if (selection[idx]) {
-            if constexpr (hash_partition) {
-                selection[idx] = _test_data_with_hash(input_data[idx], hash_values[idx]);
-            } else {
-                selection[idx] = _test_data(input_data[idx]);
+
+    template <bool hash_partition, bool has_null, typename Container>
+    void _rf_test_data_batch(size_t num_rows, uint8_t* __restrict__ selection, const Container& values,
+                             size_t* __restrict__ hash_values, const HashValues& partition_hash_values,
+                             const uint8_t* __restrict__ null_data = nullptr) const {
+        DCHECK(!has_null || null_data != nullptr);
+
+        for (int i = 0; i < num_rows; i++) {
+            if constexpr (has_null) {
+                if (null_data[i]) {
+                    selection[i] = _has_null;
+                    continue;
+                }
             }
+
+            if (!selection[i]) {
+                continue;
+            }
+
+            if constexpr (hash_partition) {
+                static constexpr uint32_t BUCKET_ABSENT = 2147483647;
+                if (partition_hash_values[i] == BUCKET_ABSENT) {
+                    selection[i] = false;
+                } else {
+                    hash_values[i] = compute_hash(values[i]);
+                }
+            } else {
+                hash_values[i] = compute_hash(values[i]);
+            }
+        }
+
+        size_t __prefetch_index = config::rf_prefetch_start_index;
+
+        for (int i = 0; i < num_rows; i++) {
+            if (__prefetch_index < num_rows) {
+                if constexpr (!hash_partition) {
+                    _bf.prefetch_hash(hash_values[__prefetch_index++]);
+                }
+            }
+
+            if constexpr (has_null) {
+                if (null_data[i]) {
+                    continue;
+                }
+            }
+
+            if (!selection[i]) {
+                continue;
+            }
+
+            if constexpr (hash_partition) {
+                // module has been done outside, so actually here is bucket idx.
+                const uint32_t bucket_idx = partition_hash_values[i];
+                selection[i] = _hash_partition_bf[bucket_idx].test_hash(hash_values[i]);
+            } else {
+                selection[i] = _bf.test_hash(hash_values[i]);
+            }
+        }
+    }
+
+    auto _get_column_data(const ColumnType* column) const {
+        if constexpr (!IsSlice<CppType>) {
+            return column->get_data().data();
+        } else {
+            return column->get_proxy_data();
         }
     }
 
@@ -810,6 +863,9 @@ private:
         _selection_filter.resize(size);
         uint8_t* _selection = _selection_filter.data();
 
+        ctx->buffer_hash_values.resize(size);
+        size_t* buffer_hash_values = ctx->buffer_hash_values.data();
+
         // reuse ctx's hash_values object.
         HashValues& _hash_values = ctx->hash_values;
         if constexpr (hash_partition) {
@@ -820,36 +876,28 @@ private:
             if (const_column->only_null()) {
                 _selection[0] = _has_null;
             } else {
-                auto* input_data = down_cast<const ColumnType*>(const_column->data_column().get())->get_data().data();
+                auto input_data = _get_column_data(down_cast<const ColumnType*>(const_column->data_column().get()));
                 _evaluate_min_max(input_data, _selection, 1);
-                _rf_test_data<hash_partition>(_selection, input_data, _hash_values, 0);
+                _rf_test_data_batch<hash_partition, false>(1, _selection, input_data, buffer_hash_values, _hash_values);
             }
             uint8_t sel = _selection[0];
             memset(_selection, sel, size);
         } else if (input_column->is_nullable()) {
             const auto* nullable_column = down_cast<const NullableColumn*>(input_column);
-            auto* input_data = down_cast<const ColumnType*>(nullable_column->data_column().get())->get_data().data();
+            auto input_data = _get_column_data(down_cast<const ColumnType*>(nullable_column->data_column().get()));
             _evaluate_min_max(input_data, _selection, size);
             if (nullable_column->has_null()) {
                 const uint8_t* null_data = nullable_column->immutable_null_column_data().data();
-                for (int i = 0; i < size; i++) {
-                    if (null_data[i]) {
-                        _selection[i] = _has_null;
-                    } else {
-                        _rf_test_data<hash_partition>(_selection, input_data, _hash_values, i);
-                    }
-                }
+                _rf_test_data_batch<hash_partition, true>(size, _selection, input_data, buffer_hash_values,
+                                                          _hash_values, null_data);
             } else {
-                for (int i = 0; i < size; ++i) {
-                    _rf_test_data<hash_partition>(_selection, input_data, _hash_values, i);
-                }
+                _rf_test_data_batch<hash_partition, false>(size, _selection, input_data, buffer_hash_values,
+                                                           _hash_values);
             }
         } else {
-            auto* input_data = down_cast<const ColumnType*>(input_column)->get_data().data();
+            auto input_data = _get_column_data(down_cast<const ColumnType*>(input_column));
             _evaluate_min_max(input_data, _selection, size);
-            for (int i = 0; i < size; ++i) {
-                _rf_test_data<hash_partition>(_selection, input_data, _hash_values, i);
-            }
+            _rf_test_data_batch<hash_partition, false>(size, _selection, input_data, buffer_hash_values, _hash_values);
         }
     }
 
