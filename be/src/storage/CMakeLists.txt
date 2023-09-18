@@ -128,6 +128,7 @@ add_library(Storage STATIC
     column_null_predicate.cpp
     column_or_predicate.cpp
     column_expr_predicate.cpp
+    chunk_predicate.cpp
     conjunctive_predicates.cpp
     convert_helper.cpp
     delete_predicates.cpp
