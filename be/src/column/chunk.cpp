@@ -359,7 +359,7 @@ size_t Chunk::bytes_usage(size_t from, size_t size) const {
     return bytes_usage;
 }
 
-std::vector<size_t> Chunk::bytes_usages() const {
+std::vector<size_t> Chunk::byte_usages() const {
     size_t n = num_rows();
     std::vector<size_t> byte_usage_per_row(n, 0);
     size_t* byte_usage_per_row_data = byte_usage_per_row.data();
