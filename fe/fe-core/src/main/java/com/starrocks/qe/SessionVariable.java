@@ -222,6 +222,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_TABLET_INTERNAL_PARALLEL = "enable_tablet_internal_parallel";
     public static final String ENABLE_TABLET_INTERNAL_PARALLEL_V2 = "enable_tablet_internal_parallel_v2";
 
+    public static final String ENABLE_PARTITION_COLOCATE_JOIN = "enable_partition_colocate_join";
+
     public static final String TABLET_INTERNAL_PARALLEL_MODE = "tablet_internal_parallel_mode";
     public static final String ENABLE_SHARED_SCAN = "enable_shared_scan";
     public static final String PIPELINE_DOP = "pipeline_dop";
@@ -607,6 +609,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     // The optional values are "auto" and "force_split".
     @VariableMgr.VarAttr(name = TABLET_INTERNAL_PARALLEL_MODE, flag = VariableMgr.INVISIBLE)
     private String tabletInternalParallelMode = "auto";
+
+    @VariableMgr.VarAttr(name = ENABLE_PARTITION_COLOCATE_JOIN)
+    private boolean enablePartitionColocateJoin = false;
 
     @VariableMgr.VarAttr(name = ENABLE_SHARED_SCAN)
     private boolean enableSharedScan = false;
@@ -1986,6 +1991,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableTabletInternalParallel() {
         return enableTabletInternalParallel;
+    }
+
+    public boolean isEnablePartitionColocateJoin() {
+        return enablePartitionColocateJoin;
     }
 
     public boolean isEnableResourceGroup() {

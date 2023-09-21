@@ -14,11 +14,17 @@
 
 package com.starrocks.qe.scheduler.assignment;
 
+import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
+import com.starrocks.catalog.PartitionInfo;
+import com.starrocks.catalog.PartitionKey;
+import com.starrocks.catalog.RangePartitionInfo;
 import com.starrocks.common.Config;
 import com.starrocks.common.UserException;
 import com.starrocks.common.util.ListUtil;
+import com.starrocks.planner.OlapScanNode;
 import com.starrocks.planner.PlanFragment;
+import com.starrocks.planner.PlanNodeId;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.qe.BackendSelector;
 import com.starrocks.qe.ColocatedBackendSelector;
@@ -32,9 +38,12 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -141,13 +150,250 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
         return visitedReplicatedScanIds.add(scanId);
     }
 
+    private interface AssignBucketSeqToDriverSeqStrategy {
+        void assign(FragmentInstance destInstance, Set<Integer> instanceReplicatedScanIds, List<Integer> bucketSeqs);
+
+        boolean isAssignPerDriverSeq();
+    }
+
+    private static class AssignPerInstanceStrategy implements AssignBucketSeqToDriverSeqStrategy {
+        private final ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange;
+
+        public AssignPerInstanceStrategy(ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange) {
+            this.bucketSeqToScanRange = bucketSeqToScanRange;
+        }
+
+        @Override
+        public void assign(FragmentInstance destInstance, Set<Integer> instanceReplicatedScanIds, List<Integer> bucketSeqs) {
+            bucketSeqs.forEach(bucketSeq -> {
+                destInstance.addBucketSeq(bucketSeq);
+                bucketSeqToScanRange.get(bucketSeq).forEach((scanId, scanRanges) -> {
+                    if (needAddScanRanges(instanceReplicatedScanIds, scanId)) {
+                        destInstance.addScanRanges(scanId, scanRanges);
+                    }
+                });
+            });
+        }
+
+        @Override
+        public boolean isAssignPerDriverSeq() {
+            return false;
+        }
+    }
+
+    private static class AssignBucketPerDriverSeqStrategy implements AssignBucketSeqToDriverSeqStrategy {
+        private final ExecutionFragment execFragment;
+        private final ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange;
+
+        private AssignBucketPerDriverSeqStrategy(ExecutionFragment execFragment,
+                                                 ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange) {
+            this.execFragment = execFragment;
+            this.bucketSeqToScanRange = bucketSeqToScanRange;
+        }
+
+        @Override
+        public void assign(FragmentInstance destInstance, Set<Integer> instanceReplicatedScanIds, List<Integer> bucketSeqs) {
+            final PlanFragment fragment = execFragment.getPlanFragment();
+            final int pipelineDop = fragment.getPipelineDop();
+
+            int expectedDop = Math.max(1, pipelineDop);
+            List<List<Integer>> bucketSeqsPerDriverSeq = ListUtil.splitBySize(bucketSeqs, expectedDop);
+
+            destInstance.setPipelineDop(bucketSeqsPerDriverSeq.size());
+
+            for (int driverSeq = 0; driverSeq < bucketSeqsPerDriverSeq.size(); driverSeq++) {
+                int finalDriverSeq = driverSeq;
+                bucketSeqsPerDriverSeq.get(driverSeq).forEach(bucketSeq -> {
+                    destInstance.addBucketSeqAndDriverSeq(bucketSeq, finalDriverSeq);
+                    bucketSeqToScanRange.get(bucketSeq).forEach((scanId, scanRanges) -> {
+                        if (needAddScanRanges(instanceReplicatedScanIds, scanId)) {
+                            destInstance.addScanRanges(scanId, finalDriverSeq, scanRanges);
+                        }
+                    });
+                });
+            }
+
+            destInstance.paddingScanRanges();
+        }
+
+        @Override
+        public boolean isAssignPerDriverSeq() {
+            return true;
+        }
+    }
+
+    private static class BucketSeqAndPartition {
+        private final Integer bucketSeq;
+        private final Range<PartitionKey> partitionKeyRange;
+
+        public BucketSeqAndPartition(Integer bucketSeq, Range<PartitionKey> partitionKeyRange) {
+            this.bucketSeq = bucketSeq;
+            this.partitionKeyRange = partitionKeyRange;
+        }
+
+        public Integer getBucketSeq() {
+            return bucketSeq;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) {
+                return true;
+            }
+            if (o == null || getClass() != o.getClass()) {
+                return false;
+            }
+            BucketSeqAndPartition that = (BucketSeqAndPartition) o;
+            return bucketSeq.equals(that.bucketSeq) &&
+                    partitionKeyRange.equals(that.partitionKeyRange);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(bucketSeq, partitionKeyRange);
+        }
+    }
+
+    private static class AssignBucketPartitionPerDriverSeqStrategy implements AssignBucketSeqToDriverSeqStrategy {
+        private final ExecutionFragment execFragment;
+
+        private final Map<Integer, Map<BucketSeqAndPartition, Map<Integer, List<TScanRangeParams>>>> bucketSeqToPartitionToScanRanges;
+
+        private AssignBucketPartitionPerDriverSeqStrategy(ExecutionFragment execFragment,
+                                                          ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange) {
+            this.execFragment = execFragment;
+            this.bucketSeqToScanRange = bucketSeqToScanRange;
+        }
+
+        private static boolean useAssignPartitionPerDriverSeq(
+                ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange, List<Integer> bucketSeqs, int pipelineDop) {
+            int numTablets = bucketSeqs.stream()
+                    .mapToInt(bucketSeq -> bucketSeqToScanRange.get(bucketSeq).values().stream()
+                            .map(List::size)
+                            .max(Comparator.naturalOrder())
+                            .orElse(0))
+                    .sum();
+            return numTablets > pipelineDop / 2;
+        }
+
+        public static AssignBucketPartitionPerDriverSeqStrategy create(
+                ExecutionFragment execFragment,
+                ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange,
+                Map<Long, List<Integer>> workerIdToBucketSeqs) {
+            final PlanFragment fragment = execFragment.getPlanFragment();
+            final int pipelineDop = fragment.getPipelineDop();
+
+            boolean useAssignPartitionPerDriverSeq = workerIdToBucketSeqs.values().stream()
+                    .allMatch(bucketSeqs -> useAssignPartitionPerDriverSeq(bucketSeqToScanRange, bucketSeqs, pipelineDop));
+            if (!useAssignPartitionPerDriverSeq) {
+                return null;
+            }
+
+            Map<Integer, Map<BucketSeqAndPartition, Map<Integer, List<TScanRangeParams>>>> bucketSeqToPartitionToScanRanges =
+                    new HashMap<>();
+            for (Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>> kv : bucketSeqToScanRange.entrySet()) {
+                Integer bucketSeq = kv.getKey();
+                Map<Integer, List<TScanRangeParams>> scanIdToScanRanges = kv.getValue();
+
+                for (Map.Entry<Integer, List<TScanRangeParams>> kv2 : scanIdToScanRanges.entrySet()) {
+                    Integer scanId = kv2.getKey();
+                    List<TScanRangeParams> scanRanges = kv2.getValue();
+
+                    ScanNode scanNode = execFragment.getScanNode(new PlanNodeId(scanId));
+                    if (!(scanNode instanceof OlapScanNode)) {
+                        return null;
+                    }
+                    OlapScanNode olapScanNode = (OlapScanNode) scanNode;
+
+                    PartitionInfo partitionInfo = olapScanNode.getOlapTable().getPartitionInfo();
+                    if (!(partitionInfo instanceof RangePartitionInfo)) {
+                        return null;
+                    }
+                    RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) partitionInfo;
+
+                    for (TScanRangeParams scanRange : scanRanges) {
+                        if (!scanRange.getScan_range().isSetInternal_scan_range() ||
+                                !scanRange.getScan_range().getInternal_scan_range().isSetPartition_id()) {
+                            return null;
+                        }
+                        long partitionId = scanRange.getScan_range().getInternal_scan_range().getPartition_id();
+
+                        Range<PartitionKey> partitionKeyRange = rangePartitionInfo.getRange(partitionId);
+                        if (partitionKeyRange == null) {
+                            return null;
+                        }
+                        BucketSeqAndPartition bucketSeqPartition = new BucketSeqAndPartition(bucketSeq, partitionKeyRange);
+
+                        bucketSeqToPartitionToScanRanges
+                                .computeIfAbsent(bucketSeq, (k) -> new HashMap<>())
+                                .computeIfAbsent(bucketSeqPartition, (k) -> new HashMap<>())
+                                .computeIfAbsent(scanId, (k) -> new ArrayList<>())
+                                .add(scanRange);
+                    }
+                }
+            }
+
+            return
+        }
+
+        @Override
+        public void assign(FragmentInstance destInstance, Set<Integer> instanceReplicatedScanIds, List<Integer> bucketSeqs) {
+            final PlanFragment fragment = execFragment.getPlanFragment();
+            final int pipelineDop = fragment.getPipelineDop();
+
+            int expectedDop = Math.max(1, pipelineDop);
+            List<List<Integer>> bucketSeqsPerDriverSeq = ListUtil.splitBySize(bucketSeqs, expectedDop);
+
+            destInstance.setPipelineDop(bucketSeqsPerDriverSeq.size());
+
+            for (int driverSeq = 0; driverSeq < bucketSeqsPerDriverSeq.size(); driverSeq++) {
+                int finalDriverSeq = driverSeq;
+                bucketSeqsPerDriverSeq.get(driverSeq).forEach(bucketSeq -> {
+                    destInstance.addBucketSeqAndDriverSeq(bucketSeq, finalDriverSeq);
+                    bucketSeqToScanRange.get(bucketSeq).forEach((scanId, scanRanges) -> {
+                        if (needAddScanRanges(instanceReplicatedScanIds, scanId)) {
+                            destInstance.addScanRanges(scanId, finalDriverSeq, scanRanges);
+                        }
+                    });
+                });
+            }
+
+            destInstance.paddingScanRanges();
+        }
+
+        @Override
+        public boolean isAssignPerDriverSeq() {
+            return true;
+        }
+    }
+
+    private AssignBucketSeqToDriverSeqStrategy getAssignBucketSeqToDriverSeqStrategy(
+            ExecutionFragment execFragment, ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange,
+            Map<Long, List<Integer>> workerIdToBucketSeqs) {
+        final PlanFragment fragment = execFragment.getPlanFragment();
+        final int pipelineDop = fragment.getPipelineDop();
+
+        boolean assignPerDriverSeq = usePipeline && workerIdToBucketSeqs.values().stream()
+                .allMatch(bucketSeqs -> enableAssignScanRangesPerDriverSeq(bucketSeqs, pipelineDop));
+        if (assignPerDriverSeq) {
+            return new AssignBucketPerDriverSeqStrategy(execFragment, bucketSeqToScanRange);
+        }
+
+        boolean enablePartitionColocateJoin =
+                connectContext != null && connectContext.getSessionVariable().isEnablePartitionColocateJoin()
+                        && fragment.isContainsAllPartitionColumns();
+        if (enablePartitionColocateJoin) {
+        }
+
+        return new AssignPerInstanceStrategy(bucketSeqToScanRange);
+    }
+
     private void assignScanRangesToColocateFragmentInstancePerWorker(
             ExecutionFragment execFragment,
             Map<Integer, Long> bucketSeqToWorkerId,
             ColocatedBackendSelector.BucketSeqToScanRange bucketSeqToScanRange) {
         final PlanFragment fragment = execFragment.getPlanFragment();
         final int parallelExecInstanceNum = fragment.getParallelExecNum();
-        final int pipelineDop = fragment.getPipelineDop();
 
         // 1. count each node in one fragment should scan how many tablet, gather them in one list
         Map<Long, List<Integer>> workerIdToBucketSeqs = bucketSeqToWorkerId.entrySet().stream()
@@ -156,10 +402,10 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
                         Collectors.mapping(Map.Entry::getKey, Collectors.toList())
                 ));
 
-        boolean assignPerDriverSeq = usePipeline && workerIdToBucketSeqs.values().stream()
-                .allMatch(bucketSeqs -> enableAssignScanRangesPerDriverSeq(bucketSeqs, pipelineDop));
+        AssignBucketSeqToDriverSeqStrategy assignStrategy =
+                getAssignBucketSeqToDriverSeqStrategy(execFragment, bucketSeqToScanRange, workerIdToBucketSeqs);
 
-        if (!assignPerDriverSeq) {
+        if (!assignStrategy.isAssignPerDriverSeq()) {
             // these optimize depend on assignPerDriverSeq.
             fragment.disablePhysicalPropertyOptimize();
         }
@@ -178,36 +424,7 @@ public class LocalFragmentAssignmentStrategy implements FragmentAssignmentStrate
 
                 // record each instance replicate scan id in set, to avoid add replicate scan range repeatedly when they are in different buckets
                 Set<Integer> instanceReplicatedScanIds = new HashSet<>();
-
-                if (!assignPerDriverSeq) {
-                    bucketSeqsOfInstance.forEach(bucketSeq -> {
-                        instance.addBucketSeq(bucketSeq);
-                        bucketSeqToScanRange.get(bucketSeq).forEach((scanId, scanRanges) -> {
-                            if (needAddScanRanges(instanceReplicatedScanIds, scanId)) {
-                                instance.addScanRanges(scanId, scanRanges);
-                            }
-                        });
-                    });
-                } else {
-                    int expectedDop = Math.max(1, pipelineDop);
-                    List<List<Integer>> bucketSeqsPerDriverSeq = ListUtil.splitBySize(bucketSeqsOfInstance, expectedDop);
-
-                    instance.setPipelineDop(bucketSeqsPerDriverSeq.size());
-
-                    for (int driverSeq = 0; driverSeq < bucketSeqsPerDriverSeq.size(); driverSeq++) {
-                        int finalDriverSeq = driverSeq;
-                        bucketSeqsPerDriverSeq.get(driverSeq).forEach(bucketSeq -> {
-                            instance.addBucketSeqAndDriverSeq(bucketSeq, finalDriverSeq);
-                            bucketSeqToScanRange.get(bucketSeq).forEach((scanId, scanRanges) -> {
-                                if (needAddScanRanges(instanceReplicatedScanIds, scanId)) {
-                                    instance.addScanRanges(scanId, finalDriverSeq, scanRanges);
-                                }
-                            });
-                        });
-                    }
-
-                    instance.paddingScanRanges();
-                }
+                assignStrategy.assign(instance, instanceReplicatedScanIds, bucketSeqsOfInstance);
             });
         });
     }

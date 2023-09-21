@@ -39,6 +39,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.starrocks.analysis.Expr;
+import com.starrocks.analysis.SlotId;
 import com.starrocks.common.Pair;
 import com.starrocks.common.TreeNode;
 import com.starrocks.qe.ConnectContext;
@@ -164,6 +165,9 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
     private boolean useRuntimeAdaptiveDop = false;
 
+    private Set<SlotId> scanNodeRangePartitionSlotIds = Sets.newHashSet();
+    private boolean containsAllPartitionColumns = true;
+
     /**
      * C'tor for fragment with specific partition; the output is by default broadcast.
      */
@@ -195,6 +199,22 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         for (PlanNode child : node.getChildren()) {
             setFragmentInPlanTree(child);
         }
+    }
+
+    public Set<SlotId> getScanNodeRangePartitionSlotIds() {
+        return scanNodeRangePartitionSlotIds;
+    }
+
+    public void setScanNodeRangePartitionSlotIds(Set<SlotId> scanNodeRangePartitionSlotIds) {
+        this.scanNodeRangePartitionSlotIds = scanNodeRangePartitionSlotIds;
+    }
+
+    public boolean isContainsAllPartitionColumns() {
+        return containsAllPartitionColumns;
+    }
+
+    public void setContainsAllPartitionColumns(boolean containsAllPartitionColumns) {
+        this.containsAllPartitionColumns &= containsAllPartitionColumns;
     }
 
     public boolean canUsePipeline() {

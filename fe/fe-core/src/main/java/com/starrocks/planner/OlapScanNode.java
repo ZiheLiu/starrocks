@@ -580,6 +580,14 @@ public class OlapScanNode extends ScanNode {
                 (System.currentTimeMillis() - start), selectedPartitionIds);
     }
 
+    public List<Column> getRangePartitionColumns() {
+        PartitionInfo partitionInfo = olapTable.getPartitionInfo();
+        if (partitionInfo instanceof RangePartitionInfo) {
+            return ((RangePartitionInfo) partitionInfo).getPartitionColumns();
+        }
+        return Collections.emptyList();
+    }
+
     public void selectBestRollupByRollupSelector() {
         selectedIndexId = olapTable.getBaseIndexId();
     }
