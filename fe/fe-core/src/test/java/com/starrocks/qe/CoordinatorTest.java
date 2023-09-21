@@ -145,7 +145,7 @@ public class CoordinatorTest extends PlanTestBase {
         }
 
         coordinatorPreprocessor.computeColocatedJoinInstanceParam(bucketSeqToAddress, bucketSeqToScanRange,
-                parallelExecInstanceNum, pipelineDop, enablePipeline, params);
+                parallelExecInstanceNum, pipelineDop, enablePipeline, params, false);
         params.instanceExecParams.sort(Comparator.comparing(param -> param.host));
 
         Assert.assertEquals(expectedInstances, params.instanceExecParams.size());

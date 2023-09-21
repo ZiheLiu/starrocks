@@ -20,6 +20,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.analysis.AggregateInfo;
 import com.starrocks.analysis.Analyzer;
+import com.starrocks.analysis.BinaryPredicate;
 import com.starrocks.analysis.BinaryType;
 import com.starrocks.analysis.BrokerDesc;
 import com.starrocks.analysis.DescriptorTable;
@@ -788,6 +789,8 @@ public class PlanFragmentBuilder {
                         INTERNAL_ERROR);
             }
 
+            Set<Column> partitionColumns = new HashSet<>(scanNode.getPartitionColumns());
+            Set<SlotId> partitionColumnSlotIds = new HashSet<>(partitionColumns.size());
             // set slot
             for (Map.Entry<ColumnRefOperator, Column> entry : node.getColRefToColumnMetaMap().entrySet()) {
                 SlotDescriptor slotDescriptor =
@@ -799,7 +802,15 @@ public class PlanFragmentBuilder {
                     slotDescriptor.setOriginType(entry.getKey().getType());
                     slotDescriptor.setType(entry.getKey().getType());
                 }
-                context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
+                SlotRef slotRef = new SlotRef(entry.getKey().toString(), slotDescriptor);
+                context.getColRefToExpr().put(entry.getKey(), slotRef);
+
+                if (partitionColumns.contains(entry.getValue())) {
+                    partitionColumnSlotIds.add(slotRef.getSlotId());
+                }
+            }
+            if (partitionColumnSlotIds.size() < partitionColumns.size()) {
+                partitionColumnSlotIds.clear();
             }
 
             // set column access path
@@ -836,6 +847,7 @@ public class PlanFragmentBuilder {
             context.getScanNodes().add(scanNode);
             PlanFragment fragment =
                     new PlanFragment(context.getNextFragmentId(), scanNode, DataPartition.RANDOM);
+            fragment.setScanNodePartitionColumnSlotIds(partitionColumnSlotIds);
             fragment.setQueryGlobalDicts(node.getGlobalDicts());
             context.getFragments().add(fragment);
             return fragment;
@@ -1881,6 +1893,11 @@ public class PlanFragmentBuilder {
                 inputFragment.setAssignScanRangesPerDriverSeq(!withLocalShuffle);
                 aggregationNode.setWithLocalShuffle(withLocalShuffle);
                 aggregationNode.setIdenticallyDistributed(true);
+
+                inputFragment.setContainsAllPartitionColumns(containsAllPartitionColumns(
+                        aggregationNode.getAggInfo().getGroupingExprs(),
+                        inputFragment.getScanNodePartitionColumnSlotIds()));
+
             }
 
             aggregationNode.getAggInfo().setIntermediateAggrExprs(intermediateAggrExprs);
@@ -2956,6 +2973,50 @@ public class PlanFragmentBuilder {
             return buildJoinFragment(context, leftFragment, rightFragment, distributionMode, joinNode);
         }
 
+        private boolean containsAllPartitionColumns(List<BinaryPredicate> eqJoinConjuncts,
+                                                    Set<SlotId> leftPartitionSlotIds,
+                                                    Set<SlotId> rightPartitionSlotIds) {
+            if (leftPartitionSlotIds.isEmpty() || rightPartitionSlotIds.isEmpty()) {
+                return false;
+            }
+
+            Set<SlotId> usedLeftSlotIds = new HashSet<>(leftPartitionSlotIds.size());
+            Set<SlotId> usedRightSlotIds = new HashSet<>(rightPartitionSlotIds.size());
+            for (BinaryPredicate pred : eqJoinConjuncts) {
+                if (pred.getChildren().size() < 2) {
+                    continue;
+                }
+                for (int i = 0; i < 2; i++) {
+                    Expr expr = pred.getChild(i);
+                    if (expr instanceof SlotRef) {
+                        SlotRef slotRef = (SlotRef) expr;
+                        if (leftPartitionSlotIds.contains(slotRef.getSlotId())) {
+                            usedLeftSlotIds.add(slotRef.getSlotId());
+                        }
+                        if (rightPartitionSlotIds.contains(slotRef.getSlotId())) {
+                            usedRightSlotIds.add(slotRef.getSlotId());
+                        }
+                    }
+                }
+            }
+            return usedLeftSlotIds.size() == leftPartitionSlotIds.size() &&
+                    usedRightSlotIds.size() == rightPartitionSlotIds.size();
+        }
+
+        private boolean containsAllPartitionColumns(List<Expr> groupingExprs,
+                                                    Set<SlotId> partitionSlotIds) {
+            Set<SlotId> usedSlotIds = new HashSet<>(partitionSlotIds.size());
+            for (Expr expr : groupingExprs) {
+                if (expr instanceof SlotRef) {
+                    SlotRef slotRef = (SlotRef) expr;
+                    if (partitionSlotIds.contains(slotRef.getSlotId())) {
+                        usedSlotIds.add(slotRef.getSlotId());
+                    }
+                }
+            }
+            return usedSlotIds.size() == partitionSlotIds.size();
+        }
+
         @NotNull
         private PlanFragment buildJoinFragment(ExecPlan context, PlanFragment leftFragment, PlanFragment rightFragment,
                                                JoinNode.DistributionMode distributionMode, JoinNode joinNode) {
@@ -3009,6 +3070,9 @@ public class PlanFragmentBuilder {
                 }
                 setJoinPushDown(joinNode);
 
+                boolean containsAllPartitionColumns = containsAllPartitionColumns(joinNode.getEqJoinConjuncts(),
+                        leftFragment.getScanNodePartitionColumnSlotIds(), rightFragment.getScanNodePartitionColumnSlotIds());
+
                 joinNode.setChild(0, leftFragment.getPlanRoot());
                 joinNode.setChild(1, rightFragment.getPlanRoot());
                 leftFragment.setPlanRoot(joinNode);
@@ -3019,6 +3083,7 @@ public class PlanFragmentBuilder {
                 context.getFragments().add(leftFragment);
 
                 leftFragment.mergeQueryGlobalDicts(rightFragment.getQueryGlobalDicts());
+                leftFragment.setContainsAllPartitionColumns(containsAllPartitionColumns);
 
                 return leftFragment;
             } else if (distributionMode.equals(JoinNode.DistributionMode.SHUFFLE_HASH_BUCKET)) {
@@ -3058,6 +3123,8 @@ public class PlanFragmentBuilder {
                     leftFragment = computeBucketShufflePlanFragment(context, leftFragment,
                             rightFragment, joinNode);
                 }
+
+                leftFragment.setContainsAllPartitionColumns(false);
 
                 return leftFragment;
             }

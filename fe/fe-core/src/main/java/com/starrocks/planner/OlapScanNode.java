@@ -52,6 +52,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.DistributionInfo;
 import com.starrocks.catalog.HashDistributionInfo;
 import com.starrocks.catalog.KeysType;
+import com.starrocks.catalog.ListPartitionInfo;
 import com.starrocks.catalog.LocalTablet;
 import com.starrocks.catalog.MaterializedIndex;
 import com.starrocks.catalog.MaterializedIndexMeta;
@@ -553,6 +554,16 @@ public class OlapScanNode extends ScanNode {
 
     public void selectBestRollupByRollupSelector() {
         selectedIndexId = olapTable.getBaseIndexId();
+    }
+
+    public List<Column> getPartitionColumns() {
+        PartitionInfo partitionInfo = olapTable.getPartitionInfo();
+        if (partitionInfo instanceof RangePartitionInfo) {
+            return ((RangePartitionInfo) partitionInfo).getPartitionColumns();
+        } else if (partitionInfo instanceof ListPartitionInfo) {
+            return ((ListPartitionInfo) partitionInfo).getPartitionColumns();
+        }
+        return Collections.emptyList();
     }
 
     private void getScanRangeLocations() throws UserException {

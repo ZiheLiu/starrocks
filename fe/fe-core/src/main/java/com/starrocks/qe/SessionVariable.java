@@ -103,7 +103,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String QUERY_TIMEOUT = "query_timeout";
 
-    /* 
+    /*
      * When FE does not set the pagecache parameter, we expect a query to follow the pagecache policy of BE.
      * If pagecache is set by FE, a query whether to use pagecache follows the policy specified by FE.
      */
@@ -226,6 +226,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String ENABLE_TABLET_INTERNAL_PARALLEL = "enable_tablet_internal_parallel";
     public static final String ENABLE_TABLET_INTERNAL_PARALLEL_V2 = "enable_tablet_internal_parallel_v2";
+    public static final String ENABLE_PARTITION_COLOCATE_JOIN = "enable_partition_colocate_join";
 
     public static final String TABLET_INTERNAL_PARALLEL_MODE = "tablet_internal_parallel_mode";
     public static final String ENABLE_SHARED_SCAN = "enable_shared_scan";
@@ -411,6 +412,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
             return EnumUtils.getEnumIgnoreCase(MaterializedViewRewriteMode.class, str);
         }
     }
+
     public static final String MATERIALIZED_VIEW_REWRITE_MODE = "materialized_view_rewrite_mode";
 
     public static final String ENABLE_SYNC_MATERIALIZED_VIEW_REWRITE = "enable_sync_materialized_view_rewrite";
@@ -583,6 +585,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = ENABLE_TABLET_INTERNAL_PARALLEL_V2,
             alias = ENABLE_TABLET_INTERNAL_PARALLEL, show = ENABLE_TABLET_INTERNAL_PARALLEL)
     private boolean enableTabletInternalParallel = true;
+
+    @VariableMgr.VarAttr(name = ENABLE_PARTITION_COLOCATE_JOIN)
+    private boolean enablePartitionColocateJoin = true;
 
     // The strategy mode of TabletInternalParallel, which is effective only when enableTabletInternalParallel is true.
     // The optional values are "auto" and "force_split".
@@ -1887,6 +1892,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enableTabletInternalParallel;
     }
 
+    public boolean isEnablePartitionColocateJoin() {
+        return enablePartitionColocateJoin;
+    }
+
     public boolean isEnableResourceGroup() {
         return true;
     }
@@ -1964,8 +1973,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     }
 
     public boolean isEnableMaterializedViewForceRewrite() {
-        return materializedViewRewriteMode.equalsIgnoreCase(MaterializedViewRewriteMode.MODE_FORCE)  ||
-                        materializedViewRewriteMode.equalsIgnoreCase(MaterializedViewRewriteMode.MODE_FORCE_OR_ERROR);
+        return materializedViewRewriteMode.equalsIgnoreCase(MaterializedViewRewriteMode.MODE_FORCE) ||
+                materializedViewRewriteMode.equalsIgnoreCase(MaterializedViewRewriteMode.MODE_FORCE_OR_ERROR);
     }
 
     public boolean isEnableMaterializedViewRewriteOrError() {

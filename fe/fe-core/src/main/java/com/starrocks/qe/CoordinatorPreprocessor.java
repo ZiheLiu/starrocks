@@ -21,11 +21,17 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Range;
 import com.google.common.collect.Sets;
+import com.starrocks.catalog.ListPartitionInfo;
+import com.starrocks.catalog.PartitionInfo;
+import com.starrocks.catalog.PartitionKey;
+import com.starrocks.catalog.RangePartitionInfo;
 import com.starrocks.catalog.ResourceGroup;
 import com.starrocks.catalog.ResourceGroupClassifier;
 import com.starrocks.common.Config;
 import com.starrocks.common.FeConstants;
+import com.starrocks.common.Pair;
 import com.starrocks.common.Reference;
 import com.starrocks.common.UserException;
 import com.starrocks.common.util.DebugUtil;
@@ -107,6 +113,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class CoordinatorPreprocessor {
@@ -140,6 +147,7 @@ public class CoordinatorPreprocessor {
     private final TDescriptorTable descriptorTable;
     private final List<PlanFragment> fragments;
     private final List<ScanNode> scanNodes;
+    private final Map<Integer, ScanNode> idToScanNode;
 
     // populated in computeFragmentExecParams()
     private final Map<PlanFragmentId, FragmentExecParams> fragmentExecParamsMap = Maps.newHashMap();
@@ -178,6 +186,7 @@ public class CoordinatorPreprocessor {
         this.descriptorTable = descriptorTable;
         this.fragments = fragments;
         this.scanNodes = scanNodes;
+        this.idToScanNode = scanNodes.stream().collect(Collectors.toMap(node -> node.getId().asInt(), Function.identity()));
         this.queryGlobals = queryGlobals;
         this.queryOptions = queryOptions;
         this.usePipeline = canUsePipeline(this.connectContext, this.fragments);
@@ -186,6 +195,7 @@ public class CoordinatorPreprocessor {
     @VisibleForTesting
     CoordinatorPreprocessor(List<PlanFragment> fragments, List<ScanNode> scanNodes) {
         this.scanNodes = scanNodes;
+        this.idToScanNode = scanNodes.stream().collect(Collectors.toMap(node -> node.getId().asInt(), Function.identity()));
         this.connectContext = StatisticUtils.buildConnectContext();
         this.queryId = connectContext.getExecutionId();
         this.queryGlobals =
@@ -691,13 +701,16 @@ public class CoordinatorPreprocessor {
             int pipelineDop = fragment.getPipelineDop();
             boolean hasColocate = (isColocateFragment(fragment.getPlanRoot()) &&
                     fragmentIdToSeqToAddressMap.containsKey(fragment.getFragmentId())
-                    && fragmentIdToSeqToAddressMap.get(fragment.getFragmentId()).size() > 0);
+                    && !fragmentIdToSeqToAddressMap.get(fragment.getFragmentId()).isEmpty());
             boolean hasBucketShuffle = isBucketShuffleJoin(fragment.getFragmentId().asInt());
 
             if (hasColocate || hasBucketShuffle) {
+                boolean enablePartitionColocateJoin =
+                        connectContext != null && connectContext.getSessionVariable().isEnablePartitionColocateJoin()
+                                && fragment.isContainsAllPartitionColumns();
                 computeColocatedJoinInstanceParam(fragmentIdToSeqToAddressMap.get(fragment.getFragmentId()),
                         fragmentIdBucketSeqToScanRangeMap.get(fragment.getFragmentId()),
-                        parallelExecInstanceNum, pipelineDop, usePipeline, params);
+                        parallelExecInstanceNum, pipelineDop, usePipeline, params, enablePartitionColocateJoin);
                 computeBucketSeq2InstanceOrdinal(params, fragmentIdToBucketNumMap.get(fragment.getFragmentId()));
             } else {
                 boolean assignScanRangesPerDriverSeq = usePipeline &&
@@ -955,10 +968,50 @@ public class CoordinatorPreprocessor {
         return !enableTabletInternalParallel || scanRanges.size() > pipelineDop / 2;
     }
 
+    private <T> boolean enableAssignPartitionPerDriverSeq(
+            List<Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>>> scanRanges, int pipelineDop) {
+        int numTablets = scanRanges.stream()
+                .mapToInt(bucketSeqAndScanRanges -> bucketSeqAndScanRanges.getValue().values().stream()
+                        .map(List::size)
+                        .max(Comparator.naturalOrder())
+                        .orElse(0))
+                .sum();
+        return numTablets > pipelineDop / 2;
+    }
+
+    private enum ColocateAssignmentStrategy {
+        ASSIGN_BUCKET_PER_DRIVER_SEQ,
+        ASSIGN_PARTITION_PER_DRIVER_SEQ,
+        ASSIGN_PER_INSTANCE
+    }
+
+    private ColocateAssignmentStrategy getColocateAssignmentStrategy(
+            Map<TNetworkAddress, List<Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>>>> addressToScanRanges,
+            boolean enablePipeline, int pipelineDop,
+            boolean canUsePartitionColocateJoin) {
+        if (!enablePipeline) {
+            return ColocateAssignmentStrategy.ASSIGN_PER_INSTANCE;
+        }
+
+        boolean assignBucketPerDriverSeq = addressToScanRanges.values().stream()
+                .allMatch(scanRanges -> enableAssignScanRangesPerDriverSeq(scanRanges, pipelineDop));
+        if (assignBucketPerDriverSeq) {
+            return ColocateAssignmentStrategy.ASSIGN_BUCKET_PER_DRIVER_SEQ;
+        }
+
+        boolean assignPartitionPerDriverSeq = canUsePartitionColocateJoin && addressToScanRanges.values().stream()
+                .allMatch(scanRanges -> enableAssignPartitionPerDriverSeq(scanRanges, pipelineDop));
+        if (assignPartitionPerDriverSeq) {
+            return ColocateAssignmentStrategy.ASSIGN_PARTITION_PER_DRIVER_SEQ;
+        }
+
+        return ColocateAssignmentStrategy.ASSIGN_PER_INSTANCE;
+    }
+
     public void computeColocatedJoinInstanceParam(Map<Integer, TNetworkAddress> bucketSeqToAddress,
                                                   BucketSeqToScanRange bucketSeqToScanRange,
                                                   int parallelExecInstanceNum, int pipelineDop, boolean enablePipeline,
-                                                  FragmentExecParams params) {
+                                                  FragmentExecParams params, boolean canUsePartitionColocateJoin) {
         // 1. count each node in one fragment should scan how many tablet, gather them in one list
         Map<TNetworkAddress, List<Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>>>> addressToScanRanges =
                 Maps.newHashMap();
@@ -969,9 +1022,8 @@ public class CoordinatorPreprocessor {
                     .add(bucketSeqAndScanRanges);
         }
 
-        boolean assignPerDriverSeq =
-                enablePipeline && addressToScanRanges.values().stream()
-                        .allMatch(scanRanges -> enableAssignScanRangesPerDriverSeq(scanRanges, pipelineDop));
+        ColocateAssignmentStrategy strategy =
+                getColocateAssignmentStrategy(addressToScanRanges, enablePipeline, pipelineDop, canUsePartitionColocateJoin);
 
         for (Map.Entry<TNetworkAddress, List<Map.Entry<Integer, Map<Integer,
                 List<TScanRangeParams>>>>> addressScanRange : addressToScanRanges.entrySet()) {
@@ -990,64 +1042,162 @@ public class CoordinatorPreprocessor {
             // 3.construct instanceExecParam add the scanRange should be scan by instance
             for (List<Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>>> scanRangePerInstance : scanRangesPerInstance) {
                 FInstanceExecParam instanceParam = new FInstanceExecParam(null, addressScanRange.getKey(), 0, params);
+                params.instanceExecParams.add(instanceParam);
+
                 // record each instance replicate scan id in set, to avoid add replicate scan range repeatedly when they are in different buckets
                 Set<Integer> instanceReplicateScanSet = new HashSet<>();
 
-                int expectedDop = 1;
-                if (pipelineDop > 1) {
-                    expectedDop = Math.min(scanRangePerInstance.size(), pipelineDop);
-                }
-                List<List<Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>>>> scanRangesPerDriverSeq =
-                        ListUtil.splitBySize(scanRangePerInstance, expectedDop);
-
-                if (assignPerDriverSeq) {
-                    instanceParam.pipelineDop = scanRangesPerDriverSeq.size();
-                    if (params.fragment.isUseRuntimeAdaptiveDop()) {
-                        instanceParam.pipelineDop = Utils.computeMinGEPower2(instanceParam.pipelineDop);
-                    }
-                }
-
-                for (int driverSeq = 0; driverSeq < scanRangesPerDriverSeq.size(); ++driverSeq) {
-                    final int finalDriverSeq = driverSeq;
-                    scanRangesPerDriverSeq.get(finalDriverSeq).forEach(bucketSeqAndScanRanges -> {
-                        if (assignPerDriverSeq) {
-                            instanceParam.addBucketSeqAndDriverSeq(bucketSeqAndScanRanges.getKey(), finalDriverSeq);
-                        } else {
+                switch (strategy) {
+                    case ASSIGN_PER_INSTANCE:
+                        scanRangePerInstance.forEach(bucketSeqAndScanRanges -> {
                             instanceParam.addBucketSeq(bucketSeqAndScanRanges.getKey());
+
+                            bucketSeqAndScanRanges.getValue().forEach((scanId, scanRanges) -> {
+                                List<TScanRangeParams> destScanRanges = instanceParam.perNodeScanRanges
+                                        .computeIfAbsent(scanId, k -> new ArrayList<>());
+
+                                if (replicateScanIds.contains(scanId)) {
+                                    if (!instanceReplicateScanSet.contains(scanId)) {
+                                        destScanRanges.addAll(scanRanges);
+                                        instanceReplicateScanSet.add(scanId);
+                                    }
+                                } else {
+                                    destScanRanges.addAll(scanRanges);
+                                }
+                            });
+                        });
+                        break;
+                    case ASSIGN_BUCKET_PER_DRIVER_SEQ: {
+                        int expectedDop = 1;
+                        if (pipelineDop > 1) {
+                            expectedDop = Math.min(scanRangePerInstance.size(), pipelineDop);
+                        }
+                        List<List<Map.Entry<Integer, Map<Integer, List<TScanRangeParams>>>>> scanRangesPerDriverSeq =
+                                ListUtil.splitBySize(scanRangePerInstance, expectedDop);
+
+                        instanceParam.pipelineDop = scanRangesPerDriverSeq.size();
+                        if (params.fragment.isUseRuntimeAdaptiveDop()) {
+                            instanceParam.pipelineDop = Utils.computeMinGEPower2(instanceParam.pipelineDop);
                         }
 
-                        bucketSeqAndScanRanges.getValue().forEach((scanId, scanRanges) -> {
-                            List<TScanRangeParams> destScanRanges;
-                            if (!assignPerDriverSeq) {
-                                destScanRanges = instanceParam.perNodeScanRanges
-                                        .computeIfAbsent(scanId, k -> new ArrayList<>());
-                            } else {
-                                destScanRanges = instanceParam.nodeToPerDriverSeqScanRanges
-                                        .computeIfAbsent(scanId, k -> new HashMap<>())
-                                        .computeIfAbsent(finalDriverSeq, k -> new ArrayList<>());
-                            }
+                        for (int driverSeq = 0; driverSeq < scanRangesPerDriverSeq.size(); ++driverSeq) {
+                            final int finalDriverSeq = driverSeq;
+                            scanRangesPerDriverSeq.get(finalDriverSeq).forEach(bucketSeqAndScanRanges -> {
+                                instanceParam.addBucketSeqAndDriverSeq(bucketSeqAndScanRanges.getKey(), finalDriverSeq);
 
-                            if (replicateScanIds.contains(scanId)) {
-                                if (!instanceReplicateScanSet.contains(scanId)) {
-                                    destScanRanges.addAll(scanRanges);
-                                    instanceReplicateScanSet.add(scanId);
-                                }
-                            } else {
-                                destScanRanges.addAll(scanRanges);
+                                bucketSeqAndScanRanges.getValue().forEach((scanId, scanRanges) -> {
+                                    List<TScanRangeParams> destScanRanges = instanceParam.nodeToPerDriverSeqScanRanges
+                                            .computeIfAbsent(scanId, k -> new HashMap<>())
+                                            .computeIfAbsent(finalDriverSeq, k -> new ArrayList<>());
+
+                                    if (replicateScanIds.contains(scanId)) {
+                                        if (!instanceReplicateScanSet.contains(scanId)) {
+                                            destScanRanges.addAll(scanRanges);
+                                            instanceReplicateScanSet.add(scanId);
+                                        }
+                                    } else {
+                                        destScanRanges.addAll(scanRanges);
+                                    }
+                                });
+                            });
+                        }
+
+                        instanceParam.nodeToPerDriverSeqScanRanges.forEach((scanId, perDriverSeqScanRanges) -> {
+                            for (int driverSeq = 0; driverSeq < instanceParam.pipelineDop; ++driverSeq) {
+                                perDriverSeqScanRanges.computeIfAbsent(driverSeq, k -> new ArrayList<>());
                             }
                         });
-                    });
-                }
+                        break;
+                    }
+                    case ASSIGN_PARTITION_PER_DRIVER_SEQ: {
+                        Map<Pair<Integer, Object>, Map<Integer, List<TScanRangeParams>>>
+                                bucketPartitionToScanRanges = new HashMap<>();
+                        scanRangePerInstance.forEach(bucketSeqAndScanRanges -> {
+                            Integer bucketSeq = bucketSeqAndScanRanges.getKey();
+                            bucketSeqAndScanRanges.getValue()
+                                    .forEach((scanId, scanRanges) -> scanRanges.forEach(currScanRange -> {
+                                        long partitionId =
+                                                currScanRange.getScan_range().getInternal_scan_range().getPartition_id();
+                                        ScanNode scanNode = idToScanNode.get(scanId);
+                                        if (scanNode instanceof OlapScanNode) {
+                                            OlapScanNode olapScanNode = (OlapScanNode) scanNode;
+                                            PartitionInfo partitionInfo = olapScanNode.getOlapTable().getPartitionInfo();
+                                            Pair<Integer, Object> bucketPartition = null;
+                                            if (partitionInfo instanceof RangePartitionInfo) {
+                                                RangePartitionInfo rangePartitionInfo = (RangePartitionInfo) partitionInfo;
+                                                Range<PartitionKey> partitionKeyRange = rangePartitionInfo.getRange(partitionId);
+                                                bucketPartition = Pair.create(bucketSeq, partitionKeyRange);
+                                            } else if (partitionInfo instanceof ListPartitionInfo) {
+                                                ListPartitionInfo listPartitionInfo = (ListPartitionInfo) partitionInfo;
+                                                if (listPartitionInfo.getIdToMultiValues().containsKey(partitionId)) {
+                                                    List<List<String>> partitionValues =
+                                                            listPartitionInfo.getIdToMultiValues().get(partitionId);
+                                                    bucketPartition = Pair.create(bucketSeq, partitionValues);
+                                                }
+                                            }
 
-                if (assignPerDriverSeq) {
-                    instanceParam.nodeToPerDriverSeqScanRanges.forEach((scanId, perDriverSeqScanRanges) -> {
-                        for (int driverSeq = 0; driverSeq < instanceParam.pipelineDop; ++driverSeq) {
-                            perDriverSeqScanRanges.computeIfAbsent(driverSeq, k -> new ArrayList<>());
+                                            bucketPartitionToScanRanges.computeIfAbsent(bucketPartition, (k) -> new HashMap<>())
+                                                    .computeIfAbsent(scanId, (k) -> new ArrayList<>())
+                                                    .add(currScanRange);
+                                        }
+                                    }));
+                        });
+                        List<Map.Entry<Pair<Integer, Object>, Map<Integer, List<TScanRangeParams>>>>
+                                bucketPartitionAndScanRanges = new ArrayList<>(bucketPartitionToScanRanges.entrySet());
+
+                        int expectedDop = 1;
+                        if (pipelineDop > 1) {
+                            expectedDop = Math.min(bucketPartitionToScanRanges.size(), pipelineDop);
                         }
-                    });
-                }
+                        List<List<Map.Entry<Pair<Integer, Object>, Map<Integer, List<TScanRangeParams>>>>>
+                                scanRangesPerDriverSeq = ListUtil.splitBySize(bucketPartitionAndScanRanges, expectedDop);
 
-                params.instanceExecParams.add(instanceParam);
+                        instanceParam.pipelineDop = scanRangesPerDriverSeq.size();
+                        if (params.fragment.isUseRuntimeAdaptiveDop()) {
+                            instanceParam.pipelineDop = Utils.computeMinGEPower2(instanceParam.pipelineDop);
+                        }
+
+                        for (int driverSeq = 0; driverSeq < scanRangesPerDriverSeq.size(); ++driverSeq) {
+                            final int finalDriverSeq = driverSeq;
+                            scanRangesPerDriverSeq.get(finalDriverSeq).forEach(bucketSeqAndScanRanges -> {
+                                instanceParam.addBucketSeq(bucketSeqAndScanRanges.getKey().first);
+
+                                bucketSeqAndScanRanges.getValue().forEach((scanId, scanRanges) -> {
+                                    scanRanges.forEach(sg ->
+                                            LOG.warn("[SCHEDULER] instanceParam nodeToPerDriverSeqScanRanges " +
+                                                            "[scanNodeId={}] [driverSeq={}] [bucketSeq={}] [partition={}]",
+                                                    scanId, finalDriverSeq, bucketSeqAndScanRanges.getKey().first, // 128066 126210 128074 126224
+                                                    bucketSeqAndScanRanges.getKey().second));
+
+                                    List<TScanRangeParams> destScanRanges = instanceParam.nodeToPerDriverSeqScanRanges
+                                            .computeIfAbsent(scanId, k -> new HashMap<>())
+                                            .computeIfAbsent(finalDriverSeq, k -> new ArrayList<>());
+
+                                    if (replicateScanIds.contains(scanId)) {
+                                        if (!instanceReplicateScanSet.contains(scanId)) {
+                                            destScanRanges.addAll(scanRanges);
+                                            instanceReplicateScanSet.add(scanId);
+                                        }
+                                    } else {
+                                        destScanRanges.addAll(scanRanges);
+                                    }
+                                });
+                            });
+                        }
+
+                        instanceParam.nodeToPerDriverSeqScanRanges.forEach((scanId, perDriverSeqScanRanges) -> {
+                            for (int driverSeq = 0; driverSeq < instanceParam.pipelineDop; ++driverSeq) {
+                                perDriverSeqScanRanges.computeIfAbsent(driverSeq, k -> new ArrayList<>());
+                            }
+                        });
+
+                        LOG.warn("[SCHEDULER] instanceParam [host={}] [nodeToPerDriverSeqScanRanges.size={}]",
+                                instanceParam.getHost().getHostname(), instanceParam.nodeToPerDriverSeqScanRanges.size());
+                        LOG.warn("[SCHEDULER] instanceParam ========================================");
+
+                        break;
+                    }
+                }
             }
         }
     }
