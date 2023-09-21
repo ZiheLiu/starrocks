@@ -251,6 +251,7 @@ public:
     size_t bytes_usage() const;
     // Bytes usage of |size| rows from |from| in chunk
     size_t bytes_usage(size_t from, size_t size) const;
+    std::vector<size_t> bytes_usages() const;
 
     bool has_const_column() const;
 

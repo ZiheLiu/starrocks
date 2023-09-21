@@ -121,6 +121,8 @@ public:
     // The byte size for serialize, for varchar, we need to add the len byte size
     virtual size_t byte_size(size_t idx) const = 0;
 
+    virtual void add_byte_size(size_t* dst_byte_sizes, size_t num_rows) const;
+
     virtual void reserve(size_t n) = 0;
 
     virtual void resize(size_t n) = 0;

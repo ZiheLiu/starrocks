@@ -33,9 +33,10 @@ Status Partitioner::partition_chunk(const ChunkPtr& chunk, int32_t num_partition
     {
         _partition_row_indexes_start_points.assign(num_partitions + 1, 0);
         _partition_memory_usage.assign(num_partitions, 0);
+        std::vector<size_t> bytes_usage_per_row = chunk->byte_usages();
         for (size_t i = 0; i < num_rows; ++i) {
             _partition_row_indexes_start_points[_shuffle_channel_id[i]]++;
-            _partition_memory_usage[_shuffle_channel_id[i]] += chunk->bytes_usage(i, 1);
+            _partition_memory_usage[_shuffle_channel_id[i]] += bytes_usage_per_row[i];
         }
         // We make the last item equal with number of rows of this chunk.
         for (int32_t i = 1; i <= num_partitions; ++i) {

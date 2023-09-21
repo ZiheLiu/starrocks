@@ -132,6 +132,8 @@ public:
 
     size_t byte_size(size_t idx) const override { return _offsets[idx + 1] - _offsets[idx] + sizeof(uint32_t); }
 
+    void add_byte_size(size_t* dst_byte_sizes, size_t num_rows) const override;
+
     Slice get_slice(size_t idx) const {
         return Slice(_bytes.data() + _offsets[idx], _offsets[idx + 1] - _offsets[idx]);
     }

@@ -99,6 +99,8 @@ public:
         return sizeof(ValueType) * size;
     }
 
+    void add_byte_size(size_t* dst_byte_sizes, size_t num_rows) const override;
+
     void reserve(size_t n) override { _data.reserve(n); }
 
     void resize(size_t n) override { _data.resize(n); }

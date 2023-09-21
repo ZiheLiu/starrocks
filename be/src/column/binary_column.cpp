@@ -119,6 +119,13 @@ void BinaryColumnBase<T>::append_value_multiple_times(const Column& src, uint32_
     _slices_cache = false;
 }
 
+template <typename T>
+void BinaryColumnBase<T>::add_byte_size(size_t* dst_byte_sizes, size_t num_rows) const {
+    for (int i = 0; i < num_rows; i++) {
+        dst_byte_sizes[i] += _offsets[i + 1] - _offsets[i] + sizeof(uint32_t);
+    }
+}
+
 //TODO(fzh): optimize copy using SIMD
 template <typename T>
 ColumnPtr BinaryColumnBase<T>::replicate(const std::vector<uint32_t>& offsets) {

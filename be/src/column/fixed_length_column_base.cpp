@@ -64,6 +64,13 @@ void FixedLengthColumnBase<T>::append_value_multiple_times(const Column& src, ui
     }
 }
 
+template <typename T>
+void FixedLengthColumnBase<T>::add_byte_size(size_t* dst_byte_sizes, size_t num_rows) const {
+    for (int i = 0; i < num_rows; i++) {
+        dst_byte_sizes[i] += sizeof(ValueType);
+    }
+}
+
 //TODO(fzh): optimize copy using SIMD
 template <typename T>
 ColumnPtr FixedLengthColumnBase<T>::replicate(const std::vector<uint32_t>& offsets) {

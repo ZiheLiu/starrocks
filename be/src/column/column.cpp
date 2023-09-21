@@ -106,4 +106,10 @@ bool Column::empty_null_in_complex_column(const Filter& null_data, const std::ve
     return need_empty;
 }
 
+void Column::add_byte_size(size_t* dst_byte_sizes, size_t num_rows) const {
+    for (int i = 0; i < num_rows; i++) {
+        dst_byte_sizes[i] += byte_size(i);
+    }
+}
+
 } // namespace starrocks
