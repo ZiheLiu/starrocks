@@ -20,6 +20,7 @@
 
 #include "column/bytes.h"
 #include "column/vectorized_fwd.h"
+#include "common/config.h"
 #include "common/logging.h"
 #include "gutil/bits.h"
 #include "gutil/casts.h"
