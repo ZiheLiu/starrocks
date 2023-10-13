@@ -52,10 +52,8 @@ void BinaryColumnBase<T>::append(const Column& src, size_t offset, size_t count)
     const unsigned char* p = &b._bytes[b._offsets[offset]];
     const unsigned char* e = &b._bytes[b._offsets[offset + count]];
 
-    if (config::binary_column_scale_up_factor > 1) {
-        if (_bytes.capacity() < _bytes.size() + count) {
-            _bytes.reserve(_bytes.capacity() * config::binary_column_scale_up_factor);
-        }
+    if (config::binary_column_scale_up_factor > 1 && size() <= 4096 && size() + count > 4096) {
+        _bytes.reserve(config::binary_column_scale_up_factor);
     }
 
     _bytes.insert(_bytes.end(), p, e);
