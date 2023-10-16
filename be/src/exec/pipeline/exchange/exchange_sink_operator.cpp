@@ -192,12 +192,14 @@ Status ExchangeSinkOperator::Channel::add_rows_selective(Chunk* chunk, int32_t d
                                                          uint32_t from, uint32_t size, RuntimeState* state) {
     if (UNLIKELY(_chunks[driver_sequence] == nullptr)) {
         _chunks[driver_sequence] = chunk->clone_empty_with_slot(size);
+        _chunks[driver_sequence].reserve(state->chunk_size());
     }
 
     if (_chunks[driver_sequence]->num_rows() + size > state->chunk_size()) {
         RETURN_IF_ERROR(send_one_chunk(state, _chunks[driver_sequence].get(), driver_sequence, false));
         // we only clear column data, because we need to reuse column schema
         _chunks[driver_sequence]->set_num_rows(0);
+        _chunks[driver_sequence].reserve(state->chunk_size());
     }
 
     if (_parent->_devirtualize) {
