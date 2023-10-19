@@ -92,6 +92,8 @@ public class AuditEvent {
     public String errorCode = "";
     @AuditField(value = "Time")
     public long queryTime = -1;
+    @AuditField(value = "ParserTime")
+    public long parserTime = -1;
     @AuditField(value = "ScanBytes")
     public long scanBytes = -1;
     @AuditField(value = "ScanRows")
@@ -134,7 +136,6 @@ public class AuditEvent {
     public String candidateMvs;
     @AuditField(value = "HitMvs", ignore_zero = true)
     public String hitMVs;
-
 
     public static class AuditEventBuilder {
 
@@ -199,6 +200,11 @@ public class AuditEvent {
 
         public AuditEventBuilder setQueryTime(long queryTime) {
             auditEvent.queryTime = queryTime;
+            return this;
+        }
+
+        public AuditEventBuilder setParserTime(long parserTime) {
+            auditEvent.parserTime = parserTime;
             return this;
         }
 
