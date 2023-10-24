@@ -670,7 +670,7 @@ Status SegmentIterator::_get_row_ranges_by_keys() {
     if (_opts.short_key_ranges.empty() || _opts.is_first_split_of_segment) {
         _opts.stats->rows_key_range_filtered += prev_num_rows - _scan_range.span_size();
     } else {
-        _opts.stats->rows_key_range_filtered += -_scan_range.span_size();
+        _opts.stats->rows_key_range_filtered += -static_cast<int64_t>(_scan_range.span_size());
     }
     _opts.stats->rows_after_key_range += _scan_range.span_size();
     StarRocksMetrics::instance()->segment_rows_by_short_key.increment(_scan_range.span_size());
