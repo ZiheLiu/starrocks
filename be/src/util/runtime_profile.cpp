@@ -812,9 +812,6 @@ RuntimeProfile* RuntimeProfile::merge_isomorphic_profiles(ObjectPool* obj_pool, 
                                                           bool require_identical) {
     DCHECK(!profiles.empty());
 
-    static const std::string MERGED_INFO_PREFIX_MIN = "__MIN_OF_";
-    static const std::string MERGED_INFO_PREFIX_MAX = "__MAX_OF_";
-
     // all metrics will be merged into the first profile
     auto* merged_profile = obj_pool->add(new RuntimeProfile(profiles[0]->name(), profiles[0]->_is_averaged_profile));
 

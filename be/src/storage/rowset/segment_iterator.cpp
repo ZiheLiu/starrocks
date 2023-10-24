@@ -192,8 +192,8 @@ private:
     template <bool check_global_dict>
     Status _init_column_iterators(const Schema& schema);
     Status _get_row_ranges_by_keys();
-    Status _get_row_ranges_by_key_ranges();
-    Status _get_row_ranges_by_short_key_ranges();
+    StatusOr<SparseRange<>> _get_row_ranges_by_key_ranges();
+    StatusOr<SparseRange<>> _get_row_ranges_by_short_key_ranges();
     Status _get_row_ranges_by_zone_map();
     Status _get_row_ranges_by_bloom_filter();
     Status _get_row_ranges_by_rowid_range();
@@ -412,8 +412,8 @@ Status SegmentIterator::_init() {
     RETURN_IF_ERROR(_init_column_iterators<true>(_schema));
     // filter by index stage
     // Use indexes and predicates to filter some data page
-    RETURN_IF_ERROR(_get_row_ranges_by_keys());
     RETURN_IF_ERROR(_get_row_ranges_by_rowid_range());
+    RETURN_IF_ERROR(_get_row_ranges_by_keys());
     RETURN_IF_ERROR(_apply_del_vector());
     RETURN_IF_ERROR(_apply_bitmap_index());
     RETURN_IF_ERROR(_get_row_ranges_by_zone_map());
@@ -653,28 +653,38 @@ void SegmentIterator::_init_column_predicates() {
 }
 
 Status SegmentIterator::_get_row_ranges_by_keys() {
-    StarRocksMetrics::instance()->segment_row_total.increment(num_rows());
+    const uint32_t prev_num_rows = _scan_range.span_size();
+    StarRocksMetrics::instance()->segment_row_total.increment(prev_num_rows);
     SCOPED_RAW_TIMER(&_opts.stats->rows_key_range_filter_ns);
 
+    SparseRange<> scan_range_by_keys;
     if (!_opts.short_key_ranges.empty()) {
-        RETURN_IF_ERROR(_get_row_ranges_by_short_key_ranges());
+        ASSIGN_OR_RETURN(scan_range_by_keys, _get_row_ranges_by_short_key_ranges());
         _opts.stats->rows_key_range_num += _opts.short_key_ranges.size();
     } else {
-        RETURN_IF_ERROR(_get_row_ranges_by_key_ranges());
+        ASSIGN_OR_RETURN(scan_range_by_keys, _get_row_ranges_by_key_ranges());
     }
 
-    _opts.stats->rows_key_range_filtered += num_rows() - _scan_range.span_size();
+    _scan_range &= scan_range_by_keys;
+
+    if (_opts.short_key_ranges.empty() || _opts.is_first_split_of_segment) {
+        _opts.stats->rows_key_range_filtered += prev_num_rows - _scan_range.span_size();
+    } else {
+        _opts.stats->rows_key_range_filtered += -_scan_range.span_size();
+    }
+    _opts.stats->rows_after_key_range += _scan_range.span_size();
     StarRocksMetrics::instance()->segment_rows_by_short_key.increment(_scan_range.span_size());
     return Status::OK();
 }
 
-Status SegmentIterator::_get_row_ranges_by_key_ranges() {
+StatusOr<SparseRange<>> SegmentIterator::_get_row_ranges_by_key_ranges() {
     DCHECK(_opts.short_key_ranges.empty());
-    DCHECK_EQ(0, _scan_range.span_size());
+
+    SparseRange<> res;
 
     if (_opts.ranges.empty()) {
-        _scan_range.add(Range<>(0, num_rows()));
-        return Status::OK();
+        res.add(Range<>(0, num_rows()));
+        return res;
     }
 
     RETURN_IF_ERROR(_segment->load_index(_skip_fill_data_cache()));
@@ -691,21 +701,22 @@ Status SegmentIterator::_get_row_ranges_by_key_ranges() {
             RETURN_IF_ERROR(_lookup_ordinal(range.lower(), range.inclusive_lower(), upper_rowid, &lower_rowid));
         }
         if (lower_rowid <= upper_rowid) {
-            _scan_range.add(Range{lower_rowid, upper_rowid});
+            res.add(Range{lower_rowid, upper_rowid});
         }
     }
 
-    return Status::OK();
+    return res;
 }
 
-Status SegmentIterator::_get_row_ranges_by_short_key_ranges() {
+StatusOr<SparseRange<>> SegmentIterator::_get_row_ranges_by_short_key_ranges() {
     DCHECK(!_opts.short_key_ranges.empty());
-    DCHECK_EQ(0, _scan_range.span_size());
+
+    SparseRange<> res;
 
     if (_opts.short_key_ranges.size() == 1 && _opts.short_key_ranges[0]->lower->is_infinite() &&
         _opts.short_key_ranges[0]->upper->is_infinite()) {
-        _scan_range.add(Range<>(0, num_rows()));
-        return Status::OK();
+        res.add(Range<>(0, num_rows()));
+        return res;
     }
 
     RETURN_IF_ERROR(_segment->load_index(_skip_fill_data_cache()));
@@ -736,11 +747,11 @@ Status SegmentIterator::_get_row_ranges_by_short_key_ranges() {
         }
 
         if (lower_rowid <= upper_rowid) {
-            _scan_range.add(Range{lower_rowid, upper_rowid});
+            res.add(Range{lower_rowid, upper_rowid});
         }
     }
 
-    return Status::OK();
+    return res;
 }
 
 Status SegmentIterator::_get_row_ranges_by_zone_map() {
@@ -1809,8 +1820,13 @@ Status SegmentIterator::_get_row_ranges_by_bloom_filter() {
 }
 
 Status SegmentIterator::_get_row_ranges_by_rowid_range() {
-    RETURN_IF(_opts.rowid_range_option == nullptr || _scan_range.empty(), Status::OK());
-    _scan_range = _scan_range.intersection(*_opts.rowid_range_option);
+    DCHECK_EQ(0, _scan_range.span_size());
+
+    if (_opts.rowid_range_option == nullptr || _scan_range.empty()) {
+        _scan_range.add(Range<>(0, num_rows()));
+    } else {
+        _scan_range |= (*_opts.rowid_range_option);
+    }
     return Status::OK();
 }
 

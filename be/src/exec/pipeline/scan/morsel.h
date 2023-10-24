@@ -139,33 +139,6 @@ private:
     int64_t _version = 0;
 };
 
-class PhysicalSplitScanMorsel final : public ScanMorsel {
-public:
-    PhysicalSplitScanMorsel(int32_t plan_node_id, const TScanRange& scan_range, RowidRangeOptionPtr rowid_range_option)
-            : ScanMorsel(plan_node_id, scan_range), _rowid_range_option(std::move(rowid_range_option)) {}
-
-    ~PhysicalSplitScanMorsel() override = default;
-
-    void init_tablet_reader_params(TabletReaderParams* params) override;
-
-private:
-    RowidRangeOptionPtr _rowid_range_option;
-};
-
-class LogicalSplitScanMorsel final : public ScanMorsel {
-public:
-    LogicalSplitScanMorsel(int32_t plan_node_id, const TScanRange& scan_range,
-                           std::vector<ShortKeyRangeOptionPtr> short_key_ranges)
-            : ScanMorsel(plan_node_id, scan_range), _short_key_ranges(std::move(short_key_ranges)) {}
-
-    ~LogicalSplitScanMorsel() override = default;
-
-    void init_tablet_reader_params(TabletReaderParams* params) override;
-
-private:
-    std::vector<ShortKeyRangeOptionPtr> _short_key_ranges;
-};
-
 /// MorselQueueFactory.
 class MorselQueueFactory {
 public:
@@ -262,6 +235,11 @@ public:
     void unget(MorselPtr&& morsel);
     virtual std::string name() const = 0;
     virtual StatusOr<bool> ready_for_next() const { return true; }
+
+    virtual const std::vector<std::string>& not_need_min_max_metrics() const {
+        static const std::vector<std::string> metrics;
+        return metrics;
+    }
 
 protected:
     MorselPtr _unget_morsel = nullptr;
@@ -385,6 +363,10 @@ public:
     StatusOr<MorselPtr> try_get() override;
 
     std::string name() const override { return "physical_split_morsel_queue"; }
+    const std::vector<std::string>& not_need_min_max_metrics() const override {
+        static const std::vector<std::string> metrics{"SegmentZoneMapFilterRows"};
+        return metrics;
+    }
 
 private:
     rowid_t _lower_bound_ordinal(Segment* segment, const SeekTuple& key, bool lower) const;
@@ -418,6 +400,7 @@ private:
     std::vector<std::vector<RowsetSharedPtr>> _tablet_rowsets;
 
     bool _has_init_any_segment = false;
+    bool _is_first_split_of_segment = true;
 
     size_t _rowset_idx = 0;
     size_t _segment_idx = 0;
@@ -449,6 +432,10 @@ public:
     StatusOr<MorselPtr> try_get() override;
 
     std::string name() const override { return "logical_split_morsel_queue"; }
+    const std::vector<std::string>& not_need_min_max_metrics() const override {
+        static const std::vector<std::string> metrics{"ShortKeyFilterRows", "SegmentZoneMapFilterRows"};
+        return metrics;
+    }
 
 private:
     bool _cur_tablet_finished() const;
@@ -480,6 +467,7 @@ private:
     std::vector<std::vector<RowsetSharedPtr>> _tablet_rowsets;
 
     bool _has_init_any_tablet = false;
+    bool _is_first_split_of_tablet = true;
 
     // Used to allocate memory for _tablet_seek_ranges.
     MemPool _mempool;

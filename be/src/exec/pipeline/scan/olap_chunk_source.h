@@ -134,6 +134,7 @@ private:
     RuntimeProfile::Counter* _seg_zm_filtered_counter = nullptr;
     RuntimeProfile::Counter* _seg_rt_filtered_counter = nullptr;
     RuntimeProfile::Counter* _sk_filtered_counter = nullptr;
+    RuntimeProfile::Counter* _rows_after_sk_filtered_counter = nullptr;
     RuntimeProfile::Counter* _block_seek_timer = nullptr;
     RuntimeProfile::Counter* _block_seek_counter = nullptr;
     RuntimeProfile::Counter* _block_load_timer = nullptr;

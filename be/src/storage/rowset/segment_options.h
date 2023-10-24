@@ -82,6 +82,7 @@ public:
 
     bool has_delete_pred = false;
 
+    bool is_first_split_of_segment = true;
     SparseRangePtr rowid_range_option = nullptr;
     std::vector<ShortKeyRangeOptionPtr> short_key_ranges;
 

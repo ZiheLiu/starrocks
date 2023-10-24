@@ -122,6 +122,9 @@ class ObjectPool;
 // Thread-safe.
 class RuntimeProfile {
 public:
+    inline static const std::string MERGED_INFO_PREFIX_MIN = "__MIN_OF_";
+    inline static const std::string MERGED_INFO_PREFIX_MAX = "__MAX_OF_";
+
     class Counter {
     public:
         static TCounterStrategy create_strategy(TCounterAggregateType::type aggregate_type,

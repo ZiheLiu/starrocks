@@ -114,6 +114,8 @@ void OlapChunkSource::_init_counter(RuntimeState* state) {
     _zm_filtered_counter =
             ADD_CHILD_COUNTER(_runtime_profile, "ZoneMapIndexFilterRows", TUnit::UNIT, segment_init_name);
     _sk_filtered_counter = ADD_CHILD_COUNTER(_runtime_profile, "ShortKeyFilterRows", TUnit::UNIT, segment_init_name);
+    _rows_after_sk_filtered_counter =
+            ADD_CHILD_COUNTER(_runtime_profile, "RemainingRowsAfterShortKeyIndex", TUnit::UNIT, segment_init_name);
     _column_iterator_init_timer = ADD_CHILD_TIMER(_runtime_profile, "ColumnIteratorInit", segment_init_name);
     _bitmap_index_iterator_init_timer = ADD_CHILD_TIMER(_runtime_profile, "BitmapIndexIteratorInit", segment_init_name);
     _zone_map_filter_timer = ADD_CHILD_TIMER(_runtime_profile, "ZoneMapIndexFiter", segment_init_name);
@@ -481,6 +483,7 @@ void OlapChunkSource::_update_counter() {
     COUNTER_UPDATE(_zm_filtered_counter, _reader->stats().rows_stats_filtered);
     COUNTER_UPDATE(_bf_filtered_counter, _reader->stats().rows_bf_filtered);
     COUNTER_UPDATE(_sk_filtered_counter, _reader->stats().rows_key_range_filtered);
+    COUNTER_UPDATE(_rows_after_sk_filtered_counter, _reader->stats().rows_after_key_range);
     COUNTER_UPDATE(_rows_key_range_counter, _reader->stats().rows_key_range_num);
 
     COUNTER_UPDATE(_read_pages_num_counter, _reader->stats().total_pages_num);
