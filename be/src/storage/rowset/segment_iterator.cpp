@@ -1822,7 +1822,7 @@ Status SegmentIterator::_get_row_ranges_by_bloom_filter() {
 Status SegmentIterator::_get_row_ranges_by_rowid_range() {
     DCHECK_EQ(0, _scan_range.span_size());
 
-    if (_opts.rowid_range_option == nullptr || _scan_range.empty()) {
+    if (_opts.rowid_range_option == nullptr) {
         _scan_range.add(Range<>(0, num_rows()));
     } else {
         _scan_range |= (*_opts.rowid_range_option);
