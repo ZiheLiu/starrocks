@@ -539,10 +539,6 @@ void ScanOperator::_merge_chunk_source_profiles(RuntimeState* state) {
 
     RuntimeProfile* merged_profile =
             RuntimeProfile::merge_isomorphic_profiles(query_ctx->object_pool(), profiles, false);
-    for (const auto& name : _morsel_queue->not_need_min_max_metrics()) {
-        merged_profile->remove_counter(strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MIN, name));
-        merged_profile->remove_counter(strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MAX, name));
-    }
 
     _unique_metrics->copy_all_info_strings_from(merged_profile);
     _unique_metrics->copy_all_counters_from(merged_profile);
@@ -550,6 +546,13 @@ void ScanOperator::_merge_chunk_source_profiles(RuntimeState* state) {
     // Copy all data source's metrics
     auto* data_source_profile = merged_profile->get_child(connector::DataSource::PROFILE_NAME);
     if (data_source_profile != nullptr) {
+        for (const auto& name : _morsel_queue->not_need_min_max_metrics()) {
+            data_source_profile->remove_counter(
+                    strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MIN, name));
+            data_source_profile->remove_counter(
+                    strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MAX, name));
+        }
+
         _unique_metrics->copy_all_info_strings_from(data_source_profile);
         if (_unique_metrics->get_counter("IOTaskExecTime") != nullptr) {
             _unique_metrics->copy_all_counters_from(data_source_profile, "IOTaskExecTime");
