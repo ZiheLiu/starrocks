@@ -526,12 +526,12 @@ static void clear_not_need_min_max_metrics(RuntimeProfile* profile, const std::v
         auto* min_counter =
                 profile->get_counter(strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MIN, name));
         if (min_counter != nullptr) {
-            min_counter->set(0);
+            min_counter->set(0L);
         }
         auto* max_counter =
-                profile->remove_counter(strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MAX, name));
+                profile->get_counter(strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MAX, name));
         if (max_counter != nullptr) {
-            max_counter->set(0);
+            max_counter->set(0L);
         }
     }
 }
