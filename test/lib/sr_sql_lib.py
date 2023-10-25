@@ -37,8 +37,10 @@ import unittest
 import uuid
 
 import pymysql as _mysql
+import requests
 from nose import tools
 from cup import log
+from requests.auth import HTTPBasicAuth
 
 from lib import skip
 from lib import data_delete_lib
@@ -50,7 +52,6 @@ root_path = os.path.abspath(os.path.join(lib_path, "../"))
 common_sql_path = os.path.join(root_path, "common/sql")
 common_data_path = os.path.join(root_path, "common/data")
 common_result_path = os.path.join(root_path, "common/result")
-
 
 LOG_DIR = os.path.join(root_path, "log")
 if not os.path.exists(LOG_DIR):
@@ -478,12 +479,12 @@ class StarrocksSQLApiLib(object):
             return
 
         if any(re.compile(condition).search(sql) is not None for condition in skip.skip_res_cmd) or any(
-            condition in sql for condition in skip.skip_res_cmd
+                condition in sql for condition in skip.skip_res_cmd
         ):
             log.info("[%s.check] skip check" % sql_id)
             return
 
-        tmp_ori_sql = ori_sql[len(UNCHECK_FLAG) :] if ori_sql.startswith(UNCHECK_FLAG) else ori_sql
+        tmp_ori_sql = ori_sql[len(UNCHECK_FLAG):] if ori_sql.startswith(UNCHECK_FLAG) else ori_sql
         if tmp_ori_sql.startswith(SHELL_FLAG):
             tools.assert_equal(int(exp.split("\n")[0]), act[0], "shell %s error: %s" % (sql, act))
 
@@ -533,12 +534,12 @@ class StarrocksSQLApiLib(object):
             tools.assert_equal(str(exp), str(act))
         else:
             if exp.startswith(REGEX_FLAG):
-                log.info("[check regex]: %s" % exp[len(REGEX_FLAG) :])
+                log.info("[check regex]: %s" % exp[len(REGEX_FLAG):])
                 tools.assert_regexp_matches(
                     r"%s" % str(act),
-                    exp[len(REGEX_FLAG) :],
+                    exp[len(REGEX_FLAG):],
                     "sql result not match regex:\n- [SQL]: %s\n- [exp]: %s\n- [act]: %s\n---"
-                    % (sql, exp[len(REGEX_FLAG) :], act),
+                    % (sql, exp[len(REGEX_FLAG):], act),
                 )
                 return
 
@@ -664,7 +665,7 @@ class StarrocksSQLApiLib(object):
         insert_round = 1
         while len(new_log) > 0:
             current_log = new_log[: min(len(new_log), 65533)]
-            new_log = new_log[len(current_log) :]
+            new_log = new_log[len(current_log):]
 
             arg_dict = {
                 "database_name": T_R_DB,
@@ -921,7 +922,8 @@ class StarrocksSQLApiLib(object):
         wait pipe load finish
         """
         status = ""
-        show_sql = "select state from information_schema.pipes where database_name='{}' and pipe_name='{}'".format(db_name, pipe_name)
+        show_sql = "select state from information_schema.pipes where database_name='{}' and pipe_name='{}'".format(
+            db_name, pipe_name)
         count = 0
         print("waiting for pipe {}.{} finish".format(db_name, pipe_name))
         while count < check_count:
@@ -937,7 +939,6 @@ class StarrocksSQLApiLib(object):
                 break
             count += 1
         tools.assert_equal("FINISHED", status, "didn't wait pipe finish")
-
 
     def check_hit_materialized_view(self, query, mv_name):
         """
@@ -1079,8 +1080,8 @@ class StarrocksSQLApiLib(object):
                 return
             else:
                 if (
-                    res["msg"][1].find("EsTable metadata has not been synced, Try it later") == -1
-                    and res["msg"][1].find("metadata failure: null") == -1
+                        res["msg"][1].find("EsTable metadata has not been synced, Try it later") == -1
+                        and res["msg"][1].find("metadata failure: null") == -1
                 ):
                     log.info("==========check success: es table metadata is ready==========")
                     return
@@ -1092,15 +1093,15 @@ class StarrocksSQLApiLib(object):
     def _stream_load(self, label, database_name, table_name, filepath, headers=None, meta_sync=True):
         """ """
         url = (
-            "http://"
-            + self.mysql_host
-            + ":"
-            + self.http_port
-            + "/api/"
-            + database_name
-            + "/"
-            + table_name
-            + "/_stream_load"
+                "http://"
+                + self.mysql_host
+                + ":"
+                + self.http_port
+                + "/api/"
+                + database_name
+                + "/"
+                + table_name
+                + "/_stream_load"
         )
         params = [
             "curl",
@@ -1246,6 +1247,15 @@ class StarrocksSQLApiLib(object):
         )
         return str(res)
 
+    def post_http_request(self, exec_url) -> str:
+        """Sends a POST request.
+
+        :return: the response content.
+        """
+        res = requests.post(exec_url, auth=HTTPBasicAuth(self.mysql_user, self.mysql_password))
+        tools.assert_equal(200, res.status_code, f"failed post http request [res={res}] [url={exec_url}]")
+        return res.content.decode("utf-8")
+
     def manual_compact(self, database_name, table_name):
         sql = "show tablet from " + database_name + "." + table_name
         res = self.execute_sql(sql, "dml")
@@ -1325,5 +1335,8 @@ class StarrocksSQLApiLib(object):
         backends = self._get_backend_http_endpoints()
         for backend in backends:
             exec_url = f"{backend['ip']}:{backend['port']}/api/update_config?{key}={value}"
-            res = self.execute_cmd(exec_url)
-            print(res)
+            res = self.post_http_request(exec_url)
+
+            res_json = json.loads(res)
+            tools.assert_dict_contains_subset(res_json, {"OK": "status"},
+                                              f"failed to update be config [response={res}] [url={exec_url}]")
