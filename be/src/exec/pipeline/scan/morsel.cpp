@@ -44,6 +44,11 @@ public:
 
     void init_tablet_reader_params(TabletReaderParams* params) override;
 
+    const std::unordered_set<std::string>& skip_min_max_metrics() const override {
+        static const std::unordered_set<std::string> metrics{"SegmentZoneMapFilterRows"};
+        return metrics;
+    }
+
 private:
     RowidRangeOptionPtr _rowid_range_option;
 };
@@ -57,6 +62,11 @@ public:
     ~LogicalSplitScanMorsel() override = default;
 
     void init_tablet_reader_params(TabletReaderParams* params) override;
+
+    const std::unordered_set<std::string>& skip_min_max_metrics() const override {
+        static const std::unordered_set<std::string> metrics{"ShortKeyFilterRows", "SegmentZoneMapFilterRows"};
+        return metrics;
+    }
 
 private:
     ShortKeyRangesOptionPtr _short_key_ranges_option;

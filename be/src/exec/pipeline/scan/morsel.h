@@ -91,6 +91,11 @@ public:
         }
     }
 
+    virtual const std::unordered_set<std::string>& skip_min_max_metrics() const {
+        static const std::unordered_set<std::string> metrics;
+        return metrics;
+    }
+
 private:
     int32_t _plan_node_id;
     int64_t _from_version = 0;
@@ -236,11 +241,6 @@ public:
     virtual std::string name() const = 0;
     virtual StatusOr<bool> ready_for_next() const { return true; }
 
-    virtual const std::vector<std::string>& not_need_min_max_metrics() const {
-        static const std::vector<std::string> metrics;
-        return metrics;
-    }
-
 protected:
     MorselPtr _unget_morsel = nullptr;
 };
@@ -363,10 +363,6 @@ public:
     StatusOr<MorselPtr> try_get() override;
 
     std::string name() const override { return "physical_split_morsel_queue"; }
-    const std::vector<std::string>& not_need_min_max_metrics() const override {
-        static const std::vector<std::string> metrics{"SegmentZoneMapFilterRows"};
-        return metrics;
-    }
 
 private:
     rowid_t _lower_bound_ordinal(Segment* segment, const SeekTuple& key, bool lower) const;
@@ -432,10 +428,6 @@ public:
     StatusOr<MorselPtr> try_get() override;
 
     std::string name() const override { return "logical_split_morsel_queue"; }
-    const std::vector<std::string>& not_need_min_max_metrics() const override {
-        static const std::vector<std::string> metrics{"ShortKeyFilterRows", "SegmentZoneMapFilterRows"};
-        return metrics;
-    }
 
 private:
     bool _cur_tablet_finished() const;

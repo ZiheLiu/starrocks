@@ -521,21 +521,6 @@ Status ScanOperator::_pickup_morsel(RuntimeState* state, int chunk_source_index)
     return Status::OK();
 }
 
-static void clear_not_need_min_max_metrics(RuntimeProfile* profile, const std::vector<std::string>& metrics) {
-    for (const auto& name : metrics) {
-        auto* min_counter =
-                profile->get_counter(strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MIN, name));
-        if (min_counter != nullptr) {
-            min_counter->set(0L);
-        }
-        auto* max_counter =
-                profile->get_counter(strings::Substitute("$0$1", RuntimeProfile::MERGED_INFO_PREFIX_MAX, name));
-        if (max_counter != nullptr) {
-            max_counter->set(0L);
-        }
-    }
-}
-
 void ScanOperator::_merge_chunk_source_profiles(RuntimeState* state) {
     auto query_ctx = _query_ctx.lock();
     // _query_ctx uses lazy initialization, maybe it is not initialized
@@ -554,7 +539,6 @@ void ScanOperator::_merge_chunk_source_profiles(RuntimeState* state) {
 
     RuntimeProfile* merged_profile =
             RuntimeProfile::merge_isomorphic_profiles(query_ctx->object_pool(), profiles, false);
-    clear_not_need_min_max_metrics(merged_profile, _morsel_queue->not_need_min_max_metrics());
 
     _unique_metrics->copy_all_info_strings_from(merged_profile);
     _unique_metrics->copy_all_counters_from(merged_profile);
@@ -562,8 +546,6 @@ void ScanOperator::_merge_chunk_source_profiles(RuntimeState* state) {
     // Copy all data source's metrics
     auto* data_source_profile = merged_profile->get_child(connector::DataSource::PROFILE_NAME);
     if (data_source_profile != nullptr) {
-        clear_not_need_min_max_metrics(data_source_profile, _morsel_queue->not_need_min_max_metrics());
-
         _unique_metrics->copy_all_info_strings_from(data_source_profile);
         if (_unique_metrics->get_counter("IOTaskExecTime") != nullptr) {
             _unique_metrics->copy_all_counters_from(data_source_profile, "IOTaskExecTime");
