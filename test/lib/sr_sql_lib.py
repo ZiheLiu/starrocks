@@ -1329,12 +1329,11 @@ class StarrocksSQLApiLib(object):
         return backends
 
     def update_be_config(self, key, value):
-        """
-        Update the config to all the backends.
+        """Update the config to all the backends.
         """
         backends = self._get_backend_http_endpoints()
         for backend in backends:
-            exec_url = f"{backend['ip']}:{backend['port']}/api/update_config?{key}={value}"
+            exec_url = f"http://{backend['ip']}:{backend['port']}/api/update_config?{key}={value}"
             res = self.post_http_request(exec_url)
 
             res_json = json.loads(res)
