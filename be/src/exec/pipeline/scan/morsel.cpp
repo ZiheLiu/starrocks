@@ -45,7 +45,7 @@ public:
     void init_tablet_reader_params(TabletReaderParams* params) override;
 
     const std::unordered_set<std::string>& skip_min_max_metrics() const override {
-        static const std::unordered_set<std::string> metrics{"SegmentZoneMapFilterRows"};
+        static const std::unordered_set<std::string> metrics{"ShortKeyFilterRows", "SegmentZoneMapFilterRows"};
         return metrics;
     }
 
