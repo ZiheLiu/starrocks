@@ -41,7 +41,7 @@ struct TCounterStrategy {
     1: required TCounterAggregateType aggregate_type
     2: required TCounterMergeType merge_type
     3: required i64 display_threshold = 0
-    4: optional TCounterMinMaxType min_max_type = MIN_MAX_ALL
+    4: optional TCounterMinMaxType min_max_type = TCounterMinMaxType.MIN_MAX_ALL
 }
 
 // Counter data
