@@ -59,7 +59,7 @@ private:
     Status _init_scanner_columns(std::vector<uint32_t>& scanner_columns);
     Status _init_unused_output_columns(const std::vector<std::string>& unused_output_columns);
     Status _init_olap_reader(RuntimeState* state);
-    TCounterMinMaxType _get_counter_min_max_type(const std::string& metric_name);
+    TCounterMinMaxType::type _get_counter_min_max_type(const std::string& metric_name);
     void _init_counter(RuntimeState* state);
     Status _init_global_dicts(TabletReaderParams* params);
     Status _read_chunk_from_storage([[maybe_unused]] RuntimeState* state, Chunk* chunk);
