@@ -1334,6 +1334,7 @@ class StarrocksSQLApiLib(object):
         backends = self._get_backend_http_endpoints()
         for backend in backends:
             exec_url = f"http://{backend['ip']}:{backend['port']}/api/update_config?{key}={value}"
+            print(f"fetch {exec_url}")
             res = self.post_http_request(exec_url)
 
             res_json = json.loads(res)
