@@ -1337,5 +1337,5 @@ class StarrocksSQLApiLib(object):
             res = self.post_http_request(exec_url)
 
             res_json = json.loads(res)
-            tools.assert_dict_contains_subset(res_json, {"OK": "status"},
+            tools.assert_dict_contains_subset(res_json, {"status": "OK"},
                                               f"failed to update be config [response={res}] [url={exec_url}]")
