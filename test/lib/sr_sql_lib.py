@@ -1253,7 +1253,7 @@ class StarrocksSQLApiLib(object):
         :return: the response content.
         """
         res = requests.post(exec_url, auth=HTTPBasicAuth(self.mysql_user, self.mysql_password))
-        tools.assert_equal(200, res.status_code, f"failed post http request [res={res}] [url={exec_url}]")
+        tools.assert_equal(200, res.status_code, f"failed to post http request [res={res}] [url={exec_url}]")
         return res.content.decode("utf-8")
 
     def manual_compact(self, database_name, table_name):
@@ -1338,5 +1338,5 @@ class StarrocksSQLApiLib(object):
             res = self.post_http_request(exec_url)
 
             res_json = json.loads(res)
-            tools.assert_dict_contains_subset(res_json, {"status": "OK"},
+            tools.assert_dict_contains_subset({"status": "OK"}, res_json,
                                               f"failed to update be config [response={res}] [url={exec_url}]")
