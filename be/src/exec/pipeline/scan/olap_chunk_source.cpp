@@ -83,7 +83,7 @@ Status OlapChunkSource::prepare(RuntimeState* state) {
 
 TCounterMinMaxType::type OlapChunkSource::_get_counter_min_max_type(const std::string& metric_name) {
     const auto& skip_min_max_metrics = _morsel->skip_min_max_metrics();
-    if (skip_min_max_metrics.find("ShortKeyFilterRows") != skip_min_max_metrics.end()) {
+    if (skip_min_max_metrics.find(metric_name) != skip_min_max_metrics.end()) {
         return TCounterMinMaxType::SKIP_ALL;
     }
 

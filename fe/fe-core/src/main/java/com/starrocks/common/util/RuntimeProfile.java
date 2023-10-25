@@ -691,14 +691,16 @@ public class RuntimeProfile {
                 }
                 mergedCounter.setValue(mergedValue);
 
-                Counter minCounter =
-                        mergedProfile.addCounter(MERGED_INFO_PREFIX_MIN + name, type, mergedCounter.getStrategy(),
-                                name);
-                Counter maxCounter =
-                        mergedProfile.addCounter(MERGED_INFO_PREFIX_MAX + name, type, mergedCounter.getStrategy(),
-                                name);
-                minCounter.setValue(minValue);
-                maxCounter.setValue(maxValue);
+                if (!mergedCounter.isSkipMinMax()) {
+                    Counter minCounter =
+                            mergedProfile.addCounter(MERGED_INFO_PREFIX_MIN + name, type, mergedCounter.getStrategy(),
+                                    name);
+                    Counter maxCounter =
+                            mergedProfile.addCounter(MERGED_INFO_PREFIX_MAX + name, type, mergedCounter.getStrategy(),
+                                    name);
+                    minCounter.setValue(minValue);
+                    maxCounter.setValue(maxValue);
+                }
             }
 
         }
