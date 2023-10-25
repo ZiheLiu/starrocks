@@ -693,7 +693,7 @@ class StarrocksSQLApiLib(object):
         tools.assert_true(use_res["status"], "use db: [%s] error" % T_R_DB)
 
         self.execute_sql("set group_concat_max_len = 1024000;", True)
-        
+
         # get records
         query_sql = """
         select file, log_type, name, group_concat(log, ""), group_concat(hex(sequence), ",") 
@@ -1304,3 +1304,26 @@ class StarrocksSQLApiLib(object):
             counter = counter + 1
 
         tools.assert_true(finished, "analyze timeout")
+
+    def _get_backend_http_endpoints(self):
+        res = self.execute_sql("show backends;", ori=True)
+        tools.assert_true(res["status"], res["msg"])
+
+        backends = []
+        for row in res["result"]:
+            backends.append({
+                "ip": row[1],
+                "port": row[4],
+            })
+
+        return backends
+
+    def update_be_config(self, key, value):
+        """
+        Update the config to all the backends.
+        """
+        backends = self._get_backend_http_endpoints()
+        for backend in backends:
+            exec_url = f"{backend['ip']}:{backend['port']}/api/update_config?{key}={value}"
+            res = self.execute_cmd(exec_url)
+            print(res)
