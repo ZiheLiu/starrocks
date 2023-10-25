@@ -46,11 +46,11 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
@@ -72,11 +72,11 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
@@ -99,11 +99,11 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
@@ -124,11 +124,11 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
@@ -136,10 +136,10 @@ with
 select * from result order by `key`, value;
 
 
--- 3. SegmentRuntimeZoneMapFilterRows for physical split.
+-- 3. SegmentZoneMapFilterRows for physical split.
 select /*+SET_VAR(tablet_internal_parallel_mode="force_split")*/ sum(murmur_hash3_32(k2)) + sum(murmur_hash3_32(k1)) from dup_t where k1 between 20000 and 20100;
 
--- There are no min and max for "SegmentRuntimeZoneMapFilterRows".
+-- There are no min and max for "SegmentZoneMapFilterRows".
 with 
     profile as (
         select unnest as line from (values(1))t(v) join unnest(split(get_query_profile(last_query_id()), "\n") )
@@ -152,11 +152,11 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
@@ -178,21 +178,21 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
     )
 select * from result order by `key`, value;
 
--- 4. SegmentRuntimeZoneMapFilterRows for logical split.
+-- 4. SegmentZoneMapFilterRows for logical split.
 select /*+SET_VAR(tablet_internal_parallel_mode="force_split")*/ sum(murmur_hash3_32(k2)) + sum(murmur_hash3_32(k1)) from uniq_t where k1 between 20000 and 20100;
 
--- There are no min and max for "SegmentRuntimeZoneMapFilterRows".
+-- There are no min and max for "SegmentZoneMapFilterRows".
 with 
     profile as (
         select unnest as line from (values(1))t(v) join unnest(split(get_query_profile(last_query_id()), "\n") )
@@ -205,11 +205,11 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
@@ -230,11 +230,11 @@ with
         select "__MIN_OF_ShortKeyFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_ShortKeyFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_ShortKeyFilterRows%"
         UNION ALL
         
-        select "SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentRuntimeZoneMapFilterRows%"
+        select "SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MAX_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MAX_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MAX_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MAX_OF_SegmentZoneMapFilterRows%"
         UNION ALL
-        select "__MIN_OF_SegmentRuntimeZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentRuntimeZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentRuntimeZoneMapFilterRows%"
+        select "__MIN_OF_SegmentZoneMapFilterRows" as `key`, regexp_extract(line, ".*- __MIN_OF_SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- __MIN_OF_SegmentZoneMapFilterRows%"
         UNION ALL
 
         select "RemainingRowsAfterShortKeyFilter" as `key`, regexp_extract(line, ".*- RemainingRowsAfterShortKeyFilter: (?:.*\\()?(\\d+)\\)?", 1) as value from profile where line like "%- RemainingRowsAfterShortKeyFilter%"
