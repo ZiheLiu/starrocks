@@ -13,3 +13,24 @@
 // limitations under the License.
 
 #include "storage/chunk_predicate.h"
+
+#include <unordered_map>
+#include <vector>
+
+#include "storage/column_predicate.h"
+
+namespace starrocks {
+
+class ConjunctChunkPredicate final : public ChunkPredicate {
+private:
+    std::vector<ChunkPredicate*> _chunk_preds;
+    std::unordered_map<ColumnId, std::vector<ColumnPredicate*>> _cid_to_col_preds;
+};
+
+class DisjunctChunkPredicate final : public ChunkPredicate {
+private:
+    std::vector<ChunkPredicate*> _chunk_preds;
+    std::unordered_map<ColumnId, std::vector<ColumnPredicate*>> _cid_to_col_preds;
+};
+
+} // namespace starrocks

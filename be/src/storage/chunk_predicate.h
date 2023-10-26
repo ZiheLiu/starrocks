@@ -15,5 +15,7 @@
 #pragma once
 
 namespace starrocks {
+
 class ChunkPredicate {};
+
 } // namespace starrocks

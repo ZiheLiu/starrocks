@@ -95,4 +95,6 @@ private:
     void build_column_expr_predicates();
 };
 
+class ChunkPredicateBuilder {};
+
 } // namespace starrocks
