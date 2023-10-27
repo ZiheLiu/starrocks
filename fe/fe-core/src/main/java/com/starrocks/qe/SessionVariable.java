@@ -323,6 +323,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String RUNTIME_FILTER_EARLY_RETURN_SELECTIVITY = "runtime_filter_early_return_selectivity";
     public static final String ENABLE_TOPN_RUNTIME_FILTER = "enable_topn_runtime_filter";
 
+    public static final String RUNTIME_IN_FILTER_BUILD_MAX_SIZE = "runtime_in_filter_build_max_size";
+
     public static final String ENABLE_PIPELINE_LEVEL_MULTI_PARTITIONED_RF =
             "enable_pipeline_level_multi_partitioned_rf";
 
@@ -1037,6 +1039,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private int globalRuntimeFilterRpcTimeout = 400;
     @VariableMgr.VarAttr(name = RUNTIME_FILTER_EARLY_RETURN_SELECTIVITY, flag = VariableMgr.INVISIBLE)
     private float runtimeFilterEarlyReturnSelectivity = 0.05f;
+
+    /**
+     * The maximum number of rows of building hash table side to generate the runtime in filters.
+     * <p> If the number of rows of a HashJoinBuildOperator exceeds this threshold value, 
+     * the runtime in filters will not be generated.
+     */
+    @VariableMgr.VarAttr(name = RUNTIME_IN_FILTER_BUILD_MAX_SIZE, flag = VariableMgr.INVISIBLE)
+    private long runtimeInFilterBuildMaxSize = 128L * 1024L;
 
     @VarAttr(name = ENABLE_PIPELINE_LEVEL_MULTI_PARTITIONED_RF)
     private boolean enablePipelineLevelMultiPartitionedRf = false;
@@ -2822,6 +2832,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
         tResult.setRuntime_join_filter_pushdown_limit(runtimeJoinFilterPushDownLimit);
         tResult.setGlobal_runtime_filter_build_max_size(globalRuntimeFilterBuildMaxSize);
+        tResult.setRuntime_in_filter_build_max_size(runtimeInFilterBuildMaxSize);
         tResult.setRuntime_filter_wait_timeout_ms(globalRuntimeFilterWaitTimeout);
         tResult.setRuntime_filter_send_timeout_ms(globalRuntimeFilterRpcTimeout);
         tResult.setRuntime_filter_scan_wait_time_ms(runtimeFilterScanWaitTime);

@@ -510,11 +510,23 @@ Status HashJoiner::_process_where_conjunct(ChunkPtr* chunk) {
     return ExecNode::eval_conjuncts(_conjunct_ctxs, (*chunk).get());
 }
 
+size_t HashJoiner::runtime_in_filter_max_build_rows() const {
+    size_t val = 128L * 1024L;
+    if (_runtime_state->query_options().__isset.runtime_in_filter_build_max_size) {
+        val = _runtime_state->query_options().runtime_in_filter_build_max_size;
+    }
+    return val;
+}
+
+size_t HashJoiner::runtime_in_filter_max_hash_table_cardinality() const {
+    return config::max_pushdown_conditions_per_column;
+}
+
 Status HashJoiner::_create_runtime_in_filters(RuntimeState* state) {
     SCOPED_TIMER(build_metrics().build_runtime_filter_timer);
 
-    const int max_right_table_rows = config::max_right_table_rows_to_build_runtime_in_filter;
-    const int max_ht_cardinality = config::max_pushdown_conditions_per_column;
+    const int max_build_rows = runtime_in_filter_max_build_rows();
+    const int max_ht_cardinality = runtime_in_filter_max_hash_table_cardinality();
 
     const size_t ht_row_count = get_ht_row_count();
     auto& ht = _hash_join_builder->hash_table();
@@ -523,7 +535,7 @@ Status HashJoiner::_create_runtime_in_filters(RuntimeState* state) {
         return Status::OK();
     }
 
-    if (ht_row_count > max_right_table_rows || ht.get_num_used_buckets() > max_ht_cardinality) {
+    if (ht_row_count > max_build_rows || ht.get_num_used_buckets() > max_ht_cardinality) {
         return Status::OK();
     }
 
