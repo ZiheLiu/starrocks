@@ -216,6 +216,7 @@ CONF_mInt32(max_scan_key_num, "1024");
 // The max number of push down values of a single column.
 // if exceed, no conditions will be pushed down for that column.
 CONF_mInt32(max_pushdown_conditions_per_column, "1024");
+CONF_mInt32(max_right_table_rows_to_build_runtime_in_filter, "102400");
 // (Advanced) Maximum size of per-query receive-side buffer.
 CONF_mInt32(exchg_node_buffer_size_bytes, "10485760");
 // The block_size every block allocate for sorter.

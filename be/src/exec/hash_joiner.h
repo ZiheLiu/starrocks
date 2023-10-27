@@ -154,6 +154,7 @@ struct HashJoinBuildMetrics {
     RuntimeProfile::Counter* build_runtime_filter_timer = nullptr;
     RuntimeProfile::Counter* build_conjunct_evaluate_timer = nullptr;
     RuntimeProfile::Counter* build_buckets_counter = nullptr;
+    RuntimeProfile::Counter* used_build_buckets_counter = nullptr;
     RuntimeProfile::Counter* runtime_filter_num = nullptr;
     RuntimeProfile::Counter* build_keys_per_bucket = nullptr;
     RuntimeProfile::Counter* hash_table_memory_usage = nullptr;
