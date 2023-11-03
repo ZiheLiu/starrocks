@@ -458,7 +458,7 @@ CONF_Bool(enable_system_metrics, "true");
 
 CONF_mBool(enable_prefetch, "true");
 
-CONF_mBool(enable_slow_query_ctx_finalize_log, "true");
+CONF_Int64(slow_query_ctx_finalize_log_ns, "10000000");
 
 // Number of cores StarRocks will used, this will effect only when it's greater than 0.
 // Otherwise, StarRocks will use all cores returned from "/proc/cpuinfo".

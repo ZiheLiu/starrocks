@@ -353,12 +353,15 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
     std::vector<QueryContextPtr> del_list;
 
     DeferOp defer_log_slow_query_ctx([&query_ctx, &del_list] {
-        if (config::enable_slow_query_ctx_finalize_log) {
+        if (config::slow_query_ctx_finalize_log_ns > 0) {
             int64_t time_ns = 0;
             {
                 SCOPED_RAW_TIMER(&time_ns);
                 query_ctx.reset();
                 del_list.clear();
+            }
+            if (time_ns >= config::slow_query_ctx_finalize_log_ns) {
+                LOG(WARNING) << "[LZH] slow_query_ctx [time" << time_ns << "]";
             }
         }
     });
