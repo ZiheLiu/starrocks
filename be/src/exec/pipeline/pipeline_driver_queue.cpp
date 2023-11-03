@@ -303,7 +303,7 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take() {
         _dequeue_workgroup(wg_entity);
     }
 
-    driver_ptr = wg_entity->queue()->take();
+    ASSIGN_OR_RETURN(driver_ptr, wg_entity->queue()->take());
     return driver_ptr;
 }
 
