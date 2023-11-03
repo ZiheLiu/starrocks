@@ -59,6 +59,11 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _output_full_timer = ADD_CHILD_TIMER(_runtime_profile, "OutputFullTime", "PendingTime");
     _pending_finish_timer = ADD_CHILD_TIMER(_runtime_profile, "PendingFinishTime", "PendingTime");
 
+    _lock_timer = ADD_TIMER(_runtime_profile, "LockTime");
+    _take_from_ready_queue_lock_timer = ADD_CHILD_TIMER(_runtime_profile, "TakeFromReadyQueueLockTime", "LockTime");
+    _push_to_ready_queue_lock_timer = ADD_CHILD_TIMER(_runtime_profile, "PushToReadyQueueLockTime", "LockTime");
+    _push_to_blocking_queue_lock_timer = ADD_CHILD_TIMER(_runtime_profile, "PushToBlockingQueueLockTime", "LockTime");
+
     DCHECK(_state == DriverState::NOT_READY);
 
     auto* source_op = source_operator();

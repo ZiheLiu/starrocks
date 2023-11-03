@@ -36,7 +36,13 @@ void QuerySharedDriverQueue::put_back(const DriverRawPtr driver) {
     int level = _compute_driver_level(driver);
     driver->set_driver_queue_level(level);
     {
+        MonotonicStopWatch sw;
+        sw.start();
         std::lock_guard<std::mutex> lock(_global_mutex);
+        sw.stop();
+
+        COUNTER_UPDATE(driver->_push_to_ready_queue_lock_timer, sw.elapsed_time());
+
         _queues[level].put(driver);
         driver->set_in_ready_queue(true);
         driver->set_in_queue(this);
@@ -51,7 +57,16 @@ void QuerySharedDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) 
         levels[i] = _compute_driver_level(drivers[i]);
         drivers[i]->set_driver_queue_level(levels[i]);
     }
+
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
+    sw.stop();
+
+    if (!drivers.empty()) {
+        COUNTER_UPDATE(drivers[0]->_push_to_ready_queue_lock_timer, sw.elapsed_time());
+    }
+
     for (int i = 0; i < drivers.size(); i++) {
         _queues[levels[i]].put(drivers[i]);
         drivers[i]->set_in_ready_queue(true);
@@ -70,10 +85,23 @@ StatusOr<DriverRawPtr> QuerySharedDriverQueue::take() {
     // -1 means no candidates; else has candidate.
     int queue_idx = -1;
     double target_accu_time = 0;
-    DriverRawPtr driver_ptr;
 
+    DriverRawPtr driver_ptr = nullptr;
+    int64_t lock_time_ns = 0;
+
+    DeferOp defer_set_driver_lock_time([&driver_ptr, &lock_time_ns] {
+        if (driver_ptr != nullptr && lock_time_ns > 0) {
+            COUNTER_UPDATE(driver_ptr->_take_from_ready_queue_lock_timer, lock_time_ns);
+        }
+    });
+
+    MonotonicStopWatch sw;
+    sw.start();
     {
         std::unique_lock<std::mutex> lock(_global_mutex);
+        sw.stop();
+        lock_time_ns = sw.elapsed_time();
+
         while (true) {
             if (_is_closed) {
                 return Status::Cancelled("Shutdown");
@@ -201,12 +229,26 @@ void WorkGroupDriverQueue::close() {
 }
 
 void WorkGroupDriverQueue::put_back(const DriverRawPtr driver) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
+    sw.stop();
+
+    COUNTER_UPDATE(driver->_push_to_ready_queue_lock_timer, sw.elapsed_time());
+
     _put_back<false>(driver);
 }
 
 void WorkGroupDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
+    sw.stop();
+
+    if (!drivers.empty()) {
+        COUNTER_UPDATE(drivers[0]->_push_to_ready_queue_lock_timer, sw.elapsed_time());
+    }
+
     for (const auto driver : drivers) {
         _put_back<false>(driver);
     }
@@ -218,7 +260,20 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
 }
 
 StatusOr<DriverRawPtr> WorkGroupDriverQueue::take() {
+    DriverRawPtr driver_ptr = nullptr;
+    int64_t lock_time_ns = 0;
+
+    DeferOp defer_set_driver_lock_time([&driver_ptr, &lock_time_ns] {
+        if (driver_ptr != nullptr && lock_time_ns > 0) {
+            COUNTER_UPDATE(driver_ptr->_take_from_ready_queue_lock_timer, lock_time_ns);
+        }
+    });
+
+    MonotonicStopWatch sw;
+    sw.start();
     std::unique_lock<std::mutex> lock(_global_mutex);
+    sw.stop();
+    lock_time_ns = sw.elapsed_time();
 
     workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
     while (wg_entity == nullptr) {
@@ -248,7 +303,8 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take() {
         _dequeue_workgroup(wg_entity);
     }
 
-    return wg_entity->queue()->take();
+    driver_ptr = wg_entity->queue()->take();
+    return driver_ptr;
 }
 
 void WorkGroupDriverQueue::cancel(DriverRawPtr driver) {

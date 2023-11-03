@@ -373,6 +373,11 @@ public:
 
     inline std::string get_name() const { return strings::Substitute("PipelineDriver (id=$0)", _driver_id); }
 
+    RuntimeProfile::Counter* _lock_timer = nullptr;
+    RuntimeProfile::Counter* _take_from_ready_queue_lock_timer = nullptr;
+    RuntimeProfile::Counter* _push_to_ready_queue_lock_timer = nullptr;
+    RuntimeProfile::Counter* _push_to_blocking_queue_lock_timer = nullptr;
+
 protected:
     PipelineDriver() : _operators(), _query_ctx(nullptr), _fragment_ctx(nullptr), _source_node_id(0), _driver_id(0) {}
 

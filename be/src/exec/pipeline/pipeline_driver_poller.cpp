@@ -146,7 +146,13 @@ void PipelineDriverPoller::run_internal() {
 }
 
 void PipelineDriverPoller::add_blocked_driver(const DriverRawPtr driver) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::unique_lock<std::mutex> lock(_global_mutex);
+    sw.stop();
+
+    COUNTER_UPDATE(driver->_push_to_blocking_queue_lock_timer, sw.elapsed_time());
+
     _blocked_drivers.push_back(driver);
     driver->_pending_timer_sw->reset();
     _cond.notify_one();
