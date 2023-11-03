@@ -352,6 +352,17 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
     QueryContextPtr query_ctx;
     std::vector<QueryContextPtr> del_list;
 
+    DeferOp defer_log_slow_query_ctx([&query_ctx, &del_list] {
+        if (config::enable_slow_query_ctx_finalize_log) {
+            int64_t time_ns = 0;
+            {
+                SCOPED_RAW_TIMER(&time_ns);
+                query_ctx.reset();
+                del_list.clear();
+            }
+        }
+    });
+
     std::unique_lock<std::shared_mutex> write_lock(mutex);
     _clean_slot_unlocked(i, del_list);
     // return directly if query_ctx is absent
