@@ -41,7 +41,14 @@ public:
 
     // Return false iff has been shutdown.
     bool blocking_get(T* out) {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> unique_lock(_lock);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] BlockingPriorityQueue::blocking_get [time" << sw.elapsed_time() << "]";
+        }
+
         _get_cv.wait(unique_lock, [this]() { return !_heap.empty() || _shutdown; });
         if (!_heap.empty()) {
             _adjust_priority_if_needed();
@@ -62,7 +69,14 @@ public:
 
     // Return false iff has been shutdown or empty.
     bool non_blocking_get(T* out) {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> unique_lock(_lock);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] BlockingPriorityQueue::non_blocking_get [time" << sw.elapsed_time() << "]";
+        }
+
         if (!_heap.empty()) {
             _adjust_priority_if_needed();
             std::pop_heap(_heap.begin(), _heap.end());
@@ -82,7 +96,14 @@ public:
 
     // Return false iff has been shutdown.
     bool blocking_put(const T& val) {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> unique_lock(_lock);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] BlockingPriorityQueue::blocking_put [time" << sw.elapsed_time() << "]";
+        }
+
         _put_cv.wait(unique_lock, [this]() { return _heap.size() < _max_element || _shutdown; });
         if (!_shutdown) {
             DCHECK_LT(_heap.size(), _max_element);
@@ -97,7 +118,14 @@ public:
 
     // Return false iff has been shutdown.
     bool blocking_put(T&& val) {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> unique_lock(_lock);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] BlockingPriorityQueue::blocking_put [time" << sw.elapsed_time() << "]";
+        }
+
         _put_cv.wait(unique_lock, [this]() { return _heap.size() < _max_element || _shutdown; });
         if (!_shutdown) {
             DCHECK_LT(_heap.size(), _max_element);
@@ -112,7 +140,14 @@ public:
 
     // Return false if queue full or has been shutdown.
     bool try_put(const T& val) {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> unique_lock(_lock);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] BlockingPriorityQueue::try_put [time" << sw.elapsed_time() << "]";
+        }
+
         if (_heap.size() < _max_element && !_shutdown) {
             _heap.emplace_back(val);
             std::push_heap(_heap.begin(), _heap.end());
@@ -125,7 +160,14 @@ public:
 
     // Return false if queue full or has been shutdown.
     bool try_put(T&& val) {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> unique_lock(_lock);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] BlockingPriorityQueue::blocking_get [time" << sw.elapsed_time() << "]";
+        }
+
         if (_heap.size() < _max_element && !_shutdown) {
             _heap.emplace_back(std::move(val));
             std::push_heap(_heap.begin(), _heap.end());
@@ -139,7 +181,15 @@ public:
     // Shut down the queue. Wakes up all threads waiting on blocking_get or blocking_put.
     void shutdown() {
         {
+            MonotonicStopWatch sw;
+            sw.start();
             std::lock_guard<std::mutex> guard(_lock);
+            sw.stop();
+            if (config::slow_query_ctx_finalize_log_ns > 0 &&
+                sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+                LOG(WARNING) << "[LZH] BlockingPriorityQueue::shutdown [time" << sw.elapsed_time() << "]";
+            }
+
             if (_shutdown) return;
             _shutdown = true;
         }
@@ -150,7 +200,14 @@ public:
 
     size_t get_capacity() const { return _max_element; }
     uint32_t get_size() const {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::mutex> l(_lock);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] BlockingPriorityQueue::get_size [time" << sw.elapsed_time() << "]";
+        }
+
         return _heap.size();
     }
 

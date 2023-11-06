@@ -36,7 +36,13 @@ bool WorkGroupScanTaskQueue::WorkGroupScanSchedEntityComparator::operator()(
 }
 
 void WorkGroupScanTaskQueue::close() {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] slow_driver_queue_take [time" << sw.elapsed_time() << "]";
+    }
 
     if (_is_closed) {
         return;
