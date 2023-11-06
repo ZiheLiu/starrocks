@@ -72,7 +72,14 @@ void FragmentContext::cancel(const Status& status) {
 }
 
 FragmentContext* FragmentContextManager::get_or_register(const TUniqueId& fragment_id) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_lock);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] FragmentContextManager::get_or_register [time" << sw.elapsed_time() << "]";
+    }
+
     auto it = _fragment_contexts.find(fragment_id);
     if (it != _fragment_contexts.end()) {
         return it->second.get();
@@ -85,7 +92,13 @@ FragmentContext* FragmentContextManager::get_or_register(const TUniqueId& fragme
 }
 
 Status FragmentContextManager::register_ctx(const TUniqueId& fragment_id, FragmentContextPtr fragment_ctx) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_lock);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] FragmentContextManager::register_ctx [time" << sw.elapsed_time() << "]";
+    }
 
     if (_fragment_contexts.find(fragment_id) != _fragment_contexts.end()) {
         std::stringstream msg;
@@ -108,7 +121,14 @@ Status FragmentContextManager::register_ctx(const TUniqueId& fragment_id, Fragme
 }
 
 FragmentContextPtr FragmentContextManager::get(const TUniqueId& fragment_id) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_lock);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] FragmentContextManager::get [time" << sw.elapsed_time() << "]";
+    }
+
     auto it = _fragment_contexts.find(fragment_id);
     if (it != _fragment_contexts.end()) {
         return it->second;
@@ -118,7 +138,14 @@ FragmentContextPtr FragmentContextManager::get(const TUniqueId& fragment_id) {
 }
 
 void FragmentContextManager::unregister(const TUniqueId& fragment_id) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_lock);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] FragmentContextManager::unregister [time" << sw.elapsed_time() << "]";
+    }
+
     auto it = _fragment_contexts.find(fragment_id);
     if (it != _fragment_contexts.end()) {
         it->second->_finish_promise.set_value();
@@ -152,7 +179,14 @@ void FragmentContextManager::unregister(const TUniqueId& fragment_id) {
 }
 
 void FragmentContextManager::cancel(const Status& status) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_lock);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] FragmentContextManager::cancel [time" << sw.elapsed_time() << "]";
+    }
+
     for (auto& _fragment_context : _fragment_contexts) {
         _fragment_context.second->cancel(status);
     }

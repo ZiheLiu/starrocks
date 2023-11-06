@@ -41,6 +41,10 @@ void QuerySharedDriverQueue::put_back(const DriverRawPtr driver) {
         std::lock_guard<std::mutex> lock(_global_mutex);
         sw.stop();
 
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] slow_driver_queue_put_back [time" << sw.elapsed_time() << "]";
+        }
+
         COUNTER_UPDATE(driver->_push_to_ready_queue_lock_timer, sw.elapsed_time());
 
         _queues[level].put(driver);
@@ -62,6 +66,10 @@ void QuerySharedDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) 
     sw.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
     sw.stop();
+
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] slow_driver_queue_put_back_multiple [time" << sw.elapsed_time() << "]";
+    }
 
     if (!drivers.empty()) {
         COUNTER_UPDATE(drivers[0]->_push_to_ready_queue_lock_timer, sw.elapsed_time());
@@ -101,6 +109,10 @@ StatusOr<DriverRawPtr> QuerySharedDriverQueue::take() {
         std::unique_lock<std::mutex> lock(_global_mutex);
         sw.stop();
         lock_time_ns = sw.elapsed_time();
+
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] slow_driver_queue_take [time" << sw.elapsed_time() << "]";
+        }
 
         while (true) {
             if (_is_closed) {
@@ -155,7 +167,14 @@ size_t QuerySharedDriverQueue::size() const {
 }
 
 void QuerySharedDriverQueue::update_statistics(const DriverRawPtr driver) {
+    MonotonicStopWatch sw;
+    sw.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
+    sw.stop();
+
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] slow_update_statistics [time" << sw.elapsed_time() << "]";
+    }
 
     _queues[driver->get_driver_queue_level()].update_accu_time(driver);
 }

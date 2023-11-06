@@ -272,7 +272,15 @@ QueryContext* QueryContextManager::get_or_register(const TUniqueId& query_id) {
     auto& sc_map = _second_chance_maps[i];
 
     {
+        MonotonicStopWatch sw;
+        sw.start();
         std::shared_lock<std::shared_mutex> read_lock(mutex);
+        sw.stop();
+
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] QueryContextManager::get_or_register read_lock [time" << sw.elapsed_time() << "]";
+        }
+
         // lookup query context in context_map
         auto it = context_map.find(query_id);
         if (it != context_map.end()) {
@@ -281,7 +289,15 @@ QueryContext* QueryContextManager::get_or_register(const TUniqueId& query_id) {
         }
     }
     {
+        MonotonicStopWatch sw;
+        sw.start();
         std::unique_lock<std::shared_mutex> write_lock(mutex);
+        sw.stop();
+
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] QueryContextManager::get_or_register write_lock [time" << sw.elapsed_time() << "]";
+        }
+
         // lookup query context in context_map at first
         auto it = context_map.find(query_id);
         auto sc_it = sc_map.find(query_id);
@@ -315,7 +331,15 @@ QueryContextPtr QueryContextManager::get(const TUniqueId& query_id) {
     auto& mutex = _mutexes[i];
     auto& context_map = _context_maps[i];
     auto& sc_map = _second_chance_maps[i];
+
+    MonotonicStopWatch sw;
+    sw.start();
     std::shared_lock<std::shared_mutex> read_lock(mutex);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] QueryContextManager::get read_lock [time" << sw.elapsed_time() << "]";
+    }
+
     // lookup query context in context_map for the first chance
     auto it = context_map.find(query_id);
     if (it != context_map.end()) {
@@ -334,7 +358,14 @@ QueryContextPtr QueryContextManager::get(const TUniqueId& query_id) {
 size_t QueryContextManager::size() {
     size_t sz = 0;
     for (int i = 0; i < _mutexes.size(); ++i) {
+        MonotonicStopWatch sw;
+        sw.start();
         std::shared_lock<std::shared_mutex> read_lock(_mutexes[i]);
+        sw.stop();
+        if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+            LOG(WARNING) << "[LZH] QueryContextManager::size read_lock [time" << sw.elapsed_time() << "]";
+        }
+
         sz += _context_maps[i].size();
         sz += _second_chance_maps[i].size();
     }
@@ -366,7 +397,14 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
         }
     });
 
+    MonotonicStopWatch sw;
+    sw.start();
     std::unique_lock<std::shared_mutex> write_lock(mutex);
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] slow_lock_query_ctx write_lock [time" << sw.elapsed_time() << "]";
+    }
+
     _clean_slot_unlocked(i, del_list);
     // return directly if query_ctx is absent
     auto it = context_map.find(query_id);
@@ -394,9 +432,16 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
 
 void QueryContextManager::clear() {
     std::vector<std::unique_lock<std::shared_mutex>> locks;
+
     locks.reserve(_mutexes.size());
+    MonotonicStopWatch sw;
+    sw.start();
     for (auto& _mutexe : _mutexes) {
         locks.emplace_back(_mutexe);
+    }
+    sw.stop();
+    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+        LOG(WARNING) << "[LZH] QueryContextManager::clear write_lock [time" << sw.elapsed_time() << "]";
     }
     _second_chance_maps.clear();
     _context_maps.clear();
