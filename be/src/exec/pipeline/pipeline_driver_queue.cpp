@@ -167,14 +167,14 @@ size_t QuerySharedDriverQueue::size() const {
 }
 
 void QuerySharedDriverQueue::update_statistics(const DriverRawPtr driver) {
-    MonotonicStopWatch sw;
-    sw.start();
-    std::lock_guard<std::mutex> lock(_global_mutex);
-    sw.stop();
+    // MonotonicStopWatch sw;
+    // sw.start();
+    // std::lock_guard<std::mutex> lock(_global_mutex);
+    // sw.stop();
 
-    if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
-        LOG(WARNING) << "[LZH] slow_update_statistics [time" << sw.elapsed_time() << "]";
-    }
+    // if (config::slow_query_ctx_finalize_log_ns > 0 && sw.elapsed_time() >= config::slow_query_ctx_finalize_log_ns) {
+    //     LOG(WARNING) << "[LZH] slow_update_statistics [time" << sw.elapsed_time() << "]";
+    // }
 
     _queues[driver->get_driver_queue_level()].update_accu_time(driver);
 }
