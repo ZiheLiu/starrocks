@@ -28,6 +28,7 @@
 
 #include "common/config.h"
 #include "gutil/port.h"
+#include "util/stopwatch.hpp"
 
 namespace starrocks {
 
