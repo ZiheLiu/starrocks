@@ -501,7 +501,8 @@ void RuntimeProfile::copy_all_counters_from(RuntimeProfile* src_profile) {
         if (name != ROOT_COUNTER) {
             auto* src_counter = src_profile->_counter_map[name].first;
             DCHECK(src_counter != nullptr);
-            auto* new_counter = add_counter_unlock(name, src_counter->type(), parent_name, src_counter->skip_merge());
+            RuntimeProfile::Counter* new_counter =
+                    add_counter_unlock(name, src_counter->type(), parent_name, src_counter->skip_merge());
             COUNTER_SET(new_counter, src_counter->value());
         }
 
@@ -935,10 +936,10 @@ void RuntimeProfile::merge_isomorphic_profiles(std::vector<RuntimeProfile*>& pro
             }
             COUNTER_SET(counter0, merged_value);
 
-            auto* min_counter = profile0->add_child_counter(strings::Substitute("$0$1", MERGED_INFO_PREFIX_MIN, name),
-                                                            type, name, counter0->skip_merge());
-            auto* max_counter = profile0->add_child_counter(strings::Substitute("$0$1", MERGED_INFO_PREFIX_MAX, name),
-                                                            type, name, counter0->skip_merge());
+            RuntimeProfile::Counter* min_counter = profile0->add_child_counter(
+                    strings::Substitute("$0$1", MERGED_INFO_PREFIX_MIN, name), type, name, counter0->skip_merge());
+            RuntimeProfile::Counter* max_counter = profile0->add_child_counter(
+                    strings::Substitute("$0$1", MERGED_INFO_PREFIX_MAX, name), type, name, counter0->skip_merge());
             COUNTER_SET(min_counter, min_value);
             COUNTER_SET(max_counter, max_value);
         }

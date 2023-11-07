@@ -91,7 +91,8 @@ void QueryContext::init_mem_tracker(int64_t query_mem_limit, MemTracker* parent,
                                     workgroup::WorkGroup* wg) {
     std::call_once(_init_mem_tracker_once, [=]() {
         _profile = std::make_shared<RuntimeProfile>("Query" + print_id(_query_id));
-        auto* mem_tracker_counter = ADD_COUNTER_SKIP_MERGE(_profile.get(), "MemoryLimit", TUnit::BYTES);
+        RuntimeProfile::Counter* mem_tracker_counter =
+                ADD_COUNTER_SKIP_MERGE(_profile.get(), "MemoryLimit", TUnit::BYTES);
         COUNTER_SET(mem_tracker_counter, query_mem_limit);
         _mem_tracker = std::make_shared<MemTracker>(MemTracker::QUERY, query_mem_limit, _profile->name(), parent);
         if (wg != nullptr && big_query_mem_limit > 0 && big_query_mem_limit < query_mem_limit) {

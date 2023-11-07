@@ -33,7 +33,7 @@ PipelineDriver::~PipelineDriver() noexcept {
 Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _runtime_state = runtime_state;
 
-    auto* prepare_timer = ADD_TIMER(_runtime_profile, "DriverPrepareTime");
+    RuntimeProfile::Counter* prepare_timer = ADD_TIMER(_runtime_profile, "DriverPrepareTime");
     SCOPED_TIMER(prepare_timer);
 
     // TotalTime is reserved name
