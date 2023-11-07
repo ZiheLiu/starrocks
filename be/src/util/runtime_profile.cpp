@@ -136,79 +136,79 @@ void RuntimeProfile::update(const TRuntimeProfileTree& thrift_profile) {
 }
 
 void RuntimeProfile::update(const std::vector<TRuntimeProfileNode>& nodes, int* idx) {
-    DCHECK_LT(*idx, nodes.size());
-    const TRuntimeProfileNode& node = nodes[*idx];
-    {
-        std::lock_guard<std::mutex> l(_counter_lock);
-        // update this level
+    // DCHECK_LT(*idx, nodes.size());
+    // const TRuntimeProfileNode& node = nodes[*idx];
+    // {
+    //     std::lock_guard<std::mutex> l(_counter_lock);
+    //     // update this level
 
-        for (const auto& tcounter : node.counters) {
-            auto j = _counter_map.find(tcounter.name);
+    //     for (const auto& tcounter : node.counters) {
+    //         auto j = _counter_map.find(tcounter.name);
 
-            if (j == _counter_map.end()) {
-                // TODO(hcf) pass correct parent counter name
-                _counter_map[tcounter.name] = std::make_pair(
-                        _pool->add(new Counter(tcounter.type, tcounter.value, tcounter.skip_merge)), ROOT_COUNTER);
-            } else {
-                if (j->second.first->type() != tcounter.type) {
-                    LOG(ERROR) << "Cannot update counters with the same name (" << j->first << ") but different types.";
-                } else {
-                    j->second.first->set(tcounter.value);
-                }
-            }
-        }
+    //         if (j == _counter_map.end()) {
+    //             // TODO(hcf) pass correct parent counter name
+    //             _counter_map[tcounter.name] = std::make_pair(
+    //                     _pool->add(new Counter(tcounter.type, tcounter.value, tcounter.skip_merge)), ROOT_COUNTER);
+    //         } else {
+    //             if (j->second.first->type() != tcounter.type) {
+    //                 LOG(ERROR) << "Cannot update counters with the same name (" << j->first << ") but different types.";
+    //             } else {
+    //                 j->second.first->set(tcounter.value);
+    //             }
+    //         }
+    //     }
 
-        for (auto child_counter_src_itr = node.child_counters_map.begin();
-             child_counter_src_itr != node.child_counters_map.end(); ++child_counter_src_itr) {
-            auto& child_counters =
-                    LookupOrInsert(&_child_counter_map, child_counter_src_itr->first, std::set<std::string>());
-            child_counters.insert(child_counter_src_itr->second.begin(), child_counter_src_itr->second.end());
-        }
-    }
+    //     for (auto child_counter_src_itr = node.child_counters_map.begin();
+    //          child_counter_src_itr != node.child_counters_map.end(); ++child_counter_src_itr) {
+    //         auto& child_counters =
+    //                 LookupOrInsert(&_child_counter_map, child_counter_src_itr->first, std::set<std::string>());
+    //         child_counters.insert(child_counter_src_itr->second.begin(), child_counter_src_itr->second.end());
+    //     }
+    // }
 
-    {
-        std::lock_guard<std::mutex> l(_info_strings_lock);
-        const InfoStrings& info_strings = node.info_strings;
-        for (const std::string& key : node.info_strings_display_order) {
-            // Look for existing info strings and update in place. If there
-            // are new strings, add them to the end of the display order.
-            // TODO: Is nodes.info_strings always a superset of
-            // _info_strings? If so, can just copy the display order.
-            auto it = info_strings.find(key);
-            DCHECK(it != info_strings.end());
-            auto existing = _info_strings.find(key);
+    // {
+    //     std::lock_guard<std::mutex> l(_info_strings_lock);
+    //     const InfoStrings& info_strings = node.info_strings;
+    //     for (const std::string& key : node.info_strings_display_order) {
+    //         // Look for existing info strings and update in place. If there
+    //         // are new strings, add them to the end of the display order.
+    //         // TODO: Is nodes.info_strings always a superset of
+    //         // _info_strings? If so, can just copy the display order.
+    //         auto it = info_strings.find(key);
+    //         DCHECK(it != info_strings.end());
+    //         auto existing = _info_strings.find(key);
 
-            if (existing == _info_strings.end()) {
-                _info_strings.emplace(key, it->second);
-                _info_strings_display_order.push_back(key);
-            } else {
-                _info_strings[key] = it->second;
-            }
-        }
-    }
+    //         if (existing == _info_strings.end()) {
+    //             _info_strings.emplace(key, it->second);
+    //             _info_strings_display_order.push_back(key);
+    //         } else {
+    //             _info_strings[key] = it->second;
+    //         }
+    //     }
+    // }
 
-    ++*idx;
-    {
-        std::lock_guard<std::mutex> l(_children_lock);
+    // ++*idx;
+    // {
+    //     std::lock_guard<std::mutex> l(_children_lock);
 
-        // update children with matching names; create new ones if they don't match
-        for (int i = 0; i < node.num_children; ++i) {
-            const TRuntimeProfileNode& tchild = nodes[*idx];
-            auto j = _child_map.find(tchild.name);
-            RuntimeProfile* child = nullptr;
+    //     // update children with matching names; create new ones if they don't match
+    //     for (int i = 0; i < node.num_children; ++i) {
+    //         const TRuntimeProfileNode& tchild = nodes[*idx];
+    //         auto j = _child_map.find(tchild.name);
+    //         RuntimeProfile* child = nullptr;
 
-            if (j != _child_map.end()) {
-                child = j->second;
-            } else {
-                child = _pool->add(new RuntimeProfile(tchild.name));
-                child->_metadata = tchild.metadata;
-                _child_map[tchild.name] = child;
-                _children.push_back(std::make_pair(child, tchild.indent));
-            }
+    //         if (j != _child_map.end()) {
+    //             child = j->second;
+    //         } else {
+    //             child = _pool->add(new RuntimeProfile(tchild.name));
+    //             child->_metadata = tchild.metadata;
+    //             _child_map[tchild.name] = child;
+    //             _children.push_back(std::make_pair(child, tchild.indent));
+    //         }
 
-            child->update(nodes, idx);
-        }
-    }
+    //         child->update(nodes, idx);
+    //     }
+    // }
 }
 
 void RuntimeProfile::divide(int n) {
@@ -690,50 +690,50 @@ void RuntimeProfile::to_thrift(TRuntimeProfileTree* tree) {
 }
 
 void RuntimeProfile::to_thrift(std::vector<TRuntimeProfileNode>* nodes) {
-    nodes->reserve(nodes->size() + _children.size());
+    // nodes->reserve(nodes->size() + _children.size());
 
-    int index = nodes->size();
-    nodes->push_back(TRuntimeProfileNode());
-    TRuntimeProfileNode& node = (*nodes)[index];
-    node.name = _name;
-    node.num_children = _children.size();
-    node.metadata = _metadata;
-    node.indent = true;
+    // int index = nodes->size();
+    // nodes->push_back(TRuntimeProfileNode());
+    // TRuntimeProfileNode& node = (*nodes)[index];
+    // node.name = _name;
+    // node.num_children = _children.size();
+    // node.metadata = _metadata;
+    // node.indent = true;
 
-    CounterMap counter_map;
-    {
-        std::lock_guard<std::mutex> l(_counter_lock);
-        counter_map = _counter_map;
-        node.child_counters_map = _child_counter_map;
-    }
+    // CounterMap counter_map;
+    // // {
+    // //     std::lock_guard<std::mutex> l(_counter_lock);
+    // //     counter_map = _counter_map;
+    // //     // node.child_counters_map = _child_counter_map;
+    // // }
 
-    for (auto& iter : counter_map) {
-        TCounter counter;
-        counter.name = iter.first;
-        counter.value = iter.second.first->value();
-        counter.type = iter.second.first->type();
-        counter.skip_merge = iter.second.first->skip_merge();
-        node.counters.push_back(counter);
-    }
+    // for (auto& iter : counter_map) {
+    //     TCounter counter;
+    //     counter.name = iter.first;
+    //     counter.value = iter.second.first->value();
+    //     counter.type = iter.second.first->type();
+    //     counter.skip_merge = iter.second.first->skip_merge();
+    //     node.counters.push_back(counter);
+    // }
 
-    {
-        std::lock_guard<std::mutex> l(_info_strings_lock);
-        node.info_strings = _info_strings;
-        node.info_strings_display_order = _info_strings_display_order;
-    }
+    // {
+    //     std::lock_guard<std::mutex> l(_info_strings_lock);
+    //     node.info_strings = _info_strings;
+    //     node.info_strings_display_order = _info_strings_display_order;
+    // }
 
-    ChildVector children;
-    {
-        std::lock_guard<std::mutex> l(_children_lock);
-        children = _children;
-    }
+    // ChildVector children;
+    // {
+    //     std::lock_guard<std::mutex> l(_children_lock);
+    //     children = _children;
+    // }
 
-    for (auto& i : children) {
-        int child_idx = nodes->size();
-        i.first->to_thrift(nodes);
-        // fix up indentation flag
-        (*nodes)[child_idx].indent = i.second;
-    }
+    // for (auto& i : children) {
+    //     int child_idx = nodes->size();
+    //     i.first->to_thrift(nodes);
+    //     // fix up indentation flag
+    //     (*nodes)[child_idx].indent = i.second;
+    // }
 }
 
 int64_t RuntimeProfile::units_per_second(const RuntimeProfile::Counter* total_counter,
