@@ -47,7 +47,7 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 // Define macros for updating counters.  The macros make it very easy to disable
 // all counters at compile time.  Set this to 0 to remove counters.  This is useful
 // to do to make sure the counters aren't affecting the system.
-#define ENABLE_COUNTERS
+#define ENABLE_COUNTERS 0
 
 // Some macro magic to generate unique ids using __COUNTER__
 #define CONCAT_IMPL(x, y) x##y
