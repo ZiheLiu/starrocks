@@ -514,7 +514,7 @@ private:
     // Protects _info_strings and _info_strings_display_order
     mutable std::mutex _info_strings_lock;
 
-    typedef EventSequenceMap = phmap::flat_hash_map<std::string, EventSequence*>;
+    using EventSequenceMap = phmap::flat_hash_map<std::string, EventSequence*>;
     EventSequenceMap _event_sequence_map;
     mutable std::mutex _event_sequences_lock;
 
