@@ -190,7 +190,7 @@ void JDBCScanner::_init_profile() {
     _profile.io_timer = ADD_TIMER(_runtime_profile, "IOTime");
     _profile.io_counter = ADD_COUNTER(_runtime_profile, "IOCounter", TUnit::UNIT);
     _profile.fill_chunk_timer = ADD_TIMER(_runtime_profile, "FillChunkTime");
-    _runtime_profile->add_info_string("Query", _scan_ctx.sql);
+    ADD_INFO_STRING(_runtime_profile, "Query", _scan_ctx.sql);
 }
 
 StatusOr<LogicalType> JDBCScanner::_precheck_data_type(const std::string& java_class, SlotDescriptor* slot_desc) {

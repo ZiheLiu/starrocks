@@ -49,6 +49,7 @@
 #include "common/object_pool.h"
 #include "gen_cpp/RuntimeProfile_types.h"
 #include "gutil/casts.h"
+#include "util/phmap/phmap.h"
 #include "util/stopwatch.hpp"
 
 namespace starrocks {
@@ -60,13 +61,22 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 // Define macros for updating counters.  The macros make it very easy to disable
 // all counters at compile time.  Set this to 0 to remove counters.  This is useful
 // to do to make sure the counters aren't affecting the system.
-#define ENABLE_COUNTERS 1
+#define ENABLE_COUNTERS 0
 
 // Some macro magic to generate unique ids using __COUNTER__
 #define CONCAT_IMPL(x, y) x##y
 #define MACRO_CONCAT(x, y) CONCAT_IMPL(x, y)
 
 #if ENABLE_COUNTERS
+#define COUNTER_VALUE(c) (c)->value()
+#define ADD_INFO_STRING(profile, name, value) (profile)->add_info_string(name, value)
+#define ADD_HIGH_WATER_COUNTER(profile, name, type) \
+    (profile)->AddHighWaterMarkCounter(name, type, RuntimeProfile::Counter::create_strategy(type))
+#define ADD_HIGH_WATER_COUNTER_3(profile, name, type, merge_type) \
+    (profile)->AddHighWaterMarkCounter(name, type, RuntimeProfile::Counter::create_strategy(type, merge_type))
+#define ADD_HIGH_WATER_COUNTER_4(profile, name, type, parent_name, merge_type)                                 \
+    (profile)->AddHighWaterMarkCounter(name, type, RuntimeProfile::Counter::create_strategy(type, merge_type), \
+                                       parent_name)
 #define ADD_COUNTER(profile, name, type) \
     (profile)->add_counter(name, type, RuntimeProfile::Counter::create_strategy(type))
 #define ADD_COUNTER_SKIP_MERGE(profile, name, type, merge_type) \
@@ -102,14 +112,30 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
     /*ThreadCounterMeasurement                                        \
       MACRO_CONCAT(SCOPED_THREAD_COUNTER_MEASUREMENT, __COUNTER__)(c)*/
 #else
-#define ADD_COUNTER(profile, name, type) NULL
-#define ADD_TIMER(profile, name) NULL
+#define COUNTER_VALUE(c) 0
+#define ADD_INFO_STRING(profile, name, value)
+#define ADD_PEAK_COUNTER(profile, name, type) static_cast<RuntimeProfile::HighWaterMarkCounter*>(nullptr)
+#define ADD_HIGH_WATER_COUNTER(profile, name, type) static_cast<RuntimeProfile::HighWaterMarkCounter*>(nullptr)
+#define ADD_HIGH_WATER_COUNTER_3(profile, name, type, merge_type) \
+    static_cast<RuntimeProfile::HighWaterMarkCounter*>(nullptr)
+#define ADD_HIGH_WATER_COUNTER_4(profile, name, type, parent_name, merge_type) \
+    static_cast<RuntimeProfile::HighWaterMarkCounter*>(nullptr)
+#define ADD_COUNTER(profile, name, type) static_cast<RuntimeProfile::Counter*>(nullptr)
+#define ADD_COUNTER_SKIP_MERGE(profile, name, type, merge_type) static_cast<RuntimeProfile::Counter*>(nullptr)
+#define ADD_TIMER(profile, name) static_cast<RuntimeProfile::Counter*>(nullptr)
+#define ADD_CHILD_COUNTER(profile, name, type, parent) static_cast<RuntimeProfile::Counter*>(nullptr)
+#define ADD_CHILD_COUNTER_SKIP_MERGE(profile, name, type, merge_type, parent) \
+    static_cast<RuntimeProfile::Counter*>(nullptr)
+#define ADD_CHILD_TIMER_THESHOLD(profile, name, parent, threshold) static_cast<RuntimeProfile::Counter*>(nullptr)
+#define ADD_CHILD_TIMER(profile, name, parent) static_cast<RuntimeProfile::Counter*>(nullptr)
 #define SCOPED_TIMER(c)
+#define CANCEL_SAFE_SCOPED_TIMER(c, is_cancelled)
 #define SCOPED_RAW_TIMER(c)
 #define COUNTER_UPDATE(c, v)
 #define COUNTER_SET(c, v)
 #define COUNTER_ADD(c, v)
 #define ADD_THREADCOUNTERS(profile, prefix) NULL
+#define ADD_THREAD_COUNTERS(profile, prefix) NULL
 #define SCOPED_THREAD_COUNTER_MEASUREMENT(c)
 #endif
 
@@ -544,12 +570,12 @@ private:
 
     // Map from counter names to counters and parent counter names.
     // The profile owns the memory for the counters.
-    typedef std::map<std::string, std::pair<Counter*, std::string>> CounterMap;
+    typedef phmap::flat_hash_map<std::string, std::pair<Counter*, std::string>> CounterMap;
     CounterMap _counter_map;
 
     // Map from parent counter name to a set of child counter name.
     // All top level counters are the child of "" (root).
-    typedef std::map<std::string, std::set<std::string>> ChildCounterMap;
+    typedef phmap::flat_hash_map<std::string, phmap::flat_hash_set<std::string>> ChildCounterMap;
     ChildCounterMap _child_counter_map;
 
     // A set of bucket counters registered in this runtime profile.
@@ -561,13 +587,13 @@ private:
     // Child profiles.  Does not own memory.
     // We record children in both a map (to facilitate updates) and a vector
     // (to print things in the order they were registered)
-    typedef std::map<std::string, RuntimeProfile*> ChildMap;
+    typedef phmap::flat_hash_map<std::string, RuntimeProfile*> ChildMap;
     ChildMap _child_map;
 
     ChildVector _children;
     mutable std::mutex _children_lock; // protects _child_map and _children
 
-    typedef std::map<std::string, std::string> InfoStrings;
+    typedef phmap::flat_hash_map<std::string, std::string> InfoStrings;
     InfoStrings _info_strings;
 
     // Keeps track of the order in which InfoStrings are displayed when printed
@@ -577,7 +603,7 @@ private:
     // Protects _info_strings and _info_strings_display_order
     mutable std::mutex _info_strings_lock;
 
-    typedef std::map<std::string, EventSequence*> EventSequenceMap;
+    typedef phmap::flat_hash_map<std::string, EventSequence*> EventSequenceMap;
     EventSequenceMap _event_sequence_map;
     mutable std::mutex _event_sequences_lock;
 
@@ -631,13 +657,13 @@ public:
             return;
         }
 
-        _counter->update(-1L * _val);
+        COUNTER_UPDATE(_counter, -1L * _val);
     }
 
     // Increment the counter when object is destroyed
     ~ScopedCounter() {
         if (_counter != nullptr) {
-            _counter->update(_val);
+            COUNTER_UPDATE(_counter, _val);
         }
     }
 
@@ -677,7 +703,7 @@ public:
 
     void UpdateCounter() {
         if (_counter != nullptr && !is_cancelled()) {
-            _counter->update(_sw.elapsed_time());
+            COUNTER_UPDATE(_counter, _sw.elapsed_time());
         }
     }
 

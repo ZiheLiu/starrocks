@@ -245,7 +245,8 @@ size_t PipelineDriverPoller::calculate_parked_driver(const ImmutableDriverPredic
 
 void PipelineDriverPoller::remove_blocked_driver(DriverList& local_blocked_drivers, size_t index) {
     auto& driver = local_blocked_drivers[index];
-    driver->_pending_timer->update(driver->_pending_timer_sw->elapsed_time());
+    COUNTER_UPDATE(driver->_pending_timer, driver->_pending_timer_sw->elapsed_time());
+
     _blocked_driver_queue_len--;
 }
 

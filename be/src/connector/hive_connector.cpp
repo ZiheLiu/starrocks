@@ -415,16 +415,16 @@ void HiveDataSource::_init_counter(RuntimeState* state) {
     }
 
     if (hdfs_scan_node.__isset.table_name) {
-        _runtime_profile->add_info_string("Table", hdfs_scan_node.table_name);
+        ADD_INFO_STRING(_runtime_profile, "Table", hdfs_scan_node.table_name);
     }
     if (hdfs_scan_node.__isset.sql_predicates) {
-        _runtime_profile->add_info_string("Predicates", hdfs_scan_node.sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "Predicates", hdfs_scan_node.sql_predicates);
     }
     if (hdfs_scan_node.__isset.min_max_sql_predicates) {
-        _runtime_profile->add_info_string("PredicatesMinMax", hdfs_scan_node.min_max_sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "PredicatesMinMax", hdfs_scan_node.min_max_sql_predicates);
     }
     if (hdfs_scan_node.__isset.partition_sql_predicates) {
-        _runtime_profile->add_info_string("PredicatesPartition", hdfs_scan_node.partition_sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "PredicatesPartition", hdfs_scan_node.partition_sql_predicates);
     }
 }
 

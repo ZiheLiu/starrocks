@@ -120,12 +120,12 @@ Status OlapScanNode::prepare(RuntimeState* state) {
     if (_tuple_desc == nullptr) {
         return Status::InternalError("Failed to get tuple descriptor.");
     }
-    _runtime_profile->add_info_string("Table", _tuple_desc->table_desc()->name());
+    ADD_INFO_STRING(_runtime_profile, "Table", _tuple_desc->table_desc()->name());
     if (_olap_scan_node.__isset.rollup_name) {
-        _runtime_profile->add_info_string("Rollup", _olap_scan_node.rollup_name);
+        ADD_INFO_STRING(_runtime_profile, "Rollup", _olap_scan_node.rollup_name);
     }
     if (_olap_scan_node.__isset.sql_predicates) {
-        _runtime_profile->add_info_string("Predicates", _olap_scan_node.sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "Predicates", _olap_scan_node.sql_predicates);
     }
 
     return Status::OK();
@@ -507,8 +507,8 @@ StatusOr<bool> OlapScanNode::_could_split_tablet_physically(const std::vector<TS
 Status OlapScanNode::collect_query_statistics(QueryStatistics* statistics) {
     RETURN_IF_ERROR(ExecNode::collect_query_statistics(statistics));
     QueryStatisticsItemPB stats_item;
-    stats_item.set_scan_bytes(_read_compressed_counter->value());
-    stats_item.set_scan_rows(_raw_rows_counter->value());
+    stats_item.set_scan_bytes(COUNTER_VALUE(_read_compressed_counter));
+    stats_item.set_scan_rows(COUNTER_VALUE(_raw_rows_counter));
     stats_item.set_table_id(_tuple_desc->table_desc()->table_id());
     statistics->add_stats_item(stats_item);
     return Status::OK();

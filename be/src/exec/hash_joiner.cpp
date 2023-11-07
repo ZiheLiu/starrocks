@@ -91,14 +91,14 @@ Status HashJoiner::prepare_builder(RuntimeState* state, RuntimeProfile* runtime_
     }
 
     if (_hash_join_node.__isset.sql_join_predicates) {
-        runtime_profile->add_info_string("JoinPredicates", _hash_join_node.sql_join_predicates);
+        ADD_INFO_STRING(runtime_profile, "JoinPredicates", _hash_join_node.sql_join_predicates);
     }
     if (_hash_join_node.__isset.sql_predicates) {
-        runtime_profile->add_info_string("Predicates", _hash_join_node.sql_predicates);
+        ADD_INFO_STRING(runtime_profile, "Predicates", _hash_join_node.sql_predicates);
     }
 
-    runtime_profile->add_info_string("DistributionMode", to_string(_hash_join_node.distribution_mode));
-    runtime_profile->add_info_string("JoinType", to_string(_join_type));
+    ADD_INFO_STRING(runtime_profile, "DistributionMode", to_string(_hash_join_node.distribution_mode));
+    ADD_INFO_STRING(runtime_profile, "JoinType", to_string(_join_type));
 
     _build_metrics->prepare(runtime_profile);
 
@@ -118,8 +118,8 @@ Status HashJoiner::prepare_prober(RuntimeState* state, RuntimeProfile* runtime_p
         _runtime_state = state;
     }
 
-    runtime_profile->add_info_string("DistributionMode", to_string(_hash_join_node.distribution_mode));
-    runtime_profile->add_info_string("JoinType", to_string(_join_type));
+    ADD_INFO_STRING(runtime_profile, "DistributionMode", to_string(_hash_join_node.distribution_mode));
+    ADD_INFO_STRING(runtime_profile, "JoinType", to_string(_join_type));
     _probe_metrics->prepare(runtime_profile);
 
     auto& hash_table = _hash_join_builder->hash_table();

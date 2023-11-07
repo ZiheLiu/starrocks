@@ -68,26 +68,27 @@ Status ScanOperator::prepare(RuntimeState* state) {
 
     RETURN_IF_ERROR(SourceOperator::prepare(state));
 
-    _unique_metrics->add_info_string("MorselQueueType", _morsel_queue->name());
-    _peak_buffer_size_counter = _unique_metrics->AddHighWaterMarkCounter(
-            "PeakChunkBufferSize", TUnit::UNIT,
-            RuntimeProfile::Counter::create_strategy(TUnit::UNIT, TCounterMergeType::SKIP_ALL),
-            RuntimeProfile::ROOT_COUNTER);
+    // _unique_metrics->add_info_string("MorselQueueType", _morsel_queue->name());
+    // _peak_buffer_size_counter = _unique_metrics->AddHighWaterMarkCounter(
+    //         "PeakChunkBufferSize", TUnit::UNIT,
+    //         RuntimeProfile::Counter::create_strategy(TUnit::UNIT, TCounterMergeType::SKIP_ALL),
+    //         RuntimeProfile::ROOT_COUNTER);
 
-    _peak_buffer_memory_usage = _unique_metrics->AddHighWaterMarkCounter(
-            "PeakChunkBufferMemoryUsage", TUnit::BYTES,
-            RuntimeProfile::Counter::create_strategy(TUnit::BYTES, TCounterMergeType::SKIP_ALL),
-            RuntimeProfile::ROOT_COUNTER);
+    // _peak_buffer_memory_usage = _unique_metrics->AddHighWaterMarkCounter(
+    //         "PeakChunkBufferMemoryUsage", TUnit::BYTES,
+    //         RuntimeProfile::Counter::create_strategy(TUnit::BYTES, TCounterMergeType::SKIP_ALL),
+    //         RuntimeProfile::ROOT_COUNTER);
 
-    _morsels_counter = ADD_COUNTER(_unique_metrics, "MorselsCount", TUnit::UNIT);
-    _submit_task_counter = ADD_COUNTER(_unique_metrics, "SubmitTaskCount", TUnit::UNIT);
-    _peak_scan_task_queue_size_counter = _unique_metrics->AddHighWaterMarkCounter(
-            "PeakScanTaskQueueSize", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TUnit::UNIT));
-    _peak_io_tasks_counter = _unique_metrics->AddHighWaterMarkCounter(
-            "PeakIOTasks", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TCounterAggregateType::AVG));
+    // _morsels_counter = ADD_COUNTER(_unique_metrics, "MorselsCount", TUnit::UNIT);
+    // _submit_task_counter = ADD_COUNTER(_unique_metrics, "SubmitTaskCount", TUnit::UNIT);
 
-    _prepare_chunk_source_timer = ADD_TIMER(_unique_metrics, "PrepareChunkSourceTime");
-    _submit_io_task_timer = ADD_TIMER(_unique_metrics, "SubmitTaskTime");
+    // _peak_scan_task_queue_size_counter = _unique_metrics->AddHighWaterMarkCounter(
+    //         "PeakScanTaskQueueSize", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TUnit::UNIT));
+    // _peak_io_tasks_counter = _unique_metrics->AddHighWaterMarkCounter(
+    //         "PeakIOTasks", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TCounterAggregateType::AVG));
+
+    // _prepare_chunk_source_timer = ADD_TIMER(_unique_metrics, "PrepareChunkSourceTime");
+    // _submit_io_task_timer = ADD_TIMER(_unique_metrics, "SubmitTaskTime");
 
     RETURN_IF_ERROR(do_prepare(state));
     return Status::OK();
@@ -228,16 +229,6 @@ void ScanOperator::_detach_chunk_sources() {
 }
 
 Status ScanOperator::set_finishing(RuntimeState* state) {
-    // check when expired, are there running io tasks or submitted tasks
-    if (UNLIKELY(state != nullptr && state->query_ctx()->is_query_expired() &&
-                 (_num_running_io_tasks > 0 || _submit_task_counter->value() == 0))) {
-        LOG(WARNING) << "set_finishing scan fragment " << print_id(state->fragment_instance_id()) << " driver_id  "
-                     << get_driver_sequence() << " _num_running_io_tasks= " << _num_running_io_tasks
-                     << " _submit_task_counter= " << _submit_task_counter->value()
-                     << " _morsels_counter= " << _morsels_counter->value()
-                     << (is_buffer_full() && (num_buffered_chunks() == 0) ? ", buff is full but without local chunks"
-                                                                          : "");
-    }
     std::lock_guard guard(_task_mutex);
     _detach_chunk_sources();
     set_buffer_finished();
@@ -248,8 +239,8 @@ Status ScanOperator::set_finishing(RuntimeState* state) {
 StatusOr<ChunkPtr> ScanOperator::pull_chunk(RuntimeState* state) {
     RETURN_IF_ERROR(_get_scan_status());
 
-    _peak_buffer_size_counter->set(buffer_size());
-    _peak_buffer_memory_usage->set(buffer_memory_usage());
+    // _peak_buffer_size_counter->set(buffer_size());
+    // _peak_buffer_memory_usage->set(buffer_memory_usage());
 
     RETURN_IF_ERROR(_try_to_trigger_next_scan(state));
     ChunkPtr res = get_chunk_from_buffer();
@@ -328,7 +319,7 @@ Status ScanOperator::_try_to_trigger_next_scan(RuntimeState* state) {
         }
     }
 
-    _peak_io_tasks_counter->set(_num_running_io_tasks);
+    COUNTER_SET(_peak_io_tasks_counter, _num_running_io_tasks);
     return Status::OK();
 }
 
@@ -386,7 +377,7 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
     workgroup::ScanTask task;
     task.workgroup = _workgroup.get();
     // TODO: consider more factors, such as scan bytes and i/o time.
-    task.priority = OlapScanNode::compute_priority(_submit_task_counter->value());
+    task.priority = OlapScanNode::compute_priority(COUNTER_VALUE(_submit_task_counter));
     task.task_group = down_cast<const ScanOperatorFactory*>(_factory)->scan_task_group();
     task.peak_scan_task_queue_size_counter = _peak_scan_task_queue_size_counter;
     const auto io_task_start_nano = MonotonicNanos();

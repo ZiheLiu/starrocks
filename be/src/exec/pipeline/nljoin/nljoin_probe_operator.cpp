@@ -47,8 +47,8 @@ Status NLJoinProbeOperator::prepare(RuntimeState* state) {
 
     _output_accumulator.set_desired_size(state->chunk_size());
 
-    _unique_metrics->add_info_string("JoinType", to_string(_join_op));
-    _unique_metrics->add_info_string("JoinConjuncts", _sql_join_conjuncts);
+    ADD_INFO_STRING(_unique_metrics, "JoinType", to_string(_join_op));
+    ADD_INFO_STRING(_unique_metrics, "JoinConjuncts", _sql_join_conjuncts);
 
     _permute_rows_counter = ADD_COUNTER(_unique_metrics, "PermuteRows", TUnit::UNIT);
     if (_is_left_join() || _is_left_anti_join()) {
@@ -554,7 +554,7 @@ Status NLJoinProbeOperator::_permute_right_join(size_t chunk_size) {
     }
     VLOG(2) << "build_match_flag: "
             << fmt::format("{}/{}", SIMD::count_zero(build_match_flag), build_match_flag.size());
-    auto build_unmatch_counter = ADD_COUNTER(_unique_metrics, "BuildUnmatchCount", TUnit::UNIT);
+    RuntimeProfile::Counter* build_unmatch_counter = ADD_COUNTER(_unique_metrics, "BuildUnmatchCount", TUnit::UNIT);
     COUNTER_SET(build_unmatch_counter, (int64_t)SIMD::count_zero(build_match_flag));
 
     size_t match_flag_index = 0;
@@ -588,8 +588,8 @@ Status NLJoinProbeOperator::_permute_right_join(size_t chunk_size) {
         RETURN_IF_ERROR(_output_accumulator.push(std::move(chunk)));
         match_flag_index += cur_chunk_size;
     }
-    auto permute_right_rows_counter = ADD_COUNTER(_unique_metrics, "PermuteRightRows", TUnit::UNIT);
-    permute_right_rows_counter->set(permute_rows);
+    RuntimeProfile::Counter* permute_right_rows_counter = ADD_COUNTER(_unique_metrics, "PermuteRightRows", TUnit::UNIT);
+    COUNTER_SET(permute_right_rows_counter, permute_rows);
     _output_accumulator.finalize();
 
     return Status::OK();

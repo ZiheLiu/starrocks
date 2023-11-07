@@ -167,28 +167,30 @@ void SinkBuffer::update_profile(RuntimeProfile* profile) {
     COUNTER_SET(wait_timer, _full_time);
     COUNTER_UPDATE(wait_timer, MonotonicNanos() - _pending_timestamp);
 
-    auto* bytes_sent_counter = ADD_COUNTER(profile, "BytesSent", TUnit::BYTES);
-    auto* request_sent_counter = ADD_COUNTER(profile, "RequestSent", TUnit::UNIT);
+    RuntimeProfile::Counter* bytes_sent_counter = ADD_COUNTER(profile, "BytesSent", TUnit::BYTES);
+    RuntimeProfile::Counter* request_sent_counter = ADD_COUNTER(profile, "RequestSent", TUnit::UNIT);
     COUNTER_SET(bytes_sent_counter, _bytes_sent);
     COUNTER_SET(request_sent_counter, _request_sent);
 
-    auto* bytes_unsent_counter = ADD_COUNTER(profile, "BytesUnsent", TUnit::BYTES);
-    auto* request_unsent_counter = ADD_COUNTER(profile, "RequestUnsent", TUnit::UNIT);
+    RuntimeProfile::Counter* bytes_unsent_counter = ADD_COUNTER(profile, "BytesUnsent", TUnit::BYTES);
+    RuntimeProfile::Counter* request_unsent_counter = ADD_COUNTER(profile, "RequestUnsent", TUnit::UNIT);
     COUNTER_SET(bytes_unsent_counter, _bytes_enqueued - _bytes_sent);
     COUNTER_SET(request_unsent_counter, _request_enqueued - _request_sent);
 
-    profile->add_derived_counter(
-            "NetworkBandwidth", TUnit::BYTES_PER_SECOND,
-            [bytes_sent_counter, network_timer] {
-                return RuntimeProfile::units_per_second(bytes_sent_counter, network_timer);
-            },
-            "");
-    profile->add_derived_counter(
-            "OverallThroughput", TUnit::BYTES_PER_SECOND,
-            [bytes_sent_counter, overall_timer] {
-                return RuntimeProfile::units_per_second(bytes_sent_counter, overall_timer);
-            },
-            "");
+    if (profile != nullptr) {
+        profile->add_derived_counter(
+                "NetworkBandwidth", TUnit::BYTES_PER_SECOND,
+                [bytes_sent_counter, network_timer] {
+                    return RuntimeProfile::units_per_second(bytes_sent_counter, network_timer);
+                },
+                "");
+        profile->add_derived_counter(
+                "OverallThroughput", TUnit::BYTES_PER_SECOND,
+                [bytes_sent_counter, overall_timer] {
+                    return RuntimeProfile::units_per_second(bytes_sent_counter, overall_timer);
+                },
+                "");
+    }
 }
 
 int64_t SinkBuffer::_network_time() {

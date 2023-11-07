@@ -43,8 +43,8 @@ void ChunksSorterFullSort::setup_runtime(RuntimeState* state, RuntimeProfile* pr
     _runtime_profile = profile;
     _parent_mem_tracker = parent_mem_tracker;
     _object_pool = std::make_unique<ObjectPool>();
-    _runtime_profile->add_info_string("MaxBufferedRows", strings::Substitute("$0", max_buffered_rows));
-    _runtime_profile->add_info_string("MaxBufferedBytes", strings::Substitute("$0", max_buffered_bytes));
+    ADD_INFO_STRING(_runtime_profile, "MaxBufferedRows", strings::Substitute("$0", max_buffered_rows));
+    ADD_INFO_STRING(_runtime_profile, "MaxBufferedBytes", strings::Substitute("$0", max_buffered_bytes));
     _profiler = _object_pool->add(new ChunksSorterFullSortProfiler(profile, parent_mem_tracker));
 }
 
@@ -103,7 +103,7 @@ Status ChunksSorterFullSort::_partial_sort(RuntimeState* state, bool done) {
     bool reach_limit = _staging_unsorted_rows >= max_buffered_rows || _staging_unsorted_bytes >= max_buffered_bytes;
     if (done || reach_limit) {
         _max_num_rows = std::max<int>(_max_num_rows, _staging_unsorted_rows);
-        _profiler->input_required_memory->update(_staging_unsorted_bytes);
+        COUNTER_UPDATE(_profiler->input_required_memor, _staging_unsorted_bytes);
         concat_chunks(_unsorted_chunk, _staging_unsorted_chunks, _staging_unsorted_rows);
         _staging_unsorted_chunks.clear();
         RETURN_IF_ERROR(_unsorted_chunk->upgrade_if_overflow());
@@ -129,17 +129,17 @@ Status ChunksSorterFullSort::_partial_sort(RuntimeState* state, bool done) {
 
 Status ChunksSorterFullSort::_merge_sorted(RuntimeState* state) {
     SCOPED_TIMER(_merge_timer);
-    _profiler->num_sorted_runs->set((int64_t)_sorted_chunks.size());
+    COUNTER_SET(_profiler->num_sorted_runs, (int64_t)_sorted_chunks.size());
     // In cascading merging phase, the height of merging tree is ceiling(log2(num_sorted_runs)) + 1,
     // so when num_sorted_runs is 1 or 2, the height merging tree is less than 2, the sorted runs just be processed
     // in at most one pass. there is no need to enable lazy materialization which eliminates non-order-by output
     // columns's permutation in multiple passes.
     if (_early_materialized_slots.empty() || _sorted_chunks.size() < 3) {
         _early_materialized_slots.clear();
-        _runtime_profile->add_info_string("LateMaterialization", "false");
+        ADD_INFO_STRING(_runtime_profile, "LateMaterialization", "false");
         RETURN_IF_ERROR(merge_sorted_chunks(_sort_desc, _sort_exprs, _sorted_chunks, &_merged_runs));
     } else {
-        _runtime_profile->add_info_string("LateMaterialization", "true");
+        ADD_INFO_STRING(_runtime_profile, "LateMaterialization", "true");
         _split_late_and_early_chunks();
         _assign_ordinals();
         RETURN_IF_ERROR(merge_sorted_chunks(_sort_desc, _sort_exprs, _early_materialized_chunks, &_merged_runs));

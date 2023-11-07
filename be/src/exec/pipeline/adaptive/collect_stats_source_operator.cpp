@@ -28,7 +28,7 @@ CollectStatsSourceOperator::CollectStatsSourceOperator(OperatorFactory* factory,
 void CollectStatsSourceOperator::close(RuntimeState* state) {
     Operator::close(state);
 
-    _unique_metrics->add_info_string("State", _ctx->readable_state());
+    ADD_INFO_STRING(_unique_metrics, "State", _ctx->readable_state());
 }
 
 bool CollectStatsSourceOperator::need_input() const {

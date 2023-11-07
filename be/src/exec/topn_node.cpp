@@ -138,8 +138,8 @@ Status TopNNode::init(const TPlanNode& tnode, RuntimeState* state) {
                                          early_materialized_slots.end());
     }
 
-    _runtime_profile->add_info_string("SortKeys", _sort_keys);
-    _runtime_profile->add_info_string("SortType", tnode.sort_node.use_top_n ? "TopN" : "All");
+    ADD_INFO_STRING(_runtime_profile, "SortKeys", _sort_keys);
+    ADD_INFO_STRING(_runtime_profile, "SortType", tnode.sort_node.use_top_n ? "TopN" : "All");
     return Status::OK();
 }
 

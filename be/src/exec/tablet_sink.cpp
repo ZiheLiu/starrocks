@@ -174,11 +174,11 @@ Status OlapTableSink::init(const TDataSink& t_sink, RuntimeState* state) {
 Status OlapTableSink::prepare(RuntimeState* state) {
     _span->AddEvent("prepare");
 
-    _profile->add_info_string("TxnID", fmt::format("{}", _txn_id));
-    _profile->add_info_string("IndexNum", fmt::format("{}", _schema->indexes().size()));
-    _profile->add_info_string("ReplicatedStorage", fmt::format("{}", _enable_replicated_storage));
-    _profile->add_info_string("AutomaticPartition", fmt::format("{}", _enable_automatic_partition));
-    _profile->add_info_string("AutomaticBucketSize", fmt::format("{}", _automatic_bucket_size));
+    ADD_INFO_STRING(_profile, "TxnID", fmt::format("{}", _txn_id));
+    ADD_INFO_STRING(_profile, "IndexNum", fmt::format("{}", _schema->indexes().size()));
+    ADD_INFO_STRING(_profile, "ReplicatedStorage", fmt::format("{}", _enable_replicated_storage));
+    ADD_INFO_STRING(_profile, "AutomaticPartition", fmt::format("{}", _enable_automatic_partition));
+    ADD_INFO_STRING(_profile, "AutomaticBucketSize", fmt::format("{}", _automatic_bucket_size));
     _ts_profile->alloc_auto_increment_timer = ADD_TIMER(_profile, "AllocAutoIncrementTime");
 
     SCOPED_TIMER(_profile->total_time_counter());

@@ -23,10 +23,9 @@ namespace starrocks::pipeline {
 Status LocalExchangeSinkOperator::prepare(RuntimeState* state) {
     RETURN_IF_ERROR(Operator::prepare(state));
     _exchanger->incr_sinker();
-    _unique_metrics->add_info_string("ShuffleNum", std::to_string(_exchanger->source_dop()));
-    _peak_memory_usage_counter = _unique_metrics->AddHighWaterMarkCounter(
-            "LocalExchangePeakMemoryUsage", TUnit::BYTES,
-            RuntimeProfile::Counter::create_strategy(TUnit::BYTES, TCounterMergeType::SKIP_FIRST_MERGE));
+    ADD_INFO_STRING(_unique_metrics, "ShuffleNum", std::to_string(_exchanger->source_dop()));
+    _peak_memory_usage_counter = ADD_HIGH_WATER_COUNTER_3(_unique_metrics, "LocalExchangePeakMemoryUsage", TUnit::BYTES,
+                                                          TCounterMergeType::SKIP_FIRST_MERGE);
     return Status::OK();
 }
 
@@ -46,7 +45,7 @@ Status LocalExchangeSinkOperator::set_finishing(RuntimeState* state) {
 
 Status LocalExchangeSinkOperator::push_chunk(RuntimeState* state, const ChunkPtr& chunk) {
     auto res = _exchanger->accept(chunk, _driver_sequence);
-    _peak_memory_usage_counter->set(_exchanger->get_memory_usage());
+    COUNTER_SET(_peak_memory_usage_counter, _exchanger->get_memory_usage());
     return res;
 }
 

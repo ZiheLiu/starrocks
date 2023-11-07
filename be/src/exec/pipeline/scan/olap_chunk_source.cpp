@@ -67,12 +67,12 @@ Status OlapChunkSource::prepare(RuntimeState* state) {
     const TupleDescriptor* tuple_desc = state->desc_tbl().get_tuple_descriptor(thrift_olap_scan_node.tuple_id);
     _slots = &tuple_desc->slots();
 
-    _runtime_profile->add_info_string("Table", tuple_desc->table_desc()->name());
+    ADD_INFO_STRING(_runtime_profile, "Table", tuple_desc->table_desc()->name());
     if (thrift_olap_scan_node.__isset.rollup_name) {
-        _runtime_profile->add_info_string("Rollup", thrift_olap_scan_node.rollup_name);
+        ADD_INFO_STRING(_runtime_profile, "Rollup", thrift_olap_scan_node.rollup_name);
     }
     if (thrift_olap_scan_node.__isset.sql_predicates) {
-        _runtime_profile->add_info_string("Predicates", thrift_olap_scan_node.sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "Predicates", thrift_olap_scan_node.sql_predicates);
     }
 
     _init_counter(state);
@@ -117,16 +117,10 @@ void OlapChunkSource::_init_counter(RuntimeState* state) {
     _bi_filter_timer = ADD_CHILD_TIMER(_runtime_profile, "BitmapIndexFilter", segment_init_name);
     _bi_filtered_counter = ADD_CHILD_COUNTER(_runtime_profile, "BitmapIndexFilterRows", TUnit::UNIT, segment_init_name);
     _bf_filtered_counter = ADD_CHILD_COUNTER(_runtime_profile, "BloomFilterFilterRows", TUnit::UNIT, segment_init_name);
-    _seg_zm_filtered_counter =
-            ADD_CHILD_COUNTER_SKIP_MIN_MAX(_runtime_profile, "SegmentZoneMapFilterRows", TUnit::UNIT,
-                                           _get_counter_min_max_type("SegmentZoneMapFilterRows"), segment_init_name);
     _seg_rt_filtered_counter =
             ADD_CHILD_COUNTER(_runtime_profile, "SegmentRuntimeZoneMapFilterRows", TUnit::UNIT, segment_init_name);
     _zm_filtered_counter =
             ADD_CHILD_COUNTER(_runtime_profile, "ZoneMapIndexFilterRows", TUnit::UNIT, segment_init_name);
-    _sk_filtered_counter =
-            ADD_CHILD_COUNTER_SKIP_MIN_MAX(_runtime_profile, "ShortKeyFilterRows", TUnit::UNIT,
-                                           _get_counter_min_max_type("ShortKeyFilterRows"), segment_init_name);
     _rows_after_sk_filtered_counter =
             ADD_CHILD_COUNTER(_runtime_profile, "RemainingRowsAfterShortKeyFilter", TUnit::UNIT, segment_init_name);
     _column_iterator_init_timer = ADD_CHILD_TIMER(_runtime_profile, "ColumnIteratorInit", segment_init_name);

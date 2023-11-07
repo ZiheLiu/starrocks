@@ -250,28 +250,28 @@ TEST(TestRuntimeProfile, testConflictInfoString) {
     std::vector<RuntimeProfile*> profiles;
     auto profile1 = std::make_shared<RuntimeProfile>("profile");
     {
-        profile1->add_info_string("key1", "value1");
+        ADD_INFO_STRING(profile1, "key1", "value1");
         profiles.push_back(profile1.get());
     }
     auto profile2 = std::make_shared<RuntimeProfile>("profile");
     {
-        profile2->add_info_string("key1", "value2");
+        ADD_INFO_STRING(profile2, "key1", "value2");
         profiles.push_back(profile2.get());
     }
     auto profile3 = std::make_shared<RuntimeProfile>("profile");
     {
-        profile3->add_info_string("key1", "value1");
+        ADD_INFO_STRING(profile3, "key1", "value1");
         profiles.push_back(profile3.get());
     }
     auto profile4 = std::make_shared<RuntimeProfile>("profile");
     {
         profile4->add_info_string("key1__DUP(1)", "value3");
-        profile4->add_info_string("key1", "value4");
+        ADD_INFO_STRING(profile4, "key1", "value4");
         profiles.push_back(profile4.get());
     }
     auto profile5 = std::make_shared<RuntimeProfile>("profile");
     {
-        profile5->add_info_string("key1", "value5");
+        ADD_INFO_STRING(profile5, "key1", "value5");
         profile5->add_info_string("key1__DUP(1)", "value6");
         profiles.push_back(profile5.get());
     }

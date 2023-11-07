@@ -25,7 +25,7 @@ namespace starrocks::pipeline {
 
 Pipeline::Pipeline(uint32_t id, OpFactories op_factories)
         : _id(id), _op_factories(std::move(op_factories)), _event(std::make_shared<PipelineEvent>()) {
-    _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("Pipeline (id=$0)", _id));
+    // _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("Pipeline (id=$0)", _id));
 }
 
 size_t Pipeline::degree_of_parallelism() const {
@@ -107,26 +107,26 @@ void Pipeline::instantiate_drivers(RuntimeState* state) {
 }
 
 void Pipeline::setup_pipeline_profile(RuntimeState* runtime_state) {
-    runtime_state->runtime_profile()->add_child(runtime_profile(), true, nullptr);
+    // runtime_state->runtime_profile()->add_child(runtime_profile(), true, nullptr);
 }
 
 void Pipeline::setup_drivers_profile(const DriverPtr& driver) {
-    runtime_profile()->add_child(driver->runtime_profile(), true, nullptr);
-    auto* dop_counter =
-            ADD_COUNTER_SKIP_MERGE(runtime_profile(), "DegreeOfParallelism", TUnit::UNIT, TCounterMergeType::SKIP_ALL);
-    COUNTER_SET(dop_counter, static_cast<int64_t>(source_operator_factory()->degree_of_parallelism()));
-    auto* total_dop_counter = ADD_COUNTER(runtime_profile(), "TotalDegreeOfParallelism", TUnit::UNIT);
-    COUNTER_SET(total_dop_counter, dop_counter->value());
-    auto& operators = driver->operators();
-    for (int32_t i = operators.size() - 1; i >= 0; --i) {
-        auto& curr_op = operators[i];
-        driver->runtime_profile()->add_child(curr_op->runtime_profile(), true, nullptr);
-        if (curr_op->is_combinatorial_operator()) {
-            curr_op->for_each_child_operator([&](Operator* child) {
-                driver->runtime_profile()->add_child(child->runtime_profile(), true, nullptr);
-            });
-        }
-    }
+    // runtime_profile()->add_child(driver->runtime_profile(), true, nullptr);
+    // auto* dop_counter =
+    //         ADD_COUNTER_SKIP_MERGE(runtime_profile(), "DegreeOfParallelism", TUnit::UNIT, TCounterMergeType::SKIP_ALL);
+    // COUNTER_SET(dop_counter, static_cast<int64_t>(source_operator_factory()->degree_of_parallelism()));
+    // auto* total_dop_counter = ADD_COUNTER(runtime_profile(), "TotalDegreeOfParallelism", TUnit::UNIT);
+    // COUNTER_SET(total_dop_counter, dop_counter->value());
+    // auto& operators = driver->operators();
+    // for (int32_t i = operators.size() - 1; i >= 0; --i) {
+    //     auto& curr_op = operators[i];
+    //     driver->runtime_profile()->add_child(curr_op->runtime_profile(), true, nullptr);
+    //     if (curr_op->is_combinatorial_operator()) {
+    //         curr_op->for_each_child_operator([&](Operator* child) {
+    //             driver->runtime_profile()->add_child(child->runtime_profile(), true, nullptr);
+    //         });
+    //     }
+    // }
 }
 
 void Pipeline::count_down_epoch_finished_driver(RuntimeState* state) {

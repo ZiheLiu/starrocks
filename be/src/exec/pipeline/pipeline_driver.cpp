@@ -63,7 +63,7 @@ void PipelineDriver::check_operator_close_states(std::string func_name) {
 Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _runtime_state = runtime_state;
 
-    auto* prepare_timer = ADD_TIMER(_runtime_profile, "DriverPrepareTime");
+    RuntimeProfile::Counter* prepare_timer = ADD_TIMER(_runtime_profile, "DriverPrepareTime");
     SCOPED_TIMER(prepare_timer);
 
     // TotalTime is reserved name
@@ -88,8 +88,7 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _output_full_timer = ADD_CHILD_TIMER(_runtime_profile, "OutputFullTime", "PendingTime");
     _pending_finish_timer = ADD_CHILD_TIMER(_runtime_profile, "PendingFinishTime", "PendingTime");
 
-    _peak_driver_queue_size_counter = _runtime_profile->AddHighWaterMarkCounter(
-            "PeakDriverQueueSize", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TUnit::UNIT));
+    _peak_driver_queue_size_counter = nullptr;
     _sched_local_counter = ADD_COUNTER(_runtime_profile, "SchedLocalCounter", TUnit::UNIT);
     _sched_steal_counter = ADD_COUNTER(_runtime_profile, "SchedStealCounter", TUnit::UNIT);
 
@@ -147,7 +146,7 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     }
 
     if (!all_local_rf_set.empty()) {
-        _runtime_profile->add_info_string("LocalRfWaitingSet", strings::Substitute("$0", all_local_rf_set.size()));
+        ADD_INFO_STRING(_runtime_profile, "LocalRfWaitingSet", strings::Substitute("$0", all_local_rf_set.size()));
     }
     _local_rf_holders = fragment_ctx()->runtime_filter_hub()->gather_holders(all_local_rf_set);
 
@@ -519,13 +518,6 @@ void PipelineDriver::runtime_report_action() {
     }
 
     _update_driver_level_timer();
-
-    for (auto& op : _operators) {
-        COUNTER_SET(op->_total_timer, op->_pull_timer->value() + op->_push_timer->value() +
-                                              op->_finishing_timer->value() + op->_finished_timer->value() +
-                                              op->_close_timer->value());
-        op->update_metrics(_fragment_ctx->runtime_state());
-    }
 }
 
 void PipelineDriver::mark_precondition_not_ready() {
@@ -679,31 +671,32 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, in
 }
 
 void PipelineDriver::_update_driver_level_timer() {
-    // Total Time
-    COUNTER_SET(_total_timer, static_cast<int64_t>(_total_timer_sw->elapsed_time()));
+    // // Total Time
+    // COUNTER_SET(_total_timer, static_cast<int64_t>(_total_timer_sw->elapsed_time()));
 
-    // Schedule Time
-    COUNTER_SET(_schedule_timer, _total_timer->value() - _active_timer->value() - _pending_timer->value());
+    // // Schedule Time
+    // COUNTER_SET(_schedule_timer, COUNTER_VALUE(_total_timer) - COUNTER_VALUE(_active_timer) - COUNTER_VALUE(_pending_timer));
 
-    // Overhead Time
-    int64_t overhead_time = _active_timer->value();
-    RuntimeProfile* profile = _runtime_profile.get();
-    std::vector<RuntimeProfile*> operator_profiles;
-    profile->get_children(&operator_profiles);
-    for (auto* operator_profile : operator_profiles) {
-        auto* common_metrics = operator_profile->get_child("CommonMetrics");
-        DCHECK(common_metrics != nullptr);
-        auto* total_timer = common_metrics->get_counter("OperatorTotalTime");
-        DCHECK(total_timer != nullptr);
-        overhead_time -= total_timer->value();
-    }
+    // // Overhead Time
+    // int64_t overhead_time = COUNTER_VALUE(_active_timer);
 
-    if (overhead_time < 0) {
-        // All the time are recorded indenpendently, and there may be errors
-        COUNTER_SET(_overhead_timer, static_cast<int64_t>(0));
-    } else {
-        COUNTER_SET(_overhead_timer, overhead_time);
-    }
+    // RuntimeProfile* profile = _runtime_profile.get();
+    // std::vector<RuntimeProfile*> operator_profiles;
+    // profile->get_children(&operator_profiles);
+    // for (auto* operator_profile : operator_profiles) {
+    //     auto* common_metrics = operator_profile->get_child("CommonMetrics");
+    //     DCHECK(common_metrics != nullptr);
+    //     auto* total_timer = common_metrics->get_counter("OperatorTotalTime");
+    //     DCHECK(total_timer != nullptr);
+    //     overhead_time -= COUNTER_VALUE(total_timer);
+    // }
+
+    // if (overhead_time < 0) {
+    //     // All the time are recorded indenpendently, and there may be errors
+    //     COUNTER_SET(_overhead_timer, static_cast<int64_t>(0));
+    // } else {
+    //     COUNTER_SET(_overhead_timer, overhead_time);
+    // }
 }
 
 std::string PipelineDriver::to_readable_string() const {
@@ -834,8 +827,7 @@ Status PipelineDriver::_mark_operator_closed(OperatorPtr& op, RuntimeState* stat
         QUERY_TRACE_SCOPED(op->get_name(), "close");
         op->close(state);
     }
-    COUNTER_SET(op->_total_timer, op->_pull_timer->value() + op->_push_timer->value() + op->_finishing_timer->value() +
-                                          op->_finished_timer->value() + op->_close_timer->value());
+
     return Status::OK();
 }
 

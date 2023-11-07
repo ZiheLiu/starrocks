@@ -158,8 +158,8 @@ void ChunksSorter::setup_runtime(RuntimeState* state, RuntimeProfile* profile, M
     _sort_timer = ADD_TIMER(profile, "SortingTime");
     _merge_timer = ADD_TIMER(profile, "MergingTime");
     _output_timer = ADD_TIMER(profile, "OutputTime");
-    profile->add_info_string("SortKeys", _sort_keys);
-    profile->add_info_string("SortType", _is_topn ? "TopN" : "All");
+    ADD_INFO_STRING(profile, "SortKeys", _sort_keys);
+    ADD_INFO_STRING(profile, "SortType", _is_topn ? "TopN" : "All");
 }
 
 StatusOr<ChunkPtr> ChunksSorter::materialize_chunk_before_sort(Chunk* chunk, TupleDescriptor* materialized_tuple_desc,

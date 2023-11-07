@@ -198,13 +198,6 @@ void CacheOperator::close(RuntimeState* state) {
         }
     }
 
-    _cache_populate_tablets_counter->update(_populate_tablets.size());
-    _cache_probe_tablets_counter->update(_probe_tablets.size());
-    _cache_passthrough_tablets_counter->update(passthrough_tablets.size());
-    _unique_metrics->add_info_string("CacheProbeTablets", flatten_tablet_set(_probe_tablets));
-    _unique_metrics->add_info_string("CachePopulateTablets", flatten_tablet_set(_populate_tablets));
-    _unique_metrics->add_info_string("CachePassthroughTablets", flatten_tablet_set(passthrough_tablets));
-
     Operator::close(state);
 }
 
@@ -337,9 +330,9 @@ void CacheOperator::_update_probe_metrics(int64_t tablet_id, const std::vector<C
         num_bytes += chunk->bytes_usage();
         num_rows += chunk->num_rows();
     }
-    _cache_probe_bytes_counter->update(num_bytes);
-    _cache_probe_chunks_counter->update(chunks.size());
-    _cache_probe_rows_counter->update(num_rows);
+    COUNTER_UPDATE(_cache_probe_bytes_counter, num_bytes);
+    COUNTER_UPDATE(_cache_probe_chunks_counter, chunks.size());
+    COUNTER_UPDATE(_cache_probe_rows_counter, num_rows);
     _probe_tablets.insert(tablet_id);
 }
 
@@ -418,9 +411,9 @@ void CacheOperator::populate_cache(int64_t tablet_id) {
     CacheValue cache_value(current, buffer->required_version, std::move(chunks));
     // If the cache implementation is global, populate method must be asynchronous and try its best to
     // update the cache.
-    _cache_populate_bytes_counter->update(buffer->num_bytes);
-    _cache_populate_chunks_counter->update(buffer->chunks.size());
-    _cache_populate_rows_counter->update(buffer->num_rows);
+    COUNTER_UPDATE(_cache_populate_bytes_counter, buffer->num_bytes);
+    COUNTER_UPDATE(_cache_populate_chunks_counter, buffer->chunks.size());
+    COUNTER_UPDATE(_cache_populate_rows_counter, buffer->num_rows);
     _populate_tablets.insert(tablet_id);
     _cache_mgr->populate(cache_key, cache_value);
     buffer->state = PLBS_POPULATE;
@@ -577,9 +570,9 @@ StatusOr<ChunkPtr> CacheOperator::pull_chunk(RuntimeState* state) {
         if (!passthrough_mode || chunk == nullptr) {
             return;
         }
-        _cache_passthrough_bytes_counter->update(chunk->bytes_usage());
-        _cache_passthrough_chunks_counter->update(1);
-        _cache_passthrough_rows_counter->update(chunk->num_rows());
+        COUNTER_UPDATE(_cache_passthrough_bytes_counter, chunk->bytes_usage());
+        COUNTER_UPDATE(_cache_passthrough_chunks_counter, 1);
+        COUNTER_UPDATE(_cache_passthrough_rows_counter, chunk->num_rows());
     };
     auto opt_lane = _lane_arbiter->preferred_lane();
     if (opt_lane.has_value()) {

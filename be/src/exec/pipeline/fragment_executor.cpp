@@ -648,6 +648,7 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
     DeferOp defer([this, &request, &prepare_success, &profiler]() {
         if (prepare_success) {
             auto fragment_ctx = _query_ctx->fragment_mgr()->get(request.fragment_instance_id());
+
             auto* profile = fragment_ctx->runtime_state()->runtime_profile();
 
             auto* prepare_timer = ADD_TIMER(profile, "FragmentInstancePrepareTime");

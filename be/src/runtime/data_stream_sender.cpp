@@ -452,7 +452,7 @@ Status DataStreamSender::prepare(RuntimeState* state) {
     title << "DataStreamSender (dst_id=" << _dest_node_id << ", dst_fragments=[" << instances << "])";
     _profile = _pool->add(new RuntimeProfile(title.str()));
     SCOPED_TIMER(_profile->total_time_counter());
-    _profile->add_info_string("PartType", _TPartitionType_VALUES_TO_NAMES.at(_part_type));
+    ADD_INFO_STRING(_profile, "PartType", _TPartitionType_VALUES_TO_NAMES.at(_part_type));
 
     if (_part_type == TPartitionType::HASH_PARTITIONED ||
         _part_type == TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED) {

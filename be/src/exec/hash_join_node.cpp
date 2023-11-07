@@ -67,10 +67,10 @@ Status HashJoinNode::init(const TPlanNode& tnode, RuntimeState* state) {
     RETURN_IF_ERROR(ExecNode::init(tnode, state));
 
     if (tnode.hash_join_node.__isset.sql_join_predicates) {
-        _runtime_profile->add_info_string("JoinPredicates", tnode.hash_join_node.sql_join_predicates);
+        ADD_INFO_STRING(_runtime_profile, "JoinPredicates", tnode.hash_join_node.sql_join_predicates);
     }
     if (tnode.hash_join_node.__isset.sql_predicates) {
-        _runtime_profile->add_info_string("Predicates", tnode.hash_join_node.sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "Predicates", tnode.hash_join_node.sql_predicates);
     }
 
     const std::vector<TEqJoinCondition>& eq_join_conjuncts = tnode.hash_join_node.eq_join_conjuncts;
@@ -166,7 +166,7 @@ Status HashJoinNode::prepare(RuntimeState* state) {
     _push_down_expr_num = ADD_COUNTER(_runtime_profile, "PushDownExprNum", TUnit::UNIT);
     _avg_input_probe_chunk_size = ADD_COUNTER(_runtime_profile, "AvgInputProbeChunkSize", TUnit::UNIT);
     _avg_output_chunk_size = ADD_COUNTER(_runtime_profile, "AvgOutputChunkSize", TUnit::UNIT);
-    _runtime_profile->add_info_string("JoinType", to_string(_join_type));
+    ADD_INFO_STRING(_runtime_profile, "JoinType", to_string(_join_type));
 
     RETURN_IF_ERROR(Expr::prepare(_build_expr_ctxs, state));
     RETURN_IF_ERROR(Expr::prepare(_probe_expr_ctxs, state));

@@ -37,32 +37,32 @@ Operator::Operator(OperatorFactory* factory, int32_t id, std::string name, int32
           _name(std::move(name)),
           _plan_node_id(plan_node_id),
           _driver_sequence(driver_sequence) {
-    std::string upper_name(_name);
-    std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(), ::toupper);
-    std::string profile_name = strings::Substitute("$0 (plan_node_id=$1)", upper_name, _plan_node_id);
-    _runtime_profile = std::make_shared<RuntimeProfile>(profile_name);
-    _runtime_profile->set_metadata(_id);
+    // std::string upper_name(_name);
+    // std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(), ::toupper);
+    // std::string profile_name = strings::Substitute("$0 (plan_node_id=$1)", upper_name, _plan_node_id);
+    // _runtime_profile = std::make_shared<RuntimeProfile>(profile_name);
+    // _runtime_profile->set_metadata(_id);
 
-    _common_metrics = std::make_shared<RuntimeProfile>("CommonMetrics");
-    _runtime_profile->add_child(_common_metrics.get(), true, nullptr);
+    // _common_metrics = std::make_shared<RuntimeProfile>("CommonMetrics");
+    // _runtime_profile->add_child(_common_metrics.get(), true, nullptr);
 
-    _unique_metrics = std::make_shared<RuntimeProfile>("UniqueMetrics");
-    _runtime_profile->add_child(_unique_metrics.get(), true, nullptr);
-    if (!is_subordinate && _plan_node_id == s_pseudo_plan_node_id_for_final_sink) {
-        _common_metrics->add_info_string("IsFinalSink");
-    }
-    if (is_subordinate) {
-        _common_metrics->add_info_string("IsSubordinate");
-    }
-    if (is_combinatorial_operator()) {
-        _common_metrics->add_info_string("IsCombinatorial");
-    }
+    // _unique_metrics = std::make_shared<RuntimeProfile>("UniqueMetrics");
+    // _runtime_profile->add_child(_unique_metrics.get(), true, nullptr);
+    // if (!is_subordinate && _plan_node_id == s_pseudo_plan_node_id_for_final_sink) {
+    //     _common_metrics->add_info_string("IsFinalSink");
+    // }
+    // if (is_subordinate) {
+    //     _common_metrics->add_info_string("IsSubordinate");
+    // }
+    // if (is_combinatorial_operator()) {
+    //     _common_metrics->add_info_string("IsCombinatorial");
+    // }
 }
 
 Status Operator::prepare(RuntimeState* state) {
     FAIL_POINT_TRIGGER_RETURN_ERROR(random_error);
-    _mem_tracker = std::make_shared<MemTracker>(_common_metrics.get(), std::make_tuple(true, true, true), "Operator",
-                                                -1, _name, nullptr);
+    // _mem_tracker = std::make_shared<MemTracker>(_common_metrics.get(), std::make_tuple(true, true, true), "Operator",
+    //                                             -1, _name, nullptr);
     _total_timer = ADD_TIMER(_common_metrics, "OperatorTotalTime");
     _push_timer = ADD_TIMER(_common_metrics, "PushTotalTime");
     _pull_timer = ADD_TIMER(_common_metrics, "PullTotalTime");
@@ -86,7 +86,7 @@ Status Operator::prepare(RuntimeState* state) {
 }
 
 void Operator::set_prepare_time(int64_t cost_ns) {
-    _prepare_timer->set(cost_ns);
+    COUNTER_SET(_prepare_timer, cost_ns);
 }
 
 void Operator::set_precondition_ready(RuntimeState* state) {
@@ -106,14 +106,14 @@ void Operator::close(RuntimeState* state) {
     _mem_resource_manager.close();
     if (auto* rf_bloom_filters = runtime_bloom_filters()) {
         _init_rf_counters(false);
-        _runtime_in_filter_num_counter->set((int64_t)runtime_in_filters().size());
-        _runtime_bloom_filter_num_counter->set((int64_t)rf_bloom_filters->size());
+        COUNTER_SET(_runtime_in_filter_num_counter, (int64_t)runtime_in_filters().size());
+        COUNTER_SET(_runtime_bloom_filter_num_counter, (int64_t)rf_bloom_filters->size());
     }
     // Pipeline do not need the built in total time counter
     // Reset here to discard assignments from Analytor, Aggregator, etc.
-    _runtime_profile->total_time_counter()->set(0L);
-    _common_metrics->total_time_counter()->set(0L);
-    _unique_metrics->total_time_counter()->set(0L);
+    // _runtime_profile->total_time_counter()->set(0L);
+    // _common_metrics->total_time_counter()->set(0L);
+    // _unique_metrics->total_time_counter()->set(0L);
 }
 
 std::vector<ExprContext*>& Operator::runtime_in_filters() {
@@ -160,11 +160,11 @@ Status Operator::eval_conjuncts_and_in_filters(const std::vector<ExprContext*>& 
     {
         SCOPED_TIMER(_conjuncts_timer);
         auto before = chunk->num_rows();
-        _conjuncts_input_counter->update(before);
+        COUNTER_UPDATE(_conjuncts_input_counter, before);
         RETURN_IF_ERROR(
                 starrocks::ExecNode::eval_conjuncts(_cached_conjuncts_and_in_filters, chunk, filter, apply_filter));
         auto after = chunk->num_rows();
-        _conjuncts_output_counter->update(after);
+        COUNTER_UPDATE(_conjuncts_output_counter, after);
     }
 
     return Status::OK();
@@ -181,10 +181,10 @@ Status Operator::eval_conjuncts(const std::vector<ExprContext*>& conjuncts, Chun
     {
         SCOPED_TIMER(_conjuncts_timer);
         size_t before = chunk->num_rows();
-        _conjuncts_input_counter->update(before);
+        COUNTER_UPDATE(_conjuncts_input_counter, before);
         RETURN_IF_ERROR(starrocks::ExecNode::eval_conjuncts(conjuncts, chunk, filter));
         size_t after = chunk->num_rows();
-        _conjuncts_output_counter->update(after);
+        COUNTER_UPDATE(_conjuncts_output_counter, after);
     }
 
     return Status::OK();
@@ -239,9 +239,9 @@ OperatorFactory::OperatorFactory(int32_t id, std::string name, int32_t plan_node
         : _id(id), _name(std::move(name)), _plan_node_id(plan_node_id) {
     std::string upper_name(_name);
     std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(), ::toupper);
-    _runtime_profile =
-            std::make_shared<RuntimeProfile>(strings::Substitute("$0_factory (id=$1)", upper_name, _plan_node_id));
-    _runtime_profile->set_metadata(_id);
+    // _runtime_profile =
+    //         std::make_shared<RuntimeProfile>(strings::Substitute("$0_factory (id=$1)", upper_name, _plan_node_id));
+    // _runtime_profile->set_metadata(_id);
 }
 
 Status OperatorFactory::prepare(RuntimeState* state) {

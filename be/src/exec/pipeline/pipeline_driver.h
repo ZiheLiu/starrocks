@@ -203,7 +203,7 @@ public:
               _pipeline(pipeline),
               _source_node_id(operators[0]->get_plan_node_id()),
               _driver_id(driver_id) {
-        _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("PipelineDriver (id=$0)", _driver_id));
+        // _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("PipelineDriver (id=$0)", _driver_id));
         for (auto& op : _operators) {
             _operator_stages[op->get_id()] = OperatorStage::INIT;
         }
@@ -241,22 +241,22 @@ public:
         switch (_state) {
         case DriverState::INPUT_EMPTY: {
             auto elapsed_time = _input_empty_timer_sw->elapsed_time();
-            if (_first_input_empty_timer->value() == 0) {
-                _first_input_empty_timer->update(elapsed_time);
+            if (COUNTER_VALUE(_first_input_empty_timer) == 0) {
+                COUNTER_UPDATE(_first_input_empty_timer, elapsed_time);
             } else {
-                _followup_input_empty_timer->update(elapsed_time);
+                COUNTER_UPDATE(_followup_input_empty_timer, elapsed_time);
             }
-            _input_empty_timer->update(elapsed_time);
+            COUNTER_UPDATE(_input_empty_timer, elapsed_time);
             break;
         }
         case DriverState::OUTPUT_FULL:
-            _output_full_timer->update(_output_full_timer_sw->elapsed_time());
+            COUNTER_UPDATE(_output_full_timer, _output_full_timer_sw->elapsed_time());
             break;
         case DriverState::PRECONDITION_BLOCK:
-            _precondition_block_timer->update(_precondition_block_timer_sw->elapsed_time());
+            COUNTER_UPDATE(_precondition_block_timer, _precondition_block_timer_sw->elapsed_time());
             break;
         case DriverState::PENDING_FINISH:
-            _pending_finish_timer->update(_pending_finish_timer_sw->elapsed_time());
+            COUNTER_UPDATE(_pending_finish_timer, _pending_finish_timer_sw->elapsed_time());
             break;
         default:
             break;
@@ -296,9 +296,11 @@ public:
     // drivers in PRECONDITION_BLOCK state must be marked READY after its dependent runtime-filters or hash tables
     // are finished.
     void mark_precondition_ready(RuntimeState* runtime_state);
+
     void start_timers();
     void stop_timers();
-    int64_t get_active_time() const { return _active_timer->value(); }
+    int64_t get_active_time() const { return COUNTER_VALUE(_active_timer); }
+
     void submit_operators();
     // Notify all the unfinished operators to be finished.
     // It is usually used when the sink operator is finished, or the fragment is cancelled or expired.
@@ -408,8 +410,8 @@ public:
     void set_dispatcher_id(int dispatcher_id) { _dispatcher_id = dispatcher_id; }
     int dispatcher_id() { return _dispatcher_id; }
 
-    void incr_sched_local_counter() { _sched_local_counter->update(1); }
-    void incr_sched_steal_counter() { _sched_steal_counter->update(1); }
+    void incr_sched_local_counter() { COUNTER_UPDATE(_sched_local_counter, 1); }
+    void incr_sched_steal_counter() { COUNTER_UPDATE(_sched_steal_counter, 1); }
 
 protected:
     PipelineDriver()

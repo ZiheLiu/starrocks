@@ -28,11 +28,11 @@ Status NLJoinBuildOperator::prepare(RuntimeState* state) {
 }
 
 void NLJoinBuildOperator::close(RuntimeState* state) {
-    auto build_rows = ADD_COUNTER(_unique_metrics, "BuildRows", TUnit::UNIT);
+    RuntimeProfile::Counter* build_rows = ADD_COUNTER(_unique_metrics, "BuildRows", TUnit::UNIT);
     COUNTER_SET(build_rows, (int64_t)_cross_join_context->num_build_rows());
-    auto build_chunks = ADD_COUNTER(_unique_metrics, "BuildChunks", TUnit::UNIT);
+    RuntimeProfile::Counter* build_chunks = ADD_COUNTER(_unique_metrics, "BuildChunks", TUnit::UNIT);
     COUNTER_SET(build_chunks, (int64_t)_cross_join_context->num_build_chunks());
-    _unique_metrics->add_info_string("NumBuilders", std::to_string(_cross_join_context->get_num_builders()));
+    ADD_INFO_STRING(_unique_metrics, "NumBuilders", std::to_string(_cross_join_context->get_num_builders()));
 
     _cross_join_context->unref(state);
     Operator::close(state);

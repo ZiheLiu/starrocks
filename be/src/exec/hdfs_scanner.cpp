@@ -296,7 +296,8 @@ void HdfsScanner::update_hdfs_counter(HdfsScanProfile* profile) {
     ADD_TIMER(runtime_profile, kHdfsIOProfileSectionPrefix);
     for (int64_t i = 0, sz = statistics->size(); i < sz; i++) {
         auto&& name = statistics->name(i);
-        auto&& counter = ADD_CHILD_COUNTER(runtime_profile, name, TUnit::UNIT, kHdfsIOProfileSectionPrefix);
+        RuntimeProfile::Counter* counter =
+                ADD_CHILD_COUNTER(runtime_profile, name, TUnit::UNIT, kHdfsIOProfileSectionPrefix);
         COUNTER_UPDATE(counter, statistics->value(i));
     }
 }

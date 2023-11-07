@@ -415,21 +415,21 @@ Status ExchangeSinkOperator::prepare(RuntimeState* state) {
             instances += channel->get_fragment_instance_id_str();
         }
     }
-    _unique_metrics->add_info_string("DestID", std::to_string(_dest_node_id));
-    _unique_metrics->add_info_string("DestFragments", instances);
-    _unique_metrics->add_info_string("PartType", to_string(_part_type));
-    _unique_metrics->add_info_string("ChannelNum", std::to_string(_channels.size()));
+    ADD_INFO_STRING(_unique_metrics, "DestID", std::to_string(_dest_node_id));
+    ADD_INFO_STRING(_unique_metrics, "DestFragments", instances);
+    ADD_INFO_STRING(_unique_metrics, "PartType", to_string(_part_type));
+    ADD_INFO_STRING(_unique_metrics, "ChannelNum", std::to_string(_channels.size()));
 
     if (_part_type == TPartitionType::HASH_PARTITIONED ||
         _part_type == TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED) {
         _partitions_columns.resize(_partition_expr_ctxs.size());
-        _unique_metrics->add_info_string("ShuffleNumPerChannel", std::to_string(_num_shuffles_per_channel));
-        _unique_metrics->add_info_string("TotalShuffleNum", std::to_string(_num_shuffles));
-        _unique_metrics->add_info_string("PipelineLevelShuffle", _is_pipeline_level_shuffle ? "Yes" : "No");
+        ADD_INFO_STRING(_unique_metrics, "ShuffleNumPerChannel", std::to_string(_num_shuffles_per_channel));
+        ADD_INFO_STRING(_unique_metrics, "TotalShuffleNum", std::to_string(_num_shuffles));
+        ADD_INFO_STRING(_unique_metrics, "PipelineLevelShuffle", _is_pipeline_level_shuffle ? "Yes" : "No");
     }
 
     // Randomize the order we open/transmit to channels to avoid thundering herd problems.
-    _channel_indices.resize(_channels.size());
+    raw::stl_vector_resize_uninitialized(&_channel_indices, _channels.size());
     std::iota(_channel_indices.begin(), _channel_indices.end(), 0);
     //    srand(reinterpret_cast<uint64_t>(this));
     std::shuffle(_channel_indices.begin(), _channel_indices.end(), std::mt19937(std::random_device()()));
@@ -444,16 +444,16 @@ Status ExchangeSinkOperator::prepare(RuntimeState* state) {
     _shuffle_chunk_append_counter = ADD_COUNTER(_unique_metrics, "ShuffleChunkAppendCounter", TUnit::UNIT);
     _shuffle_chunk_append_timer = ADD_TIMER(_unique_metrics, "ShuffleChunkAppendTime");
     _compress_timer = ADD_TIMER(_unique_metrics, "CompressTime");
-    _pass_through_buffer_peak_mem_usage = _unique_metrics->AddHighWaterMarkCounter(
-            "PassThroughBufferPeakMemoryUsage", TUnit::BYTES,
-            RuntimeProfile::Counter::create_strategy(TUnit::BYTES, TCounterMergeType::SKIP_FIRST_MERGE));
+    // _pass_through_buffer_peak_mem_usage = _unique_metrics->AddHighWaterMarkCounter(
+    //         "PassThroughBufferPeakMemoryUsage", TUnit::BYTES,
+    //         RuntimeProfile::Counter::create_strategy(TUnit::BYTES, TCounterMergeType::SKIP_FIRST_MERGE));
 
     for (auto& [_, channel] : _instance_id2channel) {
         RETURN_IF_ERROR(channel->init(state));
     }
 
-    _shuffle_channel_ids.resize(state->chunk_size());
-    _row_indexes.resize(state->chunk_size());
+    raw::stl_vector_resize_uninitialized(&_shuffle_channel_ids, state->chunk_size());
+    raw::stl_vector_resize_uninitialized(&_row_indexes, state->chunk_size());
 
     return Status::OK();
 }
