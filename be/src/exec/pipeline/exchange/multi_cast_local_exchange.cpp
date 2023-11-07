@@ -23,8 +23,8 @@ MultiCastLocalExchanger::MultiCastLocalExchanger(RuntimeState* runtime_state, si
         _opened_source_opcount[i] = 0;
     }
     _runtime_profile = std::make_unique<RuntimeProfile>("MultiCastLocalExchanger");
-    _peak_memory_usage_counter = _runtime_profile->AddHighWaterMarkCounter("PeakMemoryUsage", TUnit::BYTES);
-    _peak_buffer_row_size_counter = _runtime_profile->AddHighWaterMarkCounter("PeakBufferRowSize", TUnit::UNIT);
+    _peak_memory_usage_counter = ADD_HIGH_WATER_COUNTER(_runtime_profile, "PeakMemoryUsage", TUnit::BYTES);
+    _peak_buffer_row_size_counter = ADD_HIGH_WATER_COUNTER(_runtime_profile, "PeakBufferRowSize", TUnit::UNIT);
 }
 
 MultiCastLocalExchanger::~MultiCastLocalExchanger() {
@@ -69,8 +69,8 @@ Status MultiCastLocalExchanger::push_chunk(const vectorized::ChunkPtr& chunk, in
         _current_accumulated_row_size += chunk->num_rows();
         _current_memory_usage += cell->memory_usage;
         _current_row_size = _current_accumulated_row_size - _head->accumulated_row_size;
-        _peak_memory_usage_counter->set(_current_memory_usage);
-        _peak_buffer_row_size_counter->set(_current_row_size);
+        COUNTER_SET(_peak_memory_usage_counter, _current_memory_usage);
+        COUNTER_SET(_peak_buffer_row_size_counter, _current_row_size);
         sink_operator->update_counter(_current_memory_usage, _current_row_size);
     }
 
@@ -206,8 +206,8 @@ bool MultiCastLocalExchangeSourceOperator::has_output() const {
 Status MultiCastLocalExchangeSinkOperator::prepare(RuntimeState* state) {
     RETURN_IF_ERROR(Operator::prepare(state));
     _exchanger->open_sink_operator();
-    _peak_memory_usage_counter = _unique_metrics->AddHighWaterMarkCounter("ExchangerPeakMemoryUsage", TUnit::BYTES);
-    _peak_buffer_row_size_counter = _unique_metrics->AddHighWaterMarkCounter("ExchangerPeakBufferRowSize", TUnit::UNIT);
+    _peak_memory_usage_counter = ADD_HIGH_WATER_COUNTER(_unique_metrics, "ExchangerPeakMemoryUsage", TUnit::BYTES);
+    _peak_buffer_row_size_counter = ADD_HIGH_WATER_COUNTER(_unique_metrics, "ExchangerPeakBufferRowSize", TUnit::UNIT);
     return Status::OK();
 }
 
@@ -232,8 +232,8 @@ Status MultiCastLocalExchangeSinkOperator::push_chunk(RuntimeState* state, const
 }
 
 void MultiCastLocalExchangeSinkOperator::update_counter(size_t memory_usage, size_t buffer_row_size) {
-    _peak_memory_usage_counter->set(memory_usage);
-    _peak_buffer_row_size_counter->set(buffer_row_size);
+    COUNTER_SET(_peak_memory_usage_counter, memory_usage);
+    COUNTER_SET(_peak_buffer_row_size_counter, buffer_row_size);
 }
 
 } // namespace starrocks::pipeline

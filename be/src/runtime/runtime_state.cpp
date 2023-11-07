@@ -157,8 +157,8 @@ void RuntimeState::_init(const TUniqueId& fragment_instance_id, const TQueryOpti
 void RuntimeState::init_mem_trackers(const TUniqueId& query_id, MemTracker* parent) {
     bool has_query_mem_tracker = _query_options.__isset.mem_limit && (_query_options.mem_limit > 0);
     int64_t bytes_limit = has_query_mem_tracker ? _query_options.mem_limit : -1;
-    auto* mem_tracker_counter = ADD_COUNTER_SKIP_MERGE(_profile.get(), "MemoryLimit", TUnit::BYTES);
-    mem_tracker_counter->set(bytes_limit);
+    RuntimeProfile::Counter* mem_tracker_counter = ADD_COUNTER_SKIP_MERGE(_profile.get(), "MemoryLimit", TUnit::BYTES);
+    COUNTER_SET(mem_tracker_counter, bytes_limit);
 
     if (parent == nullptr) {
         parent = _exec_env->query_pool_mem_tracker();
@@ -174,8 +174,8 @@ void RuntimeState::init_mem_trackers(const TUniqueId& query_id, MemTracker* pare
 void RuntimeState::init_mem_trackers(const std::shared_ptr<MemTracker>& query_mem_tracker) {
     DCHECK(query_mem_tracker != nullptr);
 
-    auto* mem_tracker_counter = ADD_COUNTER(_profile.get(), "QueryMemoryLimit", TUnit::BYTES);
-    mem_tracker_counter->set(query_mem_tracker->limit());
+    RuntimeProfile::Counter* mem_tracker_counter = ADD_COUNTER(_profile.get(), "QueryMemoryLimit", TUnit::BYTES);
+    COUNTER_SET(mem_tracker_counter, query_mem_tracker->limit());
 
     // all fragment instances in a BE shared a common query_mem_tracker.
     _query_mem_tracker = query_mem_tracker;

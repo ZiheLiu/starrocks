@@ -66,7 +66,7 @@ Status Operator::prepare(RuntimeState* state) {
 }
 
 void Operator::set_prepare_time(int64_t cost_ns) {
-    _prepare_timer->set(cost_ns);
+    COUNTER_SET(_prepare_timer, cost_ns);
 }
 
 void Operator::set_precondition_ready(RuntimeState* state) {
@@ -85,8 +85,8 @@ RuntimeFilterHub* Operator::runtime_filter_hub() {
 void Operator::close(RuntimeState* state) {
     if (auto* rf_bloom_filters = runtime_bloom_filters()) {
         _init_rf_counters(false);
-        _runtime_in_filter_num_counter->set((int64_t)runtime_in_filters().size());
-        _runtime_bloom_filter_num_counter->set((int64_t)rf_bloom_filters->size());
+        COUNTER_SET(_runtime_in_filter_num_counter, (int64_t)runtime_in_filters().size());
+        COUNTER_SET(_runtime_bloom_filter_num_counter, (int64_t)rf_bloom_filters->size());
     }
     // Pipeline do not need the built in total time counter
     // Reset here to discard assignments from Analytor, Aggregator, etc.
@@ -139,11 +139,11 @@ Status Operator::eval_conjuncts_and_in_filters(const std::vector<ExprContext*>& 
     {
         SCOPED_TIMER(_conjuncts_timer);
         auto before = chunk->num_rows();
-        _conjuncts_input_counter->update(before);
+        COUNTER_UPDATE(_conjuncts_input_counter, before);
         RETURN_IF_ERROR(
                 starrocks::ExecNode::eval_conjuncts(_cached_conjuncts_and_in_filters, chunk, filter, apply_filter));
         auto after = chunk->num_rows();
-        _conjuncts_output_counter->update(after);
+        COUNTER_UPDATE(_conjuncts_output_counter, after);
     }
 
     return Status::OK();
@@ -161,10 +161,10 @@ Status Operator::eval_conjuncts(const std::vector<ExprContext*>& conjuncts, vect
     {
         SCOPED_TIMER(_conjuncts_timer);
         size_t before = chunk->num_rows();
-        _conjuncts_input_counter->update(before);
+        COUNTER_UPDATE(_conjuncts_input_counter, before);
         RETURN_IF_ERROR(starrocks::ExecNode::eval_conjuncts(conjuncts, chunk, filter));
         size_t after = chunk->num_rows();
-        _conjuncts_output_counter->update(after);
+        COUNTER_UPDATE(_conjuncts_output_counter, after);
     }
 
     return Status::OK();

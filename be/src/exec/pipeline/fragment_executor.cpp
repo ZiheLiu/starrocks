@@ -84,10 +84,12 @@ static void setup_profile_hierarchy(RuntimeState* runtime_state, const PipelineP
 
 static void setup_profile_hierarchy(const PipelinePtr& pipeline, const DriverPtr& driver) {
     pipeline->runtime_profile()->add_child(driver->runtime_profile(), true, nullptr);
-    auto* dop_counter = ADD_COUNTER_SKIP_MERGE(pipeline->runtime_profile(), "DegreeOfParallelism", TUnit::UNIT);
+    RuntimeProfile::Counter* dop_counter =
+            ADD_COUNTER_SKIP_MERGE(pipeline->runtime_profile(), "DegreeOfParallelism", TUnit::UNIT);
     COUNTER_SET(dop_counter, static_cast<int64_t>(pipeline->source_operator_factory()->degree_of_parallelism()));
-    auto* total_dop_counter = ADD_COUNTER(pipeline->runtime_profile(), "TotalDegreeOfParallelism", TUnit::UNIT);
-    COUNTER_SET(total_dop_counter, dop_counter->value());
+    RuntimeProfile::Counter* total_dop_counter =
+            ADD_COUNTER(pipeline->runtime_profile(), "TotalDegreeOfParallelism", TUnit::UNIT);
+    COUNTER_SET(total_dop_counter, COUNTER_VALUE(dop_counter));
     auto& operators = driver->operators();
     for (int32_t i = operators.size() - 1; i >= 0; --i) {
         auto& curr_op = operators[i];
@@ -613,25 +615,25 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
     DeferOp defer([this, &request, &prepare_success, &profiler]() {
         if (prepare_success) {
             auto fragment_ctx = _query_ctx->fragment_mgr()->get(request.fragment_instance_id());
-            auto* prepare_timer =
+            RuntimeProfile::Counter* prepare_timer =
                     ADD_TIMER(fragment_ctx->runtime_state()->runtime_profile(), "FragmentInstancePrepareTime");
             COUNTER_SET(prepare_timer, profiler.prepare_time);
-            auto* prepare_query_ctx_timer =
+            RuntimeProfile::Counter* prepare_query_ctx_timer =
                     ADD_CHILD_TIMER_THESHOLD(fragment_ctx->runtime_state()->runtime_profile(), "prepare-query-ctx",
                                              "FragmentInstancePrepareTime", 10_ms);
             COUNTER_SET(prepare_query_ctx_timer, profiler.prepare_query_ctx_time);
 
-            auto* prepare_fragment_ctx_timer =
+            RuntimeProfile::Counter* prepare_fragment_ctx_timer =
                     ADD_CHILD_TIMER_THESHOLD(fragment_ctx->runtime_state()->runtime_profile(), "prepare-fragment-ctx",
                                              "FragmentInstancePrepareTime", 10_ms);
             COUNTER_SET(prepare_fragment_ctx_timer, profiler.prepare_fragment_ctx_time);
 
-            auto* prepare_runtime_state_timer =
+            RuntimeProfile::Counter* prepare_runtime_state_timer =
                     ADD_CHILD_TIMER_THESHOLD(fragment_ctx->runtime_state()->runtime_profile(), "prepare-runtime-state",
                                              "FragmentInstancePrepareTime", 10_ms);
             COUNTER_SET(prepare_runtime_state_timer, profiler.prepare_runtime_state_time);
 
-            auto* prepare_pipeline_driver_timer =
+            RuntimeProfile::Counter* prepare_pipeline_driver_timer =
                     ADD_CHILD_TIMER_THESHOLD(fragment_ctx->runtime_state()->runtime_profile(),
                                              "prepare-pipeline-driver", "FragmentInstancePrepareTime", 10_ms);
             COUNTER_SET(prepare_pipeline_driver_timer, profiler.prepare_runtime_state_time);

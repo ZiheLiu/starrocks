@@ -235,7 +235,7 @@ void DataStreamRecvr::close() {
     _chunks_merger.reset();
     _cascade_merger.reset();
 
-    _closure_block_timer->update(_closure_block_timer->value() / std::max(1, _degree_of_parallelism));
+    COUNTER_UPDATE(_closure_block_timer, COUNTER_VALUE(_closure_block_timer) / std::max(1, _degree_of_parallelism));
     _close = true;
 }
 

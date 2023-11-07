@@ -53,8 +53,8 @@ Status ScanOperator::prepare(RuntimeState* state) {
 
     _unique_metrics->add_info_string("MorselQueueType", _morsel_queue->name());
     _unique_metrics->add_info_string("BufferUnplugThreshold", std::to_string(_buffer_unplug_threshold()));
-    _peak_buffer_size_counter = _unique_metrics->AddHighWaterMarkCounter("PeakChunkBufferSize", TUnit::UNIT,
-                                                                         RuntimeProfile::ROOT_COUNTER, true);
+    _peak_buffer_size_counter = ADD_HIGH_WATER_COUNTER_4(_unique_metrics, "PeakChunkBufferSize", TUnit::UNIT,
+                                                         RuntimeProfile::ROOT_COUNTER, true);
     _morsels_counter = ADD_COUNTER(_unique_metrics, "MorselsCount", TUnit::UNIT);
     _buffer_unplug_counter = ADD_COUNTER(_unique_metrics, "BufferUnplugCount", TUnit::UNIT);
     _submit_task_counter = ADD_COUNTER(_unique_metrics, "SubmitTaskCount", TUnit::UNIT);
@@ -202,7 +202,7 @@ Status ScanOperator::set_finishing(RuntimeState* state) {
 StatusOr<vectorized::ChunkPtr> ScanOperator::pull_chunk(RuntimeState* state) {
     RETURN_IF_ERROR(_get_scan_status());
 
-    _peak_buffer_size_counter->set(buffer_size());
+    COUNTER_SET(_peak_buffer_size_counter, buffer_size());
 
     RETURN_IF_ERROR(_try_to_trigger_next_scan(state));
 
@@ -345,7 +345,7 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
     workgroup::ScanTask task;
     task.workgroup = _workgroup.get();
     // TODO: consider more factors, such as scan bytes and i/o time.
-    task.priority = vectorized::OlapScanNode::compute_priority(_submit_task_counter->value());
+    task.priority = vectorized::OlapScanNode::compute_priority(COUNTER_VALUE(_submit_task_counter));
     const auto io_task_start_nano = MonotonicNanos();
     task.work_function = [wp = _query_ctx, this, state, chunk_source_index, query_trace_ctx, driver_id,
                           io_task_start_nano]() {

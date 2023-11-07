@@ -47,13 +47,19 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 // Define macros for updating counters.  The macros make it very easy to disable
 // all counters at compile time.  Set this to 0 to remove counters.  This is useful
 // to do to make sure the counters aren't affecting the system.
-#define ENABLE_COUNTERS 1
+#define ENABLE_COUNTERS 0
 
 // Some macro magic to generate unique ids using __COUNTER__
 #define CONCAT_IMPL(x, y) x##y
 #define MACRO_CONCAT(x, y) CONCAT_IMPL(x, y)
 
 #if ENABLE_COUNTERS
+#define COUNTER_VALUE(c) (c)->value()
+#define ADD_HIGH_WATER_COUNTER(profile, name, type) (profile)->AddHighWaterMarkCounter(name, type)
+#define ADD_HIGH_WATER_COUNTER_3(profile, name, type, parent_name) \
+    (profile)->AddHighWaterMarkCounter(name, type, parent_name)
+#define ADD_HIGH_WATER_COUNTER_4(profile, name, type, parent_name, skip_merge) \
+    (profile)->AddHighWaterMarkCounter(name, type, parent_name, skip_merge)
 #define ADD_COUNTER(profile, name, type) (profile)->add_counter(name, type)
 #define ADD_COUNTER_SKIP_MERGE(profile, name, type) (profile)->add_counter(name, type, true)
 #define ADD_TIMER(profile, name) (profile)->add_counter(name, TUnit::TIME_NS)
@@ -73,13 +79,24 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
     /*ThreadCounterMeasurement                                        \
       MACRO_CONCAT(SCOPED_THREAD_COUNTER_MEASUREMENT, __COUNTER__)(c)*/
 #else
+#define COUNTER_VALUE(c) 0
+#define ADD_HIGH_WATER_COUNTER(profile, name, type) NULL
+#define ADD_HIGH_WATER_COUNTER_3(profile, name, type, parent_name) NULL
+#define ADD_HIGH_WATER_COUNTER_4(profile, name, type, parent_name, skip_merge) NULL
 #define ADD_COUNTER(profile, name, type) NULL
+#define ADD_COUNTER_SKIP_MERGE(profile, name, type) NULL
 #define ADD_TIMER(profile, name) NULL
+#define ADD_CHILD_COUNTER(profile, name, type, parent) NULL
+#define ADD_CHILD_COUNTER_SKIP_MERGE(profile, name, type, parent) NULL
+#define ADD_CHILD_TIMER_THESHOLD(profile, name, parent, threshold) NULL
+#define ADD_CHILD_TIMER(profile, name, parent) NULL
 #define SCOPED_TIMER(c)
+#define CANCEL_SAFE_SCOPED_TIMER(c, is_cancelled)
 #define SCOPED_RAW_TIMER(c)
 #define COUNTER_UPDATE(c, v)
 #define COUNTER_SET(c, v)
 #define ADD_THREADCOUNTERS(profile, prefix) NULL
+#define ADD_THREAD_COUNTERS(profile, prefix) NULL
 #define SCOPED_THREAD_COUNTER_MEASUREMENT(c)
 #endif
 
@@ -573,13 +590,13 @@ public:
             return;
         }
 
-        _counter->update(-1L * _val);
+        COUNTER_UPDATE(_counter, -1L * _val);
     }
 
     // Increment the counter when object is destroyed
     ~ScopedCounter() {
         if (_counter != nullptr) {
-            _counter->update(_val);
+            COUNTER_UPDATE(_counter, _val);
         }
     }
 
@@ -619,7 +636,7 @@ public:
 
     void UpdateCounter() {
         if (_counter != nullptr && !is_cancelled()) {
-            _counter->update(_sw.elapsed_time());
+            COUNTER_UPDATE(_counter, _sw.elapsed_time());
         }
     }
 

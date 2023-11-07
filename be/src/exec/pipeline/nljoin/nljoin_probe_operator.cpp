@@ -456,7 +456,7 @@ Status NLJoinProbeOperator::_permute_right_join(RuntimeState* state) {
         match_flag_index += chunk_size;
     }
     auto permute_right_rows_counter = ADD_COUNTER(_unique_metrics, "PermuteRightRows", TUnit::UNIT);
-    permute_right_rows_counter->set(permute_rows);
+    COUNTER_SET(permute_right_rows_counter, permute_rows);
     _output_accumulator.finalize();
 
     return Status::OK();
