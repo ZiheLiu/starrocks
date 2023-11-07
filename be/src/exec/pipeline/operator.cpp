@@ -85,8 +85,8 @@ RuntimeFilterHub* Operator::runtime_filter_hub() {
 void Operator::close(RuntimeState* state) {
     if (auto* rf_bloom_filters = runtime_bloom_filters()) {
         _init_rf_counters(false);
-        _runtime_in_filter_num_counter->set((int64_t)runtime_in_filters().size());
-        _runtime_bloom_filter_num_counter->set((int64_t)rf_bloom_filters->size());
+        COUNTER_SET(_runtime_in_filter_num_counter, (int64_t)runtime_in_filters().size());
+        COUNTER_SET(_runtime_bloom_filter_num_counter, (int64_t)rf_bloom_filters->size());
     }
     // Pipeline do not need the built in total time counter
     // Reset here to discard assignments from Analytor, Aggregator, etc.

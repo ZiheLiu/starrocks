@@ -202,7 +202,7 @@ Status ScanOperator::set_finishing(RuntimeState* state) {
 StatusOr<vectorized::ChunkPtr> ScanOperator::pull_chunk(RuntimeState* state) {
     RETURN_IF_ERROR(_get_scan_status());
 
-    _peak_buffer_size_counter->set(buffer_size());
+    COUNTER_SET(_peak_buffer_size_counter, buffer_size());
 
     RETURN_IF_ERROR(_try_to_trigger_next_scan(state));
 

@@ -47,7 +47,7 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 // Define macros for updating counters.  The macros make it very easy to disable
 // all counters at compile time.  Set this to 0 to remove counters.  This is useful
 // to do to make sure the counters aren't affecting the system.
-#define ENABLE_COUNTERS 1
+#define ENABLE_COUNTERS
 
 // Some macro magic to generate unique ids using __COUNTER__
 #define CONCAT_IMPL(x, y) x##y
@@ -73,13 +73,20 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
     /*ThreadCounterMeasurement                                        \
       MACRO_CONCAT(SCOPED_THREAD_COUNTER_MEASUREMENT, __COUNTER__)(c)*/
 #else
-#define ADD_COUNTER(profile, name, type) NULL
-#define ADD_TIMER(profile, name) NULL
+#define ADD_COUNTER(profile, name, type) nullptr
+#define ADD_COUNTER_SKIP_MERGE(profile, name, type) nullptr
+#define ADD_TIMER(profile, name) nullptr
+#define ADD_CHILD_COUNTER(profile, name, type, parent) nullptr
+#define ADD_CHILD_COUNTER_SKIP_MERGE(profile, name, type, parent) nullptr
+#define ADD_CHILD_TIMER_THESHOLD(profile, name, parent, threshold) nullptr
+#define ADD_CHILD_TIMER(profile, name, parent) nullptr
 #define SCOPED_TIMER(c)
+#define CANCEL_SAFE_SCOPED_TIMER(c, is_cancelled)
 #define SCOPED_RAW_TIMER(c)
 #define COUNTER_UPDATE(c, v)
 #define COUNTER_SET(c, v)
-#define ADD_THREADCOUNTERS(profile, prefix) NULL
+#define ADD_THREADCOUNTERS(profile, prefix) nullptr
+#define ADD_THREAD_COUNTERS(profile, prefix) nullptr
 #define SCOPED_THREAD_COUNTER_MEASUREMENT(c)
 #endif
 
