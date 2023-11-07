@@ -189,8 +189,7 @@ void DataStreamRecvr::bind_profile(int32_t driver_sequence, RuntimeProfile* prof
     statistics.process_total_timer = ADD_TIMER(profile, "ReceiverProcessTotalTime");
     statistics.wait_lock_timer = ADD_TIMER(profile, "WaitLockTime");
     statistics.buffer_unplug_counter = ADD_COUNTER(profile, "BufferUnplugCount", TUnit::UNIT);
-    statistics.peak_buffer_mem_bytes = profile->AddHighWaterMarkCounter(
-            "PeakBufferMemoryBytes", TUnit::BYTES, RuntimeProfile::Counter::create_strategy(TUnit::BYTES));
+    statistics.peak_buffer_mem_bytes = ADD_HIGH_WATER_COUNTER(profile, "PeakBufferMemoryBytes", TUnit::BYTES);
 }
 
 Status DataStreamRecvr::get_next(ChunkPtr* chunk, bool* eos) {

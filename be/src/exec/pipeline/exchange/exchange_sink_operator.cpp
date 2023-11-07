@@ -435,7 +435,7 @@ Status ExchangeSinkOperator::prepare(RuntimeState* state) {
     }
 
     // Randomize the order we open/transmit to channels to avoid thundering herd problems.
-    _channel_indices.resize(_channels.size());
+    raw::stl_vector_resize_uninitialized(&_channel_indices, _channels.size());
     std::iota(_channel_indices.begin(), _channel_indices.end(), 0);
     std::shuffle(_channel_indices.begin(), _channel_indices.end(), std::mt19937(std::random_device()()));
 
@@ -453,8 +453,8 @@ Status ExchangeSinkOperator::prepare(RuntimeState* state) {
         RETURN_IF_ERROR(channel->init(state));
     }
 
-    _shuffle_channel_ids.resize(state->chunk_size());
-    _row_indexes.resize(state->chunk_size());
+    raw::stl_vector_resize_uninitialized(&_shuffle_channel_ids, state->chunk_size());
+    raw::stl_vector_resize_uninitialized(&_row_indexes, state->chunk_size());
 
     return Status::OK();
 }

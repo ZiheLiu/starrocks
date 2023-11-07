@@ -517,8 +517,9 @@ void RuntimeProfile::copy_all_counters_from(RuntimeProfile* src_profile) {
         if (name != ROOT_COUNTER) {
             auto* src_counter = src_profile->_counter_map[name].first;
             DCHECK(src_counter != nullptr);
-            auto* new_counter = add_counter_unlock(name, src_counter->type(), src_counter->strategy(), parent_name);
-            new_counter->set(src_counter->value());
+            RuntimeProfile::Counter* new_counter =
+                    add_counter_unlock(name, src_counter->type(), src_counter->strategy(), parent_name);
+            COUNTER_SET(new_counter, COUNTER_VALUE(src_counter));
         }
 
         auto names_it = src_profile->_child_counter_map.find(name);
@@ -765,18 +766,18 @@ int64_t RuntimeProfile::units_per_second(const RuntimeProfile::Counter* total_co
     DCHECK(total_counter->type() == TUnit::BYTES || total_counter->type() == TUnit::UNIT);
     DCHECK(timer->type() == TUnit::TIME_NS);
 
-    if (timer->value() == 0) {
+    if (COUNTER_VALUE(timer) == 0) {
         return 0;
     }
 
-    double secs = static_cast<double>(timer->value()) / 1000.0 / 1000.0 / 1000.0;
-    return total_counter->value() / secs;
+    double secs = static_cast<double>(COUNTER_VALUE(timer)) / 1000.0 / 1000.0 / 1000.0;
+    return COUNTER_VALUE(total_counter) / secs;
 }
 
 [[maybe_unused]] int64_t RuntimeProfile::counter_sum(const std::vector<Counter*>* counters) {
     int64_t value = 0;
     for (auto counter : *counters) {
-        value += counter->value();
+        value += COUNTER_VALUE(counter);
     }
     return value;
 }
@@ -912,15 +913,15 @@ void RuntimeProfile::merge_isomorphic_profiles(std::vector<RuntimeProfile*>& pro
                 auto* min_counter = profile->get_counter(strings::Substitute("$0$1", MERGED_INFO_PREFIX_MIN, name));
                 if (min_counter != nullptr) {
                     already_merged = true;
-                    if (min_counter->value() < min_value) {
-                        min_value = min_counter->value();
+                    if (COUNTER_VALUE(min_counter) < min_value) {
+                        min_value = COUNTER_VALUE(min_counter);
                     }
                 }
                 auto* max_counter = profile->get_counter(strings::Substitute("$0$1", MERGED_INFO_PREFIX_MAX, name));
                 if (max_counter != nullptr) {
                     already_merged = true;
-                    if (max_counter->value() > max_value) {
-                        max_value = max_counter->value();
+                    if (COUNTER_VALUE(max_counter) > max_value) {
+                        max_value = COUNTER_VALUE(max_counter);
                     }
                 }
                 counters.push_back(counter);
@@ -947,14 +948,14 @@ void RuntimeProfile::merge_isomorphic_profiles(std::vector<RuntimeProfile*>& pro
                     counter0 = profile0->add_counter(name, type, strategy);
                 }
             }
-            counter0->set(merged_value);
+            COUNTER_SET(counter0, merged_value);
 
-            auto* min_counter = profile0->add_child_counter(strings::Substitute("$0$1", MERGED_INFO_PREFIX_MIN, name),
-                                                            type, counter0->strategy(), name);
-            auto* max_counter = profile0->add_child_counter(strings::Substitute("$0$1", MERGED_INFO_PREFIX_MAX, name),
-                                                            type, counter0->strategy(), name);
-            min_counter->set(min_value);
-            max_counter->set(max_value);
+            RuntimeProfile::Counter* min_counter = profile0->add_child_counter(
+                    strings::Substitute("$0$1", MERGED_INFO_PREFIX_MIN, name), type, counter0->strategy(), name);
+            RuntimeProfile::Counter* max_counter = profile0->add_child_counter(
+                    strings::Substitute("$0$1", MERGED_INFO_PREFIX_MAX, name), type, counter0->strategy(), name);
+            COUNTER_SET(min_counter, min_value);
+            COUNTER_SET(max_counter, max_value);
         }
     }
 
@@ -989,15 +990,15 @@ RuntimeProfile::MergedInfo RuntimeProfile::merge_isomorphic_counters(std::vector
     int64_t max_value = std::numeric_limits<int64_t>::min();
 
     for (auto& counter : counters) {
-        if (counter->value() < min_value) {
-            min_value = counter->value();
+        if (COUNTER_VALUE(counter) < min_value) {
+            min_value = COUNTER_VALUE(counter);
         }
 
-        if (counter->value() > max_value) {
-            max_value = counter->value();
+        if (COUNTER_VALUE(counter) > max_value) {
+            max_value = COUNTER_VALUE(counter);
         }
 
-        merged_value += counter->value();
+        merged_value += COUNTER_VALUE(counter);
     }
 
     if (counters[0]->is_avg()) {

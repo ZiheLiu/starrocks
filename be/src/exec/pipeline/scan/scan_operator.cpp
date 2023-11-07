@@ -65,16 +65,13 @@ Status ScanOperator::prepare(RuntimeState* state) {
 
     _unique_metrics->add_info_string("MorselQueueType", _morsel_queue->name());
     _unique_metrics->add_info_string("BufferUnplugThreshold", std::to_string(_buffer_unplug_threshold()));
-    _peak_buffer_size_counter = _unique_metrics->AddHighWaterMarkCounter(
-            "PeakChunkBufferSize", TUnit::UNIT,
-            RuntimeProfile::Counter::create_strategy(TUnit::UNIT, TCounterMergeType::SKIP_ALL),
-            RuntimeProfile::ROOT_COUNTER);
-
+    _peak_buffer_size_counter = ADD_HIGH_WATER_COUNTER_4(_unique_metrics, "PeakChunkBufferSize", TUnit::UNIT,
+                                                         RuntimeProfile::ROOT_COUNTER, TCounterMergeType::SKIP_ALL);
     _morsels_counter = ADD_COUNTER(_unique_metrics, "MorselsCount", TUnit::UNIT);
     _buffer_unplug_counter = ADD_COUNTER(_unique_metrics, "BufferUnplugCount", TUnit::UNIT);
     _submit_task_counter = ADD_COUNTER(_unique_metrics, "SubmitTaskCount", TUnit::UNIT);
-    _peak_io_tasks_counter = _unique_metrics->AddHighWaterMarkCounter(
-            "PeakIOTasks", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TCounterAggregateType::AVG));
+    _peak_io_tasks_counter =
+            ADD_HIGH_WATER_COUNTER_3(_unique_metrics, "PeakIOTasks", TUnit::UNIT, TCounterAggregateType::AVG);
 
     RETURN_IF_ERROR(do_prepare(state));
     return Status::OK();
@@ -226,7 +223,7 @@ Status ScanOperator::set_finishing(RuntimeState* state) {
 StatusOr<ChunkPtr> ScanOperator::pull_chunk(RuntimeState* state) {
     RETURN_IF_ERROR(_get_scan_status());
 
-    _peak_buffer_size_counter->set(buffer_size());
+    COUNTER_SET(_peak_buffer_size_counter, buffer_size());
 
     RETURN_IF_ERROR(_try_to_trigger_next_scan(state));
     ChunkPtr res = get_chunk_from_buffer();
@@ -299,7 +296,7 @@ Status ScanOperator::_try_to_trigger_next_scan(RuntimeState* state) {
         RETURN_IF_ERROR(_pickup_morsel(state, idx));
     }
 
-    _peak_io_tasks_counter->set(_num_running_io_tasks);
+    COUNTER_SET(_peak_io_tasks_counter, _num_running_io_tasks);
     return Status::OK();
 }
 
@@ -364,7 +361,7 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
     workgroup::ScanTask task;
     task.workgroup = _workgroup.get();
     // TODO: consider more factors, such as scan bytes and i/o time.
-    task.priority = OlapScanNode::compute_priority(_submit_task_counter->value());
+    task.priority = OlapScanNode::compute_priority(COUNTER_VALUE(_submit_task_counter));
     const auto io_task_start_nano = MonotonicNanos();
     task.work_function = [wp = _query_ctx, this, state, chunk_source_index, query_trace_ctx, driver_id,
                           io_task_start_nano]() {

@@ -61,7 +61,7 @@ void PipelineDriver::check_operator_close_states(std::string func_name) {
 Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _runtime_state = runtime_state;
 
-    auto* prepare_timer = ADD_TIMER(_runtime_profile, "DriverPrepareTime");
+    RuntimeProfile::Counter* prepare_timer = ADD_TIMER(_runtime_profile, "DriverPrepareTime");
     SCOPED_TIMER(prepare_timer);
 
     // TotalTime is reserved name
@@ -454,8 +454,8 @@ void PipelineDriver::mark_precondition_ready(RuntimeState* runtime_state) {
 }
 
 void PipelineDriver::start_schedule(int64_t start_count, int64_t start_time) {
-    _global_schedule_counter->set(start_count);
-    _global_schedule_timer->set(start_time);
+    COUNTER_SET(_global_schedule_counter, start_count);
+    COUNTER_SET(_global_schedule_timer, start_time);
 
     // start timers
     _total_timer_sw->start();
@@ -541,14 +541,14 @@ void PipelineDriver::_try_to_release_buffer(RuntimeState* state, OperatorPtr& op
 void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, int64_t schedule_count,
                               int64_t execution_time) {
     if (schedule_count > 0) {
-        _global_schedule_counter->set(schedule_count - _global_schedule_counter->value());
+        COUNTER_SET(_global_schedule_counter, schedule_count - COUNTER_VALUE(_global_schedule_counter));
     } else {
-        _global_schedule_counter->set((int64_t)-1);
+        COUNTER_SET(_global_schedule_counter, (int64_t)-1);
     }
     if (execution_time > 0) {
-        _global_schedule_timer->set(execution_time - _global_schedule_timer->value());
+        COUNTER_SET(_global_schedule_timer, execution_time - COUNTER_VALUE(_global_schedule_timer));
     } else {
-        _global_schedule_timer->set((int64_t)-1);
+        COUNTER_SET(_global_schedule_timer, (int64_t)-1);
     }
     int64_t time_spent = 0;
     // The driver may be destructed after finalizing, so use a temporal driver to record
@@ -573,7 +573,8 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, in
     set_driver_state(state);
 
     COUNTER_UPDATE(_total_timer, _total_timer_sw->elapsed_time());
-    COUNTER_UPDATE(_schedule_timer, _total_timer->value() - _active_timer->value() - _pending_timer->value());
+    COUNTER_UPDATE(_schedule_timer,
+                   COUNTER_VALUE(_total_timer) - COUNTER_VALUE(_active_timer) - COUNTER_VALUE(_pending_timer));
     _update_overhead_timer();
 
     // Acquire the pointer to avoid be released when removing query
@@ -584,7 +585,7 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, in
 }
 
 void PipelineDriver::_update_overhead_timer() {
-    int64_t overhead_time = _active_timer->value();
+    int64_t overhead_time = COUNTER_VALUE(_active_timer);
     RuntimeProfile* profile = _runtime_profile.get();
     std::vector<RuntimeProfile*> operator_profiles;
     profile->get_children(&operator_profiles);
@@ -593,7 +594,7 @@ void PipelineDriver::_update_overhead_timer() {
         DCHECK(common_metrics != nullptr);
         auto* total_timer = common_metrics->get_counter("OperatorTotalTime");
         DCHECK(total_timer != nullptr);
-        overhead_time -= total_timer->value();
+        overhead_time -= COUNTER_VALUE(total_timer);
     }
 
     if (overhead_time < 0) {
@@ -732,9 +733,9 @@ Status PipelineDriver::_mark_operator_closed(OperatorPtr& op, RuntimeState* stat
         QUERY_TRACE_SCOPED(op->get_name(), "close");
         op->close(state);
     }
-    COUNTER_UPDATE(op->_total_timer, op->_pull_timer->value() + op->_push_timer->value() +
-                                             op->_finishing_timer->value() + op->_finished_timer->value() +
-                                             op->_close_timer->value());
+    COUNTER_UPDATE(op->_total_timer, COUNTER_VALUE(op->_pull_timer) + COUNTER_VALUE(op->_push_timer) +
+                                             COUNTER_VALUE(op->_finishing_timer) + COUNTER_VALUE(op->_finished_timer) +
+                                             COUNTER_VALUE(op->_close_timer));
     return Status::OK();
 }
 
