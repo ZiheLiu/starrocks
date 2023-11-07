@@ -97,9 +97,7 @@ void RuntimeProfile::merge(RuntimeProfile* other) {
             }
         }
 
-        ChildCounterMap::const_iterator child_counter_src_itr;
-
-        for (child_counter_src_itr = other->_child_counter_map.begin();
+        for (auto child_counter_src_itr = other->_child_counter_map.begin();
              child_counter_src_itr != other->_child_counter_map.end(); ++child_counter_src_itr) {
             auto& child_counters =
                     LookupOrInsert(&_child_counter_map, child_counter_src_itr->first, std::set<std::string>());
@@ -163,9 +161,7 @@ void RuntimeProfile::update(const std::vector<TRuntimeProfileNode>& nodes, int* 
             }
         }
 
-        ChildCounterMap::const_iterator child_counter_src_itr;
-
-        for (child_counter_src_itr = node.child_counters_map.begin();
+        for (auto child_counter_src_itr = node.child_counters_map.begin();
              child_counter_src_itr != node.child_counters_map.end(); ++child_counter_src_itr) {
             auto& child_counters =
                     LookupOrInsert(&_child_counter_map, child_counter_src_itr->first, std::set<std::string>());
