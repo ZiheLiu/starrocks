@@ -19,6 +19,7 @@
 #include "exec/pipeline/pipeline_driver.h"
 #include "exec/workgroup/work_group_fwd.h"
 #include "util/factory_method.h"
+#include "util/moodycamel/blockingconcurrentqueue.h"
 
 namespace starrocks::pipeline {
 
@@ -230,5 +231,38 @@ private:
     int64_t _bandwidth_control_period_end_ns = 0;
     std::atomic<int64_t> _bandwidth_usage_ns = 0;
 };
+
+/// LockFreeDriverQueue
+class LockFreeDriverQueue : public FactoryMethod<DriverQueue, LockFreeDriverQueue> {
+    friend class FactoryMethod<DriverQueue, LockFreeDriverQueue>;
+
+public:
+    LockFreeDriverQueue();
+    ~LockFreeDriverQueue() override = default;
+
+    void close() override;
+
+    void put_back(const DriverRawPtr driver) override;
+    void put_back(const std::vector<DriverRawPtr>& drivers) override;
+    void put_back_from_executor(const DriverRawPtr driver) override;
+
+    void update_statistics(const DriverRawPtr driver) override {}
+
+    // Return cancelled status, if the queue is closed.
+    StatusOr<DriverRawPtr> take(const bool block) override;
+
+    void cancel(DriverRawPtr driver) override;
+
+    size_t size() const override;
+
+    bool should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const override { return false; }
+
+private:
+    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
+    Queue _queue;
+};
+
+/// Factory methods.
+std::unique_ptr<DriverQueue> create_driver_queue();
 
 } // namespace starrocks::pipeline
