@@ -580,13 +580,13 @@ public:
             return;
         }
 
-        _counter->update(-1L * _val);
+        COUNTER_UPDATE(_counter, -1L * _val);
     }
 
     // Increment the counter when object is destroyed
     ~ScopedCounter() {
         if (_counter != nullptr) {
-            _counter->update(_val);
+            COUNTER_UPDATE(_counter, _val);
         }
     }
 
@@ -626,7 +626,7 @@ public:
 
     void UpdateCounter() {
         if (_counter != nullptr && !is_cancelled()) {
-            _counter->update(_sw.elapsed_time());
+            COUNTER_UPDATE(_counter, _sw.elapsed_time());
         }
     }
 

@@ -381,8 +381,8 @@ public:
     void set_dispatcher_id(int dispatcher_id) { _dispatcher_id = dispatcher_id; }
     int dispatcher_id() { return _dispatcher_id; }
 
-    void incr_sched_local_counter() { _sched_local_counter->update(1); }
-    void incr_sched_steal_counter() { _sched_steal_counter->update(1); }
+    void incr_sched_local_counter() { COUNTER_UPDATE(_sched_local_counter, 1); }
+    void incr_sched_steal_counter() { COUNTER_UPDATE(_sched_steal_counter, 1); }
 
 protected:
     PipelineDriver() : _operators(), _query_ctx(nullptr), _fragment_ctx(nullptr), _source_node_id(0), _driver_id(0) {}

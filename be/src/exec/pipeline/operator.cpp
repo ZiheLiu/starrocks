@@ -139,11 +139,11 @@ Status Operator::eval_conjuncts_and_in_filters(const std::vector<ExprContext*>& 
     {
         SCOPED_TIMER(_conjuncts_timer);
         auto before = chunk->num_rows();
-        _conjuncts_input_counter->update(before);
+        COUNTER_UPDATE(_conjuncts_input_counter, before);
         RETURN_IF_ERROR(
                 starrocks::ExecNode::eval_conjuncts(_cached_conjuncts_and_in_filters, chunk, filter, apply_filter));
         auto after = chunk->num_rows();
-        _conjuncts_output_counter->update(after);
+        COUNTER_UPDATE(_conjuncts_output_counter, after);
     }
 
     return Status::OK();
@@ -161,10 +161,10 @@ Status Operator::eval_conjuncts(const std::vector<ExprContext*>& conjuncts, vect
     {
         SCOPED_TIMER(_conjuncts_timer);
         size_t before = chunk->num_rows();
-        _conjuncts_input_counter->update(before);
+        COUNTER_UPDATE(_conjuncts_input_counter, before);
         RETURN_IF_ERROR(starrocks::ExecNode::eval_conjuncts(conjuncts, chunk, filter));
         size_t after = chunk->num_rows();
-        _conjuncts_output_counter->update(after);
+        COUNTER_UPDATE(_conjuncts_output_counter, after);
     }
 
     return Status::OK();
