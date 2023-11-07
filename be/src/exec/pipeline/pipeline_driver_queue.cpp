@@ -5,8 +5,53 @@
 #include "exec/pipeline/source_operator.h"
 #include "exec/workgroup/work_group.h"
 #include "gutil/strings/substitute.h"
+#include "util/moodycamel/blockingconcurrentqueue.h"
 
 namespace starrocks::pipeline {
+
+/// LockFreeDriverQueue
+LockFreeDriverQueue::LockFreeDriverQueue() {}
+
+void LockFreeDriverQueue::put_back(const DriverRawPtr driver) {
+    if (driver != nullptr) {
+        driver->set_in_queue(this);
+    }
+    _queue.enqueue(driver);
+}
+
+void LockFreeDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
+    for (auto* driver : drivers) {
+        put_back(driver);
+    }
+}
+
+void LockFreeDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
+    put_back(driver);
+}
+
+void LockFreeDriverQueue::cancel(DriverRawPtr driver) {
+    put_back(driver);
+}
+
+StatusOr<DriverRawPtr> LockFreeDriverQueue::take() {
+    DriverRawPtr driver = nullptr;
+    _queue.wait_dequeue(driver);
+
+    if (driver != nullptr) {
+        return driver;
+    }
+
+    put_back(nullptr);
+    return Status::Cancelled("Shutdown");
+}
+
+void LockFreeDriverQueue::close() {
+    put_back(nullptr);
+}
+
+size_t LockFreeDriverQueue::size() const {
+    return _queue.size_approx();
+}
 
 /// QuerySharedDriverQueue.
 QuerySharedDriverQueue::QuerySharedDriverQueue() {
@@ -492,6 +537,14 @@ void WorkGroupDriverQueue::_update_bandwidth_control_period() {
 
 int64_t WorkGroupDriverQueue::_bandwidth_quota_ns() const {
     return BANDWIDTH_CONTROL_PERIOD_NS * workgroup::WorkGroupManager::instance()->normal_workgroup_cpu_hard_limit();
+}
+
+std::unique_ptr<DriverQueue> create_driver_queue() {
+    if (config::pipeline_driver_queue_mode == 0) {
+        return std::make_unique<QuerySharedDriverQueue>();
+    } else {
+        return std::make_unique<LockFreeDriverQueue>();
+    }
 }
 
 } // namespace starrocks::pipeline
