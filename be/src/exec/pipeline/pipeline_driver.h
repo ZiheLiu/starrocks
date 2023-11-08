@@ -192,7 +192,7 @@ public:
         switch (_state) {
         case DriverState::INPUT_EMPTY: {
             auto elapsed_time = _input_empty_timer_sw->elapsed_time();
-            if (_first_input_empty_timer->value() == 0) {
+            if (COUNTER_VALUE(_first_input_empty_timer) == 0) {
                 COUNTER_UPDATE(_first_input_empty_timer, elapsed_time);
             } else {
                 COUNTER_UPDATE(_followup_input_empty_timer, elapsed_time);
@@ -249,7 +249,7 @@ public:
     // are finished.
     void mark_precondition_ready(RuntimeState* runtime_state);
     void start_schedule(int64_t start_count, int64_t start_time);
-    int64_t get_active_time() const { return _active_timer->value(); }
+    int64_t get_active_time() const { return COUNTER_VALUE(_active_timer); }
     void submit_operators();
     // Notify all the unfinished operators to be finished.
     // It is usually used when the sink operator is finished, or the fragment is cancelled or expired.
