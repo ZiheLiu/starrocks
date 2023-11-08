@@ -511,24 +511,24 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, in
 }
 
 void PipelineDriver::_update_overhead_timer() {
-    int64_t overhead_time = COUNTER_VALUE(_active_timer);
-    RuntimeProfile* profile = _runtime_profile.get();
-    std::vector<RuntimeProfile*> operator_profiles;
-    profile->get_children(&operator_profiles);
-    for (auto* operator_profile : operator_profiles) {
-        auto* common_metrics = operator_profile->get_child("CommonMetrics");
-        DCHECK(common_metrics != nullptr);
-        auto* total_timer = common_metrics->get_counter("OperatorTotalTime");
-        DCHECK(total_timer != nullptr);
-        overhead_time -= COUNTER_VALUE(total_timer);
-    }
+    // int64_t overhead_time = COUNTER_VALUE(_active_timer);
+    // RuntimeProfile* profile = _runtime_profile.get();
+    // std::vector<RuntimeProfile*> operator_profiles;
+    // profile->get_children(&operator_profiles);
+    // for (auto* operator_profile : operator_profiles) {
+    //     auto* common_metrics = operator_profile->get_child("CommonMetrics");
+    //     DCHECK(common_metrics != nullptr);
+    //     auto* total_timer = common_metrics->get_counter("OperatorTotalTime");
+    //     DCHECK(total_timer != nullptr);
+    //     overhead_time -= COUNTER_VALUE(total_timer);
+    // }
 
-    if (overhead_time < 0) {
-        // All the time are recorded indenpendently, and there may be errors
-        COUNTER_UPDATE(_overhead_timer, 0);
-    } else {
-        COUNTER_UPDATE(_overhead_timer, overhead_time);
-    }
+    // if (overhead_time < 0) {
+    //     // All the time are recorded indenpendently, and there may be errors
+    //     COUNTER_UPDATE(_overhead_timer, 0);
+    // } else {
+    //     COUNTER_UPDATE(_overhead_timer, overhead_time);
+    // }
 }
 
 std::string PipelineDriver::to_readable_string() const {
