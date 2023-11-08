@@ -55,6 +55,7 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 
 #if ENABLE_COUNTERS
 #define COUNTER_VALUE(c) (c)->value()
+#define ADD_HIGH_WATER_COUNTER(profile, name, type) (profile)->AddHighWaterMarkCounter(name, type)
 #define ADD_COUNTER(profile, name, type) (profile)->add_counter(name, type)
 #define ADD_COUNTER_SKIP_MERGE(profile, name, type) (profile)->add_counter(name, type, true)
 #define ADD_TIMER(profile, name) (profile)->add_counter(name, TUnit::TIME_NS)
@@ -75,6 +76,7 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
       MACRO_CONCAT(SCOPED_THREAD_COUNTER_MEASUREMENT, __COUNTER__)(c)*/
 #else
 #define COUNTER_VALUE(c) 0
+#define ADD_HIGH_WATER_COUNTER(profile, name, type) NULL
 #define ADD_COUNTER(profile, name, type) NULL
 #define ADD_COUNTER_SKIP_MERGE(profile, name, type) NULL
 #define ADD_TIMER(profile, name) NULL
