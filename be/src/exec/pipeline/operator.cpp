@@ -66,7 +66,7 @@ Status Operator::prepare(RuntimeState* state) {
 }
 
 void Operator::set_prepare_time(int64_t cost_ns) {
-    _prepare_timer->set(cost_ns);
+    COUNTER_SET(_prepare_timer, cost_ns);
 }
 
 void Operator::set_precondition_ready(RuntimeState* state) {

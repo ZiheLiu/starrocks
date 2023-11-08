@@ -581,7 +581,7 @@ Status NodeChannel::_wait_request(ReusableClosure<PTabletWriterAddBatchResult>* 
         return Status::OK();
     }
 
-    _parent->_client_rpc_timer->update(closure->latency());
+    COUNTER_UPDATE(_parent->_client_rpc_timer, closure->latency());
 
     if (closure->cntl.Failed()) {
         _cancelled = true;
@@ -1492,7 +1492,7 @@ Status OlapTableSink::close_wait(RuntimeState* state, Status close_status) {
             ss << "{" << pair.first << ":(" << (pair.second.add_batch_execution_time_us / 1000) << ")("
                << (pair.second.add_batch_wait_lock_time_us / 1000) << ")(" << pair.second.add_batch_num << ")} ";
         }
-        _server_rpc_timer->update(total_server_rpc_time_us * 1000);
+        COUNTER_UPDATE(_server_rpc_timer, total_server_rpc_time_us * 1000);
         LOG(INFO) << ss.str();
     } else {
         COUNTER_SET(_input_rows_counter, _number_input_rows);

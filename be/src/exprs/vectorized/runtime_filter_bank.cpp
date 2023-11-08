@@ -252,7 +252,7 @@ Status RuntimeFilterProbeDescriptor::prepare(RuntimeState* state, const RowDescr
     _open_timestamp = UnixMillis();
     _latency_timer = ADD_COUNTER(p, strings::Substitute("JoinRuntimeFilter/$0/latency", _filter_id), TUnit::TIME_NS);
     // not set yet.
-    _latency_timer->set((int64_t)(-1));
+    COUNTER_SET(_latency_timer, (int64_t)(-1));
     return Status::OK();
 }
 
@@ -612,7 +612,7 @@ void RuntimeFilterProbeDescriptor::set_runtime_filter(const JoinRuntimeFilter* r
     _runtime_filter.compare_exchange_strong(expected, rf, std::memory_order_seq_cst, std::memory_order_seq_cst);
     if (_ready_timestamp == 0 && rf != nullptr && _latency_timer != nullptr) {
         _ready_timestamp = UnixMillis();
-        _latency_timer->set((_ready_timestamp - _open_timestamp) * 1000);
+        COUNTER_SET(_latency_timer, (_ready_timestamp - _open_timestamp) * 1000);
     }
 }
 

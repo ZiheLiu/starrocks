@@ -193,21 +193,21 @@ public:
         case DriverState::INPUT_EMPTY: {
             auto elapsed_time = _input_empty_timer_sw->elapsed_time();
             if (_first_input_empty_timer->value() == 0) {
-                _first_input_empty_timer->update(elapsed_time);
+                COUNTER_UPDATE(_first_input_empty_timer, elapsed_time);
             } else {
-                _followup_input_empty_timer->update(elapsed_time);
+                COUNTER_UPDATE(_followup_input_empty_timer, elapsed_time);
             }
-            _input_empty_timer->update(elapsed_time);
+            COUNTER_UPDATE(_input_empty_timer, elapsed_time);
             break;
         }
         case DriverState::OUTPUT_FULL:
-            _output_full_timer->update(_output_full_timer_sw->elapsed_time());
+            COUNTER_UPDATE(_output_full_timer, _output_full_timer_sw->elapsed_time());
             break;
         case DriverState::PRECONDITION_BLOCK:
-            _precondition_block_timer->update(_precondition_block_timer_sw->elapsed_time());
+            COUNTER_UPDATE(_precondition_block_timer, _precondition_block_timer_sw->elapsed_time());
             break;
         case DriverState::PENDING_FINISH:
-            _pending_finish_timer->update(_pending_finish_timer_sw->elapsed_time());
+            COUNTER_UPDATE(_pending_finish_timer, _pending_finish_timer_sw->elapsed_time());
             break;
         default:
             break;
