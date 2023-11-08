@@ -56,9 +56,9 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 #if ENABLE_COUNTERS
 #define COUNTER_VALUE(c) (c)->value()
 #define ADD_HIGH_WATER_COUNTER(profile, name, type) (profile)->AddHighWaterMarkCounter(name, type)
-#define ADD_HIGH_WATER_COUNTER(profile, name, type, parent_name) \
+#define ADD_HIGH_WATER_COUNTER_3(profile, name, type, parent_name) \
     (profile)->AddHighWaterMarkCounter(name, type, parent_name)
-#define ADD_HIGH_WATER_COUNTER(profile, name, type, parent_name, skip_merge) \
+#define ADD_HIGH_WATER_COUNTER_4(profile, name, type, parent_name, skip_merge) \
     (profile)->AddHighWaterMarkCounter(name, type, parent_name, skip_merge)
 #define ADD_COUNTER(profile, name, type) (profile)->add_counter(name, type)
 #define ADD_COUNTER_SKIP_MERGE(profile, name, type) (profile)->add_counter(name, type, true)
@@ -81,8 +81,8 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 #else
 #define COUNTER_VALUE(c) 0
 #define ADD_HIGH_WATER_COUNTER(profile, name, type) NULL
-#define ADD_HIGH_WATER_COUNTER(profile, name, type, parent_name) NULL
-#define ADD_HIGH_WATER_COUNTER(profile, name, type, parent_name, skip_merge) NULL
+#define ADD_HIGH_WATER_COUNTER_3(profile, name, type, parent_name) NULL
+#define ADD_HIGH_WATER_COUNTER_4(profile, name, type, parent_name, skip_merge) NULL
 #define ADD_COUNTER(profile, name, type) NULL
 #define ADD_COUNTER_SKIP_MERGE(profile, name, type) NULL
 #define ADD_TIMER(profile, name) NULL
