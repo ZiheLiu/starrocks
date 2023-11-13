@@ -394,7 +394,7 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
     DeferOp finalize_query_ctx_op([&query_ctx, &del_list] {
         _exec_env->pipeline_prepare_pool()->try_offer(
                 [query_ctx = std::move(query_ctx), del_list = std::move(del_list)]() mutable {
-                    query_ctx.reset(nullptr);
+                    query_ctx = nullptr;
                     del_list.clear();
                 });
     });
