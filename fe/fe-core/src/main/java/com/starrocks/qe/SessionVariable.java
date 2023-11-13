@@ -2119,6 +2119,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enableTabletInternalParallel;
     }
 
+    @VariableMgr.VarAttr(name = "enable_resource_group")
+    private boolean enableResourceGroup = true;
+
     public boolean isEnableResourceGroup() {
         return true;
     }
