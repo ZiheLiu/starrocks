@@ -45,7 +45,7 @@ void LockFreeDriverQueue::cancel(DriverRawPtr driver) {
     put_back(driver);
 }
 
-StatusOr<DriverRawPtr> LockFreeDriverQueue::take() {
+StatusOr<DriverRawPtr> LockFreeDriverQueue::take(const bool block) {
     DriverRawPtr driver = nullptr;
     _queue.wait_dequeue(driver);
 

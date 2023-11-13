@@ -252,7 +252,7 @@ public:
     void update_statistics(const DriverRawPtr driver) override {}
 
     // Return cancelled status, if the queue is closed.
-    StatusOr<DriverRawPtr> take() override;
+    StatusOr<DriverRawPtr> take(const bool block) override;
 
     void cancel(DriverRawPtr driver) override;
 
