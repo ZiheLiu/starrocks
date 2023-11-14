@@ -402,8 +402,10 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
     DeferOp finalize_query_ctx_op([&query_ctx, &del_list] {
         ExecEnv::GetInstance()->pipeline_prepare_pool()->try_offer(
                 [query_ctx = std::move(query_ctx), del_list = std::move(del_list)]() mutable {
-                    query_ctx = nullptr;
-                    del_list.clear();
+                    if (config::finalize_query_ctx_in_prepare_threads) {
+                        query_ctx = nullptr;
+                        del_list.clear();
+                    }
                 });
     });
 

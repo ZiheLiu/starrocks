@@ -716,6 +716,7 @@ CONF_Int32(pipeline_analytic_max_buffer_size, "128");
 // 0: QuerySharedDriverQueue
 // 1: LockFreeDriverQueue
 CONF_Int64(pipeline_driver_queue_mode, "1");
+CONF_Bool(finalize_query_ctx_in_prepare_threads, "true");
 
 /// For parallel scan on the single tablet.
 // These three configs are used to calculate the minimum number of rows picked up from a segment at one time.
