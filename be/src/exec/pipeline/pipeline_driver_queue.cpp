@@ -27,6 +27,11 @@ LockFreeDriverQueue::LockFreeDriverQueue() {}
 void LockFreeDriverQueue::put_back(const DriverRawPtr driver) {
     if (driver != nullptr) {
         driver->set_in_queue(this);
+
+        if (driver->workgroup() != nullptr && driver->workgroup()->driver_sched_entity() != nullptr) {
+            auto* wg_entity = driver->workgroup()->driver_sched_entity();
+            wg_entity->set_in_queue(this);
+        }
     }
     _queue.enqueue(driver);
 }

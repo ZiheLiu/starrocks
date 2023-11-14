@@ -2123,7 +2123,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private boolean enableResourceGroup = true;
 
     public boolean isEnableResourceGroup() {
-        return true;
+        return enableResourceGroup;
     }
 
     public int getMaxBucketsPerBeToUseBalancerAssignment() {
