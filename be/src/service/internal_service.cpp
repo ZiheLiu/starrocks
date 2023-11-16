@@ -283,6 +283,13 @@ void PInternalServiceImplBase<T>::exec_plan_fragment(google::protobuf::RpcContro
                                                      const PExecPlanFragmentRequest* request,
                                                      PExecPlanFragmentResult* response,
                                                      google::protobuf::Closure* done) {
+    if (config::enable_skip_exec_fragment) {
+        Status st = Status::OK();
+        st.to_protobuf(response->mutable_status());
+        done->Run();
+        return;
+    }
+
     auto task = [=]() { this->_exec_plan_fragment(cntl_base, request, response, done); };
     if (!_exec_env->query_rpc_pool()->try_offer(std::move(task))) {
         ClosureGuard closure_guard(done);
@@ -525,6 +532,15 @@ template <typename T>
 void PInternalServiceImplBase<T>::fetch_data(google::protobuf::RpcController* cntl_base,
                                              const PFetchDataRequest* request, PFetchDataResult* result,
                                              google::protobuf::Closure* done) {
+    if (config::enable_skip_exec_fragment) {
+        Status status;
+        status.to_protobuf(result->mutable_status());
+        result->set_packet_seq(0);
+        result->set_eos(true);
+        done->Run();
+        return;
+    }
+
     auto task = [=]() { this->_fetch_data(cntl_base, request, result, done); };
     if (!_exec_env->query_rpc_pool()->try_offer(std::move(task))) {
         ClosureGuard closure_guard(done);
