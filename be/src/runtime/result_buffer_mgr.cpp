@@ -106,6 +106,11 @@ Status ResultBufferMgr::fetch_data(const TUniqueId& query_id, TFetchDataResult* 
 }
 
 void ResultBufferMgr::fetch_data(const PUniqueId& finst_id, GetResultBatchCtx* ctx) {
+    if (config::enable_skip_exec_fragment) {
+        ctx->on_close(0, nullptr);
+        return;
+    }
+
     TUniqueId tid;
     tid.__set_hi(finst_id.hi());
     tid.__set_lo(finst_id.lo());
