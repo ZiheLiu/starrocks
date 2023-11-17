@@ -347,6 +347,8 @@ public class ConnectProcessor {
                 stmts = com.starrocks.sql.parser.SqlParser.parse(originStmt, ctx.getSessionVariable());
             } catch (ParsingException parsingException) {
                 throw new AnalysisException(parsingException.getMessage());
+            } finally {
+                ctx.getAuditEventBuilder().setParserFinished();
             }
 
             for (int i = 0; i < stmts.size(); ++i) {

@@ -71,6 +71,7 @@ public class AuditEvent {
     // make them all "public" so that easy to visit.
     @AuditField(value = "Timestamp")
     public long timestamp = -1;
+
     @AuditField(value = "Client")
     public String clientIp = "";
     // The original login user
@@ -92,6 +93,14 @@ public class AuditEvent {
     public String errorCode = "";
     @AuditField(value = "Time")
     public long queryTime = -1;
+
+    @AuditField(value = "ParserTimeMs")
+    public long parserTimeMs = -1;
+    @AuditField(value = "OptimizerTimeMs")
+    public long optimizerTimeMs = -1;
+    @AuditField(value = "SchedulerTimeMs")
+    public long schedulerTimeMs = -1;
+
     @AuditField(value = "ScanBytes")
     public long scanBytes = -1;
     @AuditField(value = "ScanRows")
@@ -135,7 +144,6 @@ public class AuditEvent {
     @AuditField(value = "HitMvs", ignore_zero = true)
     public String hitMVs;
 
-
     public static class AuditEventBuilder {
 
         private AuditEvent auditEvent = new AuditEvent();
@@ -154,6 +162,21 @@ public class AuditEvent {
 
         public AuditEventBuilder setTimestamp(long timestamp) {
             auditEvent.timestamp = timestamp;
+            return this;
+        }
+
+        public AuditEventBuilder setParserFinished() {
+            auditEvent.parserTimeMs = System.currentTimeMillis() - auditEvent.timestamp;
+            return this;
+        }
+
+        public AuditEventBuilder setOptimizerFinished() {
+            auditEvent.optimizerTimeMs = System.currentTimeMillis() - auditEvent.timestamp;
+            return this;
+        }
+
+        public AuditEventBuilder setSchedulerFinished() {
+            auditEvent.schedulerTimeMs = System.currentTimeMillis() - auditEvent.timestamp;
             return this;
         }
 

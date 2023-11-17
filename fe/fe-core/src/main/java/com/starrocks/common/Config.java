@@ -1698,7 +1698,7 @@ public class Config extends ConfigBase {
     public static long statistic_collect_query_timeout = 3600; // 1h
 
     @ConfField(mutable = true)
-    public static boolean enable_skip_planer = true; // 1h
+    public static boolean enable_skip_planer = false;
 
     @ConfField
     public static long statistic_cache_columns = 100000;

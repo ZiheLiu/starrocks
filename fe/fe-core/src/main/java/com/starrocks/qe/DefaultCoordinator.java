@@ -455,16 +455,21 @@ public class DefaultCoordinator extends Coordinator {
 
     @Override
     public void startScheduling(boolean needDeploy) throws Exception {
-        try (Timer timer = Tracers.watchScope(Tracers.Module.SCHEDULER, "Pending")) {
-            QueryQueueManager.getInstance().maybeWait(connectContext, this);
-        }
+        connectContext.getAuditEventBuilder().setOptimizerFinished();
+        try {
+            try (Timer timer = Tracers.watchScope(Tracers.Module.SCHEDULER, "Pending")) {
+                QueryQueueManager.getInstance().maybeWait(connectContext, this);
+            }
 
-        try (Timer timer = Tracers.watchScope(Tracers.Module.SCHEDULER, "Prepare")) {
-            prepareExec();
-        }
+            try (Timer timer = Tracers.watchScope(Tracers.Module.SCHEDULER, "Prepare")) {
+                prepareExec();
+            }
 
-        try (Timer timer = Tracers.watchScope(Tracers.Module.SCHEDULER, "Deploy")) {
-            deliverExecFragments(needDeploy);
+            try (Timer timer = Tracers.watchScope(Tracers.Module.SCHEDULER, "Deploy")) {
+                deliverExecFragments(needDeploy);
+            }
+        } finally {
+            connectContext.getAuditEventBuilder().setSchedulerFinished();
         }
 
         // Prevent `explain scheduler` from waiting until the profile timeout.
