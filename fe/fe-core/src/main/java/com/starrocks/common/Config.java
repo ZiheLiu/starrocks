@@ -1700,6 +1700,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static boolean enable_skip_planer = false;
 
+    @ConfField(mutable = true)
+    public static boolean enable_log_register_query = true;
+
     @ConfField
     public static long statistic_cache_columns = 100000;
 

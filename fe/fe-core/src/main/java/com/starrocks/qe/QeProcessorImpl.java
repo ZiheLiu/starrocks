@@ -36,6 +36,7 @@ package com.starrocks.qe;
 
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.MvId;
+import com.starrocks.common.Config;
 import com.starrocks.common.UserException;
 import com.starrocks.common.util.DebugUtil;
 import com.starrocks.qe.scheduler.Coordinator;
@@ -98,7 +99,9 @@ public final class QeProcessorImpl implements QeProcessor {
 
     @Override
     public void registerQuery(TUniqueId queryId, QueryInfo info) throws UserException {
-        LOG.info("register query id = {}", DebugUtil.printId(queryId));
+        if (Config.enable_log_register_query) {
+            LOG.info("register query id = {}", DebugUtil.printId(queryId));
+        }
         final QueryInfo result = coordinatorMap.putIfAbsent(queryId, info);
         if (result != null) {
             throw new UserException("queryId " + queryId + " already exists");
@@ -137,7 +140,9 @@ public final class QeProcessorImpl implements QeProcessor {
             if (info.getCoord() != null) {
                 info.getCoord().onFinished();
             }
-            LOG.info("deregister query id = {}", DebugUtil.printId(queryId));
+            if (Config.enable_log_register_query) {
+                LOG.info("deregister query id = {}", DebugUtil.printId(queryId));
+            }
         }
     }
 
