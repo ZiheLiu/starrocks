@@ -56,8 +56,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 
@@ -69,7 +68,7 @@ public class SimpleScheduler {
     private static AtomicLong nextBackendHostId = new AtomicLong(0);
     //count id for get ComputeNode
     private static Map<Long, Integer> blacklistBackends = Maps.newHashMap();
-    private static Lock lock = new ReentrantLock();
+    private static final ReentrantReadWriteLock LOCK = new ReentrantReadWriteLock();
     private static UpdateBlacklistThread updateBlacklistThread;
 
     static {
@@ -90,7 +89,7 @@ public class SimpleScheduler {
 
         ComputeNode node = computeNodes.get(nodeId);
 
-        lock.lock();
+        LOCK.readLock().lock();
         try {
             if (node != null && node.isAlive() && !blacklistBackends.containsKey(nodeId)) {
                 backendIdRef.setRef(nodeId);
@@ -125,7 +124,7 @@ public class SimpleScheduler {
                 }
             }
         } finally {
-            lock.unlock();
+            LOCK.readLock().unlock();
         }
         // no backend returned
         return null;
@@ -187,22 +186,22 @@ public class SimpleScheduler {
         if (backendID == null) {
             return;
         }
-        lock.lock();
+        LOCK.writeLock().lock();
         try {
             int tryTime = Config.heartbeat_timeout_second + 1;
             blacklistBackends.put(backendID, tryTime);
             LOG.warn("add black list " + backendID);
         } finally {
-            lock.unlock();
+            LOCK.writeLock().unlock();
         }
     }
 
     public static boolean isInBlacklist(long backendId) {
-        lock.lock();
+        LOCK.readLock().lock();
         try {
             return blacklistBackends.containsKey(backendId);
         } finally {
-            lock.unlock();
+            LOCK.readLock().unlock();
         }
     }
 
@@ -211,11 +210,11 @@ public class SimpleScheduler {
         if (backendID == null) {
             return true;
         }
-        lock.lock();
+        LOCK.writeLock().lock();
         try {
             return blacklistBackends.remove(backendID) != null;
         } finally {
-            lock.unlock();
+            LOCK.writeLock().unlock();
         }
     }
 
@@ -240,7 +239,7 @@ public class SimpleScheduler {
                     Thread.sleep(1000L);
                     SystemInfoService clusterInfoService = GlobalStateMgr.getCurrentSystemInfo();
                     LOG.debug("UpdateBlacklistThread retry begin");
-                    lock.lock();
+                    LOCK.writeLock().lock();
                     try {
                         Iterator<Map.Entry<Long, Integer>> iterator = blacklistBackends.entrySet().iterator();
                         while (iterator.hasNext()) {
@@ -275,7 +274,7 @@ public class SimpleScheduler {
                             }
                         }
                     } finally {
-                        lock.unlock();
+                        LOCK.writeLock().unlock();
                         LOG.debug("UpdateBlacklistThread retry end");
                     }
 
