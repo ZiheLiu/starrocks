@@ -1701,6 +1701,8 @@ public class Config extends ConfigBase {
     public static boolean enable_skip_planer = false;
     @ConfField(mutable = true)
     public static boolean enable_audit_log = true;
+    @ConfField(mutable = false)
+    public static int audit_log_queue_size = 10000;
 
     @ConfField(mutable = true)
     public static boolean enable_log_register_query = true;
