@@ -18,6 +18,7 @@
 package com.starrocks.qe;
 
 import com.google.common.collect.Queues;
+import com.starrocks.common.Config;
 import com.starrocks.plugin.AuditEvent;
 import com.starrocks.plugin.AuditPlugin;
 import com.starrocks.plugin.Plugin;
@@ -70,6 +71,10 @@ public class AuditEventProcessor {
     }
 
     public void handleAuditEvent(AuditEvent auditEvent) {
+        if (!Config.enable_audit_log) {
+            return;
+        }
+
         try {
             eventQueue.put(auditEvent);
         } catch (InterruptedException e) {
