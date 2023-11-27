@@ -54,7 +54,9 @@ public class QueryDetailQueue {
     private static final AtomicLong LATEST_MS_CNT = new AtomicLong();
 
     static {
-        SCHEDULED.scheduleAtFixedRate(QueryDetailQueue::removeExpiredQueryDetails, 0, 5, TimeUnit.SECONDS);
+        if (Config.enable_collect_query_detail_info) {
+            SCHEDULED.scheduleAtFixedRate(QueryDetailQueue::removeExpiredQueryDetails, 0, 5, TimeUnit.SECONDS);
+        }
     }
 
     public static void addQueryDetail(QueryDetail queryDetail) {

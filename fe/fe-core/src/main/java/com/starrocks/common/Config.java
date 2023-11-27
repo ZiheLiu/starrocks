@@ -1704,6 +1704,10 @@ public class Config extends ConfigBase {
     @ConfField(mutable = false)
     public static int audit_log_queue_size = 10000;
 
+
+    @ConfField(mutable = false)
+    public static boolean enable_collect_query_detail_info = false;
+
     @ConfField(mutable = true)
     public static boolean enable_log_register_query = true;
 
@@ -2107,9 +2111,6 @@ public class Config extends ConfigBase {
      */
     @ConfField(mutable = true)
     public static boolean enable_routine_load_lag_metrics = false;
-
-    @ConfField(mutable = true)
-    public static boolean enable_collect_query_detail_info = false;
 
     /**
      *  StarRocks-manager pull queries every 1 second
