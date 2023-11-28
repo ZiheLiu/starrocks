@@ -55,7 +55,8 @@ public class QueryDetailQueue {
 
     static {
         if (Config.enable_collect_query_detail_info) {
-            SCHEDULED.scheduleAtFixedRate(QueryDetailQueue::removeExpiredQueryDetails, 0, 5, TimeUnit.SECONDS);
+            SCHEDULED.scheduleAtFixedRate(QueryDetailQueue::removeExpiredQueryDetails, 0,
+                    Config.query_detail_clean_interval_second, TimeUnit.SECONDS);
         }
     }
 

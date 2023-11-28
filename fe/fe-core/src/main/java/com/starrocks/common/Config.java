@@ -1705,6 +1705,8 @@ public class Config extends ConfigBase {
     public static int audit_log_queue_size = 10000;
     @ConfField
     public static boolean db_lock_fair = true;
+    @ConfField
+    public static int query_detail_clean_interval_second = 5;
 
 
     @ConfField(mutable = false)
