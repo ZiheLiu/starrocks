@@ -1703,6 +1703,8 @@ public class Config extends ConfigBase {
     public static boolean enable_audit_log = true;
     @ConfField(mutable = false)
     public static int audit_log_queue_size = 10000;
+    @ConfField
+    public static boolean db_lock_fair = true;
 
 
     @ConfField(mutable = false)

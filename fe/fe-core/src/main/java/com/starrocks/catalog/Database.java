@@ -115,7 +115,7 @@ public class Database extends MetaObject implements Writable {
     // catalogName is set if the database comes from an external catalog
     private String catalogName;
 
-    private QueryableReentrantReadWriteLock rwLock;
+    private final QueryableReentrantReadWriteLock rwLock;
 
     private long lastSlowLockLogTime = 0;
 
@@ -142,7 +142,7 @@ public class Database extends MetaObject implements Writable {
         if (this.fullQualifiedName == null) {
             this.fullQualifiedName = "";
         }
-        this.rwLock = new QueryableReentrantReadWriteLock(true);
+        this.rwLock = new QueryableReentrantReadWriteLock(Config.db_lock_fair);
         this.idToTable = new ConcurrentHashMap<>();
         this.nameToTable = new ConcurrentHashMap<>();
         this.dataQuotaBytes = FeConstants.DEFAULT_DB_DATA_QUOTA_BYTES;
