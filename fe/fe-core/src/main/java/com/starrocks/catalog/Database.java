@@ -160,6 +160,18 @@ public class Database extends MetaObject implements Writable {
         return sb.toString();
     }
 
+    private void logSlowLockEventIfNeeded(long startMs, String type, String threadDump, int numQueuedReaderThreads,
+                                          int numQueuedWriterThreads) {
+        long endMs = TimeUnit.MILLISECONDS.convert(System.nanoTime(), TimeUnit.NANOSECONDS);
+        if (endMs - startMs > Config.slow_lock_threshold_ms &&
+                endMs > lastSlowLockLogTime + Config.slow_lock_log_every_ms) {
+            lastSlowLockLogTime = endMs;
+            LOG.warn("slow db lock. type: {}, db id: {}, db name: {}, wait time: {}ms, " +
+                            "former {}, nqr={}, nqw={}, current stack trace: {}", type, id, fullQualifiedName, endMs - startMs,
+                    threadDump, numQueuedReaderThreads, numQueuedWriterThreads, LogUtil.getCurrentStackTrace());
+        }
+    }
+
     private void logSlowLockEventIfNeeded(long startMs, String type, String threadDump) {
         long endMs = TimeUnit.MILLISECONDS.convert(System.nanoTime(), TimeUnit.NANOSECONDS);
         if (endMs - startMs > Config.slow_lock_threshold_ms &&
@@ -178,8 +190,12 @@ public class Database extends MetaObject implements Writable {
     public void readLock() {
         long startMs = TimeUnit.MILLISECONDS.convert(System.nanoTime(), TimeUnit.NANOSECONDS);
         String threadDump = getOwnerInfo(rwLock.getOwner());
+        int numQueuedReaderThreads = rwLock.getNumQueuedReaderThreads();
+        int numQueuedWriterThreads = rwLock.getNumQueuedWriterThreads();
+
         this.rwLock.readLock().lock();
-        logSlowLockEventIfNeeded(startMs, "readLock", threadDump);
+
+        logSlowLockEventIfNeeded(startMs, "readLock", threadDump, numQueuedReaderThreads, numQueuedWriterThreads);
     }
 
     // this function make sure lock can only be obtained if the db has not been dropped

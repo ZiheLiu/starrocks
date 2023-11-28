@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.common.util.concurrent;
 
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -30,5 +29,13 @@ public class QueryableReentrantReadWriteLock extends ReentrantReadWriteLock {
     @Override
     public Thread getOwner() {
         return super.getOwner();
+    }
+
+    public int getNumQueuedReaderThreads() {
+        return this.getQueuedReaderThreads().size();
+    }
+
+    public int getNumQueuedWriterThreads() {
+        return this.getQueuedWriterThreads().size();
     }
 }
