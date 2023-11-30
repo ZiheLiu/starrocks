@@ -29,7 +29,7 @@ SinkBuffer::SinkBuffer(FragmentContext* fragment_ctx, const std::vector<TPlanFra
 
         auto it = _num_sinkers.find(instance_id.lo);
         if (it == _num_sinkers.end()) {
-            _num_sinkers[instance_id.lo] = std::atomic<int64_t>(num_sinkers);
+            _num_sinkers[instance_id.lo] = std::make_unique<std::atomic<int64_t>>(num_sinkers);
 
             _request_seqs[instance_id.lo] = -1;
             _max_continuous_acked_seqs[instance_id.lo] = -1;
@@ -73,7 +73,7 @@ Status SinkBuffer::add_request(TransmitChunkInfo& request) {
 
     auto& instance_id = request.fragment_instance_id;
     if (request.params->eos()) {
-        if (_num_sinkers[instance_id.lo]-- > 1) {
+        if ((*_num_sinkers[instance_id.lo])-- > 1) {
             if (request.params->chunks_size() == 0) {
                 return Status::OK();
             } else {
