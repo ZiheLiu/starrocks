@@ -29,7 +29,7 @@ SinkBuffer::SinkBuffer(FragmentContext* fragment_ctx, const std::vector<TPlanFra
 
         auto it = _num_sinkers.find(instance_id.lo);
         if (it == _num_sinkers.end()) {
-            _num_sinkers[instance_id.lo] = num_sinkers;
+            _num_sinkers[instance_id.lo] = std::atomic<int64_t>(num_sinkers);
 
             _request_seqs[instance_id.lo] = -1;
             _max_continuous_acked_seqs[instance_id.lo] = -1;
@@ -48,7 +48,7 @@ SinkBuffer::SinkBuffer(FragmentContext* fragment_ctx, const std::vector<TPlanFra
         }
     }
 
-    _num_remaining_eos = _num_sinkers.size() * num_sinkers;
+    _num_remaining_eos = _num_sinkers.size();
 }
 
 SinkBuffer::~SinkBuffer() {
@@ -70,10 +70,19 @@ Status SinkBuffer::add_request(TransmitChunkInfo& request) {
         _bytes_enqueued += request.attachment.size();
         _request_enqueued++;
     }
-    {
-        auto& instance_id = request.fragment_instance_id;
-        RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [&]() { _buffers[instance_id.lo].push(request); }));
+
+    auto& instance_id = request.fragment_instance_id;
+    if (request.params->eos()) {
+        if (_num_sinkers[instance_id.lo]-- > 1) {
+            if (request.params->chunks_size() == 0) {
+                return Status::OK();
+            } else {
+                request.params->set_eos(false);
+            }
+        }
     }
+
+    RETURN_IF_ERROR(_try_to_send_rpc(instance_id, [&]() { _buffers[instance_id.lo].push(request); }));
 
     return Status::OK();
 }
@@ -303,33 +312,23 @@ Status SinkBuffer::_try_to_send_rpc(const TUniqueId& instance_id, const std::fun
                 if (--_num_remaining_eos == 0) {
                     _is_finishing = true;
                 }
-                --_num_sinkers[instance_id.lo];
             });
             // Only the last eos is sent to ExchangeSourceOperator. it must be guaranteed that
             // eos is the last packet to send to finish the input stream of the corresponding of
             // ExchangeSourceOperator and eos is sent exactly-once.
-            if (_num_sinkers[instance_id.lo] > 1) {
-                // to reduce uncessary rpc requests, we merge all query statistics in eos requests into one and send it through the last eos request
-                _try_to_merge_query_statistics(request);
-                if (request.params->chunks_size() == 0) {
-                    continue;
-                } else {
-                    request.params->set_eos(false);
-                }
-            } else {
-                // The order of data transmiting in IO level may not be strictly the same as
-                // the order of submitting data packets
-                // But we must guarantee that eos packent must be the last packet
-                if (_num_in_flight_rpcs[instance_id.lo] > 0) {
-                    need_wait = true;
-                    return Status::OK();
-                }
-                // this is the last eos query, set query stats
-                _eos_query_stats[instance_id.lo]->merge_pb(request.params->query_statistics());
-                request.params->clear_query_statistics();
-                _eos_query_stats[instance_id.lo]->to_pb(request.params->mutable_query_statistics());
-                _eos_query_stats[instance_id.lo]->clear();
+
+            // The order of data transmiting in IO level may not be strictly the same as
+            // the order of submitting data packets
+            // But we must guarantee that eos packent must be the last packet
+            if (_num_in_flight_rpcs[instance_id.lo] > 0) {
+                need_wait = true;
+                return Status::OK();
             }
+            // this is the last eos query, set query stats
+            _eos_query_stats[instance_id.lo]->merge_pb(request.params->query_statistics());
+            request.params->clear_query_statistics();
+            _eos_query_stats[instance_id.lo]->to_pb(request.params->mutable_query_statistics());
+            _eos_query_stats[instance_id.lo]->clear();
         }
 
         *request.params->mutable_finst_id() = _instance_id2finst_id[instance_id.lo];
