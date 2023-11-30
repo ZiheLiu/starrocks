@@ -195,6 +195,35 @@ void GlobalDriverExecutor::submit(DriverRawPtr driver) {
     }
 }
 
+void GlobalDriverExecutor::submit(const std::vector<DriverRawPtr>& drivers) {
+    std::vector<DriverRawPtr> blocking_drivers;
+    std::vector<DriverRawPtr> ready_drivers;
+    ready_drivers.reserve(drivers.size());
+
+    for (auto* driver : drivers) {
+        driver->start_schedule(_schedule_count, _driver_execution_ns);
+
+        if (driver->is_precondition_block()) {
+            driver->set_driver_state(DriverState::PRECONDITION_BLOCK);
+            driver->mark_precondition_not_ready();
+            blocking_drivers.emplace_back(driver);
+        } else {
+            driver->submit_operators();
+
+            // Try to add the driver to poller first.
+            if (!driver->source_operator()->is_finished() && !driver->source_operator()->has_output()) {
+                driver->set_driver_state(DriverState::INPUT_EMPTY);
+                blocking_drivers.emplace_back(driver);
+            } else {
+                ready_drivers.emplace_back(driver);
+            }
+        }
+    }
+
+    this->_blocked_driver_poller->add_blocked_driver(blocking_drivers);
+    this->_driver_queue_manager->put_back(ready_drivers);
+}
+
 void GlobalDriverExecutor::cancel(DriverRawPtr driver) {
     // if driver is already in ready queue, we should cancel it
     // otherwise, just ignore it and wait for the poller to schedule
