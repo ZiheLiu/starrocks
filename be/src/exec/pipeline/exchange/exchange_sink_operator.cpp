@@ -420,7 +420,6 @@ Status ExchangeSinkOperator::prepare(RuntimeState* state) {
     // Randomize the order we open/transmit to channels to avoid thundering herd problems.
     raw::stl_vector_resize_uninitialized(&_channel_indices, _channels.size());
     std::iota(_channel_indices.begin(), _channel_indices.end(), 0);
-    srand(reinterpret_cast<uint64_t>(this));
     std::shuffle(_channel_indices.begin(), _channel_indices.end(), std::mt19937(std::random_device()()));
 
     _bytes_pass_through_counter = ADD_COUNTER(_unique_metrics, "BytesPassThrough", TUnit::BYTES);
