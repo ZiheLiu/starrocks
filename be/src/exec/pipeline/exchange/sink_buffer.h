@@ -122,7 +122,7 @@ private:
     /// because TUniqueId::hi is exactly the same in one query
 
     // num eos per instance
-    phmap::flat_hash_map<int64_t, int64_t> _num_sinkers;
+    phmap::flat_hash_map<int64_t, std::atomic<int64_t>> _num_sinkers;
     phmap::flat_hash_map<int64_t, int64_t> _request_seqs;
     // Considering the following situation
     // Sending request 1, 2, 3 in order with one possible order of response 1, 3, 2,
