@@ -686,10 +686,12 @@ Status FragmentExecutor::execute(ExecEnv* exec_env) {
 
     auto* executor =
             _fragment_ctx->enable_resource_group() ? exec_env->wg_driver_executor() : exec_env->driver_executor();
-    for (const auto& driver : _fragment_ctx->drivers()) {
-        DCHECK(!_fragment_ctx->enable_resource_group() || driver->workgroup() != nullptr);
-        executor->submit(driver.get());
-    }
+
+    const auto& drivers = _fragment_ctx->drivers();
+    std::vector<DriverRawPtr> raw_drivers(drivers.size());
+    std::transform(drivers.begin(), drivers.end(), raw_drivers.begin(),
+                   [](const auto& driver) { return driver.get(); });
+    executor->submit(raw_drivers);
 
     return Status::OK();
 }
