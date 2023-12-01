@@ -73,7 +73,7 @@ public:
 private:
     int _random_dispatcher_id();
 
-    static constexpr int NUM_PL = 4;
+    static constexpr int NUM_PL = 16;
 
     // Used to block and notify dispatcher threads.
     // Multiple dispatcher waits in one pl.
