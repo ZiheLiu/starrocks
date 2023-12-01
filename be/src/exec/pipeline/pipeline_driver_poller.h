@@ -32,12 +32,7 @@ using PipelineDriverPollerPtr = std::unique_ptr<PipelineDriverPoller>;
 
 class PipelineDriverPoller {
 public:
-    explicit PipelineDriverPoller(DriverQueue* driver_queue)
-            : _driver_queue(driver_queue),
-              _polling_thread(nullptr),
-              _is_polling_thread_initialized(false),
-              _is_shutdown(false),
-              _blocked_driver_queue_len(0) {}
+    explicit PipelineDriverPoller(DriverQueue* driver_queue);
 
     using DriverList = std::list<DriverRawPtr>;
 
@@ -62,25 +57,24 @@ public:
     void iterate_immutable_driver(const IterateImmutableDriverFunc& call) const;
 
 private:
-    void run_internal();
+    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
+    struct ThreadItem {
+        Queue blocked_drivers;
+        scoped_refptr<Thread> polling_thread{nullptr};
+        std::atomic<bool> is_polling_thread_initialized{false};
+        std::atomic<bool> is_shutdown{false};
+    };
+
+    void run_internal(ThreadItem* item);
     PipelineDriverPoller(const PipelineDriverPoller&) = delete;
     PipelineDriverPoller& operator=(const PipelineDriverPoller&) = delete;
 
 private:
-    // mutable std::mutex _global_mutex;
-    // std::condition_variable _cond;
-    // DriverList _blocked_drivers;
-
-    // mutable std::shared_mutex _local_mutex;
-    // DriverList _local_blocked_drivers;
-
-    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
-    Queue _blocked_drivers;
+    const int num_threads = config::pipeline_poller_thread_num;
 
     DriverQueue* _driver_queue;
-    scoped_refptr<Thread> _polling_thread;
-    std::atomic<bool> _is_polling_thread_initialized;
-    std::atomic<bool> _is_shutdown;
+
+    std::vector<ThreadItem> _thread_items;
 
     // NOTE: The `driver` can be stored in the parked drivers when it will never not be called to run.
     // The parked driver needs to be actived when it needs to be triggered again.
@@ -88,4 +82,7 @@ private:
     DriverList _parked_drivers;
 
     std::atomic<size_t> _num_blocked_drivers{0};
+    std::atomic<size_t> _next_thread_index{0};
 };
+
+} // namespace starrocks::pipeline
