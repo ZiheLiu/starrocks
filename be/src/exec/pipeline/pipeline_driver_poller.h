@@ -11,6 +11,7 @@
 #include "pipeline_driver.h"
 #include "pipeline_driver_queue.h"
 #include "pipeline_driver_queue_manager.h"
+#include "util/moodycamel/blockingconcurrentqueue.h"
 #include "util/thread.h"
 
 namespace starrocks {
@@ -40,10 +41,7 @@ public:
     // remove blocked driver from poller
     void remove_blocked_driver(DriverList& local_blocked_drivers, DriverList::iterator& driver_it);
     // only used for collect metrics
-    size_t blocked_driver_queue_len() const {
-        std::shared_lock guard(_local_mutex);
-        return _local_blocked_drivers.size();
-    }
+    size_t blocked_driver_queue_len() const { return _num_blocked_drivers; }
 
     void iterate_immutable_driver(const IterateImmutableDriverFunc& call) const;
 
@@ -53,17 +51,21 @@ private:
     PipelineDriverPoller& operator=(const PipelineDriverPoller&) = delete;
 
 private:
-    mutable std::mutex _global_mutex;
-    std::condition_variable _cond;
-    DriverList _blocked_drivers;
+    // mutable std::mutex _global_mutex;
+    // std::condition_variable _cond;
+    // DriverList _blocked_drivers;
 
-    mutable std::shared_mutex _local_mutex;
-    DriverList _local_blocked_drivers;
+    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
+    Queue _blocked_drivers;
+
+    // DriverList _local_blocked_drivers;
 
     DriverQueueManager* _driver_queue_manager;
     scoped_refptr<Thread> _polling_thread;
     std::atomic<bool> _is_polling_thread_initialized;
     std::atomic<bool> _is_shutdown;
+
+    std::atomic<size_t> _num_blocked_drivers{0};
 };
 } // namespace pipeline
 } // namespace starrocks
