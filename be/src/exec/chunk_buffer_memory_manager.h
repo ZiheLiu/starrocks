@@ -58,6 +58,9 @@ public:
         _max_memory_usage = max_memory_usage;
     }
 
+    void incr_num_finished_sourcers() { _num_finished_sourcers++; }
+    int num_finished_sourcers() const { return _num_finished_sourcers; }
+
 private:
     std::atomic<size_t> _max_memory_usage{128UL * 1024 * 1024 * 1024}; // 128GB
     size_t _max_memory_usage_per_driver = 128 * 1024 * 1024UL;         // 128MB
@@ -65,5 +68,7 @@ private:
     std::atomic<int64_t> _memory_usage{};
     std::atomic<int64_t> _buffered_num_rows{};
     size_t _max_input_dop;
+
+    std::atomic<int> _num_finished_sourcers{0};
 };
 } // namespace starrocks::pipeline

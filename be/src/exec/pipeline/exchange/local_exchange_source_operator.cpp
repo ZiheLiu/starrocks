@@ -52,6 +52,10 @@ Status LocalExchangeSourceOperator::add_chunk(ChunkPtr chunk, const std::shared_
 }
 
 bool LocalExchangeSourceOperator::is_finished() const {
+    if (!_is_finished) {
+        return false;
+    }
+
     std::lock_guard<std::mutex> l(_chunk_lock);
     if (_full_chunk_queue.empty() && !_partition_rows_num) {
         if (UNLIKELY(_local_memory_usage != 0)) {
