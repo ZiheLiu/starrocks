@@ -36,15 +36,6 @@ void PipelineDriverPoller::run_internal() {
 
     while (!_is_shutdown.load(std::memory_order_acquire)) {
         DriverRawPtr driver = nullptr;
-        _blocked_drivers.wait_dequeue(driver);
-        if (driver == nullptr) {
-            if (_is_shutdown.load(std::memory_order_acquire)) {
-                return;
-            }
-        } else {
-            local_blocked_drivers.emplace_back(driver);
-        }
-
         size_t num_drivers = _blocked_drivers.try_dequeue_bulk(driver_buffer.begin(), num_buffer_drivers);
         for (int i = 0; i < num_drivers; i++) {
             driver = driver_buffer[i];
@@ -55,6 +46,18 @@ void PipelineDriverPoller::run_internal() {
             } else {
                 local_blocked_drivers.emplace_back(driver);
             }
+        }
+
+        if (local_blocked_drivers.empty()) {
+            _blocked_drivers.wait_dequeue(driver);
+            if (driver == nullptr) {
+                if (_is_shutdown.load(std::memory_order_acquire)) {
+                    return;
+                }
+            } else {
+                local_blocked_drivers.emplace_back(driver);
+            }
+            continue;
         }
 
         auto driver_it = local_blocked_drivers.begin();
