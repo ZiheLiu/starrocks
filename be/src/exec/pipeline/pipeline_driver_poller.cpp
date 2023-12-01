@@ -53,6 +53,8 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
     std::vector<DriverRawPtr> ready_drivers;
 
     while (!item->is_shutdown.load(std::memory_order_acquire)) {
+        bool has_ready_drivers = false;
+
         DriverRawPtr driver = nullptr;
         size_t num_drivers = item->blocked_drivers.try_dequeue_bulk(driver_buffer.begin(), num_buffer_drivers);
         for (int i = 0; i < num_drivers; i++) {
@@ -151,10 +153,21 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
             } else {
                 ++driver_it;
             }
+
+            if (ready_drivers.size() >= config::pipeline_poller_batch_back_num) {
+                has_ready_drivers = true;
+
+                _driver_queue->put_back(ready_drivers);
+                ready_drivers.clear();
+            }
         }
 
         if (ready_drivers.empty()) {
-            spin_count += 1;
+            if (has_ready_drivers) {
+                spin_count = 0;
+            } else {
+                spin_count += 1;
+            }
         } else {
             spin_count = 0;
 
