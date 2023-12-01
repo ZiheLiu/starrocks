@@ -39,13 +39,8 @@ public:
     }
 
     // All LocalExchangeSourceOperators have finished.
-    virtual bool is_all_sources_finished() const {
-        for (const auto& source_op : _source->get_sources()) {
-            if (!source_op->is_finished()) {
-                return false;
-            }
-        }
-        return true;
+    bool is_all_sources_finished() const {
+        return _memory_manager->num_finished_sourcers() >= _source->get_sources().size();
     }
 
     const std::string& name() const { return _name; }

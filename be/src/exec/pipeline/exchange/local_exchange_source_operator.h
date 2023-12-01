@@ -44,8 +44,10 @@ public:
 
     Status set_finished(RuntimeState* state) override;
     Status set_finishing(RuntimeState* state) override {
-        std::lock_guard<std::mutex> l(_chunk_lock);
-        _is_finished = true;
+        if (!_is_finished.load()) {
+            _is_finished = true;
+            _memory_manager->incr_num_finished_sourcers();
+        }
         return Status::OK();
     }
 
@@ -56,7 +58,7 @@ private:
 
     vectorized::ChunkPtr _pull_shuffle_chunk(RuntimeState* state);
 
-    bool _is_finished = false;
+    std::atomic<bool> _is_finished = false;
     std::queue<vectorized::ChunkPtr> _full_chunk_queue;
     std::queue<PartitionChunk> _partition_chunk_queue;
     size_t _partition_rows_num = 0;
