@@ -34,7 +34,7 @@ public:
     // shutdown poller thread
     void shutdown();
     // add blocked driver to poller
-    void add_blocked_driver(const DriverRawPtr driver);
+    __attribute__((noinline)) void add_blocked_driver(const DriverRawPtr driver);
     void add_blocked_driver(const std::vector<DriverRawPtr>& drivers);
     // remove blocked driver from poller
     void remove_blocked_driver(DriverList& local_blocked_drivers, DriverList::iterator& driver_it);
