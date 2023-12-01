@@ -718,6 +718,10 @@ CONF_mBool(pipeline_print_profile, "false");
 
 CONF_Int32(pipeline_analytic_max_buffer_size, "128");
 
+// 0: QuerySharedDriverQueue
+// 1: LockFreeDriverQueue
+CONF_Int64(pipeline_driver_queue_mode, "1");
+
 /// For parallel scan on the single tablet.
 // These three configs are used to calculate the minimum number of rows picked up from a segment at one time.
 // It is `splitted_scan_bytes/scan_row_bytes` and restricted in the range [min_splitted_scan_rows, max_splitted_scan_rows].
