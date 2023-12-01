@@ -412,7 +412,7 @@ Status RuntimeState::_build_global_dict(const GlobalDictLists& global_dict_list,
 }
 
 bool RuntimeState::enable_query_statistic() const {
-    return _query_options.__isset.enable_pipeline_query_statistic && _query_options.enable_pipeline_query_statistic;
+    return false;
 }
 
 std::shared_ptr<QueryStatistics> RuntimeState::intermediate_query_statistic() {
