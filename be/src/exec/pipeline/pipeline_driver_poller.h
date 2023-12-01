@@ -21,11 +21,7 @@ using PipelineDriverPollerPtr = std::unique_ptr<PipelineDriverPoller>;
 
 class PipelineDriverPoller {
 public:
-    explicit PipelineDriverPoller(DriverQueue* driver_queue)
-            : _driver_queue(driver_queue),
-              _polling_thread(nullptr),
-              _is_polling_thread_initialized(false),
-              _is_shutdown(false) {}
+    explicit PipelineDriverPoller(DriverQueue* driver_queue);
 
     using DriverList = std::list<DriverRawPtr>;
 
@@ -45,26 +41,27 @@ public:
     void iterate_immutable_driver(const IterateImmutableDriverFunc& call) const;
 
 private:
-    void run_internal();
+    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
+    struct ThreadItem {
+        Queue blocked_drivers;
+        scoped_refptr<Thread> polling_thread{nullptr};
+        std::atomic<bool> is_polling_thread_initialized{false};
+        std::atomic<bool> is_shutdown{false};
+    };
+
+    void run_internal(ThreadItem* item);
     PipelineDriverPoller(const PipelineDriverPoller&) = delete;
     PipelineDriverPoller& operator=(const PipelineDriverPoller&) = delete;
 
 private:
-    // mutable std::mutex _global_mutex;
-    // std::condition_variable _cond;
-    // DriverList _blocked_drivers;
-
-    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
-    Queue _blocked_drivers;
-
-    // DriverList _local_blocked_drivers;
+    const int num_threads = config::pipeline_poller_thread_num;
 
     DriverQueue* _driver_queue;
-    scoped_refptr<Thread> _polling_thread;
-    std::atomic<bool> _is_polling_thread_initialized;
-    std::atomic<bool> _is_shutdown;
+
+    std::vector<ThreadItem> _thread_items;
 
     std::atomic<size_t> _num_blocked_drivers{0};
+    std::atomic<size_t> _next_thread_index{0};
 };
 } // namespace pipeline
 } // namespace starrocks

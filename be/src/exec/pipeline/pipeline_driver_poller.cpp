@@ -5,28 +5,34 @@
 #include <chrono>
 namespace starrocks::pipeline {
 
+PipelineDriverPoller::PipelineDriverPoller(DriverQueue* driver_queue)
+        : _driver_queue(driver_queue), _thread_items(num_threads) {}
+
 void PipelineDriverPoller::start() {
-    DCHECK(this->_polling_thread.get() == nullptr);
-    auto status = Thread::create(
-            "pipeline", "pipeline_poller", [this]() { run_internal(); }, &this->_polling_thread);
-    if (!status.ok()) {
-        LOG(FATAL) << "Fail to create PipelineDriverPoller: error=" << status.to_string();
-    }
-    while (!this->_is_polling_thread_initialized.load(std::memory_order_acquire)) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    for (auto& item : _thread_items) {
+        auto status = Thread::create(
+                "pipeline", "pipeline_poller", [this, pitem = &item]() { run_internal(pitem); }, &item.polling_thread);
+        if (!status.ok()) {
+            LOG(FATAL) << "Fail to create PipelineDriverPoller: error=" << status.to_string();
+        }
+        while (!item.is_polling_thread_initialized.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
     }
 }
 
 void PipelineDriverPoller::shutdown() {
-    if (!this->_is_shutdown.load() && _polling_thread.get() != nullptr) {
-        this->_is_shutdown.store(true, std::memory_order_release);
-        _blocked_drivers.enqueue(nullptr);
-        _polling_thread->join();
+    for (auto& item : _thread_items) {
+        if (!item.is_shutdown.load() && item.polling_thread.get() != nullptr) {
+            item.is_shutdown.store(true, std::memory_order_release);
+            item.blocked_drivers.enqueue(nullptr);
+            item.polling_thread->join();
+        }
     }
 }
 
-void PipelineDriverPoller::run_internal() {
-    this->_is_polling_thread_initialized.store(true, std::memory_order_release);
+void PipelineDriverPoller::run_internal(ThreadItem* item) {
+    item->is_polling_thread_initialized.store(true, std::memory_order_release);
 
     int spin_count = 0;
     const int num_buffer_drivers = 1024 * 10;
@@ -34,13 +40,13 @@ void PipelineDriverPoller::run_internal() {
     DriverList local_blocked_drivers;
     std::vector<DriverRawPtr> ready_drivers;
 
-    while (!_is_shutdown.load(std::memory_order_acquire)) {
+    while (!item->is_shutdown.load(std::memory_order_acquire)) {
         DriverRawPtr driver = nullptr;
-        size_t num_drivers = _blocked_drivers.try_dequeue_bulk(driver_buffer.begin(), num_buffer_drivers);
+        size_t num_drivers = item->blocked_drivers.try_dequeue_bulk(driver_buffer.begin(), num_buffer_drivers);
         for (int i = 0; i < num_drivers; i++) {
             driver = driver_buffer[i];
             if (driver == nullptr) {
-                if (_is_shutdown.load(std::memory_order_acquire)) {
+                if (item->is_shutdown.load(std::memory_order_acquire)) {
                     return;
                 }
             } else {
@@ -49,9 +55,9 @@ void PipelineDriverPoller::run_internal() {
         }
 
         if (local_blocked_drivers.empty()) {
-            _blocked_drivers.wait_dequeue(driver);
+            item->blocked_drivers.wait_dequeue(driver);
             if (driver == nullptr) {
-                if (_is_shutdown.load(std::memory_order_acquire)) {
+                if (item->is_shutdown.load(std::memory_order_acquire)) {
                     return;
                 }
             } else {
@@ -149,16 +155,25 @@ void PipelineDriverPoller::run_internal() {
 
 void PipelineDriverPoller::add_blocked_driver(const DriverRawPtr driver) {
     _num_blocked_drivers++;
-    _blocked_drivers.enqueue(driver);
+    auto& item = _thread_items[(_next_thread_index++) % num_threads];
+    item.blocked_drivers.enqueue(driver);
     driver->_pending_timer_sw->reset();
 }
 
 void PipelineDriverPoller::add_blocked_driver(const std::vector<DriverRawPtr>& drivers) {
     _num_blocked_drivers += drivers.size();
+
+    std::vector<std::vector<DriverRawPtr>> drivers_per_thread(num_threads);
     for (auto* driver : drivers) {
         driver->_pending_timer_sw->reset();
+        drivers_per_thread[(_next_thread_index++) % num_threads].emplace_back(driver);
     }
-    _blocked_drivers.enqueue_bulk(drivers.begin(), drivers.size());
+
+    for (int i = 0; i < num_threads; i++) {
+        if (!drivers_per_thread[i].empty()) {
+            _thread_items[i].blocked_drivers.enqueue_bulk(drivers_per_thread[i].begin(), drivers_per_thread[i].size());
+        }
+    }
 }
 
 void PipelineDriverPoller::remove_blocked_driver(DriverList& local_blocked_drivers, DriverList::iterator& driver_it) {
