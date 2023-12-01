@@ -221,7 +221,7 @@ void GlobalDriverExecutor::submit(const std::vector<DriverRawPtr>& drivers) {
     }
 
     this->_blocked_driver_poller->add_blocked_driver(blocking_drivers);
-    this->_driver_queue_manager->put_back(ready_drivers);
+    this->_driver_queue->put_back(ready_drivers);
 }
 
 void GlobalDriverExecutor::cancel(DriverRawPtr driver) {
