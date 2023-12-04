@@ -154,7 +154,7 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
             ready_drivers.clear();
         }
 
-        if (spin_count != 0 && spin_count % 64 == 0 &&
+        if (config::enable_poller_yield_small && spin_count != 0 && spin_count % 64 == 0 &&
             (!config::enable_poller_yield_only_when_ready_driver_empty || _driver_queue->size() > 0)) {
 #ifdef __x86_64__
             _mm_pause();
@@ -163,7 +163,7 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
             sched_yield();
 #endif
         }
-        if (spin_count == 640 &&
+        if (config::enable_poller_yield_big && spin_count == 640 &&
             (!config::enable_poller_yield_only_when_ready_driver_empty || _driver_queue->size() > 0)) {
             spin_count = 0;
             sched_yield();
