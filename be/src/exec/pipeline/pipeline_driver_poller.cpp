@@ -44,15 +44,18 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
         bool has_ready_drivers = false;
 
         DriverRawPtr driver = nullptr;
-        size_t num_drivers = item->blocked_drivers.try_dequeue_bulk(driver_buffer.begin(), num_buffer_drivers);
-        for (int i = 0; i < num_drivers; i++) {
-            driver = driver_buffer[i];
-            if (driver == nullptr) {
-                if (item->is_shutdown.load(std::memory_order_acquire)) {
-                    return;
+        size_t num_drivers = num_buffer_drivers;
+        while (num_drivers * 2 >= num_buffer_drivers) {
+            num_drivers = item->blocked_drivers.try_dequeue_bulk(driver_buffer.begin(), num_buffer_drivers);
+            for (int i = 0; i < num_drivers; i++) {
+                driver = driver_buffer[i];
+                if (driver == nullptr) {
+                    if (item->is_shutdown.load(std::memory_order_acquire)) {
+                        return;
+                    }
+                } else {
+                    local_blocked_drivers.emplace_back(driver);
                 }
-            } else {
-                local_blocked_drivers.emplace_back(driver);
             }
         }
 
