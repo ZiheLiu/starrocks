@@ -682,7 +682,8 @@ Status DataStreamRecvr::PipelineSenderQueue::add_chunks(const PTransmitChunkPara
     RETURN_IF_ERROR(try_to_build_chunk_meta(request, metrics));
 
     size_t total_chunk_bytes = 0;
-    _is_pipeline_level_shuffle = request.has_is_pipeline_level_shuffle() && request.is_pipeline_level_shuffle();
+    _is_pipeline_level_shuffle =
+            _chunk_queues.size() > 1 && request.has_is_pipeline_level_shuffle() && request.is_pipeline_level_shuffle();
 
     // NOTE: in the merge scenario, chunk is obtained through try_get_chunk and its return type is not Status.
     // there is no chance to handle deserialize error, so the lazy deserialization is not supported now,
