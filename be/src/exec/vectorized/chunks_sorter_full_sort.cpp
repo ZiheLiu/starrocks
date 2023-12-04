@@ -90,7 +90,7 @@ Status ChunksSorterFullSort::_partial_sort(RuntimeState* state, bool done) {
     bool reach_limit = _staging_unsorted_rows >= max_buffered_rows || _staging_unsorted_bytes >= max_buffered_bytes;
     if (done || reach_limit) {
         _max_num_rows = std::max<int>(_max_num_rows, _staging_unsorted_rows);
-        COUNTER_UPDATE(_profiler->input_required_memor, _staging_unsorted_bytes);
+        COUNTER_UPDATE(_profiler->input_required_memory, _staging_unsorted_bytes);
         concat_chunks(_unsorted_chunk, _staging_unsorted_chunks, _staging_unsorted_rows);
         RETURN_IF_ERROR(_unsorted_chunk->upgrade_if_overflow());
 
