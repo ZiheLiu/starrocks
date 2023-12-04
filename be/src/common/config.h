@@ -734,6 +734,7 @@ CONF_Int64(pipeline_driver_queue_mode, "1");
 CONF_Int32(pipeline_poller_thread_num, "16");
 CONF_Int32(pipeline_poller_batch_back_num, "16");
 CONF_mBool(enable_remove_local_exchange_after_exchange_source, "false");
+CONF_mBool(enable_poller_yield_only_when_ready_driver_empty, "false");
 
 /// For parallel scan on the single tablet.
 // These three configs are used to calculate the minimum number of rows picked up from a segment at one time.
