@@ -20,7 +20,10 @@
 namespace starrocks::pipeline {
 
 BalancedChunkBuffer::BalancedChunkBuffer(BalanceStrategy strategy, int output_operators, ChunkBufferLimiterPtr limiter)
-        : _output_operators(output_operators), _strategy(strategy), _limiter(std::move(limiter)) {
+        : _output_operators(output_operators),
+          _strategy(strategy),
+          _sub_buffer_sizes(output_operators),
+          _limiter(std::move(limiter)) {
     DCHECK_GT(output_operators, 0);
     for (int i = 0; i < output_operators; i++) {
         _sub_buffers.emplace_back(std::make_unique<QueueT>());
@@ -40,7 +43,7 @@ BalancedChunkBuffer::SubBuffer& BalancedChunkBuffer::_get_sub_buffer(int index) 
 }
 
 size_t BalancedChunkBuffer::size(int buffer_index) const {
-    return _get_sub_buffer(buffer_index)->get_size();
+    return _sub_buffer_sizes[buffer_index];
 }
 
 bool BalancedChunkBuffer::all_empty() const {
@@ -53,7 +56,7 @@ bool BalancedChunkBuffer::all_empty() const {
 }
 
 bool BalancedChunkBuffer::empty(int buffer_index) const {
-    return _get_sub_buffer(buffer_index)->empty();
+    return size(buffer_index) == 0;
 }
 
 void BalancedChunkBuffer::close() {
@@ -67,6 +70,7 @@ bool BalancedChunkBuffer::try_get(int buffer_index, ChunkPtr* output_chunk) {
     ChunkWithToken chunk_with_token = std::make_pair(nullptr, nullptr);
     bool ok = _get_sub_buffer(buffer_index)->try_get(&chunk_with_token);
     if (ok) {
+        _sub_buffer_sizes[buffer_index]--;
         *output_chunk = std::move(chunk_with_token.first);
     }
     return ok;
@@ -78,6 +82,7 @@ bool BalancedChunkBuffer::put(int buffer_index, ChunkPtr chunk, ChunkBufferToken
     // has been processed.
     if (!chunk || (!chunk->owner_info().is_last_chunk() && chunk->num_rows() == 0)) return true;
     if (_strategy == BalanceStrategy::kDirect) {
+        _sub_buffer_sizes[buffer_index]++;
         return _get_sub_buffer(buffer_index)->put(std::make_pair(std::move(chunk), std::move(chunk_token)));
     } else if (_strategy == BalanceStrategy::kRoundRobin) {
         // TODO: try to balance data according to number of rows
@@ -85,6 +90,7 @@ bool BalancedChunkBuffer::put(int buffer_index, ChunkPtr chunk, ChunkBufferToken
         // output operator, which would introduce some extra overhead
         int target_index = _output_index.fetch_add(1);
         target_index %= _output_operators;
+        _sub_buffer_sizes[target_index]++;
         return _get_sub_buffer(target_index)->put(std::make_pair(std::move(chunk), std::move(chunk_token)));
     } else {
         CHECK(false) << "unreachable";

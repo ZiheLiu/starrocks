@@ -68,6 +68,8 @@ private:
     std::vector<SubBuffer> _sub_buffers;
     std::atomic_int64_t _output_index = 0;
 
+    std::vector<std::atomic<size_t> > _sub_buffer_sizes;
+
     ChunkBufferLimiterPtr _limiter;
     LimiterContext _limiter_context;
 };
