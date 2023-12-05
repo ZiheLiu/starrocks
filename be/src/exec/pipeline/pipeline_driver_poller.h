@@ -22,6 +22,7 @@
 
 #include "pipeline_driver.h"
 #include "pipeline_driver_queue.h"
+#include "util/moodycamel/blockingconcurrentqueue.h"
 #include "util/thread.h"
 
 namespace starrocks::pipeline {
@@ -45,6 +46,7 @@ public:
     void shutdown();
     // add blocked driver to poller
     void add_blocked_driver(const DriverRawPtr driver);
+    void add_blocked_driver(const std::vector<DriverRawPtr>& drivers);
     // remove blocked driver from poller
     void remove_blocked_driver(DriverList& local_blocked_drivers, DriverList::iterator& driver_it);
 
@@ -55,7 +57,7 @@ public:
     size_t calculate_parked_driver(const ImmutableDriverPredicateFunc& predicate_func) const;
 
     // only used for collect metrics
-    size_t blocked_driver_queue_len() const { return _blocked_driver_queue_len; }
+    size_t blocked_driver_queue_len() const { return _num_blocked_drivers; }
 
     void iterate_immutable_driver(const IterateImmutableDriverFunc& call) const;
 
@@ -64,12 +66,16 @@ private:
     PipelineDriverPoller(const PipelineDriverPoller&) = delete;
     PipelineDriverPoller& operator=(const PipelineDriverPoller&) = delete;
 
-    mutable std::mutex _global_mutex;
-    std::condition_variable _cond;
-    DriverList _blocked_drivers;
+private:
+    // mutable std::mutex _global_mutex;
+    // std::condition_variable _cond;
+    // DriverList _blocked_drivers;
 
-    mutable std::shared_mutex _local_mutex;
-    DriverList _local_blocked_drivers;
+    // mutable std::shared_mutex _local_mutex;
+    // DriverList _local_blocked_drivers;
+
+    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
+    Queue _blocked_drivers;
 
     DriverQueue* _driver_queue;
     scoped_refptr<Thread> _polling_thread;
@@ -81,6 +87,5 @@ private:
     mutable std::mutex _global_parked_mutex;
     DriverList _parked_drivers;
 
-    std::atomic<size_t> _blocked_driver_queue_len;
+    std::atomic<size_t> _num_blocked_drivers{0};
 };
-} // namespace starrocks::pipeline
