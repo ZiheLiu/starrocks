@@ -144,9 +144,11 @@ bool ScanOperator::has_output() const {
         return true;
     }
     for (int i = 0; i < _io_tasks_per_scan_operator; ++i) {
-        std::shared_lock guard(_task_mutex);
-        if (_chunk_sources[i] != nullptr && !_is_io_task_running[i] && _chunk_sources[i]->has_next_chunk()) {
-            return true;
+        if (!_is_io_task_running[i]) {
+            auto chunk_source = _chunk_sources[i];
+            if (chunk_source != nullptr && chunk_source->has_next_chunk()) {
+                return true;
+            }
         }
     }
     return num_buffered_chunks() > 0;
