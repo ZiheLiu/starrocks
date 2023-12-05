@@ -58,9 +58,14 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_passthrough_exchange
         return pred_operators;
     }
 
-    if (config::enable_remove_local_exchange_after_exchange_source && pred_operators.size() == 1 &&
-        typeid(*source_op) == typeid(ExchangeSourceOperatorFactory)) {
+    if (num_receivers == 1 && config::enable_remove_local_exchange_after_exchange_source &&
+        pred_operators.size() == 1 && typeid(*source_op) == typeid(ExchangeSourceOperatorFactory)) {
         source_op->set_degree_of_parallelism(1);
+        return pred_operators;
+    }
+
+    if (config::enable_remove_local_exchange_after_local_exchange_source && pred_operators.size() == 1 &&
+        typeid(*source_op) == typeid(LocalExchangeSourceOperatorFactory)) {
         return pred_operators;
     }
 
