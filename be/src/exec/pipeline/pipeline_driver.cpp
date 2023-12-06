@@ -712,12 +712,10 @@ Status PipelineDriver::_mark_operator_cancelled(OperatorPtr& op, RuntimeState* s
 }
 
 Status PipelineDriver::_mark_operator_closed(OperatorPtr& op, RuntimeState* state) {
-    auto msg = strings::Substitute("[Driver] close operator [driver=$0] [operator=$1]", to_readable_string(),
-                                   op->get_name());
     if (_fragment_ctx->is_canceled()) {
-        WARN_IF_ERROR(_mark_operator_cancelled(op, state), msg + " is failed to cancel");
+        WARN_IF_ERROR(_mark_operator_cancelled(op, state), " is failed to cancel");
     } else {
-        WARN_IF_ERROR(_mark_operator_finished(op, state), msg + " is failed to finish");
+        WARN_IF_ERROR(_mark_operator_finished(op, state), " is failed to finish");
     }
 
     auto& op_state = _operator_stages[op->get_id()];
@@ -725,7 +723,6 @@ Status PipelineDriver::_mark_operator_closed(OperatorPtr& op, RuntimeState* stat
         return Status::OK();
     }
 
-    VLOG_ROW << msg;
     {
         SCOPED_THREAD_LOCAL_OPERATOR_MEM_TRACKER_SETTER(op);
         SCOPED_TIMER(op->_close_timer);
