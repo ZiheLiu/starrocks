@@ -326,10 +326,10 @@ Status Aggregator::prepare(RuntimeState* state, ObjectPool* pool, RuntimeProfile
 
     // add profile attributes
     if (!_params->sql_grouping_keys.empty()) {
-        _runtime_profile->add_info_string("GroupingKeys", _params->sql_grouping_keys);
+        ADD_INFO_STRING(_runtime_profile, "GroupingKeys", _params->sql_grouping_keys);
     }
     if (!_params->sql_aggregate_functions.empty()) {
-        _runtime_profile->add_info_string("AggregateFunctions", _params->sql_aggregate_functions);
+        ADD_INFO_STRING(_runtime_profile, "AggregateFunctions", _params->sql_aggregate_functions);
     }
 
     bool has_outer_join_child = _params->has_outer_join_child;

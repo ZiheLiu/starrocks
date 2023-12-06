@@ -421,17 +421,17 @@ Status ExchangeSinkOperator::prepare(RuntimeState* state) {
             instances += channel->get_fragment_instance_id_str();
         }
     }
-    _unique_metrics->add_info_string("DestID", std::to_string(_dest_node_id));
-    _unique_metrics->add_info_string("DestFragments", instances);
-    _unique_metrics->add_info_string("PartType", to_string(_part_type));
-    _unique_metrics->add_info_string("ChannelNum", std::to_string(_channels.size()));
+    ADD_INFO_STRING(_unique_metrics, "DestID", std::to_string(_dest_node_id));
+    ADD_INFO_STRING(_unique_metrics, "DestFragments", instances);
+    ADD_INFO_STRING(_unique_metrics, "PartType", to_string(_part_type));
+    ADD_INFO_STRING(_unique_metrics, "ChannelNum", std::to_string(_channels.size()));
 
     if (_part_type == TPartitionType::HASH_PARTITIONED ||
         _part_type == TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED) {
         _partitions_columns.resize(_partition_expr_ctxs.size());
-        _unique_metrics->add_info_string("ShuffleNumPerChannel", std::to_string(_num_shuffles_per_channel));
-        _unique_metrics->add_info_string("TotalShuffleNum", std::to_string(_num_shuffles));
-        _unique_metrics->add_info_string("PipelineLevelShuffle", _is_pipeline_level_shuffle ? "Yes" : "No");
+        ADD_INFO_STRING(_unique_metrics, "ShuffleNumPerChannel", std::to_string(_num_shuffles_per_channel));
+        ADD_INFO_STRING(_unique_metrics, "TotalShuffleNum", std::to_string(_num_shuffles));
+        ADD_INFO_STRING(_unique_metrics, "PipelineLevelShuffle", _is_pipeline_level_shuffle ? "Yes" : "No");
     }
 
     // Randomize the order we open/transmit to channels to avoid thundering herd problems.

@@ -200,9 +200,9 @@ void CacheOperator::close(RuntimeState* state) {
     COUNTER_UPDATE(_cache_populate_tablets_counter, _populate_tablets.size());
     COUNTER_UPDATE(_cache_probe_tablets_counter, _probe_tablets.size());
     COUNTER_UPDATE(_cache_passthrough_tablets_counter, passthrough_tablets.size());
-    _runtime_profile->add_info_string("CacheProbeTablets", flatten_tablet_set(_probe_tablets));
-    _runtime_profile->add_info_string("CachePopulateTablets", flatten_tablet_set(_populate_tablets));
-    _runtime_profile->add_info_string("CachePassthroughTablets", flatten_tablet_set(passthrough_tablets));
+    ADD_INFO_STRING(_runtime_profile, "CacheProbeTablets", flatten_tablet_set(_probe_tablets));
+    ADD_INFO_STRING(_runtime_profile, "CachePopulateTablets", flatten_tablet_set(_populate_tablets));
+    ADD_INFO_STRING(_runtime_profile, "CachePassthroughTablets", flatten_tablet_set(passthrough_tablets));
 
     Operator::close(state);
 }

@@ -47,8 +47,8 @@ Status NLJoinProbeOperator::prepare(RuntimeState* state) {
 
     _output_accumulator.set_desired_size(state->chunk_size());
 
-    _unique_metrics->add_info_string("JoinType", to_string(_join_op));
-    _unique_metrics->add_info_string("JoinConjuncts", _sql_join_conjuncts);
+    ADD_INFO_STRING(_unique_metrics, "JoinType", to_string(_join_op));
+    ADD_INFO_STRING(_unique_metrics, "JoinConjuncts", _sql_join_conjuncts);
 
     _permute_rows_counter = ADD_COUNTER(_unique_metrics, "PermuteRows", TUnit::UNIT);
     if (_is_left_join() || _is_left_anti_join()) {

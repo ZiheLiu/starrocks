@@ -23,7 +23,7 @@ namespace starrocks::pipeline {
 Status LocalExchangeSinkOperator::prepare(RuntimeState* state) {
     RETURN_IF_ERROR(Operator::prepare(state));
     _exchanger->incr_sinker();
-    _unique_metrics->add_info_string("ShuffleNum", std::to_string(_exchanger->source_dop()));
+    ADD_INFO_STRING(_unique_metrics, "ShuffleNum", std::to_string(_exchanger->source_dop()));
     _peak_memory_usage_counter = ADD_HIGH_WATER_COUNTER_3(_unique_metrics, "LocalExchangePeakMemoryUsage", TUnit::BYTES,
                                                           TCounterMergeType::SKIP_FIRST_MERGE);
     return Status::OK();

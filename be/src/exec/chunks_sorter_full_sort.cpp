@@ -42,8 +42,8 @@ void ChunksSorterFullSort::setup_runtime(starrocks::RuntimeProfile* profile, Mem
     _runtime_profile = profile;
     _parent_mem_tracker = parent_mem_tracker;
     _object_pool = std::make_unique<ObjectPool>();
-    _runtime_profile->add_info_string("MaxBufferedRows", strings::Substitute("$0", max_buffered_rows));
-    _runtime_profile->add_info_string("MaxBufferedBytes", strings::Substitute("$0", max_buffered_bytes));
+    ADD_INFO_STRING(_runtime_profile, "MaxBufferedRows", strings::Substitute("$0", max_buffered_rows));
+    ADD_INFO_STRING(_runtime_profile, "MaxBufferedBytes", strings::Substitute("$0", max_buffered_bytes));
     _profiler = _object_pool->add(new ChunksSorterFullSortProfiler(profile, parent_mem_tracker));
 }
 Status ChunksSorterFullSort::update(RuntimeState* state, const ChunkPtr& chunk) {
@@ -134,10 +134,10 @@ Status ChunksSorterFullSort::_merge_sorted(RuntimeState* state) {
     // columns's permutation in multiple passes.
     if (_early_materialized_slots.empty() || _sorted_chunks.size() < 3) {
         _early_materialized_slots.clear();
-        _runtime_profile->add_info_string("LateMaterialization", "false");
+        ADD_INFO_STRING(_runtime_profile, "LateMaterialization", "false");
         RETURN_IF_ERROR(merge_sorted_chunks(_sort_desc, _sort_exprs, _sorted_chunks, &_merged_runs));
     } else {
-        _runtime_profile->add_info_string("LateMaterialization", "true");
+        ADD_INFO_STRING(_runtime_profile, "LateMaterialization", "true");
         _split_late_and_early_chunks();
         _assign_ordinals();
         RETURN_IF_ERROR(merge_sorted_chunks(_sort_desc, _sort_exprs, _early_materialized_chunks, &_merged_runs));

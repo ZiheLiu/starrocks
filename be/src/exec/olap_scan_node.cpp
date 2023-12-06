@@ -106,12 +106,12 @@ Status OlapScanNode::prepare(RuntimeState* state) {
     if (_tuple_desc == nullptr) {
         return Status::InternalError("Failed to get tuple descriptor.");
     }
-    _runtime_profile->add_info_string("Table", _tuple_desc->table_desc()->name());
+    ADD_INFO_STRING(_runtime_profile, "Table", _tuple_desc->table_desc()->name());
     if (_olap_scan_node.__isset.rollup_name) {
-        _runtime_profile->add_info_string("Rollup", _olap_scan_node.rollup_name);
+        ADD_INFO_STRING(_runtime_profile, "Rollup", _olap_scan_node.rollup_name);
     }
     if (_olap_scan_node.__isset.sql_predicates) {
-        _runtime_profile->add_info_string("Predicates", _olap_scan_node.sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "Predicates", _olap_scan_node.sql_predicates);
     }
 
     return Status::OK();

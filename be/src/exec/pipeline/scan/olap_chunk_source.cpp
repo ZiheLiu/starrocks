@@ -67,12 +67,12 @@ Status OlapChunkSource::prepare(RuntimeState* state) {
     const TupleDescriptor* tuple_desc = state->desc_tbl().get_tuple_descriptor(thrift_olap_scan_node.tuple_id);
     _slots = &tuple_desc->slots();
 
-    _runtime_profile->add_info_string("Table", tuple_desc->table_desc()->name());
+    ADD_INFO_STRING(_runtime_profile, "Table", tuple_desc->table_desc()->name());
     if (thrift_olap_scan_node.__isset.rollup_name) {
-        _runtime_profile->add_info_string("Rollup", thrift_olap_scan_node.rollup_name);
+        ADD_INFO_STRING(_runtime_profile, "Rollup", thrift_olap_scan_node.rollup_name);
     }
     if (thrift_olap_scan_node.__isset.sql_predicates) {
-        _runtime_profile->add_info_string("Predicates", thrift_olap_scan_node.sql_predicates);
+        ADD_INFO_STRING(_runtime_profile, "Predicates", thrift_olap_scan_node.sql_predicates);
     }
 
     _init_counter(state);

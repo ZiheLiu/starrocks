@@ -63,8 +63,8 @@ Status ScanOperator::prepare(RuntimeState* state) {
 
     RETURN_IF_ERROR(SourceOperator::prepare(state));
 
-    _unique_metrics->add_info_string("MorselQueueType", _morsel_queue->name());
-    _unique_metrics->add_info_string("BufferUnplugThreshold", std::to_string(_buffer_unplug_threshold()));
+    ADD_INFO_STRING(_unique_metrics, "MorselQueueType", _morsel_queue->name());
+    ADD_INFO_STRING(_unique_metrics, "BufferUnplugThreshold", std::to_string(_buffer_unplug_threshold()));
     _peak_buffer_size_counter = ADD_HIGH_WATER_COUNTER_4(_unique_metrics, "PeakChunkBufferSize", TUnit::UNIT,
                                                          RuntimeProfile::ROOT_COUNTER, TCounterMergeType::SKIP_ALL);
     _morsels_counter = ADD_COUNTER(_unique_metrics, "MorselsCount", TUnit::UNIT);

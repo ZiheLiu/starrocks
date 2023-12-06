@@ -94,7 +94,7 @@ bool OlapScanOperator::is_finished() const {
 
 Status OlapScanOperator::do_prepare(RuntimeState*) {
     bool shared_scan = _ctx->is_shared_scan();
-    _unique_metrics->add_info_string("SharedScan", shared_scan ? "True" : "False");
+    ADD_INFO_STRING(_unique_metrics, "SharedScan", shared_scan ? "True" : "False");
     return Status::OK();
 }
 

@@ -158,8 +158,8 @@ Status ConnectorScanOperator::do_prepare(RuntimeState* state) {
     }
 
     bool shared_scan = _scan_node->is_shared_scan_enabled();
-    _unique_metrics->add_info_string("SharedScan", shared_scan ? "True" : "False");
-    _unique_metrics->add_info_string("AdaptiveIOTasks", _enable_adaptive_io_tasks ? "True" : "False");
+    ADD_INFO_STRING(_unique_metrics, "SharedScan", shared_scan ? "True" : "False");
+    ADD_INFO_STRING(_unique_metrics, "AdaptiveIOTasks", _enable_adaptive_io_tasks ? "True" : "False");
     _adaptive_processor = state->obj_pool()->add(new ConnectorScanOperatorAdaptiveProcessor());
     _adaptive_processor->op_start_time = GetCurrentTimeMicros();
     if (options.__isset.connector_io_tasks_slow_io_latency_ms) {
