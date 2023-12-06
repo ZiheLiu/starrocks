@@ -85,13 +85,11 @@ void RuntimeProfile::merge(RuntimeProfile* other) {
 
     // Merge this level
     {
-        CounterMap::iterator dst_iter;
-        CounterMap::const_iterator src_iter;
         std::lock_guard<std::mutex> l(_counter_lock);
         std::lock_guard<std::mutex> m(other->_counter_lock);
 
-        for (src_iter = other->_counter_map.begin(); src_iter != other->_counter_map.end(); ++src_iter) {
-            dst_iter = _counter_map.find(src_iter->first);
+        for (auto src_iter = other->_counter_map.begin(); src_iter != other->_counter_map.end(); ++src_iter) {
+            auto dst_iter = _counter_map.find(src_iter->first);
 
             if (dst_iter == _counter_map.end()) {
                 _counter_map[src_iter->first] = std::make_pair(
@@ -110,9 +108,7 @@ void RuntimeProfile::merge(RuntimeProfile* other) {
             }
         }
 
-        ChildCounterMap::const_iterator child_counter_src_itr;
-
-        for (child_counter_src_itr = other->_child_counter_map.begin();
+        for (auto child_counter_src_itr = other->_child_counter_map.begin();
              child_counter_src_itr != other->_child_counter_map.end(); ++child_counter_src_itr) {
             auto& child_counters =
                     LookupOrInsert(&_child_counter_map, child_counter_src_itr->first, std::set<std::string>());
@@ -157,8 +153,6 @@ void RuntimeProfile::update(const std::vector<TRuntimeProfileNode>& nodes, int* 
     const TRuntimeProfileNode& node = nodes[*idx];
     {
         std::lock_guard<std::mutex> l(_counter_lock);
-        // update this level
-        std::map<std::string, Counter*>::iterator dst_iter;
 
         for (const auto& tcounter : node.counters) {
             auto j = _counter_map.find(tcounter.name);
@@ -176,9 +170,7 @@ void RuntimeProfile::update(const std::vector<TRuntimeProfileNode>& nodes, int* 
             }
         }
 
-        ChildCounterMap::const_iterator child_counter_src_itr;
-
-        for (child_counter_src_itr = node.child_counters_map.begin();
+        for (auto child_counter_src_itr = node.child_counters_map.begin();
              child_counter_src_itr != node.child_counters_map.end(); ++child_counter_src_itr) {
             auto& child_counters =
                     LookupOrInsert(&_child_counter_map, child_counter_src_itr->first, std::set<std::string>());
@@ -233,11 +225,10 @@ void RuntimeProfile::update(const std::vector<TRuntimeProfileNode>& nodes, int* 
 
 void RuntimeProfile::divide(int n) {
     DCHECK_GT(n, 0);
-    decltype(_counter_map)::iterator iter;
     {
         std::lock_guard<std::mutex> l(_counter_lock);
 
-        for (iter = _counter_map.begin(); iter != _counter_map.end(); ++iter) {
+        for (auto iter = _counter_map.begin(); iter != _counter_map.end(); ++iter) {
             if (iter->second.first->type() == TUnit::DOUBLE_VALUE) {
                 iter->second.first->set(iter->second.first->double_value() / n);
             } else {
@@ -729,7 +720,7 @@ void RuntimeProfile::to_thrift(std::vector<TRuntimeProfileNode>* nodes) {
     {
         std::lock_guard<std::mutex> l(_counter_lock);
         counter_map = _counter_map;
-        node.child_counters_map = _child_counter_map;
+        // node.child_counters_map = _child_counter_map;
     }
 
     for (auto& iter : counter_map) {
@@ -743,7 +734,7 @@ void RuntimeProfile::to_thrift(std::vector<TRuntimeProfileNode>* nodes) {
 
     {
         std::lock_guard<std::mutex> l(_info_strings_lock);
-        node.info_strings = _info_strings;
+        // node.info_strings = _info_strings;
         node.info_strings_display_order = _info_strings_display_order;
     }
 
