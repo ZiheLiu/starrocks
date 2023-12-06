@@ -54,7 +54,9 @@ Operator::Operator(OperatorFactory* factory, int32_t id, std::string name, int32
     // _runtime_profile = std::make_shared<RuntimeProfile>(profile_name);
     // _runtime_profile->set_metadata(_id);
 
-    _common_metrics = std::make_shared<RuntimeProfile>("CommonMetrics");
+    if (!config::enable_not_operator_mem_tracker) {
+        _common_metrics = std::make_shared<RuntimeProfile>("CommonMetrics");
+    }
     // _runtime_profile->add_child(_common_metrics.get(), true, nullptr);
 
     // _unique_metrics = std::make_shared<RuntimeProfile>("UniqueMetrics");
