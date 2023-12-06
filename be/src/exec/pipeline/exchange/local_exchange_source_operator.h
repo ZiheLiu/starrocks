@@ -71,6 +71,10 @@ public:
     }
 
     bool is_epoch_finished() const override {
+        if (!_is_epoch_finished) {
+            return false;
+        }
+
         std::lock_guard<std::mutex> l(_chunk_lock);
         return _is_epoch_finished && _full_chunk_queue.empty() && !_partition_rows_num;
     }
