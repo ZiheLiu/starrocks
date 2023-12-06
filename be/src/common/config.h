@@ -727,6 +727,7 @@ CONF_mBool(enable_remove_local_exchange_after_exchange_source, "false");
 CONF_mBool(enable_poller_yield_only_when_ready_driver_empty, "false");
 CONF_mBool(enable_poller_yield_small, "true");
 CONF_mBool(enable_poller_yield_big, "true");
+CONF_mBool(enable_force_exchange_source_dop_1, "false");
 
 /// For parallel scan on the single tablet.
 // These three configs are used to calculate the minimum number of rows picked up from a segment at one time.

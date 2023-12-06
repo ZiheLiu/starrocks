@@ -249,7 +249,8 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
     if (!_is_merging) {
         auto exchange_source_op = std::make_shared<ExchangeSourceOperatorFactory>(
                 context->next_operator_id(), id(), _texchange_node, _num_senders, _input_row_desc);
-        exchange_source_op->set_degree_of_parallelism(context->degree_of_parallelism());
+        exchange_source_op->set_degree_of_parallelism(
+                config::enable_force_exchange_source_dop_1 ? 1 : context->degree_of_parallelism());
         operators.emplace_back(exchange_source_op);
     } else {
         auto exchange_merge_sort_source_operator = std::make_shared<ExchangeMergeSortSourceOperatorFactory>(
