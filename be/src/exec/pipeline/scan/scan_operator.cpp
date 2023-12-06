@@ -332,6 +332,7 @@ void ScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_sour
         // - _finish_chunk_source_task() closes the chunk source conditionally and then make it as not running.
         // Therefore, closing chunk source and storing/loading `_is_finished` and `_is_io_task_running`
         // must be protected by lock
+        detach_chunk_source(chunk_source_index);
         _is_io_task_running[chunk_source_index] = false;
     }
 }
