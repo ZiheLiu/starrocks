@@ -81,7 +81,6 @@ void ScanOperator::close(RuntimeState* state) {
     set_buffer_finished();
     // For the running io task, we close its chunk sources in ~ScanOperator not in ScanOperator::close.
     for (size_t i = 0; i < _chunk_sources.size(); i++) {
-        std::lock_guard guard(_task_mutex);
         if (!_is_io_task_running[i]) {
             _close_chunk_source_unlocked(state, i);
         }
@@ -214,7 +213,6 @@ void ScanOperator::_detach_chunk_sources() {
 }
 
 Status ScanOperator::set_finishing(RuntimeState* state) {
-    std::lock_guard guard(_task_mutex);
     _detach_chunk_sources();
     _is_finished = true;
     return Status::OK();
@@ -318,7 +316,6 @@ void ScanOperator::_close_chunk_source_unlocked(RuntimeState* state, int chunk_s
 }
 
 void ScanOperator::_close_chunk_source(RuntimeState* state, int chunk_source_index) {
-    std::lock_guard guard(_task_mutex);
     _close_chunk_source_unlocked(state, chunk_source_index);
 }
 
@@ -335,10 +332,6 @@ void ScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_sour
         // - _finish_chunk_source_task() closes the chunk source conditionally and then make it as not running.
         // Therefore, closing chunk source and storing/loading `_is_finished` and `_is_io_task_running`
         // must be protected by lock
-        std::lock_guard guard(_task_mutex);
-        if (!_chunk_sources[chunk_source_index]->has_next_chunk() || _is_finished) {
-            _close_chunk_source_unlocked(state, chunk_source_index);
-        }
         _is_io_task_running[chunk_source_index] = false;
     }
 }

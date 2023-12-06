@@ -161,7 +161,6 @@ private:
     int32_t _io_task_retry_cnt = 0;
     workgroup::ScanExecutor* _scan_executor = nullptr;
 
-    mutable std::shared_mutex _task_mutex; // Protects the chunk-source from concurrent close and read
     std::vector<std::atomic<bool>> _is_io_task_running;
     std::vector<ChunkSourcePtr> _chunk_sources;
     int32_t _chunk_source_idx = -1;
