@@ -179,7 +179,7 @@ public:
               _pipeline(pipeline),
               _source_node_id(operators[0]->get_plan_node_id()),
               _driver_id(driver_id) {
-        _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("PipelineDriver (id=$0)", _driver_id));
+        // _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("PipelineDriver (id=$0)", _driver_id));
         for (auto& op : _operators) {
             _operator_stages[op->get_id()] = OperatorStage::INIT;
         }

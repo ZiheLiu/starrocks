@@ -111,6 +111,9 @@ void Pipeline::setup_pipeline_profile(RuntimeState* runtime_state) {
 }
 
 void Pipeline::setup_drivers_profile(const DriverPtr& driver) {
+    if (driver->runtime_profile() == nullptr) {
+        return;
+    }
     runtime_profile()->add_child(driver->runtime_profile(), true, nullptr);
     RuntimeProfile::Counter* dop_counter =
             ADD_COUNTER_SKIP_MERGE(runtime_profile(), "DegreeOfParallelism", TUnit::UNIT, TCounterMergeType::SKIP_ALL);

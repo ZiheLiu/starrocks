@@ -68,6 +68,7 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
 
 #if ENABLE_COUNTERS
 #define COUNTER_VALUE(c) (c)->value()
+#define ADD_INFO_STRING(profile, name, value) (profile)->add_info_string(name, value)
 #define ADD_HIGH_WATER_COUNTER(profile, name, type) \
     (profile)->AddHighWaterMarkCounter(name, type, RuntimeProfile::Counter::create_strategy(type))
 #define ADD_HIGH_WATER_COUNTER_3(profile, name, type, merge_type) \
@@ -108,6 +109,7 @@ inline unsigned long long operator"" _ms(unsigned long long x) {
       MACRO_CONCAT(SCOPED_THREAD_COUNTER_MEASUREMENT, __COUNTER__)(c)*/
 #else
 #define COUNTER_VALUE(c) 0
+#define ADD_INFO_STRING(profile, name, value)
 #define ADD_PEAK_COUNTER(profile, name, type) NULL
 #define ADD_HIGH_WATER_COUNTER(profile, name, type) NULL
 #define ADD_HIGH_WATER_COUNTER_3(profile, name, type, merge_type) NULL

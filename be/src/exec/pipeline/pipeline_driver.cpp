@@ -140,7 +140,7 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     }
 
     if (!all_local_rf_set.empty()) {
-        _runtime_profile->add_info_string("LocalRfWaitingSet", strings::Substitute("$0", all_local_rf_set.size()));
+        ADD_INFO_STRING(_runtime_profile, "LocalRfWaitingSet", strings::Substitute("$0", all_local_rf_set.size()));
     }
     _local_rf_holders = fragment_ctx()->runtime_filter_hub()->gather_holders(all_local_rf_set);
 
@@ -585,6 +585,9 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, in
 }
 
 void PipelineDriver::_update_overhead_timer() {
+    if (_runtime_profile == nullptr) {
+        return;
+    }
     int64_t overhead_time = COUNTER_VALUE(_active_timer);
     RuntimeProfile* profile = _runtime_profile.get();
     std::vector<RuntimeProfile*> operator_profiles;

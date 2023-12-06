@@ -51,14 +51,14 @@ Operator::Operator(OperatorFactory* factory, int32_t id, std::string name, int32
     } else {
         profile_name = strings::Substitute("$0 (pseudo_plan_node_id=$1)", upper_name, _plan_node_id);
     }
-    _runtime_profile = std::make_shared<RuntimeProfile>(profile_name);
-    _runtime_profile->set_metadata(_id);
+    // _runtime_profile = std::make_shared<RuntimeProfile>(profile_name);
+    // _runtime_profile->set_metadata(_id);
 
     _common_metrics = std::make_shared<RuntimeProfile>("CommonMetrics");
-    _runtime_profile->add_child(_common_metrics.get(), true, nullptr);
+    // _runtime_profile->add_child(_common_metrics.get(), true, nullptr);
 
-    _unique_metrics = std::make_shared<RuntimeProfile>("UniqueMetrics");
-    _runtime_profile->add_child(_unique_metrics.get(), true, nullptr);
+    // _unique_metrics = std::make_shared<RuntimeProfile>("UniqueMetrics");
+    // _runtime_profile->add_child(_unique_metrics.get(), true, nullptr);
 }
 
 Status Operator::prepare(RuntimeState* state) {
@@ -108,9 +108,9 @@ void Operator::close(RuntimeState* state) {
     }
     // Pipeline do not need the built in total time counter
     // Reset here to discard assignments from Analytor, Aggregator, etc.
-    _runtime_profile->total_time_counter()->set(0L);
-    _common_metrics->total_time_counter()->set(0L);
-    _unique_metrics->total_time_counter()->set(0L);
+    // _runtime_profile->total_time_counter()->set(0L);
+    // _common_metrics->total_time_counter()->set(0L);
+    // _unique_metrics->total_time_counter()->set(0L);
 }
 
 std::vector<ExprContext*>& Operator::runtime_in_filters() {
@@ -236,9 +236,9 @@ OperatorFactory::OperatorFactory(int32_t id, std::string name, int32_t plan_node
         : _id(id), _name(std::move(name)), _plan_node_id(plan_node_id) {
     std::string upper_name(_name);
     std::transform(upper_name.begin(), upper_name.end(), upper_name.begin(), ::toupper);
-    _runtime_profile =
-            std::make_shared<RuntimeProfile>(strings::Substitute("$0_factory (id=$1)", upper_name, _plan_node_id));
-    _runtime_profile->set_metadata(_id);
+    // _runtime_profile =
+    //         std::make_shared<RuntimeProfile>(strings::Substitute("$0_factory (id=$1)", upper_name, _plan_node_id));
+    // _runtime_profile->set_metadata(_id);
 }
 
 Status OperatorFactory::prepare(RuntimeState* state) {
