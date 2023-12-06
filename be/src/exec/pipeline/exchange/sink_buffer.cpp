@@ -168,18 +168,20 @@ void SinkBuffer::update_profile(RuntimeProfile* profile) {
     COUNTER_SET(bytes_unsent_counter, _bytes_enqueued - _bytes_sent);
     COUNTER_SET(request_unsent_counter, _request_enqueued - _request_sent);
 
-    profile->add_derived_counter(
-            "NetworkBandwidth", TUnit::BYTES_PER_SECOND,
-            [bytes_sent_counter, network_timer] {
-                return RuntimeProfile::units_per_second(bytes_sent_counter, network_timer);
-            },
-            "");
-    profile->add_derived_counter(
-            "OverallThroughput", TUnit::BYTES_PER_SECOND,
-            [bytes_sent_counter, overall_timer] {
-                return RuntimeProfile::units_per_second(bytes_sent_counter, overall_timer);
-            },
-            "");
+    if (profile != nullptr) {
+        profile->add_derived_counter(
+                "NetworkBandwidth", TUnit::BYTES_PER_SECOND,
+                [bytes_sent_counter, network_timer] {
+                    return RuntimeProfile::units_per_second(bytes_sent_counter, network_timer);
+                },
+                "");
+        profile->add_derived_counter(
+                "OverallThroughput", TUnit::BYTES_PER_SECOND,
+                [bytes_sent_counter, overall_timer] {
+                    return RuntimeProfile::units_per_second(bytes_sent_counter, overall_timer);
+                },
+                "");
+    }
 }
 
 int64_t SinkBuffer::_network_time() {
