@@ -720,6 +720,7 @@ CONF_Int32(pipeline_analytic_max_buffer_size, "128");
 
 // 0: QuerySharedDriverQueue
 // 1: LockFreeDriverQueue
+// 2: MultiLockFreeDriverQueue
 CONF_Int64(pipeline_driver_queue_mode, "1");
 CONF_Int32(pipeline_poller_thread_num, "16");
 CONF_Int32(pipeline_poller_batch_back_num, "16");
@@ -729,6 +730,7 @@ CONF_mBool(enable_poller_yield_small, "true");
 CONF_mBool(enable_poller_yield_big, "true");
 CONF_mBool(enable_force_exchange_source_dop_1, "false");
 CONF_mBool(enable_not_operator_mem_tracker, "false");
+CONF_Int32(pipeline_multi_lock_free_driver_queue_num, "64");
 
 /// For parallel scan on the single tablet.
 // These three configs are used to calculate the minimum number of rows picked up from a segment at one time.

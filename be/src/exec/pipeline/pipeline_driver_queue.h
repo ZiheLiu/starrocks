@@ -36,7 +36,7 @@ public:
     // *from_executor* means that the executor thread puts the driver back to the queue.
     virtual void put_back_from_executor(const DriverRawPtr driver) = 0;
 
-    virtual StatusOr<DriverRawPtr> take() = 0;
+    virtual StatusOr<DriverRawPtr> take(size_t worker_id) = 0;
     virtual void cancel(DriverRawPtr driver) = 0;
 
     // Update statistics of the driver's workgroup,
@@ -79,7 +79,7 @@ public:
 
     void put(const DriverRawPtr driver);
     void cancel(const DriverRawPtr driver);
-    DriverRawPtr take();
+    DriverRawPtr take(size_t worker_id);
     inline bool empty() const { return num_drivers == 0; }
 
     inline size_t size() const { return num_drivers; }
@@ -110,7 +110,7 @@ public:
     void update_statistics(const DriverRawPtr driver) override;
 
     // Return cancelled status, if the queue is closed.
-    StatusOr<DriverRawPtr> take() override;
+    StatusOr<DriverRawPtr> take(size_t worker_id) override;
 
     void cancel(DriverRawPtr driver) override;
 
@@ -163,7 +163,7 @@ public:
     // Return cancelled status, if the queue is closed.
     // Firstly, select the work group with the minimum vruntime.
     // Secondly, select the proper driver from the driver queue of this work group.
-    StatusOr<DriverRawPtr> take() override;
+    StatusOr<DriverRawPtr> take(size_t worker_id) override;
 
     void cancel(DriverRawPtr driver) override;
 
@@ -249,7 +249,7 @@ public:
     void update_statistics(const DriverRawPtr driver) override {}
 
     // Return cancelled status, if the queue is closed.
-    StatusOr<DriverRawPtr> take() override;
+    StatusOr<DriverRawPtr> take(size_t worker_id) override;
 
     void cancel(DriverRawPtr driver) override;
 
@@ -260,6 +260,42 @@ public:
 private:
     using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
     Queue _queue;
+};
+
+/// MultiLockFreeDriverQueue
+class MultiLockFreeDriverQueue : public FactoryMethod<DriverQueue, MultiLockFreeDriverQueue> {
+    friend class FactoryMethod<DriverQueue, MultiLockFreeDriverQueue>;
+
+public:
+    MultiLockFreeDriverQueue();
+    ~MultiLockFreeDriverQueue() override = default;
+
+    void close() override;
+
+    void put_back(const DriverRawPtr driver) override;
+    void put_back(const std::vector<DriverRawPtr>& drivers) override;
+    void put_back_from_executor(const DriverRawPtr driver) override;
+
+    void update_statistics(const DriverRawPtr driver) override {}
+
+    // Return cancelled status, if the queue is closed.
+    StatusOr<DriverRawPtr> take(size_t worker_id) override;
+
+    void cancel(DriverRawPtr driver) override;
+
+    size_t size() const override;
+
+    bool should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const override { return false; }
+
+private:
+    size_t next_queue_index();
+
+private:
+    using Queue = moodycamel::BlockingConcurrentQueue<DriverRawPtr>;
+    const size_t _num_queues;
+    std::atomic<size_t> _num_drivers{0};
+    std::vector<Queue> _queues;
+    std::atomic<size_t> _next_queue_index{0};
 };
 
 /// Factory methods.

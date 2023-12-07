@@ -84,7 +84,7 @@ void GlobalDriverExecutor::_worker_thread() {
         if (current_thread != nullptr) {
             current_thread->set_idle(true);
         }
-        auto maybe_driver = this->_driver_queue->take();
+        auto maybe_driver = this->_driver_queue->take(worker_id);
         if (current_thread != nullptr) {
             current_thread->set_idle(false);
         }

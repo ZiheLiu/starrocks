@@ -45,7 +45,7 @@ void LockFreeDriverQueue::cancel(DriverRawPtr driver) {
     put_back(driver);
 }
 
-StatusOr<DriverRawPtr> LockFreeDriverQueue::take() {
+StatusOr<DriverRawPtr> LockFreeDriverQueue::take(size_t worker_id) {
     DriverRawPtr driver = nullptr;
     _queue.wait_dequeue(driver);
 
@@ -63,6 +63,71 @@ void LockFreeDriverQueue::close() {
 
 size_t LockFreeDriverQueue::size() const {
     return _queue.size_approx();
+}
+
+/// MultiLockFreeDriverQueue
+MultiLockFreeDriverQueue::MultiLockFreeDriverQueue()
+        : _num_queues(config::pipeline_multi_lock_free_driver_queue_num), _queues(_num_queues) {}
+
+size_t MultiLockFreeDriverQueue::next_queue_index() {
+    return (_next_queue_index++) % _num_queues;
+}
+
+void MultiLockFreeDriverQueue::put_back(const DriverRawPtr driver) {
+    if (driver != nullptr) {
+        driver->set_in_queue(this);
+    }
+    _num_drivers++;
+    _queues[next_queue_index()].enqueue(driver);
+}
+
+void MultiLockFreeDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
+    for (auto* driver : drivers) {
+        if (driver != nullptr) {
+            driver->set_in_queue(this);
+        }
+    }
+    _num_drivers += drivers.size();
+
+    size_t num_used_queues = std::min(drivers.size(), _num_queues);
+    size_t num_drivers_per_queue = drivers.size() / num_used_queues;
+    size_t num_large_queues = drivers.size() % num_used_queues;
+
+    size_t start_queue_index = _next_queue_index.fetch_add(num_used_queues);
+    auto it = drivers.begin();
+    for (int i = 0; i < num_used_queues; i++) {
+        size_t num_drivers = i < num_large_queues ? num_drivers_per_queue + 1 : num_drivers_per_queue;
+        _queues[(start_queue_index + i) % _num_queues].enqueue_bulk(it, num_drivers);
+        it += num_drivers;
+    }
+}
+
+void MultiLockFreeDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
+    put_back(driver);
+}
+
+void MultiLockFreeDriverQueue::cancel(DriverRawPtr driver) {
+    put_back(driver);
+}
+
+StatusOr<DriverRawPtr> MultiLockFreeDriverQueue::take(size_t worker_id) {
+    DriverRawPtr driver = nullptr;
+    _queues[worker_id % _num_queues].wait_dequeue(driver);
+    _num_drivers--;
+
+    if (driver != nullptr) {
+        return driver;
+    }
+
+    return Status::Cancelled("Shutdown");
+}
+
+void MultiLockFreeDriverQueue::close() {
+    put_back(std::vector<DriverRawPtr>{_num_queues, nullptr});
+}
+
+size_t MultiLockFreeDriverQueue::size() const {
+    return _num_drivers;
 }
 
 /// QuerySharedDriverQueue.
@@ -123,7 +188,7 @@ void QuerySharedDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
     put_back(driver);
 }
 
-StatusOr<DriverRawPtr> QuerySharedDriverQueue::take() {
+StatusOr<DriverRawPtr> QuerySharedDriverQueue::take(size_t worker_id) {
     // -1 means no candidates; else has candidate.
     int queue_idx = -1;
     double target_accu_time = 0;
@@ -154,7 +219,7 @@ StatusOr<DriverRawPtr> QuerySharedDriverQueue::take() {
             _cv.wait(lock);
         }
         // record queue's index to accumulate time for it.
-        driver_ptr = _queues[queue_idx].take();
+        driver_ptr = _queues[queue_idx].take(worker_id);
         driver_ptr->set_in_ready_queue(false);
 
         --_num_drivers;
@@ -216,7 +281,7 @@ void SubQuerySharedDriverQueue::cancel(const DriverRawPtr driver) {
     }
 }
 
-DriverRawPtr SubQuerySharedDriverQueue::take() {
+DriverRawPtr SubQuerySharedDriverQueue::take(size_t worker_id) {
     DCHECK(!empty());
     if (!pending_cancel_queue.empty()) {
         DriverRawPtr driver = pending_cancel_queue.front();
@@ -274,7 +339,7 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
     _put_back<true>(driver);
 }
 
-StatusOr<DriverRawPtr> WorkGroupDriverQueue::take() {
+StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(size_t worker_id) {
     std::unique_lock<std::mutex> lock(_global_mutex);
 
     workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
@@ -305,7 +370,7 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take() {
         _dequeue_workgroup(wg_entity);
     }
 
-    return wg_entity->queue()->take();
+    return wg_entity->queue()->take(worker_id);
 }
 
 void WorkGroupDriverQueue::cancel(DriverRawPtr driver) {
@@ -479,8 +544,10 @@ int64_t WorkGroupDriverQueue::_bandwidth_quota_ns() const {
 std::unique_ptr<DriverQueue> create_driver_queue() {
     if (config::pipeline_driver_queue_mode == 0) {
         return std::make_unique<QuerySharedDriverQueue>();
-    } else {
+    } else if (config::pipeline_driver_queue_mode == 1) {
         return std::make_unique<LockFreeDriverQueue>();
+    } else {
+        return std::make_unique<MultiLockFreeDriverQueue>();
     }
 }
 
