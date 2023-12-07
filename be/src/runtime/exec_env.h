@@ -42,6 +42,7 @@
 #include "exec/query_cache/cache_manager.h"
 #include "exec/workgroup/work_group_fwd.h"
 #include "storage/options.h"
+#include "util/fixed_size_thread_pool.h"
 #include "util/threadpool.h"
 // NOTE: Be careful about adding includes here. This file is included by many files.
 // Unnecssary includes will cause compilatio very slow.
@@ -183,9 +184,9 @@ public:
     }
 
     PriorityThreadPool* udf_call_pool() { return _udf_call_pool; }
-    PriorityThreadPool* pipeline_prepare_pool() { return _pipeline_prepare_pool; }
+    FixedSizeThreadPool* pipeline_prepare_pool() { return _pipeline_prepare_pool.get(); }
     PriorityThreadPool* pipeline_sink_io_pool() { return _pipeline_sink_io_pool; }
-    PriorityThreadPool* query_rpc_pool() { return _query_rpc_pool; }
+    FixedSizeThreadPool* query_rpc_pool() { return _query_rpc_pool.get(); }
     FragmentMgr* fragment_mgr() { return _fragment_mgr; }
     starrocks::pipeline::DriverExecutor* driver_executor() { return _driver_executor; }
     starrocks::pipeline::DriverExecutor* wg_driver_executor() { return _wg_driver_executor; }
@@ -320,9 +321,9 @@ private:
     workgroup::ScanExecutor* _connector_scan_executor_with_workgroup = nullptr;
 
     PriorityThreadPool* _udf_call_pool = nullptr;
-    PriorityThreadPool* _pipeline_prepare_pool = nullptr;
+    std::unique_ptr<FixedSizeThreadPool> _pipeline_prepare_pool = nullptr;
     PriorityThreadPool* _pipeline_sink_io_pool = nullptr;
-    PriorityThreadPool* _query_rpc_pool = nullptr;
+    std::unique_ptr<FixedSizeThreadPool> _query_rpc_pool = nullptr;
     FragmentMgr* _fragment_mgr = nullptr;
     pipeline::QueryContextManager* _query_context_mgr = nullptr;
     pipeline::DriverExecutor* _driver_executor = nullptr;

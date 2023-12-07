@@ -211,8 +211,7 @@ Status ExecEnv::_init(const std::vector<StorePath>& store_paths) {
     if (num_prepare_threads <= 0) {
         num_prepare_threads = CpuInfo::num_cores();
     }
-    _pipeline_prepare_pool =
-            new PriorityThreadPool("pip_prepare", num_prepare_threads, config::pipeline_prepare_thread_pool_queue_size);
+    _pipeline_prepare_pool = std::make_unique<FixedSizeThreadPool>("pip_prepare", num_prepare_threads);
 
     int num_sink_io_threads = config::pipeline_sink_io_thread_pool_thread_num;
     if (num_sink_io_threads <= 0) {
@@ -228,7 +227,7 @@ Status ExecEnv::_init(const std::vector<StorePath>& store_paths) {
     if (query_rpc_threads <= 0) {
         query_rpc_threads = CpuInfo::num_cores();
     }
-    _query_rpc_pool = new PriorityThreadPool("query_rpc", query_rpc_threads, std::numeric_limits<uint32_t>::max());
+    _query_rpc_pool = std::make_unique<FixedSizeThreadPool>("query_rpc", query_rpc_threads);
 
     std::unique_ptr<ThreadPool> driver_executor_thread_pool;
     _max_executor_threads = CpuInfo::num_cores();
@@ -551,9 +550,7 @@ void ExecEnv::_destroy() {
     SAFE_DELETE(_wg_driver_executor);
     SAFE_DELETE(_fragment_mgr);
     SAFE_DELETE(_udf_call_pool);
-    SAFE_DELETE(_pipeline_prepare_pool);
     SAFE_DELETE(_pipeline_sink_io_pool);
-    SAFE_DELETE(_query_rpc_pool);
     SAFE_DELETE(_scan_executor_without_workgroup);
     SAFE_DELETE(_scan_executor_with_workgroup);
     SAFE_DELETE(_connector_scan_executor_without_workgroup);
