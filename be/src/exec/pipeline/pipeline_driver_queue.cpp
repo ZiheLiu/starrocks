@@ -82,6 +82,10 @@ void MultiLockFreeDriverQueue::put_back(const DriverRawPtr driver) {
 }
 
 void MultiLockFreeDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
+    if (drivers.empty()) {
+        return;
+    }
+
     for (auto* driver : drivers) {
         if (driver != nullptr) {
             driver->set_in_queue(this);
