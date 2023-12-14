@@ -162,6 +162,7 @@ set(EXEC_FILES
     pipeline/exchange/exchange_parallel_merge_source_operator.cpp
     pipeline/exchange/exchange_sink_operator.cpp
     pipeline/exchange/exchange_source_operator.cpp
+    pipeline/exchange/adaptive_exchange_source_operator.cpp
     pipeline/exchange/local_exchange.cpp
     pipeline/exchange/local_exchange_sink_operator.cpp
     pipeline/exchange/local_exchange_source_operator.cpp

@@ -19,6 +19,7 @@
 #include "exec/pipeline/adaptive/collect_stats_context.h"
 #include "exec/pipeline/adaptive/collect_stats_sink_operator.h"
 #include "exec/pipeline/adaptive/collect_stats_source_operator.h"
+#include "exec/pipeline/exchange/adaptive_exchange_source_operator.h"
 #include "exec/pipeline/exchange/exchange_source_operator.h"
 #include "exec/pipeline/noop_sink_operator.h"
 #include "exec/pipeline/spill_process_operator.h"
@@ -318,6 +319,37 @@ OpFactories PipelineBuilderContext::maybe_gather_pipelines_to_one(RuntimeState* 
     }
 
     return {std::move(local_exchange_source)};
+}
+
+OpFactories PipelineBuilderContext::maybe_interpolate_collect_stats_for_exchange_source(
+        RuntimeState* state, int32_t plan_node_id, std::shared_ptr<ExchangeSourceOperatorFactory> exchange_source_op) {
+    if (_force_disable_adaptive_dop || !_fragment_context->enable_adaptive_dop()) {
+        return {std::move(exchange_source_op)};
+    }
+
+    size_t dop = exchange_source_op->degree_of_parallelism();
+    CollectStatsContextPtr collect_stats_ctx =
+            std::make_shared<CollectStatsContext>(state, dop, _fragment_context->adaptive_dop_param());
+
+    std::shared_ptr<AdaptiveExchangeSourceOperatorFactory> adaptive_exchange_source_op =
+            std::make_shared<AdaptiveExchangeSourceOperatorFactory>(next_operator_id(), plan_node_id,
+                                                                    std::move(exchange_source_op), collect_stats_ctx);
+    adaptive_exchange_source_op->set_degree_of_parallelism(1);
+    auto* pred_source_op = adaptive_exchange_source_op.get();
+    std::shared_ptr<NoopSinkOperatorFactory> noop_sink_op =
+            std::make_shared<NoopSinkOperatorFactory>(next_operator_id(), plan_node_id);
+    add_pipeline({std::move(adaptive_exchange_source_op), std::move(noop_sink_op)});
+
+    auto downstream_source_op = std::make_shared<CollectStatsSourceOperatorFactory>(next_operator_id(), plan_node_id,
+                                                                                    std::move(collect_stats_ctx));
+    inherit_upstream_source_properties(downstream_source_op.get(), pred_source_op);
+    downstream_source_op->set_partition_exprs(pred_source_op->partition_exprs());
+
+    for (const auto& pipeline : _dependent_pipelines) {
+        downstream_source_op->add_group_dependent_pipeline(pipeline);
+    }
+
+    return {std::move(downstream_source_op)};
 }
 
 OpFactories PipelineBuilderContext::maybe_interpolate_collect_stats(RuntimeState* state, int32_t plan_node_id,

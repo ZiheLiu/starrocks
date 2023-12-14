@@ -126,6 +126,8 @@ public:
 
     bool has_output_for_pipeline(const int32_t driver_sequence) const;
 
+    bool has_output_for_pipeline() const;
+
     bool is_finished() const;
 
     bool is_data_ready();
