@@ -321,6 +321,13 @@ bool DataStreamRecvr::has_output_for_pipeline(const int32_t driver_sequence) con
     return sender_queue->has_output(driver_sequence);
 }
 
+bool DataStreamRecvr::has_output_for_pipeline() const {
+    DCHECK(!_is_merging);
+    DCHECK(_is_pipeline);
+    auto* sender_queue = static_cast<PipelineSenderQueue*>(_sender_queues[0]);
+    return sender_queue->has_output();
+}
+
 bool DataStreamRecvr::is_finished() const {
     DCHECK(!_is_merging);
     DCHECK(_is_pipeline);

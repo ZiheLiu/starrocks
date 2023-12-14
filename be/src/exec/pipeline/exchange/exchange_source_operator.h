@@ -19,15 +19,21 @@
 #include "exec/pipeline/source_operator.h"
 
 namespace starrocks {
+
 class DataStreamRecvr;
 class RowDescriptor;
+
 namespace pipeline {
+
+class AdaptiveExchangeSourceOperatorFactory;
+class AdaptiveExchangeSourceOperator;
+
 class ExchangeSourceOperator : public SourceOperator {
 public:
     ExchangeSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
             : SourceOperator(factory, id, "exchange_source", plan_node_id, false, driver_sequence) {}
 
-    virtual ~ExchangeSourceOperator() = default;
+    ~ExchangeSourceOperator() override = default;
 
     Status prepare(RuntimeState* state) override;
 
@@ -40,6 +46,9 @@ public:
     StatusOr<ChunkPtr> pull_chunk(RuntimeState* state) override;
 
 private:
+    friend class AdaptiveExchangeSourceOperatorFactory;
+    friend class AdaptiveExchangeSourceOperator;
+
     std::shared_ptr<DataStreamRecvr> _stream_recvr = nullptr;
     std::atomic<bool> _is_finishing = false;
 };
@@ -54,7 +63,7 @@ public:
               _row_desc(row_desc),
               _enable_pipeline_level_shuffle(enable_pipeline_level_shuffle) {}
 
-    virtual ~ExchangeSourceOperatorFactory();
+    ~ExchangeSourceOperatorFactory() override;
 
     const TExchangeNode& texchange_node() { return _texchange_node; }
 
@@ -74,6 +83,9 @@ public:
     SourceOperatorFactory::AdaptiveState adaptive_state() const override { return AdaptiveState::ACTIVE; }
 
 private:
+    friend class AdaptiveExchangeSourceOperatorFactory;
+    friend class AdaptiveExchangeSourceOperator;
+
     const TExchangeNode& _texchange_node;
     const int32_t _num_sender;
     const RowDescriptor& _row_desc;

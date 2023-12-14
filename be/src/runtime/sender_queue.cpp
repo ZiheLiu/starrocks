@@ -849,6 +849,10 @@ void DataStreamRecvr::PipelineSenderQueue::short_circuit(const int32_t driver_se
     }
 }
 
+bool DataStreamRecvr::PipelineSenderQueue::has_output() const {
+    return _total_chunks > 0;
+}
+
 bool DataStreamRecvr::PipelineSenderQueue::has_output(const int32_t driver_sequence) {
     if (_is_cancelled.load()) {
         return false;

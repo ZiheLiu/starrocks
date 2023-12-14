@@ -174,6 +174,8 @@ public:
 
     bool has_output(const int32_t driver_sequence);
 
+    bool has_output() const;
+
     bool is_finished() const;
 
 private:
