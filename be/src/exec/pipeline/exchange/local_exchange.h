@@ -132,7 +132,7 @@ public:
 
     // All LocalExchangeSourceOperators have finished.
     virtual bool is_all_sources_finished() const {
-        if (_source->get_sources().empty()) {
+        if (!_memory_manager->is_source_ready()) {
             return false;
         }
 
