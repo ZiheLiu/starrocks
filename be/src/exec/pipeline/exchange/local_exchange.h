@@ -132,6 +132,10 @@ public:
 
     // All LocalExchangeSourceOperators have finished.
     virtual bool is_all_sources_finished() const {
+        if (_source->get_sources().empty()) {
+            return false;
+        }
+
         for (const auto& source_op : _source->get_sources()) {
             if (!source_op->is_finished()) {
                 return false;
