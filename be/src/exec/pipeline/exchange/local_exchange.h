@@ -124,14 +124,16 @@ public:
 
     virtual void finish(RuntimeState* state) {
         if (decr_sinker() == 1) {
-            for (auto* source : _source->get_sources()) {
-                static_cast<void>(source->set_finishing(state));
-            }
+            _memory_manager->set_sink_finished();
         }
     }
 
     // All LocalExchangeSourceOperators have finished.
     virtual bool is_all_sources_finished() const {
+        if (!_memory_manager->is_source_ready()) {
+            return false;
+        }
+
         for (const auto& source_op : _source->get_sources()) {
             if (!source_op->is_finished()) {
                 return false;

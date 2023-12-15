@@ -23,7 +23,7 @@ namespace starrocks::pipeline {
 // The input chunk is most likely full, so we don't merge it to avoid copying chunk data.
 void LocalExchangeSourceOperator::add_chunk(ChunkPtr chunk) {
     std::lock_guard<std::mutex> l(_chunk_lock);
-    if (_is_finished) {
+    if (_memory_manager->is_sink_finished()) {
         return;
     }
     size_t memory_usage = chunk->memory_usage();
@@ -38,7 +38,7 @@ void LocalExchangeSourceOperator::add_chunk(ChunkPtr chunk) {
 Status LocalExchangeSourceOperator::add_chunk(ChunkPtr chunk, const std::shared_ptr<std::vector<uint32_t>>& indexes,
                                               uint32_t from, uint32_t size, size_t memory_usage) {
     std::lock_guard<std::mutex> l(_chunk_lock);
-    if (_is_finished) {
+    if (_memory_manager->is_sink_finished()) {
         return Status::OK();
     }
     _partition_chunk_queue.emplace(std::move(chunk), std::move(indexes), from, size, memory_usage);
@@ -54,7 +54,7 @@ Status LocalExchangeSourceOperator::add_chunk(ChunkPtr chunk, const std::shared_
                                               const std::vector<ExprContext*>& partition_expr_ctxs,
                                               size_t memory_usage) {
     std::lock_guard<std::mutex> l(_chunk_lock);
-    if (_is_finished) {
+    if (_memory_manager->is_sink_finished()) {
         return Status::OK();
     }
 
@@ -98,7 +98,8 @@ bool LocalExchangeSourceOperator::is_finished() const {
         }
     }
 
-    return _is_finished && _full_chunk_queue.empty() && !_partition_rows_num && _key_partition_pending_chunk_empty();
+    return _memory_manager->is_sink_finished() && _full_chunk_queue.empty() && !_partition_rows_num &&
+           _key_partition_pending_chunk_empty();
 }
 
 bool LocalExchangeSourceOperator::has_output() const {
@@ -106,12 +107,14 @@ bool LocalExchangeSourceOperator::has_output() const {
 
     return !_full_chunk_queue.empty() || _partition_rows_num >= _factory->runtime_state()->chunk_size() ||
            _key_partition_max_rows() >= _factory->runtime_state()->chunk_size() ||
-           (_is_finished && (_partition_rows_num > 0 || _key_partition_max_rows() > 0)) || _local_buffer_almost_full();
+           (_memory_manager->is_sink_finished() && (_partition_rows_num > 0 || _key_partition_max_rows() > 0)) ||
+           _local_buffer_almost_full();
 }
 
 Status LocalExchangeSourceOperator::set_finished(RuntimeState* state) {
     std::lock_guard<std::mutex> l(_chunk_lock);
     _is_finished = true;
+    _memory_manager->set_sink_finished();
     // clear _full_chunk_queue
     { [[maybe_unused]] typeof(_full_chunk_queue) tmp = std::move(_full_chunk_queue); }
     // clear _partition_chunk_queue

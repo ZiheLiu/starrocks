@@ -339,7 +339,7 @@ Status PassthroughExchanger::accept(const ChunkPtr& chunk, const int32_t sink_dr
 }
 
 bool LocalExchanger::need_input() const {
-    return !_memory_manager->is_full() && !is_all_sources_finished();
+    return _memory_manager->is_source_ready() && !_memory_manager->is_full() && !is_all_sources_finished();
 }
 
 void RandomPassthroughExchanger::incr_sinker() {

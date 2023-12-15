@@ -186,6 +186,11 @@ public:
         std::shared_ptr<LocalExchangeSourceOperator> source = std::make_shared<LocalExchangeSourceOperator>(
                 this, _id, _plan_node_id, driver_sequence, _memory_manager);
         _sources.emplace_back(source.get());
+
+        if (driver_sequence + 1 == degree_of_parallelism) {
+            _memory_manager->set_source_ready();
+        }
+
         return source;
     }
 
