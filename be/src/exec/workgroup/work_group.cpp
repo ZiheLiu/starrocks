@@ -86,16 +86,11 @@ WorkGroup::WorkGroup(std::string name, int64_t id, int64_t version, size_t cpu_l
           _cpu_limit(cpu_limit),
           _memory_limit(memory_limit),
           _concurrency_limit(concurrency),
-          _driver_sched_entity(this),
           _scan_sched_entity(this),
           _connector_scan_sched_entity(this) {}
 
 WorkGroup::WorkGroup(const TWorkGroup& twg)
-        : _name(twg.name),
-          _id(twg.id),
-          _driver_sched_entity(this),
-          _scan_sched_entity(this),
-          _connector_scan_sched_entity(this) {
+        : _name(twg.name), _id(twg.id), _scan_sched_entity(this), _connector_scan_sched_entity(this) {
     if (twg.__isset.cpu_core_limit) {
         _cpu_limit = twg.cpu_core_limit;
     } else {
@@ -163,7 +158,15 @@ void WorkGroup::init() {
                                   : GlobalEnv::GetInstance()->query_pool_mem_tracker()->limit() * _memory_limit;
     _mem_tracker = std::make_shared<MemTracker>(MemTracker::RESOURCE_GROUP, _memory_limit_bytes, _name,
                                                 GlobalEnv::GetInstance()->query_pool_mem_tracker());
-    _driver_sched_entity.set_queue(std::make_unique<pipeline::QuerySharedDriverQueue>());
+
+    int num_driver_sched_entities = ExecEnv::GetInstance()->max_executor_threads();
+    _driver_sched_entities.reserve(num_driver_sched_entities);
+    for (int i = 0; i < num_driver_sched_entities; i++) {
+        _driver_sched_entities.emplace_back(this);
+        _driver_sched_entities[i].set_queue(std::make_unique<pipeline::QuerySharedDriverQueue>());
+        _driver_sched_entities[i].set_dispatcher_id(i);
+    }
+
     _scan_sched_entity.set_queue(workgroup::create_scan_task_queue());
     _connector_scan_sched_entity.set_queue(workgroup::create_scan_task_queue());
 }
@@ -371,17 +374,19 @@ void WorkGroupManager::update_metrics_unlocked() {
     int64_t sum_scan_runtime_ns = 0;
     int64_t sum_connector_scan_runtime_ns = 0;
     for (const auto& [_, wg] : _workgroups) {
-        wg->driver_sched_entity()->mark_curr_runtime_ns();
+        // TODO(lzh)
+        // wg->driver_sched_entity()->mark_curr_runtime_ns();
         wg->scan_sched_entity()->mark_curr_runtime_ns();
         wg->connector_scan_sched_entity()->mark_curr_runtime_ns();
-
-        sum_cpu_runtime_ns += wg->driver_sched_entity()->growth_runtime_ns();
+        // TODO(lzh)
+        //        sum_cpu_runtime_ns += wg->driver_sched_entity()->growth_runtime_ns();
         sum_scan_runtime_ns += wg->scan_sched_entity()->growth_runtime_ns();
         sum_connector_scan_runtime_ns += wg->connector_scan_sched_entity()->growth_runtime_ns();
     }
     DeferOp mark_last_runtime_op([this] {
         for (const auto& [_, wg] : _workgroups) {
-            wg->driver_sched_entity()->mark_last_runtime_ns();
+            // TODO(lzh)
+            //            wg->driver_sched_entity()->mark_last_runtime_ns();
             wg->scan_sched_entity()->mark_last_runtime_ns();
             wg->connector_scan_sched_entity()->mark_last_runtime_ns();
         }
@@ -394,7 +399,9 @@ void WorkGroupManager::update_metrics_unlocked() {
             VLOG(2) << "workgroup update_metrics " << name;
 
             double cpu_expected_use_ratio = _calculate_ratio(wg->cpu_limit(), _sum_cpu_limit);
-            double cpu_use_ratio = _calculate_ratio(wg->driver_sched_entity()->growth_runtime_ns(), sum_cpu_runtime_ns);
+            // TODO(lzh)
+            double cpu_use_ratio = 0;
+            //            double cpu_use_ratio = _calculate_ratio(wg->driver_sched_entity()->growth_runtime_ns(), sum_cpu_runtime_ns);
             double scan_use_ratio = _calculate_ratio(wg->scan_sched_entity()->growth_runtime_ns(), sum_scan_runtime_ns);
             double connector_scan_use_ratio = _calculate_ratio(wg->connector_scan_sched_entity()->growth_runtime_ns(),
                                                                sum_connector_scan_runtime_ns);

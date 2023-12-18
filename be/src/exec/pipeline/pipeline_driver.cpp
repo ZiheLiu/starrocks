@@ -90,6 +90,8 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
 
     _peak_driver_queue_size_counter = _runtime_profile->AddHighWaterMarkCounter(
             "PeakDriverQueueSize", TUnit::UNIT, RuntimeProfile::Counter::create_strategy(TUnit::UNIT));
+    _sched_local_counter = ADD_COUNTER(_runtime_profile, "SchedLocalCounter", TUnit::UNIT);
+    _sched_steal_counter = ADD_COUNTER(_runtime_profile, "SchedStealCounter", TUnit::UNIT);
 
     DCHECK(_state == DriverState::NOT_READY);
 
@@ -378,7 +380,7 @@ StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int w
             if (_workgroup != nullptr &&
                 (time_spent >= YIELD_PREEMPT_MAX_TIME_SPENT_NS ||
                  driver_acct().get_accumulated_local_wait_time_spent() > YIELD_PREEMPT_MAX_TIME_SPENT_NS) &&
-                _workgroup->driver_sched_entity()->in_queue()->should_yield(this, time_spent)) {
+                _in_queue->should_yield(this, time_spent)) {
                 should_yield = true;
                 COUNTER_UPDATE(_yield_by_preempt_counter, 1);
                 break;
@@ -604,6 +606,7 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, in
     PipelineDriver copied_driver;
     copied_driver.set_workgroup(_workgroup);
     copied_driver.set_in_queue(_in_queue);
+    copied_driver.set_dispatcher_id(_dispatcher_id);
     copied_driver.set_driver_queue_level(_driver_queue_level);
     DeferOp defer([&copied_driver, &time_spent]() {
         if (copied_driver._in_queue != nullptr) {

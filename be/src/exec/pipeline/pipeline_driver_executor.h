@@ -22,6 +22,7 @@
 #include "exec/pipeline/pipeline_driver.h"
 #include "exec/pipeline/pipeline_driver_poller.h"
 #include "exec/pipeline/pipeline_driver_queue.h"
+#include "exec/pipeline/pipeline_driver_queue_manager.h"
 #include "exec/pipeline/pipeline_fwd.h"
 #include "exec/pipeline/query_context.h"
 #include "runtime/runtime_state.h"
@@ -90,7 +91,7 @@ public:
 private:
     using Base = FactoryMethod<DriverExecutor, GlobalDriverExecutor>;
     void _worker_thread();
-    StatusOr<DriverRawPtr> _get_next_driver(std::queue<DriverRawPtr>& local_driver_queue);
+    StatusOr<DriverRawPtr> _get_next_driver(std::queue<DriverRawPtr>& local_driver_queue, int worker_id);
     void _finalize_driver(DriverRawPtr driver, RuntimeState* runtime_state, DriverState state);
     RuntimeProfile* _build_merged_instance_profile(QueryContext* query_ctx, FragmentContext* fragment_ctx);
 
@@ -101,7 +102,7 @@ private:
     static constexpr int64_t LOCAL_MAX_WAIT_TIME_SPENT_NS = 1'000'000L;
 
     LimitSetter _num_threads_setter;
-    std::unique_ptr<DriverQueue> _driver_queue;
+    std::unique_ptr<DriverQueueManager> _driver_queue_manager;
     // _thread_pool must be placed after _driver_queue, because worker threads in _thread_pool use _driver_queue.
     std::unique_ptr<ThreadPool> _thread_pool;
     PipelineDriverPollerPtr _blocked_driver_poller;

@@ -447,6 +447,12 @@ public:
         return source_operator()->is_epoch_finishing() || sink_operator()->is_epoch_finishing();
     }
 
+    void set_dispatcher_id(int dispatcher_id) { _dispatcher_id = dispatcher_id; }
+    int dispatcher_id() { return _dispatcher_id; }
+
+    void incr_sched_local_counter() { _sched_local_counter->update(1); }
+    void incr_sched_steal_counter() { _sched_steal_counter->update(1); }
+
 protected:
     PipelineDriver()
             : _operators(),
@@ -517,6 +523,8 @@ protected:
     size_t _driver_queue_level = 0;
     std::atomic<bool> _in_ready_queue{false};
 
+    int _dispatcher_id = -1;
+
     // metrics
     RuntimeProfile::Counter* _total_timer = nullptr;
     RuntimeProfile::Counter* _active_timer = nullptr;
@@ -540,6 +548,9 @@ protected:
     RuntimeProfile::Counter* _followup_input_empty_timer = nullptr;
     RuntimeProfile::Counter* _output_full_timer = nullptr;
     RuntimeProfile::Counter* _pending_finish_timer = nullptr;
+
+    RuntimeProfile::Counter* _sched_local_counter = nullptr;
+    RuntimeProfile::Counter* _sched_steal_counter = nullptr;
 
     MonotonicStopWatch* _total_timer_sw = nullptr;
     MonotonicStopWatch* _pending_timer_sw = nullptr;

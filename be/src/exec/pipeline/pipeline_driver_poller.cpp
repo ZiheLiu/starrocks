@@ -149,7 +149,7 @@ void PipelineDriverPoller::run_internal() {
         } else {
             spin_count = 0;
 
-            _driver_queue->put_back(ready_drivers);
+            _driver_queue_manager->put_back(ready_drivers);
             ready_drivers.clear();
         }
 
@@ -210,7 +210,7 @@ size_t PipelineDriverPoller::activate_parked_driver(const ImmutableDriverPredica
         }
     }
 
-    _driver_queue->put_back(ready_drivers);
+    _driver_queue_manager->put_back(ready_drivers);
     return ready_drivers.size();
 }
 
