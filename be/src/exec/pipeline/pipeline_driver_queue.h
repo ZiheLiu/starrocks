@@ -95,7 +95,7 @@ private:
     std::atomic<int64_t> _accu_consume_time = 0;
 };
 
-class QuerySharedDriverQueue : public FactoryMethod<DriverQueue, QuerySharedDriverQueue> {
+class QuerySharedDriverQueue final : public FactoryMethod<DriverQueue, QuerySharedDriverQueue> {
     friend class FactoryMethod<DriverQueue, QuerySharedDriverQueue>;
 
 public:
@@ -145,7 +145,7 @@ private:
 
 // WorkGroupDriverQueue contains two levels of queues.
 // The first level is the work group queue, and the second level is the driver queue in a work group.
-class WorkGroupDriverQueue : public FactoryMethod<DriverQueue, WorkGroupDriverQueue> {
+class WorkGroupDriverQueue final : public FactoryMethod<DriverQueue, WorkGroupDriverQueue> {
     friend class FactoryMethod<DriverQueue, WorkGroupDriverQueue>;
 
 public:
@@ -215,7 +215,7 @@ private:
 
     size_t _sum_cpu_limit = 0;
 
-    size_t _num_drivers = 0;
+    std::atomic<size_t> _num_drivers = 0;
 
     // Cache the minimum entity, used to check should_yield() without lock.
     std::atomic<workgroup::WorkGroupDriverSchedEntity*> _min_wg_entity = nullptr;

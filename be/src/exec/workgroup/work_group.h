@@ -87,6 +87,9 @@ public:
     void incr_runtime_ns(int64_t runtime_ns);
     void adjust_runtime_ns(int64_t runtime_ns);
 
+    void set_dispatcher_id(int val) { _dispatcher_id = val; }
+    int dispatcher_id() const { return _dispatcher_id; }
+
 private:
     WorkGroup* _workgroup; // The workgroup owning this entity.
 
@@ -98,6 +101,8 @@ private:
     int64_t _unadjusted_runtime_ns = 0;
     int64_t _curr_unadjusted_runtime_ns = 0;
     int64_t _last_unadjusted_runtime_ns = 0;
+
+    int _dispatcher_id = -1;
 };
 
 using WorkGroupDriverSchedEntity = WorkGroupSchedEntity<pipeline::DriverQueue>;
@@ -148,8 +153,8 @@ public:
 
     bool is_sq_wg() const { return _type == WorkGroupType::WG_SHORT_QUERY; }
 
-    WorkGroupDriverSchedEntity* driver_sched_entity() { return &_driver_sched_entity; }
-    const WorkGroupDriverSchedEntity* driver_sched_entity() const { return &_driver_sched_entity; }
+    WorkGroupDriverSchedEntity* driver_sched_entity(int index) { return &_driver_sched_entities[index]; }
+    const WorkGroupDriverSchedEntity* driver_sched_entity(int index) const { return &_driver_sched_entities[index]; }
     WorkGroupScanSchedEntity* scan_sched_entity() { return &_scan_sched_entity; }
     const WorkGroupScanSchedEntity* scan_sched_entity() const { return &_scan_sched_entity; }
     WorkGroupScanSchedEntity* connector_scan_sched_entity() { return &_connector_scan_sched_entity; }
@@ -239,7 +244,7 @@ private:
     std::shared_ptr<starrocks::MemTracker> _mem_tracker = nullptr;
     std::shared_ptr<starrocks::MemTracker> _connector_scan_mem_tracker = nullptr;
 
-    WorkGroupDriverSchedEntity _driver_sched_entity;
+    std::vector<WorkGroupDriverSchedEntity> _driver_sched_entities;
     WorkGroupScanSchedEntity _scan_sched_entity;
     WorkGroupScanSchedEntity _connector_scan_sched_entity;
 

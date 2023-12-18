@@ -88,39 +88,32 @@ StatusOr<DriverRawPtr> QuerySharedDriverQueue::take(const bool block) {
 
     {
         std::unique_lock<std::mutex> lock(_global_mutex);
-        while (true) {
-            if (_is_closed) {
-                return Status::Cancelled("Shutdown");
-            }
 
-            // Find the queue with the smallest execution time.
-            for (int i = 0; i < QUEUE_SIZE; ++i) {
-                // we just search for queue has element
-                if (!_queues[i].empty()) {
-                    double local_target_time = _queues[i].accu_time_after_divisor();
-                    if (queue_idx < 0 || local_target_time < target_accu_time) {
-                        target_accu_time = local_target_time;
-                        queue_idx = i;
-                    }
+        if (_is_closed) {
+            return Status::Cancelled("Shutdown");
+        }
+
+        // Find the queue with the smallest execution time.
+        for (int i = 0; i < QUEUE_SIZE; ++i) {
+            // we just search for queue has element
+            if (!_queues[i].empty()) {
+                double local_target_time = _queues[i].accu_time_after_divisor();
+                if (queue_idx < 0 || local_target_time < target_accu_time) {
+                    target_accu_time = local_target_time;
+                    queue_idx = i;
                 }
             }
-
-            if (queue_idx >= 0) {
-                break;
-            }
-            if (!block) {
-                break;
-            }
-            _cv.wait(lock);
         }
 
-        if (queue_idx >= 0) {
-            // record queue's index to accumulate time for it.
-            driver_ptr = _queues[queue_idx].take(false);
-            driver_ptr->set_in_ready_queue(false);
-
-            --_num_drivers;
+        if (queue_idx < 0) {
+            return nullptr;
         }
+
+        // record queue's index to accumulate time for it.
+        driver_ptr = _queues[queue_idx].take(false);
+        driver_ptr->set_in_ready_queue(false);
+
+        --_num_drivers;
     }
 
     // next pipeline driver to execute.
@@ -239,6 +232,10 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
 }
 
 StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
+    if (!block && size() <= 0) {
+        return nullptr;
+    }
+
     std::unique_lock<std::mutex> lock(_global_mutex);
 
     workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
@@ -290,7 +287,7 @@ void WorkGroupDriverQueue::cancel(DriverRawPtr driver) {
     if (!driver->is_in_ready_queue()) {
         return;
     }
-    auto* wg_entity = driver->workgroup()->driver_sched_entity();
+    auto* wg_entity = driver->workgroup()->driver_sched_entity(driver->dispatcher_id());
     wg_entity->queue()->cancel(driver);
 }
 
@@ -299,7 +296,7 @@ void WorkGroupDriverQueue::update_statistics(const DriverRawPtr driver) {
     std::lock_guard<std::mutex> lock(_global_mutex);
 
     int64_t runtime_ns = driver->driver_acct().get_last_time_spent();
-    auto* wg_entity = driver->workgroup()->driver_sched_entity();
+    auto* wg_entity = driver->workgroup()->driver_sched_entity(driver->dispatcher_id());
 
     // Update bandwidth control information.
     _update_bandwidth_control_period();
@@ -324,17 +321,17 @@ void WorkGroupDriverQueue::update_statistics(const DriverRawPtr driver) {
 
 size_t WorkGroupDriverQueue::size() const {
     // TODO: reduce the lock scope
-    std::lock_guard<std::mutex> lock(_global_mutex);
+    //    std::lock_guard<std::mutex> lock(_global_mutex);
     return _num_drivers;
 }
 
 bool WorkGroupDriverQueue::should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const {
-    if (_throttled(driver->workgroup()->driver_sched_entity(), unaccounted_runtime_ns)) {
+    if (_throttled(driver->workgroup()->driver_sched_entity(driver->dispatcher_id()), unaccounted_runtime_ns)) {
         return true;
     }
 
     // Return true, if the minimum-vruntime workgroup is not current workgroup anymore.
-    auto* wg_entity = driver->workgroup()->driver_sched_entity();
+    auto* wg_entity = driver->workgroup()->driver_sched_entity(driver->dispatcher_id());
     auto* min_entity = _min_wg_entity.load();
     return min_entity != wg_entity && min_entity &&
            min_entity->vruntime_ns() < wg_entity->vruntime_ns() + unaccounted_runtime_ns / wg_entity->cpu_limit();
@@ -357,7 +354,12 @@ template <bool from_executor>
 void WorkGroupDriverQueue::_put_back(const DriverRawPtr driver) {
     driver->update_peak_driver_queue_size_counter(_num_drivers);
 
-    auto* wg_entity = driver->workgroup()->driver_sched_entity();
+    auto* wg_entity = driver->workgroup()->driver_sched_entity(driver->dispatcher_id());
+    //    if (wg_entity->dispatcher_id() != driver->dispatcher_id()) {
+    //        LOG(WARNING) << "[LZH] wrong dispatcher_id put_back "
+    //                     << "[wg_entity=" << wg_entity->dispatcher_id() << "] "
+    //                     << "[driver=" << driver->dispatcher_id() << "] ";
+    //    }
     wg_entity->set_in_queue(this);
     wg_entity->queue()->put_back(driver);
     driver->set_in_queue(this);

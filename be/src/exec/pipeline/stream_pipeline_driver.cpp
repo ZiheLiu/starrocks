@@ -135,12 +135,6 @@ StatusOr<DriverState> StreamPipelineDriver::process(RuntimeState* runtime_state,
                 COUNTER_UPDATE(_yield_by_time_limit_counter, 1);
                 break;
             }
-            if (_workgroup != nullptr && time_spent >= YIELD_PREEMPT_MAX_TIME_SPENT_NS &&
-                _workgroup->driver_sched_entity()->in_queue()->should_yield(this, time_spent)) {
-                should_yield = true;
-                COUNTER_UPDATE(_yield_by_preempt_counter, 1);
-                break;
-            }
         }
 
         // close finished operators and update _first_unfinished index
