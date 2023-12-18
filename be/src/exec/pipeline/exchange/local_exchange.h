@@ -124,9 +124,7 @@ public:
 
     virtual void finish(RuntimeState* state) {
         if (decr_sinker() == 1) {
-            for (auto* source : _source->get_sources()) {
-                static_cast<void>(source->set_finishing(state));
-            }
+            _memory_manager->set_sink_finished();
         }
     }
 
