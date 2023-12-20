@@ -722,6 +722,8 @@ CONF_Double(pipeline_driver_queue_ratio_of_adjacent_queue, "1.2");
 CONF_Int64(pipeline_scan_queue_mode, "0");
 CONF_Int64(pipeline_num_pls, "16");
 CONF_Int64(pipeline_max_scan_dop, "0");
+CONF_Int32(pipeline_poller_thread_num, "8");
+
 // The arguments of MultiLevelFeedScanTaskQueue. It prioritizes small queries over larger ones,
 // when the value of level_time_slice_base_ns is smaller and queue_ratio_of_adjacent_queue is larger.
 CONF_Int64(pipeline_scan_queue_level_time_slice_base_ns, "100000000");
