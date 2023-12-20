@@ -113,7 +113,14 @@ bool LocalExchangeSourceOperator::has_output() const {
 
 Status LocalExchangeSourceOperator::set_finished(RuntimeState* state) {
     std::lock_guard<std::mutex> l(_chunk_lock);
+
+    if (_is_finished) {
+        return Status::OK();
+    }
     _is_finished = true;
+
+    _memory_manager->incr_num_finished_sourcers();
+
     _memory_manager->set_sink_finished();
     // clear _full_chunk_queue
     { [[maybe_unused]] typeof(_full_chunk_queue) tmp = std::move(_full_chunk_queue); }

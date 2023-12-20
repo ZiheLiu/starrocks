@@ -108,11 +108,7 @@ public:
     bool is_finished() const override;
 
     Status set_finished(RuntimeState* state) override;
-    [[nodiscard]] Status set_finishing(RuntimeState* state) override {
-        std::lock_guard<std::mutex> l(_chunk_lock);
-        _is_finished = true;
-        return Status::OK();
-    }
+    [[nodiscard]] Status set_finishing(RuntimeState* state) override { return Status::OK(); }
 
     bool is_epoch_finished() const override {
         std::lock_guard<std::mutex> l(_chunk_lock);

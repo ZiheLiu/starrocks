@@ -64,6 +64,9 @@ public:
     bool is_sink_finished() const { return _is_sink_finished; }
     void set_sink_finished() { _is_sink_finished = true; }
 
+    size_t num_finished_sourcers() const { return _num_finished_sourcers; }
+    void incr_num_finished_sourcers() { _num_finished_sourcers++; }
+
 private:
     std::atomic<size_t> _max_memory_usage{128UL * 1024 * 1024 * 1024}; // 128GB
     size_t _max_memory_usage_per_driver = 128 * 1024 * 1024UL;         // 128MB
@@ -74,5 +77,6 @@ private:
 
     std::atomic<bool> _is_source_ready{false};
     std::atomic<bool> _is_sink_finished{false};
+    std::atomic<size_t> _num_finished_sourcers{0};
 };
 } // namespace starrocks::pipeline
