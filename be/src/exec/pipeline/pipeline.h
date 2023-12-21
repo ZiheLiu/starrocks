@@ -28,12 +28,12 @@ class RuntimeState;
 
 namespace pipeline {
 
+class PipelineEvent;
+
 class Pipeline {
 public:
     Pipeline() = delete;
-    Pipeline(uint32_t id, OpFactories op_factories) : _id(id), _op_factories(std::move(op_factories)) {
-        _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("Pipeline (id=$0)", _id));
-    }
+    Pipeline(uint32_t id, OpFactories op_factories);
 
     uint32_t get_id() const { return _id; }
 
@@ -97,11 +97,16 @@ public:
         return ss.str();
     }
 
+    const std::shared_ptr<PipelineEvent>& event() const;
+
     // STREAM MV
     Status reset_epoch(RuntimeState* state);
     void count_down_epoch_finished_driver(RuntimeState* state);
 
     size_t output_amplification_factor() const;
+
+    bool is_lazy() const { return _is_lazy; }
+    void set_is_lazy(bool val) { _is_lazy = val; }
 
 private:
     uint32_t _id = 0;
@@ -109,6 +114,10 @@ private:
     OpFactories _op_factories;
     Drivers _drivers;
     std::atomic<size_t> _num_finished_drivers = 0;
+
+    std::shared_ptr<PipelineEvent> _event;
+
+    bool _is_lazy{false};
 
     // STREAM MV
     std::atomic<size_t> _num_epoch_finished_drivers = 0;

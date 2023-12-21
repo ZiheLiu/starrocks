@@ -29,6 +29,7 @@ namespace pipeline {
 class SourceOperator;
 using SourceOperatorPtr = std::shared_ptr<SourceOperator>;
 class MorselQueueFactory;
+class PipelineEvent;
 
 class SourceOperatorFactory : public OperatorFactory {
 public:
@@ -109,6 +110,9 @@ public:
     void set_group_leader(SourceOperatorFactory* parent);
     SourceOperatorFactory* group_leader();
 
+    virtual std::shared_ptr<PipelineEvent> get_dependent_event();
+    void set_initialize_event(std::shared_ptr<PipelineEvent> initialize_event);
+
 protected:
     size_t _degree_of_parallelism = 1;
     bool _could_local_shuffle = true;
@@ -122,6 +126,8 @@ protected:
     std::vector<const Pipeline*> _group_dependent_pipelines;
     mutable bool _group_dependent_pipelines_ready = false;
     mutable bool _group_dependent_pipelines_finished = false;
+
+    std::shared_ptr<PipelineEvent> _initialize_event;
 };
 
 class SourceOperator : public Operator {

@@ -53,6 +53,7 @@ public:
 
     SourceOperatorFactory::AdaptiveState adaptive_state() const override;
     void adjust_dop() override;
+    std::shared_ptr<PipelineEvent> get_dependent_event() override;
 
 private:
     static constexpr size_t ABSENT_ADJUSTED_DOP = 0;

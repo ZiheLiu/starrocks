@@ -83,6 +83,10 @@ SourceOperatorFactory::AdaptiveState CollectStatsSourceOperatorFactory::adaptive
     return SourceOperatorFactory::AdaptiveState::INACTIVE;
 }
 
+std::shared_ptr<PipelineEvent> CollectStatsSourceOperatorFactory::get_dependent_event() {
+    return _ctx->blocking_event();
+}
+
 /// Adjust DOP according to the dependent pipelines.
 /// - Constraints:
 ///   - DOP *= output_amplification_factor.

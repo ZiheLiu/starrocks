@@ -16,6 +16,7 @@
 
 #include "exec/pipeline/pipeline.h"
 #include "exec/pipeline/pipeline_driver.h"
+#include "exec/pipeline/pipeline_event.h"
 
 namespace starrocks::pipeline {
 
@@ -64,6 +65,14 @@ bool SourceOperatorFactory::is_adaptive_group_active() const {
                            [](const auto& driver) { return driver->sink_operator()->is_finished(); });
     });
     return _group_dependent_pipelines_finished;
+}
+
+std::shared_ptr<PipelineEvent> SourceOperatorFactory::get_dependent_event() {
+    return nullptr;
+}
+
+void SourceOperatorFactory::set_initialize_event(std::shared_ptr<PipelineEvent> initialize_event) {
+    _initialize_event = std::move(initialize_event);
 }
 
 } // namespace starrocks::pipeline

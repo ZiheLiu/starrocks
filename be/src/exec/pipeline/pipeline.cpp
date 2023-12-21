@@ -16,11 +16,17 @@
 
 #include "exec/pipeline/operator.h"
 #include "exec/pipeline/pipeline_driver.h"
+#include "exec/pipeline/pipeline_event.h"
 #include "exec/pipeline/scan/connector_scan_operator.h"
 #include "exec/pipeline/stream_pipeline_driver.h"
 #include "runtime/runtime_state.h"
 
 namespace starrocks::pipeline {
+
+Pipeline::Pipeline(uint32_t id, OpFactories op_factories)
+        : _id(id), _op_factories(std::move(op_factories)), _event(std::make_shared<PipelineEvent>()) {
+    _runtime_profile = std::make_shared<RuntimeProfile>(strings::Substitute("Pipeline (id=$0)", _id));
+}
 
 size_t Pipeline::degree_of_parallelism() const {
     // DOP (degree of parallelism) of Pipeline's SourceOperator determines the Pipeline's DOP.
@@ -30,6 +36,7 @@ size_t Pipeline::degree_of_parallelism() const {
 void Pipeline::count_down_driver(RuntimeState* state) {
     bool all_drivers_finished = ++_num_finished_drivers == _drivers.size();
     if (all_drivers_finished) {
+        WARN_IF_ERROR(_event->finish(state), "pipeline event finish error");
         state->fragment_ctx()->count_down_pipeline();
     }
 }
@@ -172,6 +179,10 @@ size_t Pipeline::output_amplification_factor() const {
     }
 
     return 1;
+}
+
+const std::shared_ptr<PipelineEvent>& Pipeline::event() const {
+    return _event;
 }
 
 } // namespace starrocks::pipeline

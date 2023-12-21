@@ -28,6 +28,8 @@ class StatusOr;
 
 namespace pipeline {
 
+class PipelineEvent;
+
 enum class CollectStatsStateEnum { BLOCK = 0, PASSTHROUGH, ROUND_ROBIN };
 
 /// CollectStatsContext is shared by CollectStatsSinkOperator (CsSink) and CollectStatsSourceOperator (CsSource).
@@ -78,6 +80,8 @@ public:
 
     const int64_t max_output_amplification_factor() const { return _max_output_amplification_factor; }
 
+    std::shared_ptr<PipelineEvent> blocking_event() { return _blocking_event; }
+
 private:
     using BufferChunkQueue = std::queue<ChunkPtr>;
 
@@ -109,6 +113,8 @@ private:
     std::vector<uint8_t> _is_finished_per_driver_seq;
 
     RuntimeState* const _runtime_state;
+
+    std::shared_ptr<PipelineEvent> _blocking_event;
 };
 
 class CollectStatsState {
