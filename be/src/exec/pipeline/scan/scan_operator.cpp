@@ -463,7 +463,7 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
 
 Status ScanOperator::_pickup_morsel(RuntimeState* state, int chunk_source_index) {
     DCHECK(_morsel_queue != nullptr);
-    _close_chunk_source(state, chunk_source_index);
+    //    _close_chunk_source(state, chunk_source_index);
 
     // NOTE: attach an active source before really creating it, to avoid the race condition
     bool need_detach = true;
