@@ -157,6 +157,7 @@ protected:
     std::atomic<int> _num_running_io_tasks = 0;
     mutable std::shared_mutex _task_mutex; // Protects the chunk-source from concurrent close and read
     std::vector<std::atomic<bool>> _is_io_task_running;
+    std::vector<std::atomic<bool>> _is_chunk_source_resumable;
     std::vector<ChunkSourcePtr> _chunk_sources;
     mutable bool _unpluging = false;
 

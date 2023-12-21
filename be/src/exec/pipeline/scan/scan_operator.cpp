@@ -45,6 +45,7 @@ ScanOperator::ScanOperator(OperatorFactory* factory, int32_t id, int32_t driver_
           _is_asc(scan_node->is_asc_hint()),
           _chunk_source_profiles(_io_tasks_per_scan_operator),
           _is_io_task_running(_io_tasks_per_scan_operator),
+          _is_chunk_source_resumable(_io_tasks_per_scan_operator),
           _chunk_sources(_io_tasks_per_scan_operator) {
     for (auto i = 0; i < _io_tasks_per_scan_operator; i++) {
         _chunk_source_profiles[i] = std::make_shared<RuntimeProfile>(strings::Substitute("ChunkSource$0", i));
@@ -178,8 +179,7 @@ bool ScanOperator::has_output() const {
         }
     }
     for (int i = 0; i < _io_tasks_per_scan_operator; ++i) {
-        std::shared_lock guard(_task_mutex);
-        if (_chunk_sources[i] != nullptr && !_is_io_task_running[i] && _chunk_sources[i]->has_next_chunk()) {
+        if (_is_chunk_source_resumable[i]) {
             return true;
         }
     }
@@ -359,9 +359,11 @@ void ScanOperator::_finish_chunk_source_task(RuntimeState* state, int chunk_sour
         // Therefore, closing chunk source and storing/loading `_is_finished` and `_is_io_task_running`
         // must be protected by lock
         std::lock_guard guard(_task_mutex);
-        if (!_chunk_sources[chunk_source_index]->has_next_chunk() || _is_finished) {
+        bool is_chunk_source_resumable = _chunk_sources[chunk_source_index]->has_next_chunk() && !_is_finished;
+        if (!is_chunk_source_resumable) {
             _close_chunk_source_unlocked(state, chunk_source_index);
         }
+        _is_chunk_source_resumable[chunk_source_index] = is_chunk_source_resumable;
         _is_io_task_running[chunk_source_index] = false;
     }
 }
@@ -442,6 +444,7 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
     }
 
     if (submit_success) {
+        _is_chunk_source_resumable[chunk_source_index] = false;
         _io_task_retry_cnt = 0;
     } else {
         _chunk_sources[chunk_source_index]->unpin_chunk_token();
