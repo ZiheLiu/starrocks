@@ -861,16 +861,18 @@ bool DataStreamRecvr::PipelineSenderQueue::has_output(const int32_t driver_seque
     size_t index = _is_pipeline_level_shuffle ? driver_sequence : 0;
     size_t chunk_num = _chunk_queues[index].size_approx();
     auto& chunk_queue_state = _chunk_queue_states[index];
+
+    if (chunk_num == 0) {
+        chunk_queue_state.unpluging = false;
+        return false;
+    }
+
     auto& metrics = _recvr->_metrics[driver_sequence];
     // introduce an unplug mechanism similar to scan operator to reduce scheduling overhead
 
     // 1. in the unplug state, return true if there is a chunk, otherwise return false and exit the unplug state
     if (chunk_queue_state.unpluging) {
-        if (chunk_num > 0) {
-            return true;
-        }
-        chunk_queue_state.unpluging = false;
-        return false;
+        return true;
     }
     // 2. if this queue is not in the unplug state, try to batch as much chunk as possible before returning
     // @TODO need an adaptive strategy to determin this threshold
@@ -882,12 +884,12 @@ bool DataStreamRecvr::PipelineSenderQueue::has_output(const int32_t driver_seque
 
     bool is_buffer_full = _recvr->_num_buffered_bytes > _recvr->_total_buffer_limit;
     // 3. if buffer is full and this queue has chunks, return true to release the buffer capacity ASAP
-    if (is_buffer_full && chunk_num > 0) {
+    if (is_buffer_full) {
         return true;
     }
     // 4. if there is no new data, return true if this queue has chunks
     if (_num_remaining_senders == 0) {
-        return chunk_num > 0;
+        return true;
     }
     // 5. if this queue has blocked closures, return true to release the closure ASAP to trigger the next transmit requests
     return chunk_queue_state.blocked_closure_num > 0;
