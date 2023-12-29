@@ -36,34 +36,12 @@ SourceOperatorFactory* SourceOperatorFactory::group_leader() {
     return _group_leader;
 }
 
-bool SourceOperatorFactory::is_adaptive_group_active() const {
+bool SourceOperatorFactory::is_adaptive_group_initial_active() const {
     if (_group_leader != this) {
-        return _group_leader->is_adaptive_group_active();
+        return _group_leader->is_adaptive_group_initial_active();
     }
 
-    if (adaptive_state() != AdaptiveState::ACTIVE) {
-        return false;
-    }
-
-    const auto& pipelines = _group_dependent_pipelines;
-    if (!_group_dependent_pipelines_ready) {
-        _group_dependent_pipelines_ready = std::all_of(pipelines.begin(), pipelines.end(), [](const auto& pipeline) {
-            return pipeline->source_operator_factory()->is_adaptive_group_active();
-        });
-        if (!_group_dependent_pipelines_ready) {
-            return false;
-        }
-    }
-
-    _group_dependent_pipelines_finished = std::all_of(pipelines.begin(), pipelines.end(), [](const auto& pipeline) {
-        const auto& drivers = pipeline->drivers();
-        if (drivers.empty()) {
-            return false;
-        }
-        return std::all_of(drivers.begin(), drivers.end(),
-                           [](const auto& driver) { return driver->sink_operator()->is_finished(); });
-    });
-    return _group_dependent_pipelines_finished;
+    return adaptive_initial_state() == AdaptiveState::ACTIVE;
 }
 
 } // namespace starrocks::pipeline

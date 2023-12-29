@@ -76,10 +76,7 @@ OperatorPtr CollectStatsSourceOperatorFactory::create(int32_t degree_of_parallel
     return std::make_shared<CollectStatsSourceOperator>(this, _id, _plan_node_id, driver_sequence, _ctx.get());
 }
 
-SourceOperatorFactory::AdaptiveState CollectStatsSourceOperatorFactory::adaptive_state() const {
-    if (_ctx->is_downstream_ready()) {
-        return SourceOperatorFactory::AdaptiveState::ACTIVE;
-    }
+SourceOperatorFactory::AdaptiveState CollectStatsSourceOperatorFactory::adaptive_initial_state() const {
     return SourceOperatorFactory::AdaptiveState::INACTIVE;
 }
 
@@ -89,10 +86,6 @@ SourceOperatorFactory::AdaptiveState CollectStatsSourceOperatorFactory::adaptive
 ///   - DOP >= DOP of dependent pipelines.
 ///   - DOP <= CollectStatsSinkOperatorFactory::degree_of_parallelism.
 void CollectStatsSourceOperatorFactory::adjust_dop() {
-    if (!is_adaptive_group_active()) {
-        return;
-    }
-
     if (_has_adjusted_dop) {
         return;
     }
@@ -129,6 +122,9 @@ void CollectStatsSourceOperatorFactory::adjust_dop() {
     if (max_output_amplification_factor > 0 && max_output_amplification_factor < max_amp_factor) {
         max_amp_factor = max_output_amplification_factor;
     }
+    if (_state->is_cancelled()) {
+        max_amp_factor = 1;
+    }
     size_t amp_factor = 1;
     if (max_amp_factor != 1) {
         for (const auto& dependent_pipeline : dependent_pipelines) {
@@ -148,6 +144,10 @@ void CollectStatsSourceOperatorFactory::adjust_dop() {
     _degree_of_parallelism = std::max<size_t>(1, _degree_of_parallelism);
     _degree_of_parallelism = std::max<size_t>(_degree_of_parallelism, max_dependent_dop);
     _degree_of_parallelism = std::min<size_t>(_degree_of_parallelism, upstream_dop);
+}
+
+Event* CollectStatsSourceOperatorFactory::adaptive_blocking_event() const {
+    return _ctx->blocking_event();
 }
 
 } // namespace starrocks::pipeline
