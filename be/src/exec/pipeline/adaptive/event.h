@@ -43,11 +43,14 @@ public:
     /// This is not thread-safe.
     void add_dependency(Event* event);
 
+    std::string to_string();
+    virtual std::string name() const { return "base_event"; }
+
 public:
-    static EventPtr create_collect_stats_source_initialize_event(DriverExecutor* const executor,
-                                                                 SourceOperatorFactory* const leader_source_op,
-                                                                 std::vector<Pipeline*>&& pipelines);
     static EventPtr create_event();
+    static EventPtr create_collect_stats_source_initialize_event(DriverExecutor* executor,
+                                                                 std::vector<Pipeline*>&& pipelines);
+    static EventPtr create_merged_event(const std::vector<EventPtr>& events);
 
 protected:
     size_t _num_dependencies{0};

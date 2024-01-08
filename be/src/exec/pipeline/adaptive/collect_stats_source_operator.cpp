@@ -14,6 +14,7 @@
 
 #include "exec/pipeline/adaptive/collect_stats_source_operator.h"
 
+#include "event.h"
 #include "exec/pipeline/adaptive/collect_stats_context.h"
 #include "exec/pipeline/adaptive/utils.h"
 #include "exec/pipeline/pipeline.h"
@@ -58,7 +59,9 @@ Status CollectStatsSourceOperator::set_finished(RuntimeState* state) {
 /// CollectStatsSourceOperatorFactory.
 CollectStatsSourceOperatorFactory::CollectStatsSourceOperatorFactory(int32_t id, int32_t plan_node_id,
                                                                      CollectStatsContextPtr ctx)
-        : SourceOperatorFactory(id, "collect_stats_source", plan_node_id), _ctx(std::move(ctx)) {}
+        : SourceOperatorFactory(id, "collect_stats_source", plan_node_id), _ctx(std::move(ctx)) {
+    set_adaptive_blocking_event(_ctx->blocking_event());
+}
 
 Status CollectStatsSourceOperatorFactory::prepare(RuntimeState* state) {
     RETURN_IF_ERROR(OperatorFactory::prepare(state));
@@ -144,10 +147,6 @@ void CollectStatsSourceOperatorFactory::adjust_dop() {
     _degree_of_parallelism = std::max<size_t>(1, _degree_of_parallelism);
     _degree_of_parallelism = std::max<size_t>(_degree_of_parallelism, max_dependent_dop);
     _degree_of_parallelism = std::min<size_t>(_degree_of_parallelism, upstream_dop);
-}
-
-Event* CollectStatsSourceOperatorFactory::adaptive_blocking_event() const {
-    return _ctx->blocking_event();
 }
 
 } // namespace starrocks::pipeline

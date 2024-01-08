@@ -52,7 +52,6 @@ public:
     OperatorPtr create(int32_t degree_of_parallelism, int32_t driver_sequence) override;
 
     SourceOperatorFactory::AdaptiveState adaptive_initial_state() const override;
-    Event* adaptive_blocking_event() const override;
     void adjust_dop() override;
 
 private:

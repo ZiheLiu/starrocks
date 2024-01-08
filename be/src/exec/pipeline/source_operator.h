@@ -41,8 +41,7 @@ public:
     virtual bool with_morsels() const { return false; }
     // Set the DOP(degree of parallelism) of the SourceOperator, SourceOperator's DOP determine the Pipeline's DOP.
     void set_degree_of_parallelism(size_t degree_of_parallelism) { _degree_of_parallelism = degree_of_parallelism; }
-    void adjust_max_dop(size_t new_dop) { _degree_of_parallelism = std::min(new_dop, _degree_of_parallelism); }
-    virtual void adjust_dop() {}
+    virtual void adjust_dop();
     size_t degree_of_parallelism() const { return _degree_of_parallelism; }
 
     MorselQueueFactory* morsel_queue_factory() { return _morsel_queue_factory; }
@@ -104,14 +103,16 @@ public:
     virtual AdaptiveState adaptive_initial_state() const { return AdaptiveState::NONE; }
     bool is_adaptive_group_initial_active() const;
 
-    virtual Event* adaptive_blocking_event() const { return nullptr; }
+    EventPtr adaptive_blocking_event() const { return _adaptive_blocking_event; }
+    void set_adaptive_blocking_event(EventPtr event) { _adaptive_blocking_event = std::move(event); }
     void set_group_initialize_event(EventPtr event) { _group_initialize_event = std::move(event); }
 
     void add_group_dependent_pipeline(const Pipeline* dependent_op);
     const std::vector<const Pipeline*>& group_dependent_pipelines() const;
 
-    void set_group_leader(SourceOperatorFactory* parent);
-    SourceOperatorFactory* group_leader();
+    void add_upstream_source(SourceOperatorFactory* parent);
+    SourceOperatorFactory* group_leader() const;
+    void merge_group(SourceOperatorFactory* other_group);
 
 protected:
     size_t _degree_of_parallelism = 1;
@@ -122,9 +123,11 @@ protected:
 
     std::vector<ExprContext*> _partition_exprs;
 
-    SourceOperatorFactory* _group_leader = this;
+    std::vector<SourceOperatorFactory*> _upstream_sources;
+    mutable SourceOperatorFactory* _group_parent = this;
     std::vector<const Pipeline*> _group_dependent_pipelines;
     EventPtr _group_initialize_event = nullptr;
+    EventPtr _adaptive_blocking_event = nullptr;
 };
 
 class SourceOperator : public Operator {

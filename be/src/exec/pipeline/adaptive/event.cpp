@@ -29,8 +29,7 @@ namespace starrocks::pipeline {
 // ------------------------------------------------------------------------------------
 
 void Event::finish(RuntimeState* state) {
-    bool expected_finished = false;
-    if (!_finished.compare_exchange_strong(expected_finished, true)) {
+    if (bool expected_finished = false; !_finished.compare_exchange_strong(expected_finished, true)) {
         return;
     }
 
@@ -54,47 +53,44 @@ void Event::add_dependency(Event* event) {
     event->_dependees.emplace_back(shared_from_this());
 }
 
+std::string Event::to_string() {
+    return std::string("Event{") + "name=" + name() + ",_num_dependencies=" + std::to_string(_num_dependencies) +
+           ",_dependees" + std::to_string(_dependees.size()) +
+           ",_num_finished_dependencies=" + std::to_string(_num_finished_dependencies.load()) +
+           ",_finished=" + std::to_string(_finished.load()) + "}";
+}
+
 // ------------------------------------------------------------------------------------
 // CollectStatsSourceInitializeEvent
 // ------------------------------------------------------------------------------------
 
 class CollectStatsSourceInitializeEvent final : public Event {
 public:
-    CollectStatsSourceInitializeEvent(DriverExecutor* const executor, SourceOperatorFactory* const leader_source_op,
-                                      std::vector<Pipeline*>&& pipelines);
+    CollectStatsSourceInitializeEvent(DriverExecutor* executor, std::vector<Pipeline*>&& pipelines);
 
     ~CollectStatsSourceInitializeEvent() override = default;
 
     void schedule(RuntimeState* state) override;
 
+    std::string name() const override { return "collect_stats_source_initialize_event"; }
+
 private:
     DriverExecutor* const _executor;
-    const size_t _original_leader_dop;
-    SourceOperatorFactory* const _leader_source_op;
+    /// The pipelines should be in topo order, that is the upstream pipeline of a pipeline should be in front of it.
     std::vector<Pipeline*> _pipelines;
 };
 
-CollectStatsSourceInitializeEvent::CollectStatsSourceInitializeEvent(DriverExecutor* const executor,
-                                                                     SourceOperatorFactory* const leader_source_op,
+CollectStatsSourceInitializeEvent::CollectStatsSourceInitializeEvent(DriverExecutor* executor,
                                                                      std::vector<Pipeline*>&& pipelines)
-        : _executor(executor),
-          _original_leader_dop(leader_source_op->degree_of_parallelism()),
-          _leader_source_op(leader_source_op),
-          _pipelines(std::move(pipelines)) {}
+        : _executor(executor), _pipelines(std::move(pipelines)) {}
 
 DEFINE_FAIL_POINT(collect_stats_source_initialize_prepare_failed);
 
 void CollectStatsSourceInitializeEvent::schedule(RuntimeState* state) {
     DeferOp defer_op([this, state] { finish(state); });
 
-    _leader_source_op->adjust_dop();
-    const size_t leader_dop = _leader_source_op->degree_of_parallelism();
-    const bool adjust_dop = leader_dop != _original_leader_dop;
-
     for (auto* pipeline : _pipelines) {
-        if (adjust_dop) {
-            pipeline->source_operator_factory()->adjust_max_dop(leader_dop);
-        }
+        pipeline->source_operator_factory()->adjust_dop();
         pipeline->instantiate_drivers(state);
     }
 
@@ -131,6 +127,24 @@ void CollectStatsSourceInitializeEvent::schedule(RuntimeState* state) {
 }
 
 // ------------------------------------------------------------------------------------
+// MergedEvent
+// ------------------------------------------------------------------------------------
+
+class MergedEven final : public Event {
+public:
+    MergedEven(const std::vector<EventPtr>& events) : _events(events) {}
+
+    ~MergedEven() override = default;
+
+    void schedule(RuntimeState* state) override { finish(state); }
+
+    std::string name() const override { return "merged_event"; }
+
+private:
+    std::vector<EventPtr> _events;
+};
+
+// ------------------------------------------------------------------------------------
 // Event factory methods.
 // ------------------------------------------------------------------------------------
 
@@ -138,10 +152,17 @@ EventPtr Event::create_event() {
     return std::make_shared<Event>();
 }
 
-EventPtr Event::create_collect_stats_source_initialize_event(DriverExecutor* const executor,
-                                                             SourceOperatorFactory* const leader_source_op,
+EventPtr Event::create_collect_stats_source_initialize_event(DriverExecutor* executor,
                                                              std::vector<Pipeline*>&& pipelines) {
-    return std::make_shared<CollectStatsSourceInitializeEvent>(executor, leader_source_op, std::move(pipelines));
+    return std::make_shared<CollectStatsSourceInitializeEvent>(executor, std::move(pipelines));
+}
+
+EventPtr Event::create_merged_event(const std::vector<EventPtr>& events) {
+    EventPtr merged_event = std::make_shared<MergedEven>(events);
+    for (const auto& event : events) {
+        merged_event->add_dependency(event.get());
+    }
+    return merged_event;
 }
 
 } // namespace starrocks::pipeline

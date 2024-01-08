@@ -78,7 +78,7 @@ public:
 
     const int64_t max_output_amplification_factor() const { return _max_output_amplification_factor; }
 
-    Event* blocking_event() const { return _blocking_event.get(); }
+    EventPtr blocking_event() const { return _blocking_event; }
 
 private:
     using BufferChunkQueue = std::queue<ChunkPtr>;
