@@ -55,6 +55,9 @@ StatusOr<ChunkPtr> BlockState::pull_chunk(int32_t driver_seq) {
 
 Status BlockState::set_finishing(int32_t driver_seq) {
     int num_finished_seqs = ++_num_finished_seqs;
+
+    VLOG_ROW << "[CsContext] set_finishing inner [num_finished_seqs=" << num_finished_seqs << "]";
+
     if (num_finished_seqs != _ctx->_upstream_dop) {
         return Status::OK();
     }

@@ -210,6 +210,8 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
     _output_full_timer_sw = runtime_state->obj_pool()->add(new MonotonicStopWatch());
     _pending_finish_timer_sw = runtime_state->obj_pool()->add(new MonotonicStopWatch());
 
+    VLOG_ROW << strings::Substitute("[Driver] prepare [driver=$0]", to_readable_string());
+
     return Status::OK();
 }
 

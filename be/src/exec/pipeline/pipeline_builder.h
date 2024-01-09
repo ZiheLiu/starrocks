@@ -24,8 +24,12 @@
 #include "exec/pipeline/spill_process_channel.h"
 
 namespace starrocks {
+
 class ExecNode;
+
 namespace pipeline {
+
+class ExchangeSourceOperatorFactory;
 
 class PipelineBuilderContext {
 public:
@@ -96,6 +100,9 @@ public:
                                               std::vector<OpFactories>& pred_operators_list);
 
     OpFactories maybe_interpolate_collect_stats(RuntimeState* state, int32_t plan_node_id, OpFactories& pred_operators);
+    OpFactories maybe_interpolate_collect_stats_for_exchange_source(
+            RuntimeState* state, int32_t plan_node_id,
+            std::shared_ptr<ExchangeSourceOperatorFactory> exchange_source_op);
 
     uint32_t next_pipe_id() { return _next_pipeline_id++; }
 

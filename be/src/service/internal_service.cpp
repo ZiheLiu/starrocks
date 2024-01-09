@@ -151,7 +151,7 @@ void PInternalServiceImplBase<T>::_transmit_chunk(google::protobuf::RpcControlle
     auto gen_transmit_info = [&transmit_info, &request]() {
         transmit_info = "transmit data: " + std::to_string((uint64_t)(request)) +
                         " fragment_instance_id=" + print_id(request->finst_id()) +
-                        " node=" + std::to_string(request->node_id());
+                        " node=" + std::to_string(request->node_id()) + " eos=" + std::to_string(request->eos());
     };
     if (VLOG_ROW_IS_ON) {
         gen_transmit_info();

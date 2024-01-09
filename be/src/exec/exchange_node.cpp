@@ -255,7 +255,8 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
                 context->next_operator_id(), id(), _texchange_node, _num_senders, _input_row_desc,
                 query_ctx->enable_pipeline_level_shuffle());
         exchange_source_op->set_degree_of_parallelism(context->degree_of_parallelism());
-        operators.emplace_back(exchange_source_op);
+        operators = context->maybe_interpolate_collect_stats_for_exchange_source(runtime_state(), id(),
+                                                                                 std::move(exchange_source_op));
     } else {
         if (_is_parallel_merge || _sort_exec_exprs.is_constant_lhs_ordering()) {
             auto exchange_merge_sort_source_operator = std::make_shared<ExchangeParallelMergeSourceOperatorFactory>(
@@ -273,6 +274,7 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
             exchange_merge_sort_source_operator->set_degree_of_parallelism(1);
             operators.emplace_back(std::move(exchange_merge_sort_source_operator));
         }
+        operators = context->maybe_interpolate_collect_stats(runtime_state(), id(), operators);
     }
 
     // Create a shared RefCountedRuntimeFilterCollector
@@ -287,8 +289,6 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
     if (operators.back()->has_runtime_filters()) {
         may_add_chunk_accumulate_operator(operators, context, id());
     }
-
-    operators = context->maybe_interpolate_collect_stats(runtime_state(), id(), operators);
 
     return operators;
 }

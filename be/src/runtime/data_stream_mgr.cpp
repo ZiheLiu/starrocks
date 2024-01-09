@@ -145,8 +145,8 @@ Status DataStreamMgr::transmit_chunk(const PTransmitChunkParams& request, ::goog
         // in acquiring _lock.
         // TODO: Rethink the lifecycle of DataStreamRecvr to distinguish
         // errors from receiver-initiated teardowns.
-        VLOG_QUERY << request.sender_id() << " sender transmits chunks to a non-existing receiver fragment "
-                   << print_id(request.finst_id());
+        VLOG_ROW << request.sender_id() << " sender transmits chunks to a non-existing receiver fragment "
+                 << print_id(request.finst_id());
         return Status::OK();
     }
 
@@ -160,6 +160,8 @@ Status DataStreamMgr::transmit_chunk(const PTransmitChunkParams& request, ::goog
     bool eos = request.eos();
     DeferOp op([&eos, &recvr, &request]() {
         if (eos) {
+            LOG(WARNING) << "eos is true, sender_id=" << request.sender_id()
+                         << ", fid=" << print_id(request.finst_id());
             recvr->remove_sender(request.sender_id(), request.be_number());
         }
     });
