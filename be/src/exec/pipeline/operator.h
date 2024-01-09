@@ -40,6 +40,21 @@ using OperatorPtr = std::shared_ptr<Operator>;
 using Operators = std::vector<OperatorPtr>;
 using LocalRFWaitingSet = std::set<TPlanNodeId>;
 
+// OperatorExecState is used to guarantee that some hooks of operator
+// is called exactly one time during whole operator
+enum OperatorStage {
+    INIT = 0,
+    PREPARED = 1,
+    PRECONDITION_NOT_READY = 2,
+    PROCESSING = 3,
+    EPOCH_FINISHING = 4,
+    EPOCH_FINISHED = 5,
+    FINISHING = 6,
+    FINISHED = 7,
+    CANCELLED = 8,
+    CLOSED = 9,
+};
+
 class Operator {
     friend class PipelineDriver;
     friend class StreamPipelineDriver;

@@ -869,6 +869,10 @@ bool DataStreamRecvr::PipelineSenderQueue::has_output(const int32_t driver_seque
 
     auto& metrics = _recvr->_metrics[driver_sequence];
     // introduce an unplug mechanism similar to scan operator to reduce scheduling overhead
+    // 1. in the unplug state, return true if there is a chunk, otherwise return false and exit the unplug state
+    if (chunk_queue_state.unpluging) {
+        return true;
+    }
 
     // 1. in the unplug state, return true if there is a chunk, otherwise return false and exit the unplug state
     if (chunk_queue_state.unpluging) {
