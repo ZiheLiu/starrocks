@@ -34,7 +34,7 @@ class PipelineDriverPoller {
 public:
     explicit PipelineDriverPoller(DriverQueueManager* driver_queue_manager);
 
-    using DriverList = std::list<DriverRawPtr>;
+    using DriverList = std::vector<DriverRawPtr>;
 
     ~PipelineDriverPoller() { shutdown(); };
     void start();
@@ -42,9 +42,9 @@ public:
     // add blocked driver to poller
     void add_blocked_driver(const DriverRawPtr driver);
     // remove blocked driver from poller
-    void remove_blocked_driver(DriverList& local_blocked_drivers, DriverList::iterator& driver_it);
+    void remove_blocked_driver(DriverList& local_blocked_drivers, size_t index);
     void on_cancel(DriverRawPtr driver, std::vector<DriverRawPtr>& ready_drivers, DriverList& local_blocked_drivers,
-                   DriverList::iterator& driver_it);
+                   size_t index, size_t& out_len);
 
     // add driver into the parked driver list
     void park_driver(const DriverRawPtr driver);
