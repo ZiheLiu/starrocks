@@ -452,11 +452,7 @@ Status PipelineDriver::check_short_circuit() {
 }
 
 bool PipelineDriver::need_report_exec_state() {
-    if (is_finished()) {
-        return false;
-    }
-
-    return _fragment_ctx->need_report_exec_state();
+    return _fragment_ctx->need_report_exec_state() && !is_finished();
 }
 
 void PipelineDriver::report_exec_state_if_necessary() {
