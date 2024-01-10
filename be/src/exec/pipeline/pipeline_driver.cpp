@@ -215,6 +215,51 @@ void PipelineDriver::update_peak_driver_queue_size_counter(size_t new_value) {
     }
 }
 
+StatusOr<bool> PipelineDriver::is_not_blocked() {
+    auto* sink_operator = this->sink_operator();
+    auto* source_operator = this->source_operator();
+
+    // If the sink operator is finished, the rest operators of this driver needn't be executed anymore.
+    if (sink_operator->is_finished()) {
+        return true;
+    }
+    if (source_operator->is_epoch_finished() || sink_operator->is_epoch_finished()) {
+        return true;
+    }
+
+    // PRECONDITION_BLOCK
+    if (_state == DriverState::PRECONDITION_BLOCK) {
+        if (is_precondition_block()) {
+            return false;
+        }
+
+        // TODO(trueeyu): This writing is to ensure that MemTracker will not be destructed before the thread ends.
+        //  This writing method is a bit tricky, and when there is a better way, replace it
+        mark_precondition_ready(_runtime_state);
+
+        RETURN_IF_ERROR(check_short_circuit());
+        if (_state == DriverState::PENDING_FINISH) {
+            return false;
+        }
+        // Driver state must be set to a state different from PRECONDITION_BLOCK bellow,
+        // to avoid call mark_precondition_ready() and check_short_circuit() multiple times.
+    }
+
+    // OUTPUT_FULL
+    if (!sink_operator->need_input()) {
+        set_driver_state(DriverState::OUTPUT_FULL);
+        return false;
+    }
+
+    // INPUT_EMPTY
+    if (!source_operator->is_finished() && !source_operator->has_output()) {
+        set_driver_state(DriverState::INPUT_EMPTY);
+        return false;
+    }
+
+    return true;
+}
+
 StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int worker_id) {
     COUNTER_UPDATE(_schedule_counter, 1);
     SCOPED_TIMER(_active_timer);
