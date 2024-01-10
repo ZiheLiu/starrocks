@@ -426,27 +426,27 @@ StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int w
 }
 
 Status PipelineDriver::check_short_circuit() {
-    int last_finished = -1;
-    for (int i = _first_unfinished; i < _operators.size() - 1; i++) {
-        if (_operators[i]->is_finished()) {
-            last_finished = i;
-        }
-    }
+    // int last_finished = -1;
+    // for (int i = _first_unfinished; i < _operators.size() - 1; i++) {
+    //     if (_operators[i]->is_finished()) {
+    //         last_finished = i;
+    //     }
+    // }
 
-    if (last_finished == -1) {
-        return Status::OK();
-    }
+    // if (last_finished == -1) {
+    //     return Status::OK();
+    // }
 
-    RETURN_IF_ERROR(_mark_operator_finishing(_operators[last_finished + 1], _runtime_state));
-    for (auto i = _first_unfinished; i <= last_finished; ++i) {
-        RETURN_IF_ERROR(_mark_operator_finished(_operators[i], _runtime_state));
-    }
-    _first_unfinished = last_finished + 1;
+    // RETURN_IF_ERROR(_mark_operator_finishing(_operators[last_finished + 1], _runtime_state));
+    // for (auto i = _first_unfinished; i <= last_finished; ++i) {
+    //     RETURN_IF_ERROR(_mark_operator_finished(_operators[i], _runtime_state));
+    // }
+    // _first_unfinished = last_finished + 1;
 
-    if (sink_operator()->is_finished()) {
-        finish_operators(_runtime_state);
-        set_driver_state(is_still_pending_finish() ? DriverState::PENDING_FINISH : DriverState::FINISH);
-    }
+    // if (sink_operator()->is_finished()) {
+    //     finish_operators(_runtime_state);
+    //     set_driver_state(is_still_pending_finish() ? DriverState::PENDING_FINISH : DriverState::FINISH);
+    // }
 
     return Status::OK();
 }
