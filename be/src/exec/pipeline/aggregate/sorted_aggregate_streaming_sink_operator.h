@@ -22,7 +22,7 @@
 
 namespace starrocks::pipeline {
 // TODO: implements cache-relation method
-class SortedAggregateStreamingSinkOperator : public Operator {
+class SortedAggregateStreamingSinkOperator : public OperatorHelper<SortedAggregateStreamingSinkOperator> {
 public:
     SortedAggregateStreamingSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
                                          int32_t driver_sequence,

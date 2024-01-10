@@ -28,12 +28,12 @@ class ExecNode;
 class ChunksSorter;
 
 namespace pipeline {
-class AssertNumRowsOperator final : public Operator {
+class AssertNumRowsOperator final : public OperatorHelper<AssertNumRowsOperator> {
 public:
     AssertNumRowsOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                           const int64_t& desired_num_rows, const std::string& subquery_string,
                           const TAssertion::type assertion)
-            : Operator(factory, id, "assert_num_rows_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "assert_num_rows_sink", plan_node_id, false, driver_sequence),
               _desired_num_rows(desired_num_rows),
               _subquery_string(subquery_string),
               _assertion(assertion) {}

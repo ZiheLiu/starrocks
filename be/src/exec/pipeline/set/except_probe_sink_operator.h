@@ -21,12 +21,12 @@ namespace starrocks::pipeline {
 
 // Each ExceptProbeSinkOperator probes the hash set built by ExceptBuildSinkOperator and labels the key as deleted.
 // For more detail information, see the comments of class ExceptBuildSinkOperator.
-class ExceptProbeSinkOperator final : public Operator {
+class ExceptProbeSinkOperator final : public OperatorHelper<ExceptProbeSinkOperator> {
 public:
     ExceptProbeSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                             std::shared_ptr<ExceptContext> except_ctx, const std::vector<ExprContext*>& dst_exprs,
                             const int32_t dependency_index)
-            : Operator(factory, id, "except_probe_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "except_probe_sink", plan_node_id, false, driver_sequence),
               _except_ctx(std::move(except_ctx)),
               _buffer_state(std::make_unique<ExceptBufferState>()),
               _dst_exprs(dst_exprs),

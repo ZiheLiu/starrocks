@@ -27,14 +27,14 @@ class ExprContext;
 class ResultWriter;
 
 namespace pipeline {
-class ResultSinkOperator final : public Operator {
+class ResultSinkOperator final : public OperatorHelper<ResultSinkOperator> {
 public:
     ResultSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                        TResultSinkType::type sink_type, bool is_binary_format, TResultSinkFormatType::type format_type,
                        std::vector<ExprContext*> output_expr_ctxs, const std::shared_ptr<BufferControlBlock>& sender,
                        std::atomic<int32_t>& num_sinks, std::atomic<int64_t>& num_written_rows,
                        FragmentContext* const fragment_ctx)
-            : Operator(factory, id, "result_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "result_sink", plan_node_id, false, driver_sequence),
               _sink_type(sink_type),
               _is_binary_format(is_binary_format),
               _format_type(format_type),

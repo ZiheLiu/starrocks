@@ -38,14 +38,23 @@ class OperatorWithDependency;
 using DriverDependencyPtr = OperatorWithDependency*;
 using DriverDependencies = std::vector<DriverDependencyPtr>;
 
-class OperatorWithDependency : public Operator {
+class OperatorWithDependency : public OperatorHelper<OperatorWithDependency> {
 public:
     OperatorWithDependency(OperatorFactory* factory, int32_t id, const std::string& name, int32_t plan_node_id,
                            bool is_subordinate, int32_t driver_sequence)
-            : Operator(factory, id, name, plan_node_id, is_subordinate, driver_sequence) {}
+            : OperatorHelper(factory, id, name, plan_node_id, is_subordinate, driver_sequence) {}
     ~OperatorWithDependency() override = default;
     // return true if the corresponding right operator is full materialized, otherwise return false.
     virtual bool is_ready() const = 0;
+};
+
+template <typename Derived>
+class OperatorWithDependencyHelper : public OperatorWithDependency {
+    DEFINE_GET_CHECK_STATE_FUNCTIONS(Derived)
+public:
+    OperatorWithDependencyHelper(OperatorFactory* factory, int32_t id, const std::string& name, int32_t plan_node_id,
+                                 bool is_subordinate, int32_t driver_sequence)
+            : OperatorWithDependency(factory, id, name, plan_node_id, is_subordinate, driver_sequence) {}
 };
 
 class OperatorWithDependencyFactory : public OperatorFactory {

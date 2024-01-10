@@ -37,12 +37,12 @@ namespace starrocks::pipeline {
 // The rows are shuffled to degree of parallelism (DOP) partitions by local shuffle exchange.
 // For each partition, there are a IntersectBuildSinkOperator driver, a IntersectProbeSinkOperator driver
 // for each child, and a IntersectOutputSourceOperator.
-class IntersectBuildSinkOperator final : public Operator {
+class IntersectBuildSinkOperator final : public OperatorHelper<IntersectBuildSinkOperator> {
 public:
     IntersectBuildSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                std::shared_ptr<IntersectContext> intersect_ctx,
                                const std::vector<ExprContext*>& dst_exprs)
-            : Operator(factory, id, "intersect_build_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "intersect_build_sink", plan_node_id, false, driver_sequence),
               _intersect_ctx(std::move(intersect_ctx)),
               _dst_exprs(dst_exprs) {
         _intersect_ctx->ref();

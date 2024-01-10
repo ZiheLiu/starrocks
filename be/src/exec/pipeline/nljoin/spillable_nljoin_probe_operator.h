@@ -92,7 +92,7 @@ private:
 };
 
 // now we only support cross-join/left-semi join/left-anti join
-class SpillableNLJoinProbeOperator final : public OperatorWithDependency {
+class SpillableNLJoinProbeOperator final : public OperatorWithDependencyHelper<SpillableNLJoinProbeOperator> {
 public:
     SpillableNLJoinProbeOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                  TJoinOp::type join_op, const std::string& sql_join_conjuncts,

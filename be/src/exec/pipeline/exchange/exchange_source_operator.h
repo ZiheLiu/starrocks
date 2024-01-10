@@ -28,10 +28,10 @@ namespace pipeline {
 class AdaptiveExchangeSourceOperatorFactory;
 class AdaptiveExchangeSourceOperator;
 
-class ExchangeSourceOperator : public SourceOperator {
+class ExchangeSourceOperator : public SourceOperatorHelper<ExchangeSourceOperator> {
 public:
     ExchangeSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
-            : SourceOperator(factory, id, "exchange_source", plan_node_id, false, driver_sequence) {}
+            : SourceOperatorHelper(factory, id, "exchange_source", plan_node_id, false, driver_sequence) {}
 
     ~ExchangeSourceOperator() override = default;
 

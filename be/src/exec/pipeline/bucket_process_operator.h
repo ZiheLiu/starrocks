@@ -41,11 +41,11 @@ struct BucketProcessContext {
 };
 using BucketProcessContextPtr = std::shared_ptr<BucketProcessContext>;
 
-class BucketProcessSinkOperator : public Operator {
+class BucketProcessSinkOperator : public OperatorHelper<BucketProcessSinkOperator> {
 public:
     BucketProcessSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                               BucketProcessContextPtr& ctx)
-            : Operator(factory, id, "bucket_process_sink", plan_node_id, false, driver_sequence), _ctx(ctx) {}
+            : OperatorHelper(factory, id, "bucket_process_sink", plan_node_id, false, driver_sequence), _ctx(ctx) {}
     ~BucketProcessSinkOperator() override = default;
 
     Status prepare(RuntimeState* state) override;
@@ -72,11 +72,12 @@ private:
     BucketProcessContextPtr _ctx;
 };
 
-class BucketProcessSourceOperator : public SourceOperator {
+class BucketProcessSourceOperator : public SourceOperatorHelper<BucketProcessSourceOperator> {
 public:
     BucketProcessSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                 BucketProcessContextPtr& ctx)
-            : SourceOperator(factory, id, "bucket_process_source", plan_node_id, false, driver_sequence), _ctx(ctx) {}
+            : SourceOperatorHelper(factory, id, "bucket_process_source", plan_node_id, false, driver_sequence),
+              _ctx(ctx) {}
     ~BucketProcessSourceOperator() override = default;
 
     Status prepare(RuntimeState* state) override;

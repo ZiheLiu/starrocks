@@ -21,11 +21,11 @@
 
 namespace starrocks::pipeline {
 
-class AggregateStreamingSinkOperator : public Operator {
+class AggregateStreamingSinkOperator : public OperatorHelper<AggregateStreamingSinkOperator> {
 public:
     AggregateStreamingSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                    AggregatorPtr aggregator)
-            : Operator(factory, id, "aggregate_streaming_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "aggregate_streaming_sink", plan_node_id, false, driver_sequence),
               _aggregator(std::move(aggregator)),
               _auto_state(AggrAutoState::INIT_PREAGG) {
         _aggregator->set_aggr_phase(AggrPhase1);

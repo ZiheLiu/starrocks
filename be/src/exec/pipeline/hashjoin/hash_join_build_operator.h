@@ -29,7 +29,7 @@ namespace starrocks::pipeline {
 
 using HashJoiner = starrocks::HashJoiner;
 
-class HashJoinBuildOperator : public Operator {
+class HashJoinBuildOperator : public OperatorHelper<HashJoinBuildOperator> {
 public:
     HashJoinBuildOperator(OperatorFactory* factory, int32_t id, const string& name, int32_t plan_node_id,
                           int32_t driver_sequence, HashJoinerPtr join_builder,

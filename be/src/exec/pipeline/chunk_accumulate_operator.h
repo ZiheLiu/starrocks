@@ -24,10 +24,10 @@ class RuntimeState;
 namespace pipeline {
 
 // Accumulate chunks and output a chunk, until the number of rows of the input chunks is large enough.
-class ChunkAccumulateOperator final : public Operator {
+class ChunkAccumulateOperator final : public OperatorHelper<ChunkAccumulateOperator> {
 public:
     ChunkAccumulateOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
-            : Operator(factory, id, "chunk_accumulate", plan_node_id, true, driver_sequence) {}
+            : OperatorHelper(factory, id, "chunk_accumulate", plan_node_id, true, driver_sequence) {}
 
     ~ChunkAccumulateOperator() override = default;
 

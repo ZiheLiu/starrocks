@@ -32,7 +32,7 @@ namespace starrocks::pipeline {
 // 1. Permute the block from probe side and build side
 // 2. Apply the join conjuncts and filter data
 // 3. Emit the unmatched probe rows and build row for outer join
-class NLJoinProbeOperator final : public OperatorWithDependency {
+class NLJoinProbeOperator final : public OperatorWithDependencyHelper<NLJoinProbeOperator> {
 public:
     NLJoinProbeOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                         TJoinOp::type join_op, const std::string& sql_join_conjuncts,

@@ -19,10 +19,10 @@
 namespace starrocks::pipeline {
 
 // EmptySetOperator returns an empty result set.
-class EmptySetOperator final : public SourceOperator {
+class EmptySetOperator final : public SourceOperatorHelper<EmptySetOperator> {
 public:
     EmptySetOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
-            : SourceOperator(factory, id, "empty_set", plan_node_id, false, driver_sequence) {}
+            : SourceOperatorHelper(factory, id, "empty_set", plan_node_id, false, driver_sequence) {}
 
     ~EmptySetOperator() override = default;
 

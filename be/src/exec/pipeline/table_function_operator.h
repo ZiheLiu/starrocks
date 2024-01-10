@@ -22,11 +22,11 @@
 #include "runtime/runtime_state.h"
 
 namespace starrocks::pipeline {
-class TableFunctionOperator final : public Operator {
+class TableFunctionOperator final : public OperatorHelper<TableFunctionOperator> {
 public:
     TableFunctionOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                           const TPlanNode& tnode)
-            : Operator(factory, id, "table_function", plan_node_id, false, driver_sequence), _tnode(tnode) {}
+            : OperatorHelper(factory, id, "table_function", plan_node_id, false, driver_sequence), _tnode(tnode) {}
 
     ~TableFunctionOperator() override = default;
 

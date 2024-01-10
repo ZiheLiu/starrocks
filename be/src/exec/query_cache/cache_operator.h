@@ -39,7 +39,7 @@ class CacheOperator;
 using CacheOperatorRawPtr = CacheOperator*;
 using CacheOperatorPtr = std::shared_ptr<CacheOperator>;
 
-class CacheOperator final : public pipeline::Operator {
+class CacheOperator final : public pipeline::OperatorHelper<CacheOperator> {
 public:
     CacheOperator(pipeline::OperatorFactory* factory, int32_t driver_sequence, CacheManagerRawPtr cache_mgr,
                   const CacheParam& cache_param);

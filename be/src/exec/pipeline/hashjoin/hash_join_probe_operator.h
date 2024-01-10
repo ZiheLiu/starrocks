@@ -24,7 +24,7 @@ namespace starrocks::pipeline {
 
 using HashJoiner = starrocks::HashJoiner;
 
-class HashJoinProbeOperator : public OperatorWithDependency {
+class HashJoinProbeOperator : public OperatorWithDependencyHelper<HashJoinProbeOperator> {
 public:
     HashJoinProbeOperator(OperatorFactory* factory, int32_t id, const string& name, int32_t plan_node_id,
                           int32_t driver_sequence, HashJoinerPtr join_prober, HashJoinerPtr join_builder);

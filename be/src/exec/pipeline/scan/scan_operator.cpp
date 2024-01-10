@@ -37,7 +37,7 @@ namespace starrocks::pipeline {
 
 ScanOperator::ScanOperator(OperatorFactory* factory, int32_t id, int32_t driver_sequence, int32_t dop,
                            ScanNode* scan_node)
-        : SourceOperator(factory, id, scan_node->name(), scan_node->id(), false, driver_sequence),
+        : SourceOperatorHelper(factory, id, scan_node->name(), scan_node->id(), false, driver_sequence),
           _scan_node(scan_node),
           _dop(dop),
           _output_chunk_by_bucket(scan_node->output_chunk_by_bucket()),

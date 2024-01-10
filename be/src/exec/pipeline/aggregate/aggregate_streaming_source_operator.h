@@ -20,11 +20,11 @@
 #include "exec/pipeline/source_operator.h"
 
 namespace starrocks::pipeline {
-class AggregateStreamingSourceOperator : public SourceOperator {
+class AggregateStreamingSourceOperator : public SourceOperatorHelper<AggregateStreamingSourceOperator> {
 public:
     AggregateStreamingSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
                                      int32_t driver_sequence, AggregatorPtr aggregator)
-            : SourceOperator(factory, id, "aggregate_streaming_source", plan_node_id, false, driver_sequence),
+            : SourceOperatorHelper(factory, id, "aggregate_streaming_source", plan_node_id, false, driver_sequence),
               _aggregator(std::move(aggregator)) {
         _aggregator->ref();
     }

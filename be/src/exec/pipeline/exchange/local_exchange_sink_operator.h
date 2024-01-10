@@ -20,11 +20,12 @@
 #include "exec/pipeline/operator.h"
 
 namespace starrocks::pipeline {
-class LocalExchangeSinkOperator final : public Operator {
+class LocalExchangeSinkOperator final : public OperatorHelper<LocalExchangeSinkOperator> {
 public:
     LocalExchangeSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                               const std::shared_ptr<LocalExchanger>& exchanger)
-            : Operator(factory, id, "local_exchange_sink", plan_node_id, true, driver_sequence), _exchanger(exchanger) {
+            : OperatorHelper(factory, id, "local_exchange_sink", plan_node_id, true, driver_sequence),
+              _exchanger(exchanger) {
         _unique_metrics->add_info_string("Type", exchanger->name());
     }
 

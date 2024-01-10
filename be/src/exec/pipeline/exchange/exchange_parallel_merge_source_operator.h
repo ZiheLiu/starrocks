@@ -50,11 +50,11 @@ namespace pipeline {
 // can be easily integrated into the pipeline engine. The only thing for this operator need to to is to call
 // the method MergePathCascadeMerger::try_get_next.
 //
-class ExchangeParallelMergeSourceOperator final : public SourceOperator {
+class ExchangeParallelMergeSourceOperator final : public SourceOperatorHelper<ExchangeParallelMergeSourceOperator> {
 public:
     ExchangeParallelMergeSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
                                         int32_t driver_sequence)
-            : SourceOperator(factory, id, "global_parallel_merge_source", plan_node_id, false, driver_sequence) {}
+            : SourceOperatorHelper(factory, id, "global_parallel_merge_source", plan_node_id, false, driver_sequence) {}
 
     ~ExchangeParallelMergeSourceOperator() override = default;
 

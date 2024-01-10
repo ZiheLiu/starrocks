@@ -18,10 +18,10 @@
 
 namespace starrocks::pipeline {
 
-class BlackHoleTableSinkOperator final : public Operator {
+class BlackHoleTableSinkOperator final : public OperatorHelper<BlackHoleTableSinkOperator> {
 public:
     BlackHoleTableSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
-            : Operator(factory, id, "blackhole_table_sink", plan_node_id, false, driver_sequence) {}
+            : OperatorHelper(factory, id, "blackhole_table_sink", plan_node_id, false, driver_sequence) {}
     ~BlackHoleTableSinkOperator() override = default;
 
     bool has_output() const override { return false; }

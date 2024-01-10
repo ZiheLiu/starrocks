@@ -36,11 +36,11 @@ struct GeneratorStreamSourceParam {
 using SourceOperator = pipeline::SourceOperator;
 using Operator = pipeline::Operator;
 
-class GeneratorStreamSourceOperator final : public SourceOperator {
+class GeneratorStreamSourceOperator final : public SourceOperatorHelper<GeneratorStreamSourceOperator> {
 public:
     GeneratorStreamSourceOperator(pipeline::OperatorFactory* factory, int32_t id, const std::string& name,
                                   int32_t plan_node_id, int32_t driver_sequence, GeneratorStreamSourceParam param)
-            : SourceOperator(factory, id, name, plan_node_id, false, driver_sequence),
+            : SourceOperatorHelper(factory, id, name, plan_node_id, false, driver_sequence),
               _param(param),
               _tablet_id(driver_sequence) {}
 
@@ -98,10 +98,10 @@ private:
     GeneratorStreamSourceParam _param;
 };
 
-class PrinterStreamSinkOperator final : public Operator {
+class PrinterStreamSinkOperator final : public OperatorHelper<PrinterStreamSinkOperator> {
 public:
     PrinterStreamSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
-            : Operator(factory, id, "printer_stream_sink", plan_node_id, false, driver_sequence) {}
+            : OperatorHelper(factory, id, "printer_stream_sink", plan_node_id, false, driver_sequence) {}
 
     ~PrinterStreamSinkOperator() override = default;
 

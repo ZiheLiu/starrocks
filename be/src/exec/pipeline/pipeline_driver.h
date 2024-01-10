@@ -286,9 +286,7 @@ public:
     ScanOperator* source_scan_operator() {
         return _operators.empty() ? nullptr : dynamic_cast<ScanOperator*>(_operators.front().get());
     }
-    SourceOperator* source_operator() {
-        return _operators.empty() ? nullptr : down_cast<SourceOperator*>(_operators.front().get());
-    }
+    SourceOperator* source_operator() { return down_cast<SourceOperator*>(_operators.front().get()); }
     RuntimeProfile* runtime_profile() { return _runtime_profile.get(); }
     void update_peak_driver_queue_size_counter(size_t new_value);
     // drivers that waits for runtime filters' readiness must be marked PRECONDITION_NOT_READY and put into
@@ -484,6 +482,9 @@ protected:
     std::atomic<bool> _in_ready_queue{false};
 
     int _dispatcher_id = -1;
+
+    Operator::CheckStateFunctions _source_check_state_functions;
+    Operator::CheckStateFunctions _sink_check_state_functions;
 
     // metrics
     RuntimeProfile::Counter* _total_timer = nullptr;

@@ -37,7 +37,7 @@ using ConjugateOperatorFactoryPtr = std::shared_ptr<ConjugateOperatorFactory>;
 // OlapScanOperator->MultilaneOperator(ProjectOperator)->MultilaneOperator(
 //  ConjugateOperator(AggregateBlockingSinkOperator, AggregateBlockingSourceOperator))->CacheOperator->
 //  AggregateBlockSinkOperator.
-class ConjugateOperator : public pipeline::Operator {
+class ConjugateOperator : public pipeline::OperatorHelper<ConjugateOperator> {
 public:
     ConjugateOperator(pipeline::OperatorFactory* factory, int32_t driver_sequence, pipeline::OperatorPtr sink_op,
                       pipeline::OperatorPtr source_op);

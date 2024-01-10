@@ -130,11 +130,11 @@ protected:
     std::shared_ptr<PipelineEvent> _initialize_event;
 };
 
-class SourceOperator : public Operator {
+class SourceOperator : public OperatorHelper<SourceOperator> {
 public:
     SourceOperator(OperatorFactory* factory, int32_t id, const std::string& name, int32_t plan_node_id,
                    bool is_subordinate, int32_t driver_sequence)
-            : Operator(factory, id, name, plan_node_id, is_subordinate, driver_sequence) {}
+            : OperatorHelper(factory, id, name, plan_node_id, is_subordinate, driver_sequence) {}
     ~SourceOperator() override = default;
 
     bool need_input() const override { return false; }
@@ -160,6 +160,15 @@ protected:
     const SourceOperatorFactory* _source_factory() const { return down_cast<const SourceOperatorFactory*>(_factory); }
 
     MorselQueue* _morsel_queue = nullptr;
+};
+
+template <typename Derived>
+class SourceOperatorHelper : public SourceOperator {
+    DEFINE_GET_CHECK_STATE_FUNCTIONS(Derived)
+public:
+    SourceOperatorHelper(OperatorFactory* factory, int32_t id, const std::string& name, int32_t plan_node_id,
+                         bool is_subordinate, int32_t driver_sequence)
+            : SourceOperator(factory, id, name, plan_node_id, is_subordinate, driver_sequence) {}
 };
 
 } // namespace pipeline

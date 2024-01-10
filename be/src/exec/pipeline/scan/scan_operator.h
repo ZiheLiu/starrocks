@@ -30,7 +30,7 @@ namespace pipeline {
 class ChunkBufferToken;
 using ChunkBufferTokenPtr = std::unique_ptr<ChunkBufferToken>;
 class PipelineDriver;
-class ScanOperator : public SourceOperator {
+class ScanOperator : public SourceOperatorHelper<ScanOperator> {
 public:
     ScanOperator(OperatorFactory* factory, int32_t id, int32_t driver_sequence, int32_t dop, ScanNode* scan_node);
 

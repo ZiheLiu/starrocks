@@ -39,7 +39,7 @@ using ReduceFunc = std::function<double(double, double)>;
 //
 // So we just control the behavior of cache populate/probe/passthrough mode, then input 0..n input these pipelines, to
 // verify the output to be pi=3.1415926 or square(n).
-class MapOperator final : public pipeline::Operator {
+class MapOperator final : public pipeline::OperatorHelper<MapOperator> {
 public:
     MapOperator(pipeline::OperatorFactory* factory, int driver_sequence, MapFunc map_func);
     ~MapOperator() = default;
@@ -113,7 +113,7 @@ private:
     Reducers _reducers;
 };
 
-class ReduceSinkOperator final : public pipeline::Operator {
+class ReduceSinkOperator final : public pipeline::OperatorHelper<ReduceSinkOperator> {
 public:
     ReduceSinkOperator(pipeline::OperatorFactory* factory, int32_t driver_sequence, ReducerRawPtr reducer);
     ~ReduceSinkOperator() = default;

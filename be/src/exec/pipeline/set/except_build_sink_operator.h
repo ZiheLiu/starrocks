@@ -35,11 +35,11 @@ namespace starrocks::pipeline {
 // The rows are shuffled to degree of parallelism (DOP) partitions by local shuffle exchange.
 // For each partition, there are a ExceptBuildSinkOperator driver, a ExceptProbeSinkOperator driver
 // for each child, and a ExceptOutputSourceOperator.
-class ExceptBuildSinkOperator final : public Operator {
+class ExceptBuildSinkOperator final : public OperatorHelper<ExceptBuildSinkOperator> {
 public:
     ExceptBuildSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                             std::shared_ptr<ExceptContext> except_ctx, const std::vector<ExprContext*>& dst_exprs)
-            : Operator(factory, id, "except_build_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "except_build_sink", plan_node_id, false, driver_sequence),
               _except_ctx(std::move(except_ctx)),
               _buffer_state(std::make_unique<ExceptBufferState>()),
               _dst_exprs(dst_exprs) {

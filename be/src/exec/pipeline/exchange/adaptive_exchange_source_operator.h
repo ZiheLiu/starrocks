@@ -19,7 +19,7 @@
 
 namespace starrocks::pipeline {
 
-class AdaptiveExchangeSourceOperator : public SourceOperator {
+class AdaptiveExchangeSourceOperator : public SourceOperatorHelper<AdaptiveExchangeSourceOperator> {
 public:
     AdaptiveExchangeSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                    std::vector<std::shared_ptr<Operator>> exchange_sources,

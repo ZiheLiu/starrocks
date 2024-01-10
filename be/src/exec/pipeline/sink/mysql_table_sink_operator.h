@@ -27,11 +27,11 @@ namespace pipeline {
 
 class MysqlTableSinkIOBuffer;
 
-class MysqlTableSinkOperator final : public Operator {
+class MysqlTableSinkOperator final : public OperatorHelper<MysqlTableSinkOperator> {
 public:
     MysqlTableSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                            std::shared_ptr<MysqlTableSinkIOBuffer> mysql_table_sink_buffer)
-            : Operator(factory, id, "mysql_table_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "mysql_table_sink", plan_node_id, false, driver_sequence),
               _mysql_table_sink_buffer(std::move(std::move(mysql_table_sink_buffer))) {}
 
     ~MysqlTableSinkOperator() override = default;

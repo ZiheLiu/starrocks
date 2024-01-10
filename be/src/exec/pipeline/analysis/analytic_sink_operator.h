@@ -20,11 +20,11 @@
 #include "exec/pipeline/operator.h"
 
 namespace starrocks::pipeline {
-class AnalyticSinkOperator : public Operator {
+class AnalyticSinkOperator : public OperatorHelper<AnalyticSinkOperator> {
 public:
     AnalyticSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                          const TPlanNode& tnode, AnalytorPtr&& analytor)
-            : Operator(factory, id, "analytic_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "analytic_sink", plan_node_id, false, driver_sequence),
               _tnode(tnode),
               _analytor(std::move(analytor)) {
         _analytor->ref();

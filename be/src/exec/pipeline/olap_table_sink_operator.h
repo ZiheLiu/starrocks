@@ -27,12 +27,12 @@ class OlapTableSink;
 }
 
 namespace pipeline {
-class OlapTableSinkOperator final : public Operator {
+class OlapTableSinkOperator final : public OperatorHelper<OlapTableSinkOperator> {
 public:
     OlapTableSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                           int32_t sender_id, starrocks::stream_load::OlapTableSink* sink,
                           FragmentContext* const fragment_ctx, std::atomic<int32_t>& num_sinkers)
-            : Operator(factory, id, "olap_table_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "olap_table_sink", plan_node_id, false, driver_sequence),
               _sink(sink),
               _fragment_ctx(fragment_ctx),
               _num_sinkers(num_sinkers),

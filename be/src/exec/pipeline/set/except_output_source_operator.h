@@ -22,11 +22,11 @@ namespace starrocks::pipeline {
 
 // ExceptOutputSourceOperator traverses the hast set and picks up undeleted entries after probe phase is finished.
 // For more detail information, see the comments of class ExceptBuildSinkOperator.
-class ExceptOutputSourceOperator final : public SourceOperator {
+class ExceptOutputSourceOperator final : public SourceOperatorHelper<ExceptOutputSourceOperator> {
 public:
     ExceptOutputSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                std::shared_ptr<ExceptContext> except_ctx, const int32_t dependency_index)
-            : SourceOperator(factory, id, "except_output_source", plan_node_id, false, driver_sequence),
+            : SourceOperatorHelper(factory, id, "except_output_source", plan_node_id, false, driver_sequence),
               _except_ctx(std::move(except_ctx)) {
         _except_ctx->ref();
     }

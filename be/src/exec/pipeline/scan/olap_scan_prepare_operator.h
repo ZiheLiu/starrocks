@@ -26,7 +26,7 @@ namespace pipeline {
 // It does some common preparation works for OlapScan, after its local waiting set is ready
 // and before OlapScanOperator::pull_chunk. That is, OlapScanOperator depends on
 // it and waits until it is finished.
-class OlapScanPrepareOperator final : public SourceOperator {
+class OlapScanPrepareOperator final : public SourceOperatorHelper<OlapScanPrepareOperator> {
 public:
     OlapScanPrepareOperator(OperatorFactory* factory, int32_t id, const string& name, int32_t plan_node_id,
                             int32_t driver_sequence, OlapScanContextPtr ctx);

@@ -22,11 +22,12 @@ namespace starrocks {
 class ExprContext;
 
 namespace pipeline {
-class SelectOperator final : public Operator {
+class SelectOperator final : public OperatorHelper<SelectOperator> {
 public:
     SelectOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                    const std::vector<ExprContext*>& conjunct_ctxs)
-            : Operator(factory, id, "select", plan_node_id, false, driver_sequence), _conjunct_ctxs(conjunct_ctxs) {}
+            : OperatorHelper(factory, id, "select", plan_node_id, false, driver_sequence),
+              _conjunct_ctxs(conjunct_ctxs) {}
 
     ~SelectOperator() override = default;
     Status prepare(RuntimeState* state) override;

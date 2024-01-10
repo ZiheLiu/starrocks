@@ -19,7 +19,7 @@
 
 namespace starrocks::pipeline {
 
-class CollectStatsSinkOperator final : public Operator {
+class CollectStatsSinkOperator final : public OperatorHelper<CollectStatsSinkOperator> {
 public:
     CollectStatsSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, const int32_t driver_sequence,
                              CollectStatsContextRawPtr ctx);

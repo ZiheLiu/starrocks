@@ -29,7 +29,7 @@ namespace starrocks::pipeline {
 
 StatusOr<std::string> column_to_string(const TypeDescriptor& type_desc, const ColumnPtr& column);
 
-class TableFunctionTableSinkOperator final : public Operator {
+class TableFunctionTableSinkOperator final : public OperatorHelper<TableFunctionTableSinkOperator> {
 public:
     TableFunctionTableSinkOperator(OperatorFactory* factory, const int32_t id, const int32_t plan_node_id,
                                    const int32_t driver_sequence, const string& path, const string& file_format,
@@ -39,7 +39,7 @@ public:
                                    const std::vector<std::string>& partition_column_names, bool write_single_file,
                                    const TCloudConfiguration& cloud_conf, FragmentContext* fragment_ctx,
                                    std::shared_ptr<::parquet::schema::GroupNode> parquet_file_schema)
-            : Operator(factory, id, "table_function_table_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "table_function_table_sink", plan_node_id, false, driver_sequence),
               _path(path),
               _file_format(file_format),
               _compression_type(compression_type),

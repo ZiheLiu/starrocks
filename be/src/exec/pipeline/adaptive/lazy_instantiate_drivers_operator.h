@@ -29,7 +29,7 @@ using PipelineGroupMap = std::unordered_map<SourceOperatorFactory*, Pipelines>;
 /// See the comment of SourceOperatorFactory::AdaptiveState for detail.
 ///
 /// Instantiate the drivers and maybe adjust DOP, when a pipeline group is ready.
-class LazyInstantiateDriversOperator final : public SourceOperator {
+class LazyInstantiateDriversOperator final : public SourceOperatorHelper<LazyInstantiateDriversOperator> {
 public:
     LazyInstantiateDriversOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
                                    const int32_t driver_sequence, const PipelineGroupMap& unready_pipeline_groups);

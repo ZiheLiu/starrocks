@@ -24,10 +24,10 @@
 
 namespace starrocks::pipeline {
 
-class MockEmptyOperator final : public SourceOperator {
+class MockEmptyOperator final : public SourceOperatorHelper<MockEmptyOperator> {
 public:
     MockEmptyOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
-            : SourceOperator(factory, id, "mock_empty_operator", plan_node_id, false, driver_sequence) {}
+            : SourceOperatorHelper(factory, id, "mock_empty_operator", plan_node_id, false, driver_sequence) {}
 
     ~MockEmptyOperator() override = default;
 

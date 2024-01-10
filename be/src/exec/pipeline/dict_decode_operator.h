@@ -22,12 +22,12 @@
 
 namespace starrocks::pipeline {
 
-class DictDecodeOperator final : public Operator {
+class DictDecodeOperator final : public OperatorHelper<DictDecodeOperator> {
 public:
     DictDecodeOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                        std::vector<int32_t>& encode_column_cids, std::vector<int32_t>& decode_column_cids,
                        std::vector<GlobalDictDecoderPtr>& decoders)
-            : Operator(factory, id, "dict_decode", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "dict_decode", plan_node_id, false, driver_sequence),
               _encode_column_cids(encode_column_cids),
               _decode_column_cids(decode_column_cids),
               _decoders(decoders) {}

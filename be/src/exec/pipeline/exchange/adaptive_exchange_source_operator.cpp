@@ -30,7 +30,7 @@ AdaptiveExchangeSourceOperator::AdaptiveExchangeSourceOperator(OperatorFactory* 
                                                                int32_t plan_node_id, int32_t driver_sequence,
                                                                std::vector<std::shared_ptr<Operator>> exchange_sources,
                                                                CollectStatsContextPtr collect_stats_ctx)
-        : SourceOperator(factory, id, "adaptive_exchange_source", plan_node_id, false, driver_sequence),
+        : SourceOperatorHelper(factory, id, "adaptive_exchange_source", plan_node_id, false, driver_sequence),
           _inner_dop(exchange_sources.size()),
           _exchange_sources(std::move(exchange_sources)),
           _collect_stats_ctx(std::move(collect_stats_ctx)) {}

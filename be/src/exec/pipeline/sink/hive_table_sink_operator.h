@@ -28,7 +28,7 @@
 namespace starrocks {
 namespace pipeline {
 
-class HiveTableSinkOperator final : public Operator {
+class HiveTableSinkOperator final : public OperatorHelper<HiveTableSinkOperator> {
 public:
     HiveTableSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                           std::string location, std::string file_format, TCompressionType::type compression_codec,
@@ -38,7 +38,7 @@ public:
                           const vector<ExprContext*>& partition_output_expr,
                           const vector<std::string>& partition_column_names,
                           const vector<std::string>& data_column_names, bool is_static_partition_insert)
-            : Operator(factory, id, "hive_table_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "hive_table_sink", plan_node_id, false, driver_sequence),
               _location(std::move(location)),
               _file_format(std::move(file_format)),
               _compression_codec(std::move(compression_codec)),

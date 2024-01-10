@@ -20,12 +20,12 @@
 #include "exec/pipeline/source_operator.h"
 
 namespace starrocks::pipeline {
-class AggregateBlockingSourceOperator : public SourceOperator {
+class AggregateBlockingSourceOperator : public SourceOperatorHelper<AggregateBlockingSourceOperator> {
 public:
     AggregateBlockingSourceOperator(AggregatorPtr aggregator, OperatorFactory* factory, int32_t id,
                                     int32_t plan_node_id, int32_t driver_sequence,
                                     const char* name = "aggregate_blocking_source")
-            : SourceOperator(factory, id, name, plan_node_id, false, driver_sequence),
+            : SourceOperatorHelper(factory, id, name, plan_node_id, false, driver_sequence),
               _aggregator(std::move(aggregator)) {
         _aggregator->ref();
     }

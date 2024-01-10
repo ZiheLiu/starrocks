@@ -19,7 +19,7 @@
 
 namespace starrocks::pipeline {
 
-class CollectStatsSourceOperator final : public SourceOperator {
+class CollectStatsSourceOperator final : public SourceOperatorHelper<CollectStatsSourceOperator> {
 public:
     CollectStatsSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
                                const int32_t driver_sequence, CollectStatsContextRawPtr ctx);

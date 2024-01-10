@@ -18,7 +18,7 @@
 #include "exec/pipeline/source_operator.h"
 
 namespace starrocks::pipeline {
-class SortedAggregateStreamingSourceOperator : public SourceOperator {
+class SortedAggregateStreamingSourceOperator : public SourceOperatorHelper<SortedAggregateStreamingSourceOperator> {
 public:
     SortedAggregateStreamingSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id,
                                            int32_t driver_sequence, SortedStreamingAggregatorPtr aggregator);

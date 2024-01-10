@@ -19,11 +19,11 @@
 #include "exec/pipeline/source_operator.h"
 
 namespace starrocks::pipeline {
-class HashPartitionSourceOperator final : public SourceOperator {
+class HashPartitionSourceOperator final : public SourceOperatorHelper<HashPartitionSourceOperator> {
 public:
     HashPartitionSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                 HashPartitionContext* hash_partition_ctx)
-            : SourceOperator(factory, id, "hash_partition_source", plan_node_id, true, driver_sequence),
+            : SourceOperatorHelper(factory, id, "hash_partition_source", plan_node_id, true, driver_sequence),
               _hash_partition_ctx(hash_partition_ctx) {}
 
     ~HashPartitionSourceOperator() override = default;

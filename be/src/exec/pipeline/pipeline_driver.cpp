@@ -180,6 +180,9 @@ Status PipelineDriver::prepare(RuntimeState* runtime_state) {
         }
     }
 
+    _source_check_state_functions = source_operator()->get_check_state_functions();
+    _sink_check_state_functions = sink_operator()->get_check_state_functions();
+
     for (auto& op : _operators) {
         int64_t time_spent = 0;
         {
@@ -220,10 +223,11 @@ StatusOr<bool> PipelineDriver::is_not_blocked() {
     auto* source_operator = this->source_operator();
 
     // If the sink operator is finished, the rest operators of this driver needn't be executed anymore.
-    if (sink_operator->is_finished()) {
+    if (_sink_check_state_functions.is_finished(sink_operator)) {
         return true;
     }
-    if (source_operator->is_epoch_finished() || sink_operator->is_epoch_finished()) {
+    if (_source_check_state_functions.is_epoch_finished(source_operator) ||
+        _sink_check_state_functions.is_epoch_finished(sink_operator)) {
         return true;
     }
 
@@ -246,13 +250,14 @@ StatusOr<bool> PipelineDriver::is_not_blocked() {
     }
 
     // OUTPUT_FULL
-    if (!sink_operator->need_input()) {
+    if (!_sink_check_state_functions.need_input(sink_operator)) {
         set_driver_state(DriverState::OUTPUT_FULL);
         return false;
     }
 
     // INPUT_EMPTY
-    if (!source_operator->is_finished() && !source_operator->has_output()) {
+    if (!_source_check_state_functions.is_finished(source_operator) &&
+        !_source_check_state_functions.has_output(source_operator)) {
         set_driver_state(DriverState::INPUT_EMPTY);
         return false;
     }

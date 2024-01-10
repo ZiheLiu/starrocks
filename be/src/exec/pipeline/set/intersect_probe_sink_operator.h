@@ -22,12 +22,12 @@ namespace starrocks::pipeline {
 // Each IntersectProbeSinkOperator probes the hash set built by IntersectBuildSinkOperator.
 // The hash set records the ordinal of IntersectProbeSinkOperator per key if the key is hit.
 // For more detail information, see the comments of class IntersectBuildSinkOperator.
-class IntersectProbeSinkOperator final : public Operator {
+class IntersectProbeSinkOperator final : public OperatorHelper<IntersectProbeSinkOperator> {
 public:
     IntersectProbeSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                std::shared_ptr<IntersectContext> intersect_ctx,
                                const std::vector<ExprContext*>& dst_exprs, const int32_t dependency_index)
-            : Operator(factory, id, "intersect_probe_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "intersect_probe_sink", plan_node_id, false, driver_sequence),
               _intersect_ctx(std::move(intersect_ctx)),
               _dst_exprs(dst_exprs),
               _dependency_index(dependency_index) {

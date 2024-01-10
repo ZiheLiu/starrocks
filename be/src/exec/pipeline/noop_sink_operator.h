@@ -21,10 +21,10 @@ namespace starrocks::pipeline {
 // NoopSinkOperator is just a placeholder sink operator.
 // It can receive infinite chunks from the previous operator and do nothing.
 // It will be finished, when the previous operator is finished.
-class NoopSinkOperator final : public Operator {
+class NoopSinkOperator final : public OperatorHelper<NoopSinkOperator> {
 public:
     NoopSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
-            : Operator(factory, id, "noop_sink", plan_node_id, true, driver_sequence) {}
+            : OperatorHelper(factory, id, "noop_sink", plan_node_id, true, driver_sequence) {}
 
     ~NoopSinkOperator() override = default;
 

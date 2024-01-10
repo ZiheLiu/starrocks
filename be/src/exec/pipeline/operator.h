@@ -49,6 +49,15 @@ public:
              int32_t driver_sequence);
     virtual ~Operator() = default;
 
+    using CheckStateFunc = bool (*)(const Operator*);
+    struct CheckStateFunctions {
+        CheckStateFunc is_finished;
+        CheckStateFunc is_epoch_finished;
+        CheckStateFunc need_input;
+        CheckStateFunc has_output;
+    };
+    virtual CheckStateFunctions get_check_state_functions() const = 0;
+
     // prepare is used to do the initialization work
     // It's one of the stages of the operator life cycle（prepare -> finishing -> finished -> [cancelled] -> closed)
     // This method will be exactly invoked once in the whole life cycle
@@ -419,6 +428,37 @@ protected:
     std::vector<TupleSlotMapping> _tuple_slot_mappings;
 
     RuntimeState* _state = nullptr;
+};
+
+#define DEFINE_GET_CHECK_STATE_FUNCTIONS(Derived)                                                \
+public:                                                                                          \
+    CheckStateFunctions get_check_state_functions() const override {                             \
+        return {&call_is_finished, &call_is_epoch_finished, &call_need_input, &call_has_output}; \
+    }                                                                                            \
+                                                                                                 \
+private:                                                                                         \
+    static bool call_is_finished(const Operator* that) {                                         \
+        return static_cast<const Derived&>(*that).is_finished();                                 \
+    }                                                                                            \
+    static bool call_is_epoch_finished(const Operator* that) {                                   \
+        return static_cast<const Derived&>(*that).is_epoch_finished();                           \
+    }                                                                                            \
+    static bool call_need_input(const Operator* that) {                                          \
+        return static_cast<const Derived&>(*that).need_input();                                  \
+    }                                                                                            \
+    static bool call_has_output(const Operator* that) {                                          \
+        return static_cast<const Derived&>(*that).has_output();                                  \
+    }
+
+template <typename Derived>
+class OperatorHelper : public Operator {
+    DEFINE_GET_CHECK_STATE_FUNCTIONS(Derived)
+
+public:
+    OperatorHelper(OperatorFactory* factory, int32_t id, std::string name, int32_t plan_node_id, bool is_subordinate,
+                   int32_t driver_sequence)
+            : Operator(factory, id, std::move(name), plan_node_id, is_subordinate, driver_sequence) {}
+    ~OperatorHelper() override = default;
 };
 
 using OpFactoryPtr = std::shared_ptr<OperatorFactory>;

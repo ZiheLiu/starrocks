@@ -29,11 +29,11 @@ class SortContext;
  * It is one instance and Execute in single threaded mode,  
  * It completely depends on SortContext with a heap to Dynamically filter out the smallest or largest data.
  */
-class LocalMergeSortSourceOperator final : public SourceOperator {
+class LocalMergeSortSourceOperator final : public SourceOperatorHelper<LocalMergeSortSourceOperator> {
 public:
     LocalMergeSortSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                                  SortContext* sort_context)
-            : SourceOperator(factory, id, "local_merge_source", plan_node_id, false, driver_sequence),
+            : SourceOperatorHelper(factory, id, "local_merge_source", plan_node_id, false, driver_sequence),
               _sort_context(sort_context) {}
 
     ~LocalMergeSortSourceOperator() override = default;

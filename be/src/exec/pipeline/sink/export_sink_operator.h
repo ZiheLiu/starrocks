@@ -31,11 +31,11 @@ namespace pipeline {
 class ExportSinkIOBuffer;
 class FragmentContext;
 
-class ExportSinkOperator final : public Operator {
+class ExportSinkOperator final : public OperatorHelper<ExportSinkOperator> {
 public:
     ExportSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                        std::shared_ptr<ExportSinkIOBuffer> export_sink_buffer, std::atomic<int32_t>& num_sinkers)
-            : Operator(factory, id, "export_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "export_sink", plan_node_id, false, driver_sequence),
               _export_sink_buffer(std::move(std::move(export_sink_buffer))),
               _num_sinkers(num_sinkers) {}
 

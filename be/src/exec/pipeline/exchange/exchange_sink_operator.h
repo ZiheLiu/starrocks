@@ -43,7 +43,7 @@ class ExprContext;
 
 namespace pipeline {
 class SinkBuffer;
-class ExchangeSinkOperator final : public Operator {
+class ExchangeSinkOperator final : public OperatorHelper<ExchangeSinkOperator> {
 public:
     ExchangeSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                          const std::shared_ptr<SinkBuffer>& buffer, TPartitionType::type part_type,

@@ -27,11 +27,12 @@ namespace starrocks::pipeline {
 // and then takes the chunk fetched from the task and tries to execute Spiller::spill().
 // But this thread will never execute any IO task.
 
-class SpillProcessOperator final : public SourceOperator {
+class SpillProcessOperator final : public SourceOperatorHelper<SpillProcessOperator> {
 public:
     SpillProcessOperator(OperatorFactory* factory, int32_t id, const std::string& name, int32_t plan_node_id,
                          int32_t driver_sequence, SpillProcessChannelPtr channel)
-            : SourceOperator(factory, id, name, plan_node_id, true, driver_sequence), _channel(std::move(channel)) {}
+            : SourceOperatorHelper(factory, id, name, plan_node_id, true, driver_sequence),
+              _channel(std::move(channel)) {}
 
     ~SpillProcessOperator() override = default;
 

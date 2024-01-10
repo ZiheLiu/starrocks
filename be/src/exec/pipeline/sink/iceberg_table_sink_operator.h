@@ -28,7 +28,7 @@
 namespace starrocks {
 namespace pipeline {
 
-class IcebergTableSinkOperator final : public Operator {
+class IcebergTableSinkOperator final : public OperatorHelper<IcebergTableSinkOperator> {
 public:
     IcebergTableSinkOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence,
                              std::string location, std::string file_format, TCompressionType::type compression_codec,
@@ -37,7 +37,7 @@ public:
                              const std::vector<ExprContext*>& output_expr_ctxs,
                              const vector<ExprContext*>& partition_output_expr, bool is_static_partition_insert,
                              std::atomic<int32_t>& num_sinkers)
-            : Operator(factory, id, "iceberg_table_sink", plan_node_id, false, driver_sequence),
+            : OperatorHelper(factory, id, "iceberg_table_sink", plan_node_id, false, driver_sequence),
               _location(std::move(location)),
               _iceberg_table_data_location(_location + "/data/"),
               _file_format(std::move(file_format)),
