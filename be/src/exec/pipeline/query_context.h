@@ -74,9 +74,10 @@ public:
         return now > _delivery_deadline;
     }
     bool is_query_expired() const {
-        auto now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-        return now > _query_deadline;
+        auto now_ms = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+        return is_query_expired(now_ms);
     }
+    bool is_query_expired(int64_t now_ms) const { return now_ms > _query_deadline; }
 
     bool is_dead() const { return _num_active_fragments == 0 && _num_fragments == _total_fragments; }
     // add expired seconds to deadline
