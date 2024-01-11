@@ -76,7 +76,7 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
         }
 
         {
-            SCOPED_RAW_TIMER(&time_spent_ns);
+            ScopedRawTimer<MonotonicStopWatch> SCOPED_RAW_TIMER_1(&time_spent_ns);
             std::unique_lock write_lock(item->_local_mutex);
 
             if (!tmp_blocked_drivers.empty()) {
@@ -166,7 +166,7 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
             item->_local_blocked_drivers.resize(out_len);
         }
 
-        if (time_spent_ns >= 10'000'000'000LL || num_compute_drivers >= 100000) {
+        if (time_spent_ns >= 10'000'000'000LL) {
             LOG(WARNING) << "[LZH] [POLLER] "
                          << "[avg_time_spent_s="
                          << (time_spent_ns / 1000'000'000LL / std::max<int64_t>(1, num_compute_drivers)) << "] "
