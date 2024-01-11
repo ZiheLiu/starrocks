@@ -48,7 +48,7 @@ ScanOperator::ScanOperator(OperatorFactory* factory, int32_t id, int32_t driver_
           _is_chunk_source_resumable(_io_tasks_per_scan_operator),
           _chunk_sources(_io_tasks_per_scan_operator) {
     for (auto i = 0; i < _io_tasks_per_scan_operator; i++) {
-        _chunk_source_profiles[i] = std::make_shared<RuntimeProfile>(strings::Substitute("ChunkSource$0", i));
+        // _chunk_source_profiles[i] = std::make_shared<RuntimeProfile>(strings::Substitute("ChunkSource$0", i));
     }
 }
 

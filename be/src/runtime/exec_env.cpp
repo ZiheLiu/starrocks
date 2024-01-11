@@ -340,21 +340,11 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
         // -n: means n * num_cpu_cores
         num_prepare_threads = -num_prepare_threads * CpuInfo::num_cores();
     }
-    _pipeline_prepare_pool =
-            new PriorityThreadPool("pip_prepare", num_prepare_threads, config::pipeline_prepare_thread_pool_queue_size);
-    // register the metrics to monitor the task queue len
-    auto task_qlen_fun = [] {
-        auto pool = ExecEnv::GetInstance()->pipeline_prepare_pool();
-        return (pool == nullptr) ? 0U : pool->get_queue_size();
-    };
-    REGISTER_GAUGE_STARROCKS_METRIC(pipe_prepare_pool_queue_len, task_qlen_fun);
+    _pipeline_prepare_pool = std::make_unique<FixedSizeThreadPool>("pip_prepare", num_prepare_threads);
 
     int num_sink_io_threads = config::pipeline_sink_io_thread_pool_thread_num;
     if (num_sink_io_threads <= 0) {
         num_sink_io_threads = CpuInfo::num_cores();
-    }
-    if (config::pipeline_sink_io_thread_pool_queue_size <= 0) {
-        return Status::InvalidArgument("pipeline_sink_io_thread_pool_queue_size shoule be greater than 0");
     }
     _pipeline_sink_io_pool =
             new PriorityThreadPool("pip_sink_io", num_sink_io_threads, config::pipeline_sink_io_thread_pool_queue_size);
@@ -363,7 +353,7 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
     if (query_rpc_threads <= 0) {
         query_rpc_threads = CpuInfo::num_cores();
     }
-    _query_rpc_pool = new PriorityThreadPool("query_rpc", query_rpc_threads, std::numeric_limits<uint32_t>::max());
+    _query_rpc_pool = std::make_unique<FixedSizeThreadPool>("query_rpc", query_rpc_threads);
 
     // The _load_rpc_pool now handles routine load RPC and table function RPC.
     RETURN_IF_ERROR(ThreadPoolBuilder("load_rpc") // thread pool for load rpc
@@ -592,9 +582,7 @@ void ExecEnv::destroy() {
     SAFE_DELETE(_wg_driver_executor);
     SAFE_DELETE(_brpc_stub_cache);
     SAFE_DELETE(_udf_call_pool);
-    SAFE_DELETE(_pipeline_prepare_pool);
     SAFE_DELETE(_pipeline_sink_io_pool);
-    SAFE_DELETE(_query_rpc_pool);
     SAFE_DELETE(_scan_executor);
     SAFE_DELETE(_connector_scan_executor);
     SAFE_DELETE(_thread_pool);
