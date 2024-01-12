@@ -261,6 +261,7 @@ set(EXEC_FILES
     pipeline/adaptive/collect_stats_context.cpp
     pipeline/adaptive/lazy_instantiate_drivers_operator.cpp
     pipeline/adaptive/utils.cpp
+    pipeline/adaptive/adaptive_multi_source_operator.cpp
     pipeline/pipeline_event.cpp
     pipeline/chunk_accumulate_operator.cpp
     pipeline/pipeline.cpp
