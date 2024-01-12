@@ -25,14 +25,10 @@ class RowDescriptor;
 
 namespace pipeline {
 
-<<<<<<< HEAD
 class AdaptiveExchangeSourceOperatorFactory;
 class AdaptiveExchangeSourceOperator;
 
 class ExchangeSourceOperator : public SourceOperatorHelper<ExchangeSourceOperator> {
-=======
-class ExchangeSourceOperator : public SourceOperator {
->>>>>>> af108ffd35 ([Enhancement] adaptive multi exchange source)
 public:
     ExchangeSourceOperator(OperatorFactory* factory, int32_t id, int32_t plan_node_id, int32_t driver_sequence)
             : SourceOperatorHelper(factory, id, "exchange_source", plan_node_id, false, driver_sequence) {}
@@ -84,11 +80,7 @@ public:
     std::shared_ptr<DataStreamRecvr> create_stream_recvr(RuntimeState* state);
     void close_stream_recvr();
 
-<<<<<<< HEAD
     SourceOperatorFactory::AdaptiveState adaptive_state() const override { return AdaptiveState::ACTIVE; }
-=======
-    AdaptiveState adaptive_initial_state() const override { return AdaptiveState::ACTIVE; }
->>>>>>> af108ffd35 ([Enhancement] adaptive multi exchange source)
 
 private:
     friend class AdaptiveExchangeSourceOperatorFactory;

@@ -324,23 +324,11 @@ OpFactories PipelineBuilderContext::maybe_gather_pipelines_to_one(RuntimeState* 
 
 OpFactories PipelineBuilderContext::maybe_interpolate_collect_stats_for_exchange_source(
         RuntimeState* state, int32_t plan_node_id, std::shared_ptr<ExchangeSourceOperatorFactory> exchange_source_op) {
-<<<<<<< HEAD
-    if (_force_disable_adaptive_dop || !_fragment_context->enable_adaptive_dop()) {
-=======
     if (!_fragment_context->enable_adaptive_dop()) {
->>>>>>> af108ffd35 ([Enhancement] adaptive multi exchange source)
         return {std::move(exchange_source_op)};
     }
 
     size_t dop = exchange_source_op->degree_of_parallelism();
-<<<<<<< HEAD
-    CollectStatsContextPtr collect_stats_ctx =
-            std::make_shared<CollectStatsContext>(state, dop, _fragment_context->adaptive_dop_param());
-
-    std::shared_ptr<AdaptiveExchangeSourceOperatorFactory> adaptive_exchange_source_op =
-            std::make_shared<AdaptiveExchangeSourceOperatorFactory>(next_operator_id(), plan_node_id,
-                                                                    std::move(exchange_source_op), collect_stats_ctx);
-=======
 
     CollectStatsContextPtr collect_stats_ctx =
             std::make_shared<CollectStatsContext>(state, dop, _fragment_context->adaptive_dop_param());
@@ -349,7 +337,6 @@ OpFactories PipelineBuilderContext::maybe_interpolate_collect_stats_for_exchange
 
     auto adaptive_exchange_source_op = std::make_shared<AdaptiveMultiSourceOperatorFactory>(
             next_operator_id(), plan_node_id, exchange_source_op, cs_sink_op);
->>>>>>> af108ffd35 ([Enhancement] adaptive multi exchange source)
     adaptive_exchange_source_op->set_degree_of_parallelism(1);
     auto* pred_source_op = adaptive_exchange_source_op.get();
     std::shared_ptr<NoopSinkOperatorFactory> noop_sink_op =
