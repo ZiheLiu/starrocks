@@ -72,7 +72,7 @@ public:
     bool could_local_shuffle() const override;
     TPartitionType::type partition_type() const override;
 
-    AdaptiveState adaptive_initial_state() const override { return AdaptiveState::ACTIVE; }
+    AdaptiveState adaptive_state() const override { return AdaptiveState::ACTIVE; }
 
 private:
     SourceOperatorFactoryPtr _source_factory;
