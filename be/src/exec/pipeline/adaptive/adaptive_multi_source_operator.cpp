@@ -37,8 +37,8 @@ Status AdaptiveMultiSourceOperator::prepare(RuntimeState* state) {
         RETURN_IF_ERROR(source->prepare(state));
         RETURN_IF_ERROR(sink->prepare(state));
 
-        _unique_metrics->add_child(source->runtime_profile(), true, nullptr);
-        _unique_metrics->add_child(sink->runtime_profile(), true, nullptr);
+        // _unique_metrics->add_child(source->runtime_profile(), true, nullptr);
+        // _unique_metrics->add_child(sink->runtime_profile(), true, nullptr);
 
         auto& [source_stage, sink_stage] = _driver_contexts[source->get_driver_sequence()];
         source_stage = OperatorStage::PREPARED;
