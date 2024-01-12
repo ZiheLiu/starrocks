@@ -257,6 +257,7 @@ pipeline::OpFactories ExchangeNode::decompose_to_pipeline(pipeline::PipelineBuil
         exchange_source_op->set_degree_of_parallelism(context->degree_of_parallelism());
         if (config::enable_adaptive_exchange_source) {
             operators = context->maybe_interpolate_collect_stats_for_exchange_source(runtime_state(), id(),
+                                                                                     std::move(exchange_source_op));
         } else {
             operators.emplace_back(std::move(exchange_source_op));
         }
