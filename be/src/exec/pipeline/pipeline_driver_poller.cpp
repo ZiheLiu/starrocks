@@ -51,6 +51,7 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
     std::vector<DriverRawPtr> ready_drivers;
     int64_t time_spent_ns = 0;
     int64_t num_compute_drivers = 0;
+    int64_t num_ready_drivers = 0;
     while (!item->is_shutdown.load(std::memory_order_acquire)) {
         {
             std::unique_lock<std::mutex> lock(item->_global_mutex);
@@ -163,17 +164,26 @@ void PipelineDriverPoller::run_internal(ThreadItem* item) {
                     }
                 }
             }
+            num_ready_drivers += n - out_len;
             item->_local_blocked_drivers.resize(out_len);
         }
 
         if (time_spent_ns >= 10'000'000'000LL) {
             LOG(WARNING) << "[LZH] [POLLER] "
-                         << "[avg_time_spent_s="
-                         << (time_spent_ns / 1000'000'000LL / std::max<int64_t>(1, num_compute_drivers)) << "] "
-                         << "[time_spent_s=" << (time_spent_ns / 1000'000'000LL) << "] "
-                         << "[num_compute_drivers=" << num_compute_drivers << "] ";
+                         << "[avg_compute_time_spent_s="
+                         << (static_cast<double>(time_spent_ns) / 1000'000'000LL /
+                             std::max<int64_t>(1, num_compute_drivers))
+                         << "] "
+                         << "[avg_ready_time_spent_s="
+                         << (static_cast<double>(time_spent_ns) / 1000'000'000LL /
+                             std::max<int64_t>(1, num_ready_drivers))
+                         << "] "
+                         << "[time_spent_s=" << (static_cast<double>(time_spent_ns) / 1000'000'000LL) << "] "
+                         << "[num_compute_drivers=" << num_compute_drivers << "] "
+                         << "[num_ready_drivers=" << num_ready_drivers << "] ";
             time_spent_ns = 0;
             num_compute_drivers = 0;
+            num_ready_drivers = 0;
         }
 
         if (ready_drivers.empty()) {
