@@ -174,28 +174,31 @@ public class SlotProvider {
             if (reqToRes.isEmpty()) {
                 return;
             }
+
+            List<Req> requests;
+            List<CompletableFuture<Res>> responseFutures;
             synchronized (this) {
                 if (reqToRes.isEmpty()) {
                     return;
                 }
 
-                List<Req> requests = new ArrayList<>(reqToRes.keySet());
-                List<CompletableFuture<Res>> responseFutures = new ArrayList<>();
+                requests = new ArrayList<>(reqToRes.keySet());
+                responseFutures = new ArrayList<>();
                 for (Req request : requests) {
                     responseFutures.add(reqToRes.remove(request));
                 }
+            }
 
-                BatchReq batchRequest = createBatchRequest(requests);
-                try {
-                    List<Res> responses = sendBatchRequest(batchRequest);
-                    for (int i = 0; i < responses.size(); i++) {
-                        Res response = responses.get(i);
-                        responseFutures.get(i).complete(response);
-                    }
-                } catch (Exception e) {
-                    for (CompletableFuture<Res> responseFuture : responseFutures) {
-                        responseFuture.completeExceptionally(e);
-                    }
+            BatchReq batchRequest = createBatchRequest(requests);
+            try {
+                List<Res> responses = sendBatchRequest(batchRequest);
+                for (int i = 0; i < responses.size(); i++) {
+                    Res response = responses.get(i);
+                    responseFutures.get(i).complete(response);
+                }
+            } catch (Exception e) {
+                for (CompletableFuture<Res> responseFuture : responseFutures) {
+                    responseFuture.completeExceptionally(e);
                 }
             }
         }
