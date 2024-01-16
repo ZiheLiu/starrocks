@@ -33,7 +33,8 @@ public class FrontendServiceProxy {
         return call(ClientPool.frontendPool, address, timeoutMs, retryTimes, callable);
     }
 
-    public static <T> T call(GenericPool<FrontendService.Client> clientPool, TNetworkAddress address, int timeoutMs, int retryTimes,
+    public static <T> T call(GenericPool<FrontendService.Client> clientPool, TNetworkAddress address, int timeoutMs,
+                             int retryTimes,
                              MethodCallable<T> callable)
             throws Exception {
         FrontendService.Client client = clientPool.borrowObject(address, timeoutMs);
