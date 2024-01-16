@@ -174,23 +174,30 @@ public class SlotProvider {
         }
 
         private void doProcess() {
+            if (reqToRes.isEmpty()) {
+                return;
+            }
             try (LockCloseable ignored = new LockCloseable(lock)) {
                 if (reqToRes.isEmpty()) {
                     return;
                 }
 
                 List<Req> requests = new ArrayList<>(reqToRes.keySet());
+                List<CompletableFuture<Res>> responseFutures = new ArrayList<>();
+                for (Req request : requests) {
+                    responseFutures.add(reqToRes.remove(request));
+                }
+
                 BatchReq batchRequest = createBatchRequest(requests);
                 try {
                     List<Res> responses = sendBatchRequest(batchRequest);
                     for (int i = 0; i < responses.size(); i++) {
                         Res response = responses.get(i);
-                        Req request = requests.get(i);
-                        reqToRes.remove(request).complete(response);
+                        responseFutures.get(i).complete(response);
                     }
                 } catch (Exception e) {
-                    for (Req request : requests) {
-                        reqToRes.remove(request).completeExceptionally(e);
+                    for (CompletableFuture<Res> responseFuture : responseFutures) {
+                        responseFuture.completeExceptionally(e);
                     }
                 }
             }
