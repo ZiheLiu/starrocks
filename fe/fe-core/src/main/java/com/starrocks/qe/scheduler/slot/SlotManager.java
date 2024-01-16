@@ -17,6 +17,7 @@ package com.starrocks.qe.scheduler.slot;
 import com.google.common.collect.Queues;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.starrocks.catalog.ResourceGroup;
+import com.starrocks.common.ClientPool;
 import com.starrocks.common.Config;
 import com.starrocks.qe.GlobalVariable;
 import com.starrocks.rpc.FrontendServiceProxy;
@@ -241,7 +242,7 @@ public class SlotManager {
             TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
             try {
                 TFinishSlotRequirementResponse res =
-                        FrontendServiceProxy.call(feEndpoint, Config.thrift_rpc_timeout_ms,
+                        FrontendServiceProxy.call(ClientPool.slotManagerPool, feEndpoint, Config.thrift_rpc_timeout_ms,
                                 Config.thrift_rpc_retry_times, client -> client.finishSlotRequirement(request));
                 TStatus resStatus = res.getStatus();
                 if (resStatus.getStatus_code() != TStatusCode.OK) {

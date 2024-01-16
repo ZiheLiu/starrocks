@@ -83,6 +83,8 @@ public class ClientPool {
             new GenericPool("TFileBrokerService", heartbeatConfig, heartbeatTimeoutMs);
     public static GenericPool<FrontendService.Client> frontendPool =
             new GenericPool("FrontendService", backendConfig, backendTimeoutMs);
+    public static GenericPool<FrontendService.Client> slotManagerPool =
+            new GenericPool("FrontendService", backendConfig, backendTimeoutMs);
     public static GenericPool<BackendService.Client> backendPool =
             new GenericPool("BackendService", backendConfig, backendTimeoutMs);
     public static GenericPool<TFileBrokerService.Client> brokerPool =

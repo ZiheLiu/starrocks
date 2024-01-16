@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.rpc;
 
 import com.starrocks.common.ClientPool;
+import com.starrocks.common.GenericPool;
 import com.starrocks.thrift.FrontendService;
 import com.starrocks.thrift.TNetworkAddress;
 import org.apache.logging.log4j.LogManager;
@@ -30,7 +30,13 @@ public class FrontendServiceProxy {
 
     public static <T> T call(TNetworkAddress address, int timeoutMs, int retryTimes, MethodCallable<T> callable)
             throws Exception {
-        FrontendService.Client client = ClientPool.frontendPool.borrowObject(address, timeoutMs);
+        return call(ClientPool.frontendPool, address, timeoutMs, retryTimes, callable);
+    }
+
+    public static <T> T call(GenericPool<FrontendService.Client> clientPool, TNetworkAddress address, int timeoutMs, int retryTimes,
+                             MethodCallable<T> callable)
+            throws Exception {
+        FrontendService.Client client = clientPool.borrowObject(address, timeoutMs);
         boolean isConnValid = false;
         try {
             for (int i = 0; i < retryTimes; i++) {
@@ -44,7 +50,7 @@ public class FrontendServiceProxy {
                     // In this case we should reopen the conn and retry the rpc call,
                     // but we do not retry for the timeout exception, because it may be a network timeout
                     // or the target server may be running slow.
-                    isConnValid = ClientPool.frontendPool.reopen(client, timeoutMs);
+                    isConnValid = clientPool.reopen(client, timeoutMs);
                     if (i == retryTimes - 1 ||
                             !isConnValid ||
                             (te.getCause() instanceof SocketTimeoutException)) {
@@ -57,9 +63,9 @@ public class FrontendServiceProxy {
             }
         } finally {
             if (isConnValid) {
-                ClientPool.frontendPool.returnObject(address, client);
+                clientPool.returnObject(address, client);
             } else {
-                ClientPool.frontendPool.invalidateObject(address, client);
+                clientPool.invalidateObject(address, client);
             }
         }
 
@@ -69,4 +75,5 @@ public class FrontendServiceProxy {
     public interface MethodCallable<T> {
         T invoke(FrontendService.Client client) throws TException;
     }
+
 }
