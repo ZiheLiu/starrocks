@@ -258,6 +258,8 @@ import com.starrocks.thrift.TOlapTablePartition;
 import com.starrocks.thrift.TOlapTablePartitionParam;
 import com.starrocks.thrift.TRefreshTableRequest;
 import com.starrocks.thrift.TRefreshTableResponse;
+import com.starrocks.thrift.TReleaseBatchSlotRequest;
+import com.starrocks.thrift.TReleaseBatchSlotResponse;
 import com.starrocks.thrift.TReleaseSlotRequest;
 import com.starrocks.thrift.TReleaseSlotResponse;
 import com.starrocks.thrift.TReportAuditStatisticsParams;
@@ -265,6 +267,8 @@ import com.starrocks.thrift.TReportAuditStatisticsResult;
 import com.starrocks.thrift.TReportExecStatusParams;
 import com.starrocks.thrift.TReportExecStatusResult;
 import com.starrocks.thrift.TReportRequest;
+import com.starrocks.thrift.TRequireBatchSlotRequest;
+import com.starrocks.thrift.TRequireBatchSlotResponse;
 import com.starrocks.thrift.TRequireSlotRequest;
 import com.starrocks.thrift.TRequireSlotResponse;
 import com.starrocks.thrift.TRoutineLoadJobInfo;
@@ -2813,6 +2817,30 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         TReleaseSlotResponse res = new TReleaseSlotResponse();
         res.setStatus(tstatus);
 
+        return res;
+    }
+
+    @Override
+    public TRequireBatchSlotResponse requireBatchSlotAsync(TRequireBatchSlotRequest requests) throws TException {
+        List<TRequireSlotResponse> responses = new ArrayList<>();
+        for (TRequireSlotRequest request : requests.getRequests()) {
+            responses.add(requireSlotAsync(request));
+        }
+
+        TRequireBatchSlotResponse res = new TRequireBatchSlotResponse();
+        res.setResponses(responses);
+        return res;
+    }
+
+    @Override
+    public TReleaseBatchSlotResponse releaseBatchSlot(TReleaseBatchSlotRequest requests) throws TException {
+        List<TReleaseSlotResponse> responses = new ArrayList<>();
+        for (TReleaseSlotRequest request : requests.getRequests()) {
+            responses.add(releaseSlot(request));
+        }
+
+        TReleaseBatchSlotResponse res = new TReleaseBatchSlotResponse();
+        res.setResponses(responses);
         return res;
     }
 
