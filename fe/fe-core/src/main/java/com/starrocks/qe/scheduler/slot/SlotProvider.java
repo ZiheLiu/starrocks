@@ -14,7 +14,6 @@
 
 package com.starrocks.qe.scheduler.slot;
 
-import com.staros.util.LockCloseable;
 import com.starrocks.common.Config;
 import com.starrocks.common.Status;
 import com.starrocks.common.UserException;
@@ -45,7 +44,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 /**
@@ -144,7 +142,6 @@ public class SlotProvider {
 
     private abstract static class SingleFlightSlotRequest<Req, BatchReq, Res> {
         protected final TNetworkAddress leaderEndpoint;
-        private final ReentrantLock lock = new ReentrantLock();
         private final ConcurrentMap<Req, CompletableFuture<Res>> reqToRes = new ConcurrentHashMap<>();
 
         protected abstract BatchReq createBatchRequest(List<Req> requests);
@@ -177,7 +174,7 @@ public class SlotProvider {
             if (reqToRes.isEmpty()) {
                 return;
             }
-            try (LockCloseable ignored = new LockCloseable(lock)) {
+            synchronized (this) {
                 if (reqToRes.isEmpty()) {
                     return;
                 }
@@ -282,7 +279,6 @@ public class SlotProvider {
         TNetworkAddress leaderEndpoint = GlobalStateMgr.getCurrentState().getNodeMgr().getLeaderRpcEndpoint();
         TReleaseSlotRequest slotRequest = new TReleaseSlotRequest();
         slotRequest.setSlot_id(slot.getSlotId());
-
 
         SingleFlightReleaseSlotRequest singleFlightReleaseSlotRequest =
                 singleFlightReleaseSlotRequests.computeIfAbsent(leaderEndpoint,
