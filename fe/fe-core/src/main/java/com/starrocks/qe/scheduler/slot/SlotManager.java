@@ -95,7 +95,7 @@ public class SlotManager {
      * Others outside can do nothing, but add a request to {@code requests} or retrieve a view of all the running and queued
      * slots.
      */
-    private final BlockingQueue<Runnable> requests = Queues.newLinkedBlockingDeque(MAX_PENDING_REQUESTS);
+    private final BlockingQueue<Runnable> requests = Queues.newLinkedBlockingQueue(MAX_PENDING_REQUESTS);
     private final RequestWorker requestWorker = new RequestWorker();
     private final AtomicBoolean started = new AtomicBoolean();
 
@@ -174,7 +174,7 @@ public class SlotManager {
             slot.onCancel();
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
             status.setError_msgs(Collections.singletonList(String.format("FeStartTime is not the latest [val=%s] [latest=%s]",
-                            slot.getFeStartTimeMs(), frontend.getStartTime())));
+                    slot.getFeStartTimeMs(), frontend.getStartTime())));
             finishSlotRequirementToEndpoint(slot, status);
             LOG.warn("[Slot] SlotManager receives a slot requirement with old FeStartTime [slot={}] [newFeStartMs={}]",
                     slot, frontend.getStartTime());
