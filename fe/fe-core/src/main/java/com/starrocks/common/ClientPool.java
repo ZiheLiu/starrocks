@@ -84,7 +84,7 @@ public class ClientPool {
         slotManagerConfig.setMinIdlePerKey(Config.slot_manager_response_thread_pool_size);
         slotManagerConfig.setMaxTotalPerKey(Config.slot_manager_response_thread_pool_size);
         slotManagerConfig.setMaxTotal(Config.slot_manager_response_thread_pool_size);
-        slotManagerConfig.setMaxWaitMillis(500);    //  wait for the connection
+        slotManagerConfig.setMaxWaitMillis(Config.brpc_idle_wait_max_time);    //  wait for the connection
     }
 
     public static GenericPool<HeartbeatService.Client> beHeartbeatPool =
@@ -95,6 +95,7 @@ public class ClientPool {
             new GenericPool("FrontendService", backendConfig, backendTimeoutMs);
     public static GenericPool<FrontendService.Client> slotManagerPool =
             new GenericPool("FrontendService", slotManagerConfig, backendTimeoutMs);
+
     public static GenericPool<BackendService.Client> backendPool =
             new GenericPool("BackendService", backendConfig, backendTimeoutMs);
     public static GenericPool<TFileBrokerService.Client> brokerPool =
