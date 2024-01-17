@@ -83,7 +83,7 @@ public class ClientPool {
         slotManagerConfig.setMaxIdlePerKey(Config.slot_manager_response_thread_pool_size);
         slotManagerConfig.setMinIdlePerKey(Config.slot_manager_response_thread_pool_size);
         slotManagerConfig.setMaxTotalPerKey(Config.slot_manager_response_thread_pool_size);
-        slotManagerConfig.setMaxTotal(Config.slot_manager_response_thread_pool_size);
+        slotManagerConfig.setMaxTotal(-1);
         slotManagerConfig.setMaxWaitMillis(Config.brpc_idle_wait_max_time);    //  wait for the connection
     }
 
