@@ -292,6 +292,7 @@ import com.starrocks.thrift.TTaskInfo;
 import com.starrocks.thrift.TTaskRunInfo;
 import com.starrocks.thrift.TTrackingLoadInfo;
 import com.starrocks.thrift.TTransactionStatus;
+import com.starrocks.thrift.TUniqueId;
 import com.starrocks.thrift.TUpdateExportTaskStatusRequest;
 import com.starrocks.thrift.TUpdateResourceUsageRequest;
 import com.starrocks.thrift.TUpdateResourceUsageResponse;
@@ -2822,25 +2823,38 @@ public class FrontendServiceImpl implements FrontendService.Iface {
 
     @Override
     public TRequireBatchSlotResponse requireBatchSlotAsync(TRequireBatchSlotRequest requests) throws TException {
-        List<TRequireSlotResponse> responses = new ArrayList<>();
-        for (TRequireSlotRequest request : requests.getRequests()) {
-            responses.add(requireSlotAsync(request));
-        }
+        List<LogicalSlot> slots = requests.getRequests().stream()
+                .map(req -> LogicalSlot.fromThrift(req.getSlot()))
+                .collect(Collectors.toList());
+        GlobalStateMgr.getCurrentState().getSlotManager().requireBatchSlotAsync(slots);
 
+        List<TRequireSlotResponse> responses =  requests.getRequests().stream()
+                .map(req -> new TRequireSlotResponse())
+                .collect(Collectors.toList());
         TRequireBatchSlotResponse res = new TRequireBatchSlotResponse();
         res.setResponses(responses);
+
         return res;
     }
 
     @Override
     public TReleaseBatchSlotResponse releaseBatchSlot(TReleaseBatchSlotRequest requests) throws TException {
-        List<TReleaseSlotResponse> responses = new ArrayList<>();
-        for (TReleaseSlotRequest request : requests.getRequests()) {
-            responses.add(releaseSlot(request));
-        }
+        List<TUniqueId> slotIds = requests.getRequests().stream()
+                .map(TReleaseSlotRequest::getSlot_id)
+                .collect(Collectors.toList());
+        GlobalStateMgr.getCurrentState().getSlotManager().releaseBatchSlotAsync(slotIds);
 
+        List<TReleaseSlotResponse> responses = requests.getRequests().stream()
+                .map(req -> {
+                    TStatus tstatus = new TStatus(OK);
+                    TReleaseSlotResponse res = new TReleaseSlotResponse();
+                    res.setStatus(tstatus);
+                    return res;
+                })
+                .collect(Collectors.toList());
         TReleaseBatchSlotResponse res = new TReleaseBatchSlotResponse();
         res.setResponses(responses);
+
         return res;
     }
 

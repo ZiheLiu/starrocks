@@ -34,6 +34,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -126,6 +127,22 @@ public class SlotManager {
 
     public void releaseSlotAsync(TUniqueId slotId) {
         requests.add(() -> handleReleaseSlotTask(slotId));
+    }
+
+    public void requireBatchSlotAsync(Collection<LogicalSlot> slots) {
+        requests.add(() -> {
+            for (LogicalSlot slot : slots) {
+                handleRequireSlotTask(slot);
+            }
+        });
+    }
+
+    public void releaseBatchSlotAsync(Collection<TUniqueId> slotIds) {
+        requests.add(() -> {
+            for (TUniqueId slotId : slotIds) {
+                handleReleaseSlotTask(slotId);
+            }
+        });
     }
 
     public void notifyFrontendDeadAsync(String feName) {
