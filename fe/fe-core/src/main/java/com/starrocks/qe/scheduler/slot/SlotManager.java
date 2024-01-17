@@ -40,13 +40,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -95,7 +94,7 @@ public class SlotManager {
      * Others outside can do nothing, but add a request to {@code requests} or retrieve a view of all the running and queued
      * slots.
      */
-    private final BlockingQueue<Runnable> requests = Queues.newLinkedBlockingQueue(MAX_PENDING_REQUESTS);
+    private final Queue<Runnable> requests = Queues.newConcurrentLinkedQueue();
     private final RequestWorker requestWorker = new RequestWorker();
     private final AtomicBoolean started = new AtomicBoolean();
 
@@ -318,14 +317,13 @@ public class SlotManager {
             for (; ; ) {
 
                 try {
-                    newTask = null;
-                    long minExpiredTimeMs = allocatedSlots.getMinExpiredTimeMs();
-                    long nowMs = System.currentTimeMillis();
                     try {
-                        if (minExpiredTimeMs == 0) {
-                            newTask = requests.take();
-                        } else if (nowMs < minExpiredTimeMs) {
-                            newTask = requests.poll(minExpiredTimeMs - nowMs, TimeUnit.MILLISECONDS);
+                        while (true) {
+                            newTask = requests.poll();
+                            if (newTask != null) {
+                                break;
+                            }
+                            Thread.sleep(1);
                         }
                     } catch (InterruptedException e) {
                         LOG.warn("[Slot] RequestWorker is interrupted", e);
@@ -333,9 +331,7 @@ public class SlotManager {
                         return;
                     }
 
-                    if (newTask != null) {
-                        newTasks.add(newTask);
-                    }
+                    newTasks.add(newTask);
 
                     while ((newTask = requests.poll()) != null) {
                         newTasks.add(newTask);
