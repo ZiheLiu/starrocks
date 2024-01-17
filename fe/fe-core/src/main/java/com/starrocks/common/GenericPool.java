@@ -102,7 +102,8 @@ public class GenericPool<VALUE extends org.apache.thrift.TServiceClient> {
     }
 
     public VALUE borrowObject(TNetworkAddress address, int timeoutMs) throws Exception {
-        LOG.debug("borrowObject [addr={}:{}]", address.getHostname(), address.getPort());
+        LOG.debug("borrowObject [addr={}:{}] [active={}] [idle={}]", address.getHostname(), address.getPort(),
+                pool.getNumActive(), pool.getNumIdle());
         VALUE value = pool.borrowObject(address);
         TSocket socket = (TSocket) (value.getOutputProtocol().getTransport());
         socket.setTimeout(timeoutMs);
@@ -113,7 +114,8 @@ public class GenericPool<VALUE extends org.apache.thrift.TServiceClient> {
         if (address == null) {
             LOG.debug("returnObject [addr=null] [obj={}]", object);
         } else {
-            LOG.debug("returnObject [addr={}:{}] [obj={}]", address.getHostname(), address.getPort(), object);
+            LOG.debug("returnObject [addr={}:{}] [obj={}] [active={}] [idle={}]", address.getHostname(), address.getPort(),
+                    object, pool.getNumActive(), pool.getNumIdle());
         }
         if (address == null || object == null) {
             return;
