@@ -44,6 +44,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -144,6 +145,8 @@ public class SlotProvider {
         protected final TNetworkAddress leaderEndpoint;
         private final ConcurrentMap<Req, CompletableFuture<Res>> reqToRes = new ConcurrentHashMap<>();
 
+        private final AtomicBoolean token = new AtomicBoolean(false);
+
         protected abstract BatchReq createBatchRequest(List<Req> requests);
 
         protected abstract List<Res> sendBatchRequest(BatchReq batchReq) throws Exception;
@@ -171,34 +174,34 @@ public class SlotProvider {
         }
 
         private void doProcess() {
-            if (reqToRes.isEmpty()) {
-                return;
-            }
-
-            List<Req> requests;
-            List<CompletableFuture<Res>> responseFutures;
-            synchronized (this) {
+            while (true) {
                 if (reqToRes.isEmpty()) {
                     return;
                 }
 
-                requests = new ArrayList<>(reqToRes.keySet());
-                responseFutures = new ArrayList<>();
+                if (!token.compareAndSet(false, true)) {
+                    return;
+                }
+
+                List<Req> requests = new ArrayList<>(reqToRes.keySet());
+                List<CompletableFuture<Res>> responseFutures = new ArrayList<>();
                 for (Req request : requests) {
                     responseFutures.add(reqToRes.remove(request));
                 }
-            }
 
-            BatchReq batchRequest = createBatchRequest(requests);
-            try {
-                List<Res> responses = sendBatchRequest(batchRequest);
-                for (int i = 0; i < responses.size(); i++) {
-                    Res response = responses.get(i);
-                    responseFutures.get(i).complete(response);
-                }
-            } catch (Exception e) {
-                for (CompletableFuture<Res> responseFuture : responseFutures) {
-                    responseFuture.completeExceptionally(e);
+                token.set(false);
+
+                BatchReq batchRequest = createBatchRequest(requests);
+                try {
+                    List<Res> responses = sendBatchRequest(batchRequest);
+                    for (int i = 0; i < responses.size(); i++) {
+                        Res response = responses.get(i);
+                        responseFutures.get(i).complete(response);
+                    }
+                } catch (Exception e) {
+                    for (CompletableFuture<Res> responseFuture : responseFutures) {
+                        responseFuture.completeExceptionally(e);
+                    }
                 }
             }
         }
