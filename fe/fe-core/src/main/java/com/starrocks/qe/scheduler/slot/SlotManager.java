@@ -23,6 +23,8 @@ import com.starrocks.qe.GlobalVariable;
 import com.starrocks.rpc.FrontendServiceProxy;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.system.Frontend;
+import com.starrocks.thrift.TFinishBatchSlotRequirementRequest;
+import com.starrocks.thrift.TFinishBatchSlotRequirementResponse;
 import com.starrocks.thrift.TFinishSlotRequirementRequest;
 import com.starrocks.thrift.TFinishSlotRequirementResponse;
 import com.starrocks.thrift.TNetworkAddress;
@@ -241,6 +243,56 @@ public class SlotManager {
         }).collect(Collectors.toList()).forEach(this::handleReleaseSlotTask);
     }
 
+    private void finishBatchSlotRequirementToEndpoint(List<LogicalSlot> slots, TStatus status) {
+        Map<String, List<TFinishSlotRequirementRequest>> feNameToRequests = slots.stream()
+                .collect(Collectors.groupingBy(
+                        LogicalSlot::getRequestFeName,
+                        Collectors.mapping(slot -> {
+                            TFinishSlotRequirementRequest request = new TFinishSlotRequirementRequest();
+                            request.setStatus(status);
+                            request.setSlot_id(slot.getSlotId());
+                            request.setPipeline_dop(slot.getPipelineDop());
+                            return request;
+                        }, Collectors.toList()))
+                );
+        feNameToRequests.forEach((feName, requests) -> {
+            responseExecutor.execute(() -> {
+
+                Frontend fe = GlobalStateMgr.getCurrentState().getFeByName(feName);
+                if (fe == null) {
+                    LOG.warn("[Slot] try to send finishBatchSlotRequirement RPC to the unknown frontend [requests={}]", requests);
+                    requests.forEach(req -> releaseSlotAsync(req.getSlot_id()));
+                    return;
+                }
+
+                TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
+                TFinishBatchSlotRequirementRequest batchReq = new TFinishBatchSlotRequirementRequest();
+                batchReq.setRequests(requests);
+                try {
+                    TFinishBatchSlotRequirementResponse batchRes =
+                            FrontendServiceProxy.call(ClientPool.slotManagerPool, feEndpoint, Config.thrift_rpc_timeout_ms,
+                                    Config.thrift_rpc_retry_times, client -> client.finishBatchSlotRequirement(batchReq));
+                    List<TFinishSlotRequirementResponse> responses = batchRes.getResponses();
+                    for (int i = 0; i < responses.size(); i++) {
+                        TStatus resStatus = responses.get(i).getStatus();
+                        if (resStatus.getStatus_code() != TStatusCode.OK) {
+                            TFinishSlotRequirementRequest req = requests.get(i);
+                            LOG.warn("[Slot] failed to finish slot requirement [request={}] [err={}]", req, resStatus);
+                            if (status.getStatus_code() == TStatusCode.OK) {
+                                releaseSlotAsync(req.getSlot_id());
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.warn("[Slot] failed to finish slot requirement [requests={}]:", requests, e);
+                    if (status.getStatus_code() == TStatusCode.OK) {
+                        requests.forEach(req -> releaseSlotAsync(req.getSlot_id()));
+                    }
+                }
+            });
+        });
+    }
+
     private void finishSlotRequirementToEndpoint(LogicalSlot slot, TStatus status) {
         responseExecutor.execute(() -> {
             TFinishSlotRequirementRequest request = new TFinishSlotRequirementRequest();
@@ -299,15 +351,23 @@ public class SlotManager {
 
         private boolean tryAllocateSlots() {
             List<LogicalSlot> slotsToAllocate = slotRequestQueue.peakSlotsToAllocate(allocatedSlots);
-            slotsToAllocate.forEach(this::allocateSlot);
+            slotsToAllocate.forEach(this::allocateSlotLocal);
+            allocateSlotsRemote(slotsToAllocate);
+
             return !slotsToAllocate.isEmpty();
         }
 
-        private void allocateSlot(LogicalSlot slot) {
+        private void allocateSlotLocal(LogicalSlot slot) {
             slot.onAllocate();
             slotRequestQueue.removePendingSlot(slot.getSlotId());
             allocatedSlots.allocateSlot(slot);
-            finishSlotRequirementToEndpoint(slot, new TStatus(TStatusCode.OK));
+        }
+
+        private void allocateSlotsRemote(List<LogicalSlot> slots) {
+            if (slots.isEmpty()) {
+                return;
+            }
+            finishBatchSlotRequirementToEndpoint(slots, new TStatus(TStatusCode.OK));
         }
 
         @Override

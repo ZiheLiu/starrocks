@@ -183,6 +183,8 @@ import com.starrocks.thrift.TFeLocksReq;
 import com.starrocks.thrift.TFeLocksRes;
 import com.starrocks.thrift.TFeResult;
 import com.starrocks.thrift.TFetchResourceResult;
+import com.starrocks.thrift.TFinishBatchSlotRequirementRequest;
+import com.starrocks.thrift.TFinishBatchSlotRequirementResponse;
 import com.starrocks.thrift.TFinishSlotRequirementRequest;
 import com.starrocks.thrift.TFinishSlotRequirementResponse;
 import com.starrocks.thrift.TFinishTaskRequest;
@@ -2855,6 +2857,19 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         TReleaseBatchSlotResponse res = new TReleaseBatchSlotResponse();
         res.setResponses(responses);
 
+        return res;
+    }
+
+    @Override
+    public TFinishBatchSlotRequirementResponse finishBatchSlotRequirement(TFinishBatchSlotRequirementRequest requests)
+            throws TException {
+        List<TFinishSlotRequirementResponse> responses = new ArrayList<>();
+        for (TFinishSlotRequirementRequest req : requests.getRequests()) {
+            responses.add(finishSlotRequirement(req));
+        }
+
+        TFinishBatchSlotRequirementResponse res = new TFinishBatchSlotRequirementResponse();
+        res.setResponses(responses);
         return res;
     }
 

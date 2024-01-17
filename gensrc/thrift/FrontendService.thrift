@@ -1466,6 +1466,14 @@ struct TFinishSlotRequirementResponse {
     1: optional Status.TStatus status
 }
 
+struct TFinishBatchSlotRequirementRequest {
+    1: optional list<TFinishSlotRequirementRequest> requests
+}
+
+struct TFinishBatchSlotRequirementResponse {
+    1: optional list<TFinishSlotRequirementResponse> responses
+}
+
 struct TReleaseSlotRequest {
     1: optional Types.TUniqueId slot_id
 }
@@ -1763,6 +1771,7 @@ service FrontendService {
     TReleaseSlotResponse releaseSlot(1: TReleaseSlotRequest request)
 
     TRequireBatchSlotResponse requireBatchSlotAsync(1: TRequireBatchSlotRequest requests)
+    TFinishBatchSlotRequirementResponse finishBatchSlotRequirement(1: TFinishBatchSlotRequirementRequest requests)
     TReleaseBatchSlotResponse releaseBatchSlot(1: TReleaseBatchSlotRequest requests)
 
     TGetLoadTxnStatusResult getLoadTxnStatus(1: TGetLoadTxnStatusRequest request)
