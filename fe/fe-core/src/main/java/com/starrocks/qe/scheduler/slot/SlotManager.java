@@ -367,7 +367,9 @@ public class SlotManager {
             if (slots.isEmpty()) {
                 return;
             }
-            finishBatchSlotRequirementToEndpoint(slots, new TStatus(TStatusCode.OK));
+
+            slots.forEach(slot -> finishSlotRequirementToEndpoint(slot, new TStatus(TStatusCode.OK)));
+            //            finishBatchSlotRequirementToEndpoint(slots, new TStatus(TStatusCode.OK));
         }
 
         @Override
