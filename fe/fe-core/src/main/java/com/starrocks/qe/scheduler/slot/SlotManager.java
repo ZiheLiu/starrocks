@@ -117,6 +117,22 @@ public class SlotManager {
         requests.add(() -> handleReleaseSlotTask(slotId));
     }
 
+    public void requireBatchSlotAsync(List<LogicalSlot> slots) {
+        requests.add(() -> {
+            for (LogicalSlot slot : slots) {
+                handleRequireSlotTask(slot);
+            }
+        });
+    }
+
+    public void releaseBatchSlotAsync(List<TUniqueId> slotIds) {
+        requests.add(() -> {
+            for (TUniqueId slotId : slotIds) {
+                handleReleaseSlotTask(slotId);
+            }
+        });
+    }
+
     public void notifyFrontendDeadAsync(String feName) {
         requests.add(() -> handleFrontendDeadTask(feName));
     }

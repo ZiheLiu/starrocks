@@ -35,6 +35,7 @@ import org.apache.thrift.TApplicationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -145,7 +146,7 @@ public class SlotProvider {
 
         try {
             future.get();
-        } catch (Exception e) {
+        } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             if (cause instanceof Exception) {
                 if (cause instanceof TApplicationException &&
