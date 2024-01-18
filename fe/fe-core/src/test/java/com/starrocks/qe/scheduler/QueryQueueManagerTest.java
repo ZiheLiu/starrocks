@@ -136,7 +136,8 @@ public class QueryQueueManagerTest extends SchedulerTestBase {
 
         mockFrontendService(new MockFrontendServiceClient());
 
-        SlotManager slotManager = new SlotManager(GlobalStateMgr.getCurrentState().getResourceUsageMonitor());
+        // TODO(lzh): fix UT.
+        SlotManager slotManager = new SlotManager(GlobalStateMgr.getCurrentState().getResourceUsageMonitor(), null);
         slotManager.start();
         new MockUp<GlobalStateMgr>() {
             @Mock
@@ -734,7 +735,8 @@ public class QueryQueueManagerTest extends SchedulerTestBase {
 
         // 2. The leader is changed, so the query can get slot from the new leader.
         SlotManager oldSlotManager = GlobalStateMgr.getCurrentState().getSlotManager();
-        SlotManager slotManager = new SlotManager(GlobalStateMgr.getCurrentState().getResourceUsageMonitor());
+        // TODO(lzh): fix UT.
+        SlotManager slotManager = new SlotManager(GlobalStateMgr.getCurrentState().getResourceUsageMonitor(), null);
         slotManager.start();
         new MockUp<GlobalStateMgr>() {
             @Mock

@@ -14,18 +14,17 @@
 
 package com.starrocks.qe.scheduler.slot;
 
-import com.starrocks.common.Config;
 import com.starrocks.common.Status;
 import com.starrocks.common.UserException;
 import com.starrocks.common.util.DebugUtil;
 import com.starrocks.ha.LeaderInfo;
 import com.starrocks.qe.scheduler.RecoverableException;
-import com.starrocks.rpc.FrontendServiceProxy;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TReleaseSlotRequest;
 import com.starrocks.thrift.TReleaseSlotResponse;
 import com.starrocks.thrift.TRequireSlotRequest;
+import com.starrocks.thrift.TRequireSlotResponse;
 import com.starrocks.thrift.TStatusCode;
 import com.starrocks.thrift.TUniqueId;
 import org.apache.commons.collections.CollectionUtils;
@@ -48,6 +47,12 @@ public class SlotProvider {
     private static final Logger LOG = LogManager.getLogger(SlotProvider.class);
 
     private final ConcurrentMap<TUniqueId, PendingSlotRequest> pendingSlots = new ConcurrentHashMap<>();
+
+    private final SlotRpcExecutor slotRpcExecutor;
+
+    public SlotProvider(SlotRpcExecutor slotRpcExecutor) {
+        this.slotRpcExecutor = slotRpcExecutor;
+    }
 
     public CompletableFuture<LogicalSlot> requireSlot(LogicalSlot slot) {
         TNetworkAddress leaderEndpoint = GlobalStateMgr.getCurrentState().getNodeMgr().getLeaderRpcEndpoint();
@@ -132,40 +137,46 @@ public class SlotProvider {
         TRequireSlotRequest request = new TRequireSlotRequest();
         request.setSlot(slotRequest.getSlot().toThrift());
 
-        FrontendServiceProxy.call(slotRequest.getLeaderEndpoint(),
-                Config.thrift_rpc_timeout_ms,
-                Config.thrift_rpc_retry_times,
-                client -> {
-                    try {
-                        return client.requireSlotAsync(request);
-                    } catch (TApplicationException e) {
-                        if (e.getType() == TApplicationException.UNKNOWN_METHOD) {
-                            LOG.warn("[Slot] leader doesn't have the RPC method [requireSlotAsync]. " +
-                                            "It is grayscale upgrading, so admit this query without requiring slots. [slot={}]",
-                                    slotRequest);
-                            pendingSlots.remove(slotRequest.getSlot().getSlotId());
-                            slotRequest.onFinished(0);
-                            slotRequest.getSlot().onRelease(); // Avoid sending releaseSlot RPC.
-                            return null;
-                        } else {
-                            throw e;
-                        }
-                    }
-                });
+        CompletableFuture<TRequireSlotResponse> future = new CompletableFuture<>();
+        slotRpcExecutor.execute(new RequireSlotRpcTask.SimpleTask(
+                request, slotRequest.getLeaderEndpoint(),
+                future::complete,
+                future::completeExceptionally));
 
+        try {
+            future.get();
+        } catch (Exception e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof Exception) {
+                if (cause instanceof TApplicationException &&
+                        ((TApplicationException) cause).getType() == TApplicationException.UNKNOWN_METHOD) {
+                    LOG.warn("[Slot] leader doesn't have the RPC method [requireSlotAsync]. " +
+                                    "It is grayscale upgrading, so admit this query without requiring slots. [slot={}]",
+                            slotRequest);
+                    pendingSlots.remove(slotRequest.getSlot().getSlotId());
+                    slotRequest.onFinished(0);
+                    slotRequest.getSlot().onRelease(); // Avoid sending releaseSlot RPC.
+                } else {
+                    throw (Exception) cause;
+                }
+            }
+            throw e;
+        }
     }
 
     private void releaseSlotToSlotManager(LogicalSlot slot) {
         TNetworkAddress leaderEndpoint = GlobalStateMgr.getCurrentState().getNodeMgr().getLeaderRpcEndpoint();
-        TReleaseSlotRequest slotRequest = new TReleaseSlotRequest();
-        slotRequest.setSlot_id(slot.getSlotId());
+        TReleaseSlotRequest request = new TReleaseSlotRequest();
+        request.setSlot_id(slot.getSlotId());
+
+        CompletableFuture<TReleaseSlotResponse> future = new CompletableFuture<>();
+        slotRpcExecutor.execute(new ReleaseSlotRpcTask.SimpleTask(
+                request, leaderEndpoint,
+                future::complete,
+                future::completeExceptionally));
 
         try {
-            TReleaseSlotResponse res = FrontendServiceProxy.call(
-                    leaderEndpoint,
-                    Config.thrift_rpc_timeout_ms,
-                    Config.thrift_rpc_retry_times,
-                    client -> client.releaseSlot(slotRequest));
+            TReleaseSlotResponse res = future.get();
             if (res.getStatus().getStatus_code() != TStatusCode.OK) {
                 String errMsg = "";
                 if (!CollectionUtils.isEmpty(res.getStatus().getError_msgs())) {

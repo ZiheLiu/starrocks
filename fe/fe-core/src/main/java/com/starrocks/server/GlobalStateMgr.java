@@ -237,6 +237,7 @@ import com.starrocks.qe.VariableMgr;
 import com.starrocks.qe.scheduler.slot.ResourceUsageMonitor;
 import com.starrocks.qe.scheduler.slot.SlotManager;
 import com.starrocks.qe.scheduler.slot.SlotProvider;
+import com.starrocks.qe.scheduler.slot.SlotRpcExecutor;
 import com.starrocks.replication.ReplicationMgr;
 import com.starrocks.rpc.FrontendServiceProxy;
 import com.starrocks.scheduler.MVActiveChecker;
@@ -559,9 +560,10 @@ public class GlobalStateMgr {
 
     private ReplicationMgr replicationMgr;
 
+    private final SlotRpcExecutor slotRpcExecutor = new SlotRpcExecutor(Config.slot_manager_response_thread_pool_size);
     private final ResourceUsageMonitor resourceUsageMonitor = new ResourceUsageMonitor();
-    private final SlotManager slotManager = new SlotManager(resourceUsageMonitor);
-    private final SlotProvider slotProvider = new SlotProvider();
+    private final SlotManager slotManager = new SlotManager(resourceUsageMonitor, slotRpcExecutor);
+    private final SlotProvider slotProvider = new SlotProvider(slotRpcExecutor);
 
     private final DictionaryMgr dictionaryMgr = new DictionaryMgr();
     private RefreshDictionaryCacheTaskDaemon refreshDictionaryCacheTaskDaemon;
@@ -1488,6 +1490,7 @@ public class GlobalStateMgr {
         }
         configRefreshDaemon.start();
 
+        slotRpcExecutor.start();
         slotManager.start();
 
         lockChecker.start();

@@ -14,16 +14,11 @@
 
 package com.starrocks.qe.scheduler.slot;
 
-import com.google.common.collect.Queues;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.starrocks.catalog.ResourceGroup;
-import com.starrocks.common.Config;
 import com.starrocks.qe.GlobalVariable;
-import com.starrocks.rpc.FrontendServiceProxy;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.system.Frontend;
 import com.starrocks.thrift.TFinishSlotRequirementRequest;
-import com.starrocks.thrift.TFinishSlotRequirementResponse;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TStatus;
 import com.starrocks.thrift.TStatusCode;
@@ -39,11 +34,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -86,19 +78,16 @@ import java.util.stream.Collectors;
 public class SlotManager {
     private static final Logger LOG = LogManager.getLogger(SlotManager.class);
 
-    private static final int MAX_PENDING_REQUESTS = 1_000_000;
-
     /**
      * All the data members except {@code requests} and {@link #slots} are only accessed by the thread {@link #requestWorker}.
      * Others outside can do nothing, but add a request to {@code requests} or retrieve a view of all the running and queued
      * slots.
      */
-    private final BlockingQueue<Runnable> requests = Queues.newLinkedBlockingDeque(MAX_PENDING_REQUESTS);
+    private final LockFreeBlockingQueue<Runnable> requests = new LockFreeBlockingQueue<>();
     private final RequestWorker requestWorker = new RequestWorker();
     private final AtomicBoolean started = new AtomicBoolean();
 
-    private final Executor responseExecutor = Executors.newFixedThreadPool(Config.slot_manager_response_thread_pool_size,
-            new ThreadFactoryBuilder().setDaemon(true).setNameFormat("slot-mgr-res-%d").build());
+    private final SlotRpcExecutor slotRpcExecutor;
 
     private final ConcurrentMap<TUniqueId, LogicalSlot> slots = new ConcurrentHashMap<>();
     private final Map<String, Set<TUniqueId>> requestFeNameToSlotIds = new HashMap<>();
@@ -106,7 +95,8 @@ public class SlotManager {
     private final SlotRequestQueue slotRequestQueue;
     private final AllocatedSlots allocatedSlots;
 
-    public SlotManager(ResourceUsageMonitor resourceUsageMonitor) {
+    public SlotManager(ResourceUsageMonitor resourceUsageMonitor, SlotRpcExecutor slotRpcExecutor) {
+        this.slotRpcExecutor = slotRpcExecutor;
         resourceUsageMonitor.registerResourceAvailableListener(this::notifyResourceUsageAvailable);
         this.slotRequestQueue = new SlotRequestQueue(resourceUsageMonitor::isGlobalResourceOverloaded,
                 resourceUsageMonitor::isGroupResourceOverloaded);
@@ -156,7 +146,7 @@ public class SlotManager {
             slot.onCancel();
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
             status.setError_msgs(Collections.singletonList(String.format("FeStartTime is not the latest [val=%s] [latest=%s]",
-                            slot.getFeStartTimeMs(), frontend.getStartTime())));
+                    slot.getFeStartTimeMs(), frontend.getStartTime())));
             finishSlotRequirementToEndpoint(slot, status);
             LOG.warn("[Slot] SlotManager receives a slot requirement with old FeStartTime [slot={}] [newFeStartMs={}]",
                     slot, frontend.getStartTime());
@@ -225,38 +215,33 @@ public class SlotManager {
     }
 
     private void finishSlotRequirementToEndpoint(LogicalSlot slot, TStatus status) {
-        responseExecutor.execute(() -> {
-            TFinishSlotRequirementRequest request = new TFinishSlotRequirementRequest();
-            request.setStatus(status);
-            request.setSlot_id(slot.getSlotId());
-            request.setPipeline_dop(slot.getPipelineDop());
+        TFinishSlotRequirementRequest request = new TFinishSlotRequirementRequest();
+        request.setStatus(status);
+        request.setSlot_id(slot.getSlotId());
+        request.setPipeline_dop(slot.getPipelineDop());
 
-            Frontend fe = GlobalStateMgr.getCurrentState().getFeByName(slot.getRequestFeName());
-            if (fe == null) {
-                LOG.warn("[Slot] try to send finishSlotRequirement RPC to the unknown frontend [slot={}]", slot);
-                releaseSlotAsync(slot.getSlotId());
-                return;
-            }
+        Frontend fe = GlobalStateMgr.getCurrentState().getFeByName(slot.getRequestFeName());
+        if (fe == null) {
+            LOG.warn("[Slot] try to send finishSlotRequirement RPC to the unknown frontend [slot={}]", slot);
+            releaseSlotAsync(slot.getSlotId());
+            return;
+        }
+        TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
 
-            TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
-            try {
-                TFinishSlotRequirementResponse res =
-                        FrontendServiceProxy.call(feEndpoint, Config.thrift_rpc_timeout_ms,
-                                Config.thrift_rpc_retry_times, client -> client.finishSlotRequirement(request));
-                TStatus resStatus = res.getStatus();
-                if (resStatus.getStatus_code() != TStatusCode.OK) {
-                    LOG.warn("[Slot] failed to finish slot requirement [slot={}] [err={}]", slot, resStatus);
-                    if (status.getStatus_code() == TStatusCode.OK) {
-                        releaseSlotAsync(slot.getSlotId());
-                    }
-                }
-            } catch (Exception e) {
-                LOG.warn("[Slot] failed to finish slot requirement [slot={}]:", slot, e);
+        slotRpcExecutor.execute(new FinishSlotRequirementRpcTask.SimpleTask(request, feEndpoint, res -> {
+            TStatus resStatus = res.getStatus();
+            if (resStatus.getStatus_code() != TStatusCode.OK) {
+                LOG.warn("[Slot] failed to finish slot requirement [slot={}] [err={}]", slot, resStatus);
                 if (status.getStatus_code() == TStatusCode.OK) {
                     releaseSlotAsync(slot.getSlotId());
                 }
             }
-        });
+        }, e -> {
+            LOG.warn("[Slot] failed to finish slot requirement [slot={}]:", slot, e);
+            if (status.getStatus_code() == TStatusCode.OK) {
+                releaseSlotAsync(slot.getSlotId());
+            }
+        }));
     }
 
     private class RequestWorker extends Thread {
@@ -307,7 +292,7 @@ public class SlotManager {
                         if (minExpiredTimeMs == 0) {
                             newTask = requests.take();
                         } else if (nowMs < minExpiredTimeMs) {
-                            newTask = requests.poll(minExpiredTimeMs - nowMs, TimeUnit.MILLISECONDS);
+                            newTask = requests.take(minExpiredTimeMs - nowMs, TimeUnit.MILLISECONDS);
                         }
                     } catch (InterruptedException e) {
                         LOG.warn("[Slot] RequestWorker is interrupted", e);
