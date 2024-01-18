@@ -148,18 +148,14 @@ public class SlotProvider {
             future.get();
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
-            if (cause instanceof Exception) {
-                if (cause instanceof TApplicationException &&
-                        ((TApplicationException) cause).getType() == TApplicationException.UNKNOWN_METHOD) {
-                    LOG.warn("[Slot] leader doesn't have the RPC method [requireSlotAsync]. " +
-                                    "It is grayscale upgrading, so admit this query without requiring slots. [slot={}]",
-                            slotRequest);
-                    pendingSlots.remove(slotRequest.getSlot().getSlotId());
-                    slotRequest.onFinished(0);
-                    slotRequest.getSlot().onRelease(); // Avoid sending releaseSlot RPC.
-                } else {
-                    throw (Exception) cause;
-                }
+            if (cause instanceof TApplicationException &&
+                    ((TApplicationException) cause).getType() == TApplicationException.UNKNOWN_METHOD) {
+                LOG.warn("[Slot] leader doesn't have the RPC method [requireSlotAsync]. " +
+                                "It is grayscale upgrading, so admit this query without requiring slots. [slot={}]",
+                        slotRequest);
+                pendingSlots.remove(slotRequest.getSlot().getSlotId());
+                slotRequest.onFinished(0);
+                slotRequest.getSlot().onRelease(); // Avoid sending releaseSlot RPC.
             }
             throw e;
         }
