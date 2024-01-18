@@ -23,14 +23,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SlotRpcExecutor {
     private static final Logger LOG = LogManager.getLogger(SlotRpcExecutor.class);
 
     private final AtomicBoolean started = new AtomicBoolean();
-    private final LockFreeBlockingQueue<SlotRpcTask<?, ?>> sendRpcQueue = new LockFreeBlockingQueue<>();
+    private final BlockingQueue<SlotRpcTask<?, ?>> sendRpcQueue = new LinkedBlockingQueue<>();
     private final LockFreeBlockingQueue<SlotRpcTask<?, ?>> mergeRpcQueue = new LockFreeBlockingQueue<>();
     private final Thread[] sendRpcWorkers;
     private final Thread mergeRpcWorker;
@@ -63,7 +65,7 @@ public class SlotRpcExecutor {
             try {
                 SlotRpcTask<?, ?> task = sendRpcQueue.take();
                 task.run();
-            } catch (InterruptedException | ExecutionException e) {
+            } catch (InterruptedException e) {
                 LOG.warn("[Slot] SendRpcWorker thread interrupted", e);
             } catch (Exception e) {
                 LOG.warn("[Slot] SendRpcWorker thread throws unexpected error", e);
