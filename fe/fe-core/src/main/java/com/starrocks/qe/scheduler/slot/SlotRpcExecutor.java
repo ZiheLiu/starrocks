@@ -54,8 +54,8 @@ public class SlotRpcExecutor {
         }
     }
 
-    public void execute(SlotRpcTask<?, ?> job) {
-        mergeRpcQueue.add(job);
+    public void execute(SlotRpcTask<?, ?> task) {
+        mergeRpcQueue.add(task);
     }
 
     private class SendRpcWorker implements Runnable {
@@ -81,7 +81,7 @@ public class SlotRpcExecutor {
     private class MergeRpcWorker implements Runnable {
         private final Map<Pair<TNetworkAddress, SlotRpcTask.RpcMethod>, List<SlotRpcTask<?, ?>>> tasksToMerge = new HashMap<>();
 
-        private void mergeOrSendRpcTask(
+        private void mergeOrSendTask(
                 Map<Pair<TNetworkAddress, SlotRpcTask.RpcMethod>, List<SlotRpcTask<?, ?>>> tasksToMerge,
                 SlotRpcTask<?, ?> task) {
             if (task.isMergeable()) {
@@ -102,15 +102,15 @@ public class SlotRpcExecutor {
                     LOG.warn("[Slot] MergeRpcWorker thread interrupted", e);
                 }
                 if (task != null) {
-                    mergeOrSendRpcTask(tasksToMerge, task);
+                    mergeOrSendTask(tasksToMerge, task);
                 }
 
-                while ((task = sendRpcQueue.poll()) != null) {
-                    mergeOrSendRpcTask(tasksToMerge, task);
+                while ((task = mergeRpcQueue.poll()) != null) {
+                    mergeOrSendTask(tasksToMerge, task);
                 }
 
-                tasksToMerge.forEach((key, curTasks) -> {
-                    SlotRpcTask<?, ?> mergedTask = curTasks.get(0).getMergedTaskFactory().create(curTasks);
+                tasksToMerge.forEach((key, tasks) -> {
+                    SlotRpcTask<?, ?> mergedTask = tasks.get(0).getMergedTaskFactory().create(tasks);
                     sendRpcQueue.add(mergedTask);
                 });
 

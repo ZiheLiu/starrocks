@@ -54,8 +54,7 @@ public class ReleaseSlotRpcTask {
         }
 
         @Override
-        public TReleaseSlotResponse sendRequest(FrontendService.Client client, TReleaseSlotRequest request)
-                throws TException {
+        public TReleaseSlotResponse sendRequest(FrontendService.Client client, TReleaseSlotRequest request) throws TException {
             return client.releaseSlot(request);
         }
     }
