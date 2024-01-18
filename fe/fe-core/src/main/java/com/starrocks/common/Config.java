@@ -404,6 +404,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static int meta_delay_toleration_second = 300;    // 5 min
 
+    @ConfField
+    public static int num_slot_partition_pools = 16;
+
     /**
      * Leader FE sync policy of bdbje.
      * If you only deploy one Follower FE, set this to 'SYNC'. If you deploy more than 3 Follower FE,
@@ -1170,10 +1173,10 @@ public class Config extends ConfigBase {
     /**
      * To avoid too many related materialized view causing too much fe memory and decreasing performance, set N
      * to determine which strategy you choose:
-     *  N <0      : always use non lock optimization and no copy related materialized views which
-     *      may cause metadata concurrency problem but can reduce many lock conflict time and metadata memory-copy consume.
-     *  N = 0    : always not use non lock optimization
-     *  N > 0    : use non lock optimization when related mvs's num <= N, otherwise don't use non lock optimization
+     * N <0      : always use non lock optimization and no copy related materialized views which
+     * may cause metadata concurrency problem but can reduce many lock conflict time and metadata memory-copy consume.
+     * N = 0    : always not use non lock optimization
+     * N > 0    : use non lock optimization when related mvs's num <= N, otherwise don't use non lock optimization
      */
     @ConfField(mutable = true)
     public static int skip_whole_phase_lock_mv_limit = 5;
@@ -2175,9 +2178,9 @@ public class Config extends ConfigBase {
     public static boolean enable_collect_query_detail_info = false;
 
     /**
-     *  StarRocks-manager pull queries every 1 second
-     *  metrics calculate query latency every 15 second
-     *  do not set cacheTime lower than these time
+     * StarRocks-manager pull queries every 1 second
+     * metrics calculate query latency every 15 second
+     * do not set cacheTime lower than these time
      */
     @ConfField(mutable = true)
     public static long query_detail_cache_time_nanosecond = 30000000000L;
@@ -2411,7 +2414,6 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static int lake_compaction_default_timeout_second = 86400; // 1 day
 
-
     @ConfField(mutable = true, comment = "the max number of previous version files to keep")
     public static int lake_autovacuum_max_previous_versions = 0;
 
@@ -2423,42 +2425,43 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true, comment =
             "History versions within this time range will not be deleted by auto vacuum.\n" +
-            "REMINDER: Set this to a value longer than the maximum possible execution time of queries, to avoid deletion of " +
-            "versions still being accessed.\n" +
-            "NOTE: Increasing this value may increase the space usage of the remote storage system.")
+                    "REMINDER: Set this to a value longer than the maximum possible execution time of queries, " +
+                    "to avoid deletion of " +
+                    "versions still being accessed.\n" +
+                    "NOTE: Increasing this value may increase the space usage of the remote storage system.")
     public static long lake_autovacuum_grace_period_minutes = 5;
 
     @ConfField(mutable = true, comment =
             "time threshold in hours, if a partition has not been updated for longer than this " +
-            "threshold, auto vacuum operations will no longer be triggered for that partition.\n" +
-            "Only takes effect for tables in clusters with run_mode=shared_data.\n")
+                    "threshold, auto vacuum operations will no longer be triggered for that partition.\n" +
+                    "Only takes effect for tables in clusters with run_mode=shared_data.\n")
     public static long lake_autovacuum_stale_partition_threshold = 12;
 
     @ConfField(mutable = true, comment =
             "Whether enable throttling ingestion speed when compaction score exceeds the threshold.\n" +
-            "Only takes effect for tables in clusters with run_mode=shared_data.")
+                    "Only takes effect for tables in clusters with run_mode=shared_data.")
     public static boolean lake_enable_ingest_slowdown = false;
 
     @ConfField(mutable = true, comment =
             "Compaction score threshold above which ingestion speed slowdown is applied.\n" +
-            "NOTE: The actual effective value is the max of the configured value and " +
-            "'lake_compaction_score_selector_min_score'.")
+                    "NOTE: The actual effective value is the max of the configured value and " +
+                    "'lake_compaction_score_selector_min_score'.")
     public static long lake_ingest_slowdown_threshold = 100;
 
     @ConfField(mutable = true, comment =
             "Ratio to reduce ingestion speed for each point of compaction score over the threshold.\n" +
-            "E.g. 0.05 ratio, 10min normal ingestion, exceed threshold by:\n" +
-            " - 1 point -> Delay by 0.05 (30secs)\n" +
-            " - 5 points -> Delay by 0.25 (2.5mins)")
+                    "E.g. 0.05 ratio, 10min normal ingestion, exceed threshold by:\n" +
+                    " - 1 point -> Delay by 0.05 (30secs)\n" +
+                    " - 5 points -> Delay by 0.25 (2.5mins)")
     public static double lake_ingest_slowdown_ratio = 0.1;
 
     @ConfField(mutable = true, comment =
             "The upper limit for compaction score, only takes effect when lake_enable_ingest_slowdown=true.\n" +
-            "When the compaction score exceeds this value, data ingestion transactions will be prevented from\n" +
-            "committing. This is a soft limit, the actual compaction score may exceed the configured bound.\n" +
-            "The effective value will be set to the higher of the configured value here and " +
-            "lake_compaction_score_selector_min_score.\n" +
-            "A value of 0 represents no limit.")
+                    "When the compaction score exceeds this value, data ingestion transactions will be prevented from\n" +
+                    "committing. This is a soft limit, the actual compaction score may exceed the configured bound.\n" +
+                    "The effective value will be set to the higher of the configured value here and " +
+                    "lake_compaction_score_selector_min_score.\n" +
+                    "A value of 0 represents no limit.")
     public static long lake_compaction_score_upper_bound = 0;
 
     @ConfField(mutable = true)
@@ -2690,19 +2693,19 @@ public class Config extends ConfigBase {
     public static String access_control = "native";
 
     /**
-     *  Kerberos principal used for mutual authentication with ranger
+     * Kerberos principal used for mutual authentication with ranger
      */
     @ConfField(mutable = true)
     public static String ranger_spnego_kerberos_principal = "";
 
     /**
-     *  Kerberos keytab file used for mutual authentication with ranger
+     * Kerberos keytab file used for mutual authentication with ranger
      */
     @ConfField(mutable = true)
     public static String ranger_spnego_kerberos_keytab = "";
 
     /**
-     *  Kerberos krb5.conf configure path, default /etc/krb5.conf
+     * Kerberos krb5.conf configure path, default /etc/krb5.conf
      */
     @ConfField(mutable = true)
     public static String ranger_kerberos_krb5_conf = "";

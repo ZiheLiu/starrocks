@@ -14,11 +14,11 @@
 
 package com.starrocks.pseudocluster;
 
-import com.starrocks.common.GenericPool;
+import com.starrocks.common.pool.DefaultGenericPool;
 import com.starrocks.thrift.TNetworkAddress;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
 
-public class PseudoGenericPool<VALUE extends org.apache.thrift.TServiceClient> extends GenericPool<VALUE> {
+public class PseudoGenericPool<VALUE extends org.apache.thrift.TServiceClient> extends DefaultGenericPool<VALUE> {
     public PseudoGenericPool(String name) {
         super(name, new GenericKeyedObjectPoolConfig(), 100);
     }

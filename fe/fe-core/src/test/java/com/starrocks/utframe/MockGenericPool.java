@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.utframe;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
-import com.starrocks.common.GenericPool;
+import com.starrocks.common.pool.DefaultGenericPool;
 import com.starrocks.thrift.BackendService;
 import com.starrocks.thrift.HeartbeatService;
 import com.starrocks.thrift.TNetworkAddress;
@@ -25,7 +24,7 @@ import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
 
 import java.util.Map;
 
-public class MockGenericPool<VALUE extends org.apache.thrift.TServiceClient> extends GenericPool<VALUE> {
+public class MockGenericPool<VALUE extends org.apache.thrift.TServiceClient> extends DefaultGenericPool<VALUE> {
     protected Map<TNetworkAddress, MockedBackend> backendMap = Maps.newConcurrentMap();
 
     public MockGenericPool(String name) {

@@ -32,7 +32,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package com.starrocks.common;
+package com.starrocks.common.pool;
 
 import com.starrocks.thrift.TNetworkAddress;
 import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
@@ -42,6 +42,7 @@ import org.apache.commons.pool2.impl.GenericKeyedObjectPool;
 import org.apache.commons.pool2.impl.GenericKeyedObjectPoolConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.thrift.TServiceClient;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocol;
 import org.apache.thrift.transport.TSocket;
@@ -50,13 +51,13 @@ import org.apache.thrift.transport.TTransportException;
 
 import java.lang.reflect.Constructor;
 
-public class GenericPool<VALUE extends org.apache.thrift.TServiceClient> {
-    private static final Logger LOG = LogManager.getLogger(GenericPool.class);
-    private GenericKeyedObjectPool<TNetworkAddress, VALUE> pool;
-    private String className;
+public class DefaultGenericPool<VALUE extends TServiceClient> implements GenericPool<VALUE> {
+    private static final Logger LOG = LogManager.getLogger(DefaultGenericPool.class);
+    private final GenericKeyedObjectPool<TNetworkAddress, VALUE> pool;
+    private final String className;
     private int timeoutMs;
 
-    public GenericPool(String className, GenericKeyedObjectPoolConfig config, int timeoutMs) {
+    public DefaultGenericPool(String className, GenericKeyedObjectPoolConfig config, int timeoutMs) {
         this.className = "com.starrocks.thrift." + className + "$Client";
         ThriftClientFactory factory = new ThriftClientFactory();
         pool = new GenericKeyedObjectPool<TNetworkAddress, VALUE>(factory, config);
@@ -133,8 +134,8 @@ public class GenericPool<VALUE extends org.apache.thrift.TServiceClient> {
     private class ThriftClientFactory extends BaseKeyedPooledObjectFactory<TNetworkAddress, VALUE> {
 
         private Object newInstance(String className, TProtocol protocol) throws Exception {
-            Class newoneClass = Class.forName(className);
-            Constructor cons = newoneClass.getConstructor(TProtocol.class);
+            Class<?> newoneClass = Class.forName(className);
+            Constructor<?> cons = newoneClass.getConstructor(TProtocol.class);
             return cons.newInstance(protocol);
         }
 

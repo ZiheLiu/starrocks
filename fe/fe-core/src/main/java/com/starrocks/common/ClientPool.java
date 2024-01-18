@@ -34,6 +34,10 @@
 
 package com.starrocks.common;
 
+import com.starrocks.common.pool.DefaultGenericPool;
+import com.starrocks.common.pool.GenericPool;
+import com.starrocks.common.pool.PartitionedPool;
+import com.starrocks.common.pool.Poolable;
 import com.starrocks.thrift.BackendService;
 import com.starrocks.thrift.FrontendService;
 import com.starrocks.thrift.HeartbeatService;
@@ -49,6 +53,8 @@ public class ClientPool {
 
     static GenericKeyedObjectPoolConfig brokerPoolConfig = new GenericKeyedObjectPoolConfig();
     public static int brokerTimeoutMs = Config.broker_client_timeout_ms;
+
+    static GenericKeyedObjectPoolConfig slotConfig = new GenericKeyedObjectPoolConfig();
 
     static {
         heartbeatConfig.setLifo(true);            // set Last In First Out strategy
@@ -77,14 +83,26 @@ public class ClientPool {
         brokerPoolConfig.setMaxWaitMillis(500);    //  wait for the connection
     }
 
-    public static GenericPool<HeartbeatService.Client> beHeartbeatPool =
-            new GenericPool("HeartbeatService", heartbeatConfig, heartbeatTimeoutMs);
-    public static GenericPool<TFileBrokerService.Client> brokerHeartbeatPool =
-            new GenericPool("TFileBrokerService", heartbeatConfig, heartbeatTimeoutMs);
-    public static GenericPool<FrontendService.Client> frontendPool =
-            new GenericPool("FrontendService", backendConfig, backendTimeoutMs);
-    public static GenericPool<BackendService.Client> backendPool =
-            new GenericPool("BackendService", backendConfig, backendTimeoutMs);
-    public static GenericPool<TFileBrokerService.Client> brokerPool =
-            new GenericPool("TFileBrokerService", brokerPoolConfig, brokerTimeoutMs);
+    static {
+        slotConfig.setLifo(true);            // set Last In First Out strategy
+        slotConfig.setMaxIdlePerKey(128);    // (default 128)
+        slotConfig.setMinIdlePerKey(2);      // (default 2)
+        slotConfig.setMaxTotalPerKey(-1);    // (default -1)
+        slotConfig.setMaxTotal(-1);          // (default -1)
+        slotConfig.setMaxWaitMillis(500);    //  wait for the connection
+    }
+
+    public static DefaultGenericPool<HeartbeatService.Client> beHeartbeatPool =
+            new DefaultGenericPool<>("HeartbeatService", heartbeatConfig, heartbeatTimeoutMs);
+    public static DefaultGenericPool<TFileBrokerService.Client> brokerHeartbeatPool =
+            new DefaultGenericPool<>("TFileBrokerService", heartbeatConfig, heartbeatTimeoutMs);
+    public static DefaultGenericPool<FrontendService.Client> frontendPool =
+            new DefaultGenericPool<>("FrontendService", backendConfig, backendTimeoutMs);
+    public static DefaultGenericPool<BackendService.Client> backendPool =
+            new DefaultGenericPool<>("BackendService", backendConfig, backendTimeoutMs);
+    public static DefaultGenericPool<TFileBrokerService.Client> brokerPool =
+            new DefaultGenericPool<>("TFileBrokerService", brokerPoolConfig, brokerTimeoutMs);
+
+    public static GenericPool<Poolable<FrontendService.Client>> slotPool =
+            new PartitionedPool<>("FrontendService", slotConfig, backendTimeoutMs, Config.num_slot_partition_pools);
 }

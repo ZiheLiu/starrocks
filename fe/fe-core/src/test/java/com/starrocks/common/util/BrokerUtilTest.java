@@ -40,8 +40,8 @@ import com.starrocks.analysis.BrokerDesc;
 import com.starrocks.catalog.BrokerMgr;
 import com.starrocks.catalog.FsBroker;
 import com.starrocks.common.AnalysisException;
-import com.starrocks.common.GenericPool;
 import com.starrocks.common.UserException;
+import com.starrocks.common.pool.DefaultGenericPool;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.thrift.TBrokerCloseReaderRequest;
 import com.starrocks.thrift.TBrokerCloseWriterRequest;
@@ -198,7 +198,7 @@ public class BrokerUtilTest {
 
         FsBroker fsBroker = new FsBroker("127.0.0.1", 99999);
 
-        new MockUp<GenericPool<TFileBrokerService.Client>>() {
+        new MockUp<DefaultGenericPool<TFileBrokerService.Client>>() {
             @Mock
             public TFileBrokerService.Client borrowObject(TNetworkAddress address, int timeoutMs) throws Exception {
                 return client;
@@ -251,7 +251,7 @@ public class BrokerUtilTest {
         openWriterResponse.fd = new TBrokerFD(1, 2);
         FsBroker fsBroker = new FsBroker("127.0.0.1", 99999);
 
-        new MockUp<GenericPool<TFileBrokerService.Client>>() {
+        new MockUp<DefaultGenericPool<TFileBrokerService.Client>>() {
             @Mock
             public TFileBrokerService.Client borrowObject(TNetworkAddress address, int timeoutMs) throws Exception {
                 return client;
@@ -302,7 +302,7 @@ public class BrokerUtilTest {
         status.statusCode = TBrokerOperationStatusCode.OK;
         FsBroker fsBroker = new FsBroker("127.0.0.1", 99999);
 
-        new MockUp<GenericPool<TFileBrokerService.Client>>() {
+        new MockUp<DefaultGenericPool<TFileBrokerService.Client>>() {
             @Mock
             public TFileBrokerService.Client borrowObject(TNetworkAddress address, int timeoutMs) throws Exception {
                 return client;

@@ -132,7 +132,7 @@ public class SlotProvider {
         TRequireSlotRequest request = new TRequireSlotRequest();
         request.setSlot(slotRequest.getSlot().toThrift());
 
-        FrontendServiceProxy.call(slotRequest.getLeaderEndpoint(),
+        FrontendServiceProxy.callWithPartition(slotRequest.getLeaderEndpoint(),
                 Config.thrift_rpc_timeout_ms,
                 Config.thrift_rpc_retry_times,
                 client -> {
@@ -161,7 +161,7 @@ public class SlotProvider {
         slotRequest.setSlot_id(slot.getSlotId());
 
         try {
-            TReleaseSlotResponse res = FrontendServiceProxy.call(
+            TReleaseSlotResponse res = FrontendServiceProxy.callWithPartition(
                     leaderEndpoint,
                     Config.thrift_rpc_timeout_ms,
                     Config.thrift_rpc_retry_times,

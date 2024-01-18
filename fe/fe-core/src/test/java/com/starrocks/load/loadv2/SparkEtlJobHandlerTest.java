@@ -42,10 +42,10 @@ import com.starrocks.catalog.FsBroker;
 import com.starrocks.catalog.SparkResource;
 import com.starrocks.common.Config;
 import com.starrocks.common.FeConstants;
-import com.starrocks.common.GenericPool;
 import com.starrocks.common.LoadException;
 import com.starrocks.common.TimeoutException;
 import com.starrocks.common.UserException;
+import com.starrocks.common.pool.DefaultGenericPool;
 import com.starrocks.common.util.BrokerUtil;
 import com.starrocks.common.util.CommandResult;
 import com.starrocks.common.util.Util;
@@ -435,7 +435,7 @@ public class SparkEtlJobHandlerTest {
 
         FsBroker fsBroker = new FsBroker("127.0.0.1", 99999);
 
-        new MockUp<GenericPool<TFileBrokerService.Client>>() {
+        new MockUp<DefaultGenericPool<TFileBrokerService.Client>>() {
             @Mock
             public TFileBrokerService.Client borrowObject(TNetworkAddress address, int timeoutMs) throws Exception {
                 return client;

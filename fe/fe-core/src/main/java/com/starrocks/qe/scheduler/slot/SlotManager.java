@@ -38,13 +38,12 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -93,7 +92,7 @@ public class SlotManager {
      * Others outside can do nothing, but add a request to {@code requests} or retrieve a view of all the running and queued
      * slots.
      */
-    private final BlockingQueue<Runnable> requests = Queues.newLinkedBlockingDeque(MAX_PENDING_REQUESTS);
+    private final Queue<Runnable> requests = Queues.newConcurrentLinkedQueue();
     private final RequestWorker requestWorker = new RequestWorker();
     private final AtomicBoolean started = new AtomicBoolean();
 
@@ -156,7 +155,7 @@ public class SlotManager {
             slot.onCancel();
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
             status.setError_msgs(Collections.singletonList(String.format("FeStartTime is not the latest [val=%s] [latest=%s]",
-                            slot.getFeStartTimeMs(), frontend.getStartTime())));
+                    slot.getFeStartTimeMs(), frontend.getStartTime())));
             finishSlotRequirementToEndpoint(slot, status);
             LOG.warn("[Slot] SlotManager receives a slot requirement with old FeStartTime [slot={}] [newFeStartMs={}]",
                     slot, frontend.getStartTime());
@@ -241,7 +240,7 @@ public class SlotManager {
             TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
             try {
                 TFinishSlotRequirementResponse res =
-                        FrontendServiceProxy.call(feEndpoint, Config.thrift_rpc_timeout_ms,
+                        FrontendServiceProxy.callWithPartition(feEndpoint, Config.thrift_rpc_timeout_ms,
                                 Config.thrift_rpc_retry_times, client -> client.finishSlotRequirement(request));
                 TStatus resStatus = res.getStatus();
                 if (resStatus.getStatus_code() != TStatusCode.OK) {
@@ -298,21 +297,17 @@ public class SlotManager {
             List<Runnable> newTasks = Lists.newArrayList();
             Runnable newTask;
             for (; ; ) {
-
                 try {
-                    newTask = null;
                     long minExpiredTimeMs = allocatedSlots.getMinExpiredTimeMs();
-                    long nowMs = System.currentTimeMillis();
-                    try {
-                        if (minExpiredTimeMs == 0) {
-                            newTask = requests.take();
-                        } else if (nowMs < minExpiredTimeMs) {
-                            newTask = requests.poll(minExpiredTimeMs - nowMs, TimeUnit.MILLISECONDS);
+                    while (true) {
+                        newTask = requests.poll();
+                        if (newTask != null) {
+                            break;
                         }
-                    } catch (InterruptedException e) {
-                        LOG.warn("[Slot] RequestWorker is interrupted", e);
-                        Thread.currentThread().interrupt();
-                        return;
+                        if (minExpiredTimeMs > 0 && System.currentTimeMillis() >= minExpiredTimeMs) {
+                            break;
+                        }
+                        Thread.sleep(1);
                     }
 
                     if (newTask != null) {

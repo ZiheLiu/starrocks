@@ -17,6 +17,7 @@
 
 package com.starrocks.common;
 
+import com.starrocks.common.pool.DefaultGenericPool;
 import com.starrocks.thrift.BackendService;
 import com.starrocks.thrift.InternalServiceVersion;
 import com.starrocks.thrift.TAgentPublishRequest;
@@ -64,8 +65,8 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class GenericPoolTest {
-    static GenericPool<BackendService.Client> backendService;
+public class DefaultGenericPoolTest {
+    static DefaultGenericPool<BackendService.Client> backendService;
     static ThriftServer service;
     static String ip = "127.0.0.1";
     static int port;
@@ -91,7 +92,7 @@ public class GenericPoolTest {
             config.setMaxTotal(3); // (default -1)
             config.setMaxWaitMillis(500);
             // new ClientPool
-            backendService = new GenericPool("BackendService", config, 0);
+            backendService = new DefaultGenericPool("BackendService", config, 0);
             // new ThriftService
             TProcessor tprocessor = new BackendService.Processor<BackendService.Iface>(
                     new InternalProcessor());
