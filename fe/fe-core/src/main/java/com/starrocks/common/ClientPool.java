@@ -53,7 +53,7 @@ public class ClientPool {
     static GenericKeyedObjectPoolConfig brokerPoolConfig = new GenericKeyedObjectPoolConfig();
     public static int brokerTimeoutMs = Config.broker_client_timeout_ms;
 
-    static GenericKeyedObjectPoolConfig<FrontendService.Client> slotConfig = new GenericKeyedObjectPoolConfig<>();
+    static GenericKeyedObjectPoolConfig slotConfig = new GenericKeyedObjectPoolConfig();
 
     static {
         heartbeatConfig.setLifo(true);            // set Last In First Out strategy

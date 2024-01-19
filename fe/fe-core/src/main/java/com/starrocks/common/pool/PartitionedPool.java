@@ -22,7 +22,7 @@ import org.apache.thrift.TServiceClient;
 public class PartitionedPool<V extends TServiceClient> implements ConnectionPool<Poolable<V>> {
     private final GenericPool<V>[] partitionPools;
 
-    public PartitionedPool(String className, GenericKeyedObjectPoolConfig<V> config, int timeoutMs, int numPartitions) {
+    public PartitionedPool(String className, GenericKeyedObjectPoolConfig config, int timeoutMs, int numPartitions) {
         partitionPools = new GenericPool[numPartitions];
         for (int i = 0; i < numPartitions; i++) {
             partitionPools[i] = new GenericPool<>(className, config, timeoutMs);
