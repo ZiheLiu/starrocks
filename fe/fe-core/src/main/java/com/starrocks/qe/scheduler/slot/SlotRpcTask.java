@@ -22,7 +22,7 @@ import org.apache.thrift.TException;
 
 import java.util.List;
 
-public abstract class SlotRpcTask<Req, Res> {
+public abstract class SlotRpcTask<Req, Res> implements Runnable {
     public interface Factory {
         SlotRpcTask<?, ?> create(List<SlotRpcTask<?, ?>> tasks);
     }
@@ -57,6 +57,7 @@ public abstract class SlotRpcTask<Req, Res> {
         return address;
     }
 
+    @Override
     public void run() {
         try {
             Req request = getRequest();

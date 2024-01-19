@@ -15,6 +15,7 @@
 package com.starrocks.qe.scheduler.slot;
 
 import com.starrocks.common.Pair;
+import com.starrocks.common.ThreadPoolManager;
 import com.starrocks.thrift.TNetworkAddress;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -23,61 +24,34 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class SlotRpcExecutor {
     private static final Logger LOG = LogManager.getLogger(SlotRpcExecutor.class);
 
     private final AtomicBoolean started = new AtomicBoolean();
-    private final BlockingQueue<SlotRpcTask<?, ?>> sendRpcQueue = new LinkedBlockingQueue<>();
+
+    private final ExecutorService sendRpcExecutor;
     private final LockFreeBlockingQueue<SlotRpcTask<?, ?>> mergeRpcQueue = new LockFreeBlockingQueue<>();
-    private final Thread[] sendRpcWorkers;
     private final Thread mergeRpcWorker;
 
     public SlotRpcExecutor(int numThreads) {
-        sendRpcWorkers = new Thread[numThreads];
-        for (int i = 0; i < numThreads; i++) {
-            sendRpcWorkers[i] = new Thread(new SendRpcWorker(), "slot-rpc-" + i);
-            sendRpcWorkers[i].setDaemon(true);
-        }
+        sendRpcExecutor = ThreadPoolManager.newDaemonFixedThreadPool(numThreads, Integer.MAX_VALUE, "slot-rpc", true);
 
         mergeRpcWorker = new Thread(new MergeRpcWorker(), "slot-rpc-merge");
+        mergeRpcWorker.setDaemon(true);
     }
 
     public void start() {
         if (started.compareAndSet(false, true)) {
-            for (Thread thread : sendRpcWorkers) {
-                thread.start();
-            }
             mergeRpcWorker.start();
         }
     }
 
     public void execute(SlotRpcTask<?, ?> task) {
         mergeRpcQueue.add(task);
-    }
-
-    private class SendRpcWorker implements Runnable {
-        public void runOneCycle() {
-            try {
-                SlotRpcTask<?, ?> task = sendRpcQueue.take();
-                task.run();
-            } catch (InterruptedException e) {
-                LOG.warn("[Slot] SendRpcWorker thread interrupted", e);
-            } catch (Exception e) {
-                LOG.warn("[Slot] SendRpcWorker thread throws unexpected error", e);
-            }
-        }
-
-        @Override
-        public void run() {
-            for (; ; ) {
-                runOneCycle();
-            }
-        }
     }
 
     private class MergeRpcWorker implements Runnable {
@@ -91,7 +65,7 @@ public class SlotRpcExecutor {
                         .computeIfAbsent(Pair.create(task.getAddress(), task.getRpcMethod()), (k) -> new ArrayList<>())
                         .add(task);
             } else {
-                sendRpcQueue.add(task);
+                sendRpcExecutor.execute(task);
             }
         }
 
@@ -113,7 +87,7 @@ public class SlotRpcExecutor {
 
                 tasksToMerge.forEach((key, tasks) -> {
                     SlotRpcTask<?, ?> mergedTask = tasks.get(0).getMergedTaskFactory().create(tasks);
-                    sendRpcQueue.add(mergedTask);
+                    sendRpcExecutor.execute(mergedTask);
                 });
 
             } catch (Exception e) {
