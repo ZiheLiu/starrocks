@@ -61,7 +61,7 @@ public abstract class SlotRpcTask<Req, Res> implements Runnable {
     public void run() {
         try {
             Req request = getRequest();
-            Res response = FrontendServiceProxy.call(address, Config.thrift_rpc_timeout_ms,
+            Res response = FrontendServiceProxy.callWithPartition(address, Config.thrift_rpc_timeout_ms,
                     Config.thrift_rpc_retry_times, client -> sendRequest(client, request));
             onSuccess(response);
         } catch (Exception e) {

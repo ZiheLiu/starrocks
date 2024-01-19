@@ -1789,6 +1789,9 @@ public class Config extends ConfigBase {
     public static int slot_manager_response_thread_pool_size = 16;
 
     @ConfField
+    public static int num_slot_partition_pools = 8;
+
+    @ConfField
     public static long statistic_dict_columns = 100000;
 
     /**

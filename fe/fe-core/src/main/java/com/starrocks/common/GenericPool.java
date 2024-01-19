@@ -34,6 +34,7 @@
 
 package com.starrocks.common;
 
+import com.starrocks.common.pool.ConnectionPool;
 import com.starrocks.thrift.TNetworkAddress;
 import org.apache.commons.pool2.BaseKeyedPooledObjectFactory;
 import org.apache.commons.pool2.PooledObject;
@@ -50,7 +51,7 @@ import org.apache.thrift.transport.TTransportException;
 
 import java.lang.reflect.Constructor;
 
-public class GenericPool<VALUE extends org.apache.thrift.TServiceClient> {
+public class GenericPool<VALUE extends org.apache.thrift.TServiceClient> implements ConnectionPool<VALUE> {
     private static final Logger LOG = LogManager.getLogger(GenericPool.class);
     private GenericKeyedObjectPool<TNetworkAddress, VALUE> pool;
     private String className;
