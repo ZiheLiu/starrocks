@@ -1473,6 +1473,9 @@ public class CoordinatorPreprocessor {
                 Math.log(outputOfMostLeftChild / TINY_SCALE_ROWS_LIMIT / fragment.getPipelineDop()) / Math.log(base)));
 
         long nodeNums = Math.min(amplifyFactor * baseNodeNums, candidates.size());
+        if (Config.debug_num_backends > 0) {
+            nodeNums = Config.debug_num_backends;
+        }
 
         SessionVariableConstants.ChooseInstancesMode mode = connectContext.getSessionVariable()
                 .getChooseExecuteInstancesMode();

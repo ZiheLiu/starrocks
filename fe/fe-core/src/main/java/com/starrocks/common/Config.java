@@ -2362,6 +2362,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static boolean enable_safe_mode = false;
 
+    @ConfField(mutable = true)
+    public static int debug_num_backends = 0;
+
     /**
      * The safe mode checker thread work interval
      */
