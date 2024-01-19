@@ -19,6 +19,7 @@ import com.starrocks.qe.GlobalVariable;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.system.Frontend;
 import com.starrocks.thrift.TFinishSlotRequirementRequest;
+import com.starrocks.thrift.TFinishSlotRequirementResponse;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TStatus;
 import com.starrocks.thrift.TStatusCode;
@@ -161,11 +162,12 @@ public class SlotManager {
         if (slot.getFeStartTimeMs() < frontend.getStartTime()) {
             slot.onCancel();
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
-            status.setError_msgs(Collections.singletonList(String.format("FeStartTime is not the latest [val=%s] [latest=%s]",
-                    slot.getFeStartTimeMs(), frontend.getStartTime())));
+            status.setError_msgs(Collections.singletonList(
+                    String.format("FeStartTime is not the latest [val=%s] [latest=%s]", slot.getFeStartTimeMs(),
+                            frontend.getStartTime())));
             finishSlotRequirementToEndpoint(slot, status);
-            LOG.warn("[Slot] SlotManager receives a slot requirement with old FeStartTime [slot={}] [newFeStartMs={}]",
-                    slot, frontend.getStartTime());
+            LOG.warn("[Slot] SlotManager receives a slot requirement with old FeStartTime [slot={}] [newFeStartMs={}]", slot,
+                    frontend.getStartTime());
             return;
         }
 
@@ -173,8 +175,7 @@ public class SlotManager {
         if (ok) {
             slot.onRequire();
             slots.put(slot.getSlotId(), slot);
-            requestFeNameToSlotIds.computeIfAbsent(slot.getRequestFeName(), k -> new HashSet<>())
-                    .add(slot.getSlotId());
+            requestFeNameToSlotIds.computeIfAbsent(slot.getRequestFeName(), k -> new HashSet<>()).add(slot.getSlotId());
         } else {
             slot.onCancel();
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
@@ -230,21 +231,14 @@ public class SlotManager {
         }).collect(Collectors.toList()).forEach(this::handleReleaseSlotTask);
     }
 
-    private void finishSlotRequirementToEndpoint(LogicalSlot slot, TStatus status) {
+    private FinishSlotRequirementRpcTask.SimpleTask createFinishSlotRequirementRpcTask(LogicalSlot slot, TStatus status,
+                                                                                       TNetworkAddress feEndpoint) {
         TFinishSlotRequirementRequest request = new TFinishSlotRequirementRequest();
         request.setStatus(status);
         request.setSlot_id(slot.getSlotId());
         request.setPipeline_dop(slot.getPipelineDop());
 
-        Frontend fe = GlobalStateMgr.getCurrentState().getFeByName(slot.getRequestFeName());
-        if (fe == null) {
-            LOG.warn("[Slot] try to send finishSlotRequirement RPC to the unknown frontend [slot={}]", slot);
-            releaseSlotAsync(slot.getSlotId());
-            return;
-        }
-        TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
-
-        slotRpcExecutor.execute(new FinishSlotRequirementRpcTask.SimpleTask(request, feEndpoint, res -> {
+        return new FinishSlotRequirementRpcTask.SimpleTask(request, feEndpoint, res -> {
             TStatus resStatus = res.getStatus();
             if (resStatus.getStatus_code() != TStatusCode.OK) {
                 LOG.warn("[Slot] failed to finish slot requirement [slot={}] [err={}]", slot, resStatus);
@@ -257,7 +251,47 @@ public class SlotManager {
             if (status.getStatus_code() == TStatusCode.OK) {
                 releaseSlotAsync(slot.getSlotId());
             }
-        }));
+        });
+    }
+
+    private void finishSlotRequirementToEndpoint(LogicalSlot slot, TStatus status) {
+
+        Frontend fe = GlobalStateMgr.getCurrentState().getFeByName(slot.getRequestFeName());
+        if (fe == null) {
+            LOG.warn("[Slot] try to send finishSlotRequirement RPC to the unknown frontend [slot={}]", slot);
+            releaseSlotAsync(slot.getSlotId());
+            return;
+        }
+        TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
+
+        slotRpcExecutor.execute(createFinishSlotRequirementRpcTask(slot, status, feEndpoint));
+    }
+
+    private void finishBatchSlotRequirementToEndpoint(List<LogicalSlot> slots, TStatus status) {
+        Map<String, List<LogicalSlot>> feNameToSlots =
+                slots.stream().collect(Collectors.groupingBy(LogicalSlot::getRequestFeName, Collectors.toList()));
+
+        feNameToSlots.forEach((feName, slotsOfFe) -> {
+            Frontend fe = GlobalStateMgr.getCurrentState().getFeByName(feName);
+            if (fe == null) {
+                LOG.warn("[Slot] try to send finishSlotRequirement RPC to the unknown frontend [feName={}]", feName);
+                for (LogicalSlot slot : slotsOfFe) {
+                    releaseSlotAsync(slot.getSlotId());
+                }
+                return;
+            }
+            TNetworkAddress feEndpoint = new TNetworkAddress(fe.getHost(), fe.getRpcPort());
+
+            List<SlotRpcTask<TFinishSlotRequirementRequest, TFinishSlotRequirementResponse>> tasks = slotsOfFe.stream()
+                    .map(slot -> createFinishSlotRequirementRpcTask(slot, status, feEndpoint))
+                    .collect(Collectors.toList());
+
+            slotRpcExecutor.execute(new FinishSlotRequirementRpcTask.MergedTask(tasks));
+        });
+    }
+
+    private void allocateSlotsRemote(List<LogicalSlot> slots) {
+        finishBatchSlotRequirementToEndpoint(slots, new TStatus(TStatusCode.OK));
     }
 
     private class RequestWorker extends Thread {
@@ -283,15 +317,15 @@ public class SlotManager {
 
         private boolean tryAllocateSlots() {
             List<LogicalSlot> slotsToAllocate = slotRequestQueue.peakSlotsToAllocate(allocatedSlots);
-            slotsToAllocate.forEach(this::allocateSlot);
+            slotsToAllocate.forEach(this::allocateSlotLocal);
+            allocateSlotsRemote(slotsToAllocate);
             return !slotsToAllocate.isEmpty();
         }
 
-        private void allocateSlot(LogicalSlot slot) {
+        private void allocateSlotLocal(LogicalSlot slot) {
             slot.onAllocate();
             slotRequestQueue.removePendingSlot(slot.getSlotId());
             allocatedSlots.allocateSlot(slot);
-            finishSlotRequirementToEndpoint(slot, new TStatus(TStatusCode.OK));
         }
 
         @Override
