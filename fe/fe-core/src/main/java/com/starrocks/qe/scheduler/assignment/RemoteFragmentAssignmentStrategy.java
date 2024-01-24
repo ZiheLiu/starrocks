@@ -134,7 +134,10 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
                     .map(FragmentInstance::getWorkerId)
                     .forEach(workerIdSet::add);
             if (Config.test_num_instances > 0) {
-                workerIdSet = ImmutableSet.of(workerIdSet.iterator().next());
+                // only leave test_num_instances elements in workerIdSet
+                workerIdSet = ImmutableSet.copyOf(workerIdSet).asList()
+                        .subList(0, Config.test_num_instances).stream()
+                        .collect(ImmutableSet.toImmutableSet());
             }
         }
 
