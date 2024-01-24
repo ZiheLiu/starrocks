@@ -1789,6 +1789,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static long statistic_collect_query_timeout = 3600; // 1h
 
+    @ConfField(mutable = true)
+    public static int test_num_instances = 0;
+
     @ConfField
     public static long statistic_cache_columns = 100000;
 

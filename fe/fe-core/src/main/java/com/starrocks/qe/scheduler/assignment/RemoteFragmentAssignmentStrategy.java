@@ -14,8 +14,10 @@
 
 package com.starrocks.qe.scheduler.assignment;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
+import com.starrocks.common.Config;
 import com.starrocks.common.UserException;
 import com.starrocks.planner.DataPartition;
 import com.starrocks.planner.MultiCastPlanFragment;
@@ -131,6 +133,9 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
             maxFragment.getInstances().stream()
                     .map(FragmentInstance::getWorkerId)
                     .forEach(workerIdSet::add);
+            if (Config.test_num_instances > 0) {
+                workerIdSet = ImmutableSet.of(workerIdSet.iterator().next());
+            }
         }
 
         if (enableDopAdaption) {
