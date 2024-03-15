@@ -1164,6 +1164,10 @@ CONF_mInt64(primary_key_batch_get_index_memory_limit, "104857600"); // 100MB
 // otherwise, StarRocks will use zone map for one column filter
 CONF_mBool(enable_short_key_for_one_column_filter, "false");
 
+CONF_mBool(enable_zonemap_index_filter, "true");
+CONF_mBool(enable_bloom_filter, "true");
+CONF_mBool(enable_bitmap_index_filter, "true");
+
 CONF_mBool(enable_http_stream_load_limit, "false");
 CONF_mInt32(finish_publish_version_internal, "100");
 

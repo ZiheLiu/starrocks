@@ -135,6 +135,7 @@ add_library(Storage STATIC
     column_or_predicate.cpp
     column_expr_predicate.cpp
     conjunctive_predicates.cpp
+    predicate_tree.cpp
     convert_helper.cpp
     delete_predicates.cpp
     disjunctive_predicates.cpp

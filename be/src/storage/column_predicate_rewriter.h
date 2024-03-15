@@ -22,11 +22,15 @@
 #include "storage/column_predicate.h"
 #include "storage/conjunctive_predicates.h"
 #include "storage/olap_common.h"
+#include "storage/predicate_tree.hpp"
 #include "storage/rowset/column_decoder.h"
 #include "storage/rowset/column_reader.h"
 
 namespace starrocks {
+
 class ColumnExprPredicate;
+class ColumnPredicate;
+using ColumnPredicatePtr = std::unique_ptr<ColumnPredicate>;
 
 // For dictionary columns, predicates can be rewriten
 // Int columns.
@@ -38,32 +42,45 @@ public:
     using ColumnIterators = std::vector<std::unique_ptr<ColumnIterator>>;
     using PushDownPredicates = std::unordered_map<ColumnId, PredicateList>;
 
-    ColumnPredicateRewriter(const ColumnIterators& column_iterators, PushDownPredicates& pushdown_predicates,
-                            const Schema& schema, std::vector<uint8_t>& need_rewrite, int column_size,
-                            SparseRange<>& scan_range)
+    ColumnPredicateRewriter(const ColumnIterators& column_iterators, const Schema& schema,
+                            std::vector<uint8_t>& need_rewrite, int column_size, SparseRange<>& scan_range)
             : _column_iterators(column_iterators),
-              _predicates(pushdown_predicates),
               _schema(schema),
               _need_rewrite(need_rewrite),
               _column_size(column_size),
               _scan_range(scan_range) {}
 
-    Status rewrite_predicate(ObjectPool* pool);
+    StatusOr<PredicateTree> rewrite_predicate(PredicateTree& pred_tree, ObjectPool* pool);
 
 private:
-    StatusOr<bool> _rewrite_predicate(ObjectPool* pool, const FieldPtr& field);
-    StatusOr<bool> _rewrite_expr_predicate(ObjectPool* pool, const ColumnPredicate*, const ColumnPtr& dict_column,
-                                           const ColumnPtr& code_column, bool field_nullable, ColumnPredicate** ptr);
-    Status _get_segment_dict(std::vector<std::pair<std::string, int>>* dicts, ColumnIterator* iter);
-    Status _get_segment_dict_vec(ColumnIterator* iter, ColumnPtr* dict_column, ColumnPtr* code_column,
-                                 bool field_nullable);
+    friend struct RewritePredicateTreeVisitor;
+
+    enum class RewriteStatus : uint8_t { ALWAYS_TRUE, ALWAYS_FALSE, UNCHANGED, CHANGED };
+    // TODO: use pair<slice,int>
+    using SortedDicts = std::vector<std::pair<std::string, int>>;
+    using DictAndCodes = std::pair<ColumnPtr, ColumnPtr>;
+
+    StatusOr<RewriteStatus> _rewrite_predicate(ObjectPool* pool, const ColumnPredicate* pred, const FieldPtr& field,
+                                               ColumnId cid, ColumnPredicate** dest_pred);
+    StatusOr<RewriteStatus> _rewrite_expr_predicate(ObjectPool* pool, const ColumnPredicate*,
+                                                    const ColumnPtr& dict_column, const ColumnPtr& code_column,
+                                                    bool field_nullable, ColumnPredicate** ptr);
+
+    StatusOr<const SortedDicts*> _get_or_load_segment_dict(ColumnId cid);
+    Status _load_segment_dict(std::vector<std::pair<std::string, int>>* dicts, ColumnIterator* iter);
+
+    StatusOr<const DictAndCodes*> _get_or_load_segment_dict_vec(ColumnId cid, const FieldPtr& field);
+    Status _load_segment_dict_vec(ColumnIterator* iter, ColumnPtr* dict_column, ColumnPtr* code_column,
+                                  bool field_nullable);
 
     const ColumnIterators& _column_iterators;
-    PushDownPredicates& _predicates;
     const Schema& _schema;
     std::vector<uint8_t>& _need_rewrite;
     const int _column_size;
     SparseRange<>& _scan_range;
+
+    std::unordered_map<ColumnId, SortedDicts> _cid_to_sorted_dicts;
+    std::unordered_map<ColumnId, DictAndCodes> _cid_to_vec_sorted_dicts;
 };
 
 // For global dictionary columns, predicates can be rewriten
@@ -73,23 +90,25 @@ private:
 // TODO: refactor GlobalDictPredicatesRewriter and ColumnPredicateRewriter
 class GlobalDictPredicatesRewriter {
 public:
-    GlobalDictPredicatesRewriter(ConjunctivePredicates& predicates, const ColumnIdToGlobalDictMap& dict_maps)
-            : GlobalDictPredicatesRewriter(predicates, dict_maps, nullptr) {}
-    GlobalDictPredicatesRewriter(ConjunctivePredicates& predicates, const ColumnIdToGlobalDictMap& dict_maps,
-                                 std::vector<uint8_t>* disable_rewrite)
-            : _predicates(predicates), _dict_maps(dict_maps), _disable_dict_rewrite(disable_rewrite) {}
+    GlobalDictPredicatesRewriter(const ColumnIdToGlobalDictMap& dict_maps)
+            : GlobalDictPredicatesRewriter(dict_maps, nullptr) {}
+    GlobalDictPredicatesRewriter(const ColumnIdToGlobalDictMap& dict_maps, std::vector<uint8_t>* disable_rewrite)
+            : _dict_maps(dict_maps), _disable_dict_rewrite(disable_rewrite) {}
 
-    Status rewrite_predicate(ObjectPool* pool);
+    StatusOr<ColumnPredicatePtr> rewrite_predicate(const ColumnPredicate* pred);
+    Status rewrite_predicate(ConjunctivePredicates& predicates, ObjectPool* pool);
+    Status rewrite_predicate(PredicateTree& pred_tree, ObjectPool* pool);
 
+private:
     bool column_need_rewrite(ColumnId cid) {
         if (_disable_dict_rewrite && (*_disable_dict_rewrite)[cid]) return false;
         return _dict_maps.count(cid);
     }
 
 private:
-    ConjunctivePredicates& _predicates;
     const ColumnIdToGlobalDictMap& _dict_maps;
     std::vector<uint8_t>* _disable_dict_rewrite;
+    std::vector<uint8_t> _selection;
 };
 
 // For zone map index, some predicates can not be used directly,
@@ -98,16 +117,7 @@ private:
 // It will only be used before performing segment-level and page-level zone map filters
 class ZonemapPredicatesRewriter {
 public:
-    using PredicateList = std::vector<const ColumnPredicate*>;
-
-    static Status rewrite_predicate_map(ObjectPool* pool, const std::unordered_map<ColumnId, PredicateList>& src,
-                                        std::unordered_map<ColumnId, PredicateList>* dst);
-
-    static Status rewrite_predicate_list(ObjectPool* pool, const PredicateList& src, PredicateList* dst);
-
-private:
-    static Status _rewrite_column_expr_predicates(ObjectPool* pool, const ColumnPredicate* pred,
-                                                  std::vector<const ColumnExprPredicate*>* new_preds);
+    static StatusOr<PredicateTree> rewrite_predicate_tree(ObjectPool* pool, const PredicateTree& src);
 };
 
 } // namespace starrocks

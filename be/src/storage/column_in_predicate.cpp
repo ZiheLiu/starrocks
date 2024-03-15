@@ -100,6 +100,8 @@ public:
         return false;
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
         for (auto value : _values) {
@@ -268,6 +270,8 @@ public:
         }
         return false;
     }
+
+    bool support_bitmap_filter() const override { return true; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
