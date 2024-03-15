@@ -221,10 +221,13 @@ Expr* RawExprContainer::root() const {
     return root_expr;
 }
 StatusOr<ExprContext*> RawExprContainer::expr_context(ObjectPool* obj_pool, RuntimeState* state) const {
-    ExprContext* expr_ctx = obj_pool->add(new ExprContext(root_expr));
-    RETURN_IF_ERROR(expr_ctx->prepare(state));
-    RETURN_IF_ERROR(expr_ctx->open(state));
-    return expr_ctx;
+    if (new_expr_ctx == nullptr) {
+        auto* new_expr = Expr::copy(obj_pool, root_expr);
+        new_expr_ctx = obj_pool->add(new ExprContext(new_expr));
+        RETURN_IF_ERROR(new_expr_ctx->prepare(state));
+        RETURN_IF_ERROR(new_expr_ctx->open(state));
+    }
+    return new_expr_ctx;
 }
 
 ExprContextContainer::ExprContextContainer(ExprContext* expr_ctx) : expr_ctx(expr_ctx) {}
