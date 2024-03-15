@@ -52,7 +52,7 @@ struct RawExprContainer {
     StatusOr<ExprContext*> expr_context(ObjectPool* obj_pool, RuntimeState* state) const;
 
     Expr* root_expr;
-    ExprContext* new_expr_ctx = nullptr;
+    mutable ExprContext* new_expr_ctx = nullptr;
 };
 
 struct ExprContextContainer {
