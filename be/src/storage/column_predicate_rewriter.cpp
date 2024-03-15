@@ -56,6 +56,11 @@ struct RewritePredicateTreeVisitor {
     StatusOr<RewriteStatusAndNode> operator()(PredicateTreeColumnNode& node) const {
         const auto* col_pred = node.col_pred();
         const auto cid = col_pred->column_id();
+
+        if (!_rewriter._need_rewrite[cid]) {
+            return std::make_pair(RewriteStatus::UNCHANGED, std::nullopt);
+        }
+
         const auto& field = _cid_to_field.find(cid)->second;
 
         DCHECK(_rewriter._column_iterators[cid]->all_page_dict_encoded());
