@@ -809,7 +809,7 @@ struct ZoneMapFilterEvaluator {
 
             SparseRange<> cur_row_ranges;
             RETURN_IF_ERROR(column_iterators[cid]->get_row_ranges_by_zone_map(col_preds, del_pred, &cur_row_ranges));
-            _merge_row_ranges(row_ranges, cur_row_ranges);
+            _merge_row_ranges<Type>(row_ranges, cur_row_ranges);
         }
 
         if constexpr (Type == CompoundNodeType::AND) {
@@ -829,7 +829,7 @@ struct ZoneMapFilterEvaluator {
 
                     SparseRange<> cur_row_ranges;
                     RETURN_IF_ERROR(column_iterators[cid]->get_row_ranges_by_zone_map({}, del_pred, &cur_row_ranges));
-                    _merge_row_ranges(row_ranges, cur_row_ranges);
+                    _merge_row_ranges<Type>(row_ranges, cur_row_ranges);
                 }
             }
         }
@@ -841,7 +841,7 @@ struct ZoneMapFilterEvaluator {
 
             ASSIGN_OR_RETURN(auto cur_row_ranges_opt, child.visit(*this));
             if (cur_row_ranges_opt.has_value()) {
-                _merge_row_ranges(row_ranges, cur_row_ranges_opt.value());
+                _merge_row_ranges<Type>(row_ranges, cur_row_ranges_opt.value());
             }
         }
 
