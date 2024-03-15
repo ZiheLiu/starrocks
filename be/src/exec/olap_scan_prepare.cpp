@@ -525,7 +525,9 @@ template <LogicalType SlotType, typename RangeValueType, bool Inverted>
 Status ChunkPredicateBuilder<E>::normalize_join_runtime_filter(const SlotDescriptor& slot,
                                                                ColumnValueRange<RangeValueType>* range) {
     // TODO(lzh): OR preidcate with runtime filters is not supported yet.
-    DCHECK(!Inverted);
+    if constexpr (Inverted) {
+        return Status::OK();
+    }
 
     // in runtime filter
     for (size_t i = 0; i < _exprs.size(); i++) {
