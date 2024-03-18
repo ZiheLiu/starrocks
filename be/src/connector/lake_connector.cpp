@@ -71,7 +71,7 @@ private:
     Status _status = Status::OK();
     // The conjuncts couldn't push down to storage engine
     std::vector<ExprContext*> _not_push_down_conjuncts;
-    PredicateTree _not_push_down_predicates;
+    PredicateTree _non_pushdown_pred_tree;
     std::vector<uint8_t> _selection;
 
     ObjectPool _obj_pool;
@@ -140,6 +140,7 @@ private:
     RuntimeProfile::Counter* _bi_filtered_counter = nullptr;
     RuntimeProfile::Counter* _bi_filter_timer = nullptr;
     RuntimeProfile::Counter* _pushdown_predicates_counter = nullptr;
+    RuntimeProfile::Counter* _non_pushdown_predicates_counter = nullptr;
     RuntimeProfile::Counter* _rowsets_read_count = nullptr;
     RuntimeProfile::Counter* _segments_read_count = nullptr;
     RuntimeProfile::Counter* _total_columns_data_page_count = nullptr;
@@ -293,11 +294,11 @@ Status LakeDataSource::get_next(RuntimeState* state, ChunkPtr* chunk) {
             chunk_ptr->set_slot_id_to_index(slot->id(), column_index);
         }
 
-        if (!_not_push_down_predicates.empty()) {
+        if (!_non_pushdown_pred_tree.empty()) {
             SCOPED_TIMER(_expr_filter_timer);
             size_t nrows = chunk_ptr->num_rows();
             _selection.resize(nrows);
-            RETURN_IF_ERROR(_not_push_down_predicates.visit(
+            RETURN_IF_ERROR(_non_pushdown_pred_tree.visit(
                     [&](const auto& node) { return node.evaluate(chunk_ptr, _selection.data(), 0, nrows); }));
             chunk_ptr->filter(_selection);
             DCHECK_CHUNK(chunk_ptr);
@@ -413,11 +414,11 @@ Status LakeDataSource::init_reader_params(const std::vector<OlapScanRange*>& key
     decide_chunk_size(!pred_tree.empty());
     _has_any_predicate = (!pred_tree.empty());
     pred_tree.shallow_partition_copy([parser](const PredicateTreeNode& node) { return parser->can_pushdown(node); },
-                                     &_params.pred_tree, &_not_push_down_predicates);
+                                     &_params.pred_tree, &_non_pushdown_pred_tree);
 
     {
         GlobalDictPredicatesRewriter not_pushdown_predicate_rewriter(*_params.global_dictmaps);
-        RETURN_IF_ERROR(not_pushdown_predicate_rewriter.rewrite_predicate(_not_push_down_predicates, &_obj_pool));
+        RETURN_IF_ERROR(not_pushdown_predicate_rewriter.rewrite_predicate(_non_pushdown_pred_tree, &_obj_pool));
     }
 
     // Range
@@ -476,8 +477,13 @@ Status LakeDataSource::init_tablet_reader(RuntimeState* runtime_state) {
         _prj_iter = new_projection_iterator(output_schema, _reader);
     }
 
-    if (!_not_push_down_conjuncts.empty() || !_not_push_down_predicates.empty()) {
+    if (!_not_push_down_conjuncts.empty() || !_non_pushdown_pred_tree.empty()) {
         _expr_filter_timer = ADD_TIMER(_runtime_profile, "ExprFilterTime");
+
+        _non_pushdown_predicates_counter = ADD_COUNTER_SKIP_MERGE(_runtime_profile, "NonPushdownPredicates",
+                                                                  TUnit::UNIT, TCounterMergeType::SKIP_ALL);
+        COUNTER_SET(_non_pushdown_predicates_counter,
+                    static_cast<int64_t>(_not_push_down_conjuncts.size() + _non_pushdown_pred_tree.size()));
     }
 
     DCHECK(_params.global_dictmaps != nullptr);

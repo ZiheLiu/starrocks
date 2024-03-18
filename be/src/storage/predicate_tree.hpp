@@ -33,7 +33,7 @@ std::string PredicateTreeCompoundNode<Type>::debug_string() const {
     }
     size_t num_children = 0;
     for (const auto& child : _children) {
-        ss << "'" << child.visit([](const auto& node) { return node.debug_string(); }) << "'";
+        ss << child.visit([](const auto& node) { return node.debug_string(); });
         if (++num_children < _children.size()) {
             ss << ",";
         }
