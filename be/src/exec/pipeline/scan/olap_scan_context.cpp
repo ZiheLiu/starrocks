@@ -120,7 +120,7 @@ Status OlapScanContext::parse_conjuncts(RuntimeState* state, const std::vector<E
     opts.scan_keys_unlimited = true;
     opts.max_scan_key_num = max_scan_key_num;
     opts.enable_column_expr_predicate = enable_column_expr_predicate;
-    opts.pred_tree_params = state->fragment_ctx().pred_tree_params();
+    opts.pred_tree_params = state->fragment_ctx()->pred_tree_params();
 
     _conjuncts_manager = std::make_unique<OlapScanConjunctsManager>(std::move(opts));
     OlapScanConjunctsManager& cm = *_conjuncts_manager;

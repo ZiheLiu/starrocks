@@ -20,6 +20,7 @@
 #include "exprs/expr_context.h"
 #include "storage/olap_runtime_range_pruner.h"
 #include "storage/predicate_tree_fwd.h"
+#include "storage/predicate_tree_params.h"
 
 namespace starrocks {
 

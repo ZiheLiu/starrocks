@@ -169,12 +169,4 @@ struct PredicateTreeNode {
     mutable std::optional<std::map<ColumnId, std::vector<const ColumnPredicate*>>> _cached_column_preds;
 };
 
-// ------------------------------------------------------------------------------------
-// PredicateTreeNode
-// ------------------------------------------------------------------------------------
-struct PredicateTreeParams {
-    bool enable_or = false;
-    bool enable_show_in_profile = false;
-};
-
 } // namespace starrocks
