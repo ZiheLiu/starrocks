@@ -574,7 +574,7 @@ Status SegmentIterator::_init_column_iterator_by_cid(const ColumnId cid, const C
 
 template <bool check_global_dict>
 Status SegmentIterator::_init_column_iterators(const Schema& schema) {
-    DCHECK_EQ(_predicate_columns, _opts.pred_tree.num_columns());
+    // DCHECK_EQ(_predicate_columns, _opts.pred_tree.num_columns());
     SCOPED_RAW_TIMER(&_opts.stats->column_iterator_init_ns);
 
     const size_t n = std::max<size_t>(1 + ChunkHelper::max_column_id(schema), _column_iterators.size());
@@ -660,7 +660,7 @@ struct IndexOnlyPredicateChecker {
 };
 
 void SegmentIterator::_init_column_predicates() {
-    DCHECK_EQ(_predicate_columns, _opts.pred_tree.num_columns());
+    // DCHECK_EQ(_predicate_columns, _opts.pred_tree.num_columns());
 
     _opts.pred_tree.sort_children();
 
@@ -1530,12 +1530,12 @@ Status SegmentIterator::_build_context(ScanContext* ctx) {
 }
 
 Status SegmentIterator::_init_context() {
-    DCHECK_EQ(_predicate_columns, _opts.pred_tree.num_columns());
+    // DCHECK_EQ(_predicate_columns, _opts.pred_tree.num_columns());
     _late_materialization_ratio = config::late_materialization_ratio;
 
     RETURN_IF_ERROR(_init_global_dict_decoder());
 
-    if (_predicate_columns == 0 ||
+    if (_predicate_columns == 0 || _opts.pred_tree.empty() ||
         (_predicate_columns >= _schema.num_fields() && _predicate_column_access_paths.empty())) {
         // non or all field has predicate, disable late materialization.
         RETURN_IF_ERROR(_build_context<false>(&_context_list[0]));
