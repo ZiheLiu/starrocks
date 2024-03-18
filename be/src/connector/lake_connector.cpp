@@ -16,6 +16,7 @@
 
 #include "exec/connector_scan_node.h"
 #include "exec/olap_scan_prepare.h"
+#include "exec/pipeline/fragment_context.h"
 #include "runtime/global_dict/parser.h"
 #include "storage/column_predicate_rewriter.h"
 #include "storage/conjunctive_predicates.h"
