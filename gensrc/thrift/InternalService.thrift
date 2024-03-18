@@ -355,7 +355,7 @@ struct TAdaptiveDopParam {
   2: optional i64 max_output_amplification_factor
 }
 
-struct TPredicateTreeParam {
+struct TPredicateTreeParams {
   1: optional bool enable_or
   2: optional bool enable_show_in_profile
 }
