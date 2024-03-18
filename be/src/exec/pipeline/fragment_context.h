@@ -151,6 +151,9 @@ public:
     bool enable_adaptive_dop() const { return _enable_adaptive_dop; }
     AdaptiveDopParam& adaptive_dop_param() { return _adaptive_dop_param; }
 
+    const PredicateTreeParams& pred_tree_params() const { return _pred_tree_params; }
+    void set_pred_tree_params(PredicateTreeParams&& params) { _pred_tree_params = std::move(params); }
+
     size_t next_driver_id() { return _next_driver_id++; }
 
     void set_workgroup(workgroup::WorkGroupPtr wg) { _workgroup = std::move(wg); }
@@ -165,13 +168,21 @@ public:
 
 #ifdef BE_TEST
     // for ut
-    void set_is_stream_test(bool is_stream_test) { _is_stream_test = is_stream_test; }
-    bool is_stream_test() const { return _is_stream_test; }
+    void set_is_stream_test(bool is_stream_test) {
+        _is_stream_test = is_stream_test;
+    }
+    bool is_stream_test() const {
+        return _is_stream_test;
+    }
 #endif
 
-    size_t expired_log_count() { return _expired_log_count; }
+    size_t expired_log_count() {
+        return _expired_log_count;
+    }
 
-    void set_expired_log_count(size_t val) { _expired_log_count = val; }
+    void set_expired_log_count(size_t val) {
+        _expired_log_count = val;
+    }
 
 private:
     // Id of this query
@@ -220,6 +231,8 @@ private:
 
     bool _enable_adaptive_dop = false;
     AdaptiveDopParam _adaptive_dop_param;
+
+    PredicateTreeParams _pred_tree_params;
 
     size_t _expired_log_count = 0;
 

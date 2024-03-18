@@ -355,6 +355,11 @@ struct TAdaptiveDopParam {
   2: optional i64 max_output_amplification_factor
 }
 
+struct TPredicateTreeParam {
+  1: optional bool enable_or
+  2: optional bool enable_show_in_profile
+}
+
 // ExecPlanFragment
 
 struct TExecPlanFragmentParams {
@@ -413,6 +418,8 @@ struct TExecPlanFragmentParams {
   57: optional bool is_stream_pipeline
 
   58: optional TAdaptiveDopParam adaptive_dop_param
+
+  59: optional TPredicateTreeParams pred_tree_param
 }
 
 struct TExecPlanFragmentResult {

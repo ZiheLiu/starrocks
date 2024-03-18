@@ -289,6 +289,10 @@ StatusOr<bool> ChunkPredicateBuilder<E>::_normalize_and_or_predicates() {
 template <ExprContainer E>
 StatusOr<bool> ChunkPredicateBuilder<E>::_normalize_and_or_predicate(const Expr* root_expr) {
     if (TExprOpcode::COMPOUND_OR == root_expr->op()) {
+        if (!_opts.pred_tree_params.enable_or) {
+            return false;
+        }
+
         ChunkPredicateBuilder<RawExprContainer> child_builder(_opts, CompoundNodeType::OR,
                                                               build_raw_expr_containers(root_expr->children()), false);
         ASSIGN_OR_RETURN(const bool normalized, child_builder.parse_conjuncts());

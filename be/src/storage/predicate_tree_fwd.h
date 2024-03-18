@@ -33,4 +33,6 @@ using PredicateTreeOrNode = PredicateTreeCompoundNode<CompoundNodeType::OR>;
 struct PredicateTreeNode;
 using PredicateTree = PredicateTreeNode;
 
+struct PredicateTreeParams;
+
 } // namespace starrocks
