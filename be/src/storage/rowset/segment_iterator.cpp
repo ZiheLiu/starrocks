@@ -472,7 +472,7 @@ Status SegmentIterator::_try_to_update_ranges_by_runtime_filter() {
                 SparseRange<> r;
                 // TODO(lzh): support OR predicate for runtime filter.
                 RETURN_IF_ERROR(_column_iterators[cid]->get_row_ranges_by_zone_map(predicates, del_pred, &r,
-                                                                                   CompoundType::AND));
+                                                                                   CompoundNodeType::AND));
                 size_t prev_size = _scan_range.span_size();
                 SparseRange<> res;
                 res.set_sorted(_scan_range.is_sorted());
