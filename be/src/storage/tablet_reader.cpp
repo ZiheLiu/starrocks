@@ -141,12 +141,12 @@ Status TabletReader::_init_collector_for_pk_index_read() {
     auto pk_schema = ChunkHelper::convert_schema(tablet_schema, pk_column_ids);
     auto keys = ChunkHelper::new_chunk(pk_schema, 1);
     size_t num_pk_eq_predicates = 0;
-    PredicateTreeNodeVisitor node_visitor{
+    overloaded node_visitor{
             [](const PredicateTreeColumnNode& node) -> StatusOr<PredicateTreeNode> { return PredicateTreeNode{node}; },
             [](const PredicateTreeOrNode& node) -> StatusOr<PredicateTreeNode> { return PredicateTreeNode{node}; },
             [&](const PredicateTreeAndNode& node) -> StatusOr<PredicateTreeNode> {
                 PredicateTreeAndNode new_node;
-                PredicateTreeNodeVisitor and_node_visitor{
+                overloaded and_node_visitor{
                         [&](const PredicateTreeColumnNode& child_node) {
                             const auto* col_pred = child_node.col_pred();
                             const auto cid = col_pred->column_id();

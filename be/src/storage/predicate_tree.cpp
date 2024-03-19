@@ -115,7 +115,7 @@ struct ChildrenSorter {
     template <CompoundNodeType Type>
     void operator()(PredicateTreeCompoundNode<Type>& node) const {
         auto get_identity = [](const PredicateTreeNode& node) {
-            return node.visit(PredicateTreeNodeVisitor{
+            return node.visit(overloaded{
                     [](const PredicateTreeColumnNode& child_node) { return child_node.col_pred()->column_id(); },
                     [&]<CompoundNodeType ChildType>(const PredicateTreeCompoundNode<ChildType>&) {
                         return std::numeric_limits<ColumnId>::max();

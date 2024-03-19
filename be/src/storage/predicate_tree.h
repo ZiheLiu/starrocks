@@ -30,11 +30,11 @@ class ColumnPredicate;
 // ------------------------------------------------------------------------------------
 
 template <typename... Base>
-struct PredicateTreeNodeVisitor : Base... {
+struct overloaded : Base... {
     using Base::operator()...;
 };
 template <typename... T>
-PredicateTreeNodeVisitor(T...) -> PredicateTreeNodeVisitor<T...>;
+overloaded(T...) -> overloaded<T...>;
 
 using PredicateTreeNodeVariant = std::variant<PredicateTreeColumnNode, PredicateTreeAndNode, PredicateTreeOrNode>;
 

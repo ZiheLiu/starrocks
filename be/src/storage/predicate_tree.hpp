@@ -119,7 +119,7 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const C
     std::vector<const PredicateTreeNode*> non_vec_children;
     non_vec_children.reserve(_children.size());
     for (const auto& child : _children) {
-        const bool is_non_vec = child.visit(PredicateTreeNodeVisitor{
+        const bool is_non_vec = child.visit(overloaded{
                 [&](const PredicateTreeColumnNode& node) { return !node.col_pred()->can_vectorized(); },
                 [&]<CompoundNodeType ChildType>(const PredicateTreeCompoundNode<ChildType>& node) { return false; },
         });
@@ -266,7 +266,7 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::OR>::evaluate_or(const
 template <typename Vistor>
 void PredicateTreeNode::shallow_partition_copy(Vistor&& cond, PredicateTreeNode* true_pred_tree,
                                                PredicateTreeNode* false_pred_tree) const {
-    visit(PredicateTreeNodeVisitor{
+    visit(overloaded{
             [&](const PredicateTreeColumnNode& node) {
                 PredicateTreeNode new_node{node};
                 if (cond(new_node)) {
