@@ -81,18 +81,22 @@ public class MergeConstantUnionRule extends TransformationRule {
                 .setProjection(null)
                 .setRows(newRows)
                 .setColumnRefSet(unionOp.getChildOutputColumns().get(firstConstantChildIndex))
+//                .setColumnRefSet(unionOp.getOutputColumnRefOp())
                 .build();
         OptExpression newValuesExpr = OptExpression.create(newValuesOp);
-        newInputs.add(newValuesExpr);
-        newChildOutputColumns.add(newValuesOp.getColumnRefSet());
 
-        LogicalUnionOperator newUnionOp = new LogicalUnionOperator.Builder()
-                .withOperator(unionOp)
-                .setChildOutputColumns(newChildOutputColumns)
-                .build();
-        OptExpression newUnionExpr = OptExpression.create(newUnionOp, newInputs);
+        return List.of(newValuesExpr);
 
-        return List.of(newUnionExpr);
+//        newInputs.add(newValuesExpr);
+//        newChildOutputColumns.add(newValuesOp.getColumnRefSet());
+//
+//        LogicalUnionOperator newUnionOp = new LogicalUnionOperator.Builder()
+//                .withOperator(unionOp)
+//                .setChildOutputColumns(newChildOutputColumns)
+//                .build();
+//        OptExpression newUnionExpr = OptExpression.create(newUnionOp, newInputs);
+//
+//        return List.of(newUnionExpr);
     }
 
     private static boolean isMergable(OptExpression input) {
