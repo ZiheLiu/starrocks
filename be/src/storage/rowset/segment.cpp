@@ -292,7 +292,7 @@ struct SegmentZoneMapPruner {
 StatusOr<ChunkIteratorPtr> Segment::_new_iterator(const Schema& schema, const SegmentReadOptions& read_options) {
     DCHECK(read_options.stats != nullptr);
 
-    const auto pruned = config::enable_zonemap_index_filter &&
+    const auto pruned = config::enable_index_zonemap_filter &&
                         read_options.pred_tree_for_zone_map.visit(SegmentZoneMapPruner{this, read_options});
     if (pruned) {
         if (read_options.is_first_split_of_segment) {
