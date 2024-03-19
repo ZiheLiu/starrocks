@@ -2273,8 +2273,10 @@ struct BloomFilterSupportChecker {
     }
 
     bool operator()(const PredicateTreeAndNode& node) {
-        const bool support =
-                std::ranges::any_of(node.children(), [&](const auto& child) { return child.visit(*this); });
+        bool support = false;
+        for (const auto& child : node.children()) {
+            support |= child.visit(*this);
+        }
         if (support) {
             used_nodes.emplace(&node);
         }
