@@ -826,7 +826,8 @@ struct ZoneMapFilterEvaluator {
                     const ColumnPredicate* del_pred = &(iter->second);
 
                     SparseRange<> cur_row_ranges;
-                    RETURN_IF_ERROR(column_iterators[cid]->get_row_ranges_by_zone_map({}, del_pred, &cur_row_ranges));
+                    RETURN_IF_ERROR(
+                            column_iterators[cid]->get_row_ranges_by_zone_map({}, del_pred, &cur_row_ranges, Type));
                     _merge_row_ranges<Type>(row_ranges, cur_row_ranges);
                 }
             }

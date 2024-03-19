@@ -44,8 +44,8 @@ public:
 
     /// for vectorized engine
     [[nodiscard]] Status get_row_ranges_by_zone_map(const std::vector<const ColumnPredicate*>& predicates,
-                                                    const ColumnPredicate* del_predicate,
-                                                    SparseRange<>* row_ranges) override;
+                                                    const ColumnPredicate* del_predicate, SparseRange<>* row_ranges,
+                                                    CompoundNodeType pred_relation) override;
 
     [[nodiscard]] Status fetch_values_by_rowid(const rowid_t* rowids, size_t size, Column* values) override;
 
@@ -235,8 +235,8 @@ Status StructColumnIterator::seek_to_ordinal(ordinal_t ord) {
 }
 
 Status StructColumnIterator::get_row_ranges_by_zone_map(const std::vector<const ColumnPredicate*>& predicates,
-                                                        const ColumnPredicate* del_predicate,
-                                                        SparseRange<>* row_ranges) {
+                                                        const ColumnPredicate* del_predicate, SparseRange<>* row_ranges,
+                                                        CompoundNodeType pred_relation) {
     row_ranges->add({0, static_cast<rowid_t>(_reader->num_rows())});
     return Status::OK();
 }

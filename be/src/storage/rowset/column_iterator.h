@@ -37,6 +37,7 @@
 #include "common/status.h"
 #include "storage/olap_common.h"
 #include "storage/options.h"
+#include "storage/predicate_tree_fwd.h"
 #include "storage/range.h"
 #include "storage/rowset/common.h"
 #include "util/runtime_profile.h"
@@ -103,11 +104,15 @@ public:
 
     virtual ordinal_t get_current_ordinal() const = 0;
 
-    /// for vectorized engine
+    /// Store the row ranges that satisfy the given predicates into |row_ranges|.
+    /// |pred_relation| is the relation among |predicates|, it can be AND or OR.
     [[nodiscard]] virtual Status get_row_ranges_by_zone_map(const std::vector<const ColumnPredicate*>& predicates,
                                                             const ColumnPredicate* del_predicate,
-                                                            SparseRange<>* row_ranges) = 0;
+                                                            SparseRange<>* row_ranges,
+                                                            CompoundNodeType pred_relation) = 0;
 
+    /// Consider the relation among |predicates| is disjunction,
+    /// that is, keep the row_ranges that satisfy any predicate in predicates.
     [[nodiscard]] virtual Status get_row_ranges_by_bloom_filter(const std::vector<const ColumnPredicate*>& predicates,
                                                                 SparseRange<>* row_ranges) {
         return Status::OK();

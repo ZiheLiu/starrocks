@@ -72,9 +72,9 @@ public:
     }
 
     [[nodiscard]] Status get_row_ranges_by_zone_map(const std::vector<const ColumnPredicate*>& predicates,
-                                                    const ColumnPredicate* del_predicate,
-                                                    SparseRange<>* row_ranges) override {
-        return _col_iter->get_row_ranges_by_zone_map(predicates, del_predicate, row_ranges);
+                                                    const ColumnPredicate* del_predicate, SparseRange<>* row_ranges,
+                                                    CompoundNodeType pred_relation) override {
+        return _col_iter->get_row_ranges_by_zone_map(predicates, del_predicate, row_ranges, pred_relation);
     }
 
 private:
@@ -141,9 +141,9 @@ public:
     }
 
     [[nodiscard]] Status get_row_ranges_by_zone_map(const std::vector<const ColumnPredicate*>& predicates,
-                                                    const ColumnPredicate* del_predicate,
-                                                    SparseRange<>* row_ranges) override {
-        return _col_iter->get_row_ranges_by_zone_map(predicates, del_predicate, row_ranges);
+                                                    const ColumnPredicate* del_predicate, SparseRange<>* row_ranges,
+                                                    CompoundNodeType pred_relation) override {
+        return _col_iter->get_row_ranges_by_zone_map(predicates, del_predicate, row_ranges, pred_relation);
     }
 
     [[nodiscard]] static Status build_code_convert_map(ColumnIterator* file_column_iter, GlobalDictMap* global_dict,
