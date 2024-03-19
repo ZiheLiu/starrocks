@@ -18,9 +18,9 @@
 #include <set>
 #include <vector>
 
+#include "common/overloaded.h"
 #include "storage/column_predicate.h"
 #include "storage/predicate_tree_fwd.h"
-#include "util/overloaded.h"
 
 namespace starrocks {
 

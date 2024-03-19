@@ -18,13 +18,13 @@
 #include <type_traits>
 #include <variant>
 
+#include "common/overloaded.h"
 #include "runtime/decimalv2_value.h"
 #include "storage/decimal12.h"
 #include "storage/uint24.h"
 #include "types/date_value.hpp"
 #include "types/timestamp_value.h"
 #include "util/int96.h"
-#include "util/overloaded.h"
 #include "util/slice.h"
 
 namespace starrocks {
