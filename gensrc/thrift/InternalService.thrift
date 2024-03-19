@@ -419,7 +419,7 @@ struct TExecPlanFragmentParams {
 
   58: optional TAdaptiveDopParam adaptive_dop_param
 
-  59: optional TPredicateTreeParams pred_tree_param
+  59: optional TPredicateTreeParams pred_tree_params
 }
 
 struct TExecPlanFragmentResult {
