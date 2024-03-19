@@ -27,9 +27,9 @@ template <CompoundNodeType Type>
 std::string PredicateTreeCompoundNode<Type>::debug_string() const {
     std::stringstream ss;
     if constexpr (Type == CompoundNodeType::AND) {
-        ss << "{'and':[";
+        ss << "{\"and\":[";
     } else {
-        ss << "{'or':[";
+        ss << "{\"or\":[";
     }
     size_t num_children = 0;
     for (const auto& child : _children) {

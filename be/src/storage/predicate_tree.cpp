@@ -36,7 +36,7 @@ StatusOr<uint16_t> PredicateTreeColumnNode::evaluate_branchless(const Chunk* chu
 }
 
 std::string PredicateTreeColumnNode::debug_string() const {
-    return strings::Substitute("{'pred': '$0'}", _col_pred->debug_string());
+    return strings::Substitute("{\"pred\":\"$0\"}", _col_pred->debug_string());
 }
 
 // ------------------------------------------------------------------------------------
