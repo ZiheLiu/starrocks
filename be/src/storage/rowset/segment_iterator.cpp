@@ -871,7 +871,7 @@ struct ZoneMapFilterEvaluator {
 };
 
 Status SegmentIterator::_get_row_ranges_by_zone_map() {
-    RETURN_IF(!config::enable_zonemap_index_filter, Status::OK());
+    RETURN_IF(!config::enable_index_zonemap_filter, Status::OK());
     RETURN_IF(_scan_range.empty(), Status::OK());
 
     SCOPED_RAW_TIMER(&_opts.stats->zone_map_filter_ns);
@@ -2185,7 +2185,7 @@ struct BitmapIndexPredicateEraser {
 // filter rows by evaluating column predicates using bitmap indexes.
 // upon return, predicates that have been evaluated by bitmap indexes will be removed.
 Status SegmentIterator::_apply_bitmap_index() {
-    RETURN_IF(!config::enable_bitmap_index_filter, Status::OK());
+    RETURN_IF(!config::enable_index_bitmap_filter, Status::OK());
     RETURN_IF(_scan_range.empty(), Status::OK());
 
     const auto& immutable_pred_tree = _opts.pred_tree;
@@ -2362,7 +2362,7 @@ struct BloomFilterEvaluator {
 };
 
 Status SegmentIterator::_get_row_ranges_by_bloom_filter() {
-    RETURN_IF(!config::enable_bloom_filter, Status::OK());
+    RETURN_IF(!config::enable_index_bloom_filter, Status::OK());
     RETURN_IF(_scan_range.empty(), Status::OK());
     RETURN_IF(_opts.pred_tree.empty(), Status::OK());
 
