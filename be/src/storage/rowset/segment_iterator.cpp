@@ -470,7 +470,9 @@ Status SegmentIterator::_try_to_update_ranges_by_runtime_filter() {
                 auto iter = _del_predicates.find(cid);
                 del_pred = iter != _del_predicates.end() ? &(iter->second) : nullptr;
                 SparseRange<> r;
-                RETURN_IF_ERROR(_column_iterators[cid]->get_row_ranges_by_zone_map(predicates, del_pred, &r));
+                // TODO(lzh): support OR predicate for runtime filter.
+                RETURN_IF_ERROR(_column_iterators[cid]->get_row_ranges_by_zone_map(predicates, del_pred, &r,
+                                                                                   CompoundType::AND));
                 size_t prev_size = _scan_range.span_size();
                 SparseRange<> res;
                 res.set_sorted(_scan_range.is_sorted());
@@ -806,7 +808,8 @@ struct ZoneMapFilterEvaluator {
             const ColumnPredicate* del_pred = iter != del_preds.end() ? &(iter->second) : nullptr;
 
             SparseRange<> cur_row_ranges;
-            RETURN_IF_ERROR(column_iterators[cid]->get_row_ranges_by_zone_map(col_preds, del_pred, &cur_row_ranges));
+            RETURN_IF_ERROR(
+                    column_iterators[cid]->get_row_ranges_by_zone_map(col_preds, del_pred, &cur_row_ranges, Type));
             _merge_row_ranges<Type>(row_ranges, cur_row_ranges);
         }
 
