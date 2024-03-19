@@ -109,8 +109,8 @@ private:
     UnarrivedRuntimeFilterList rt_ranger_params;
 
 private:
-    StatusOr<bool> _normalize_and_or_predicates();
-    StatusOr<bool> _normalize_and_or_predicate(const Expr* root_expr);
+    StatusOr<bool> _normalize_compound_predicates();
+    StatusOr<bool> _normalize_compound_predicate(const Expr* root_expr);
 
     Status _get_column_predicates(PredicateParser* parser, ColumnPredicatePtrs& col_preds_owner);
 

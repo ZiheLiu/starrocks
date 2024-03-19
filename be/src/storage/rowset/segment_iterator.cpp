@@ -641,8 +641,7 @@ struct ExprPredicateChecker {
 
     template <CompoundNodeType Type>
     bool operator()(const PredicateTreeCompoundNode<Type>& node) const {
-        return std::any_of(node.children().begin(), node.children().end(),
-                           [&](const auto& child) { return child.visit(*this); });
+        return std::ranges::any_of(node.children(), [&](const auto& child) { return child.visit(*this); });
     }
 };
 
@@ -654,8 +653,7 @@ struct IndexOnlyPredicateChecker {
 
     template <CompoundNodeType Type>
     bool operator()(const PredicateTreeCompoundNode<Type>& node) const {
-        return std::all_of(node.children().begin(), node.children().end(),
-                           [&](const auto& child) { return child.visit(*this); });
+        return std::ranges::all_of(node.children(), [&](const auto& child) { return child.visit(*this); });
     }
 };
 

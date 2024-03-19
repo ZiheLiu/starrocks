@@ -261,7 +261,7 @@ StatusOr<bool> ChunkPredicateBuilder<E>::parse_conjuncts() {
         RETURN_IF_ERROR(build_column_expr_predicates());
     }
 
-    ASSIGN_OR_RETURN(auto normalized, _normalize_and_or_predicates());
+    ASSIGN_OR_RETURN(auto normalized, _normalize_compound_predicates());
     if (_allow_partial_normalized) {
         return normalized;
     }
@@ -269,14 +269,14 @@ StatusOr<bool> ChunkPredicateBuilder<E>::parse_conjuncts() {
 }
 
 template <ExprContainer E>
-StatusOr<bool> ChunkPredicateBuilder<E>::_normalize_and_or_predicates() {
+StatusOr<bool> ChunkPredicateBuilder<E>::_normalize_compound_predicates() {
     const size_t num_preds = _exprs.size();
     for (size_t i = 0; i < num_preds; i++) {
         if (_normalized_exprs[i]) {
             continue;
         }
 
-        ASSIGN_OR_RETURN(const bool normalized, _normalize_and_or_predicate(_exprs[i].root()));
+        ASSIGN_OR_RETURN(const bool normalized, _normalize_compound_predicate(_exprs[i].root()));
         if (!normalized && !_allow_partial_normalized) {
             return false;
         }
@@ -287,7 +287,7 @@ StatusOr<bool> ChunkPredicateBuilder<E>::_normalize_and_or_predicates() {
 }
 
 template <ExprContainer E>
-StatusOr<bool> ChunkPredicateBuilder<E>::_normalize_and_or_predicate(const Expr* root_expr) {
+StatusOr<bool> ChunkPredicateBuilder<E>::_normalize_compound_predicate(const Expr* root_expr) {
     if (TExprOpcode::COMPOUND_OR == root_expr->op()) {
         if (!_opts.pred_tree_params.enable_or) {
             return false;
