@@ -83,9 +83,9 @@ private:
     std::unordered_map<ColumnId, DictAndCodes> _cid_to_vec_sorted_dicts;
 };
 
-// For global dictionary columns, predicates can be rewriten
-// GlobalDictPredicatesRewriter was a helper class, won't acquire any resource
-// GlobalDictPredicatesRewriter will rewrite ConjunctivePredicates in TabletScanner
+// For global dictionary columns, predicates can be rewriten.
+// GlobalDictPredicatesRewriter is a helper class, won't acquire any resource.
+// GlobalDictPredicatesRewriter will rewrite ConjunctivePredicates in TabletScanner.
 //
 // TODO: refactor GlobalDictPredicatesRewriter and ColumnPredicateRewriter
 class GlobalDictPredicatesRewriter {
@@ -95,8 +95,14 @@ public:
     GlobalDictPredicatesRewriter(const ColumnIdToGlobalDictMap& dict_maps, std::vector<uint8_t>* disable_rewrite)
             : _dict_maps(dict_maps), _disable_dict_rewrite(disable_rewrite) {}
 
+    /// Rewrites a single predicate.
+    ///
+    /// Returns the rewritten predicate or an error status.
+    /// If the pred needn't be rewritten, return nullptr.
     StatusOr<ColumnPredicatePtr> rewrite_predicate(const ColumnPredicate* pred);
+
     Status rewrite_predicate(ConjunctivePredicates& predicates, ObjectPool* pool);
+
     Status rewrite_predicate(PredicateTree& pred_tree, ObjectPool* pool);
 
 private:

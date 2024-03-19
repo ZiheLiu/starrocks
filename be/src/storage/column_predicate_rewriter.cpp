@@ -492,7 +492,7 @@ StatusOr<ColumnPredicateRewriter::RewriteStatus> ColumnPredicateRewriter::_rewri
 
 StatusOr<ColumnPredicatePtr> GlobalDictPredicatesRewriter::rewrite_predicate(const ColumnPredicate* pred) {
     if (!column_need_rewrite(pred->column_id())) {
-        return Status::OK();
+        return nullptr;
     }
 
     const auto& dict = _dict_maps.at(pred->column_id());
