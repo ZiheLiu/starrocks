@@ -363,6 +363,12 @@ SegmentIterator::SegmentIterator(std::shared_ptr<Segment> segment, Schema schema
     }
     _opts.pred_tree.sort_children();
 
+    // _opts.pred_tree_for_zone_map.sort_children();
+    VLOG_ROW << "[OR] SegmentIterator "
+             << "[pred_tree=" << _opts.pred_tree.visit([](const auto& node) { return node.debug_string(); }) << "]"
+             << "[zone_map_pred_tree="
+             << _opts.pred_tree_for_zone_map.visit([](const auto& node) { return node.debug_string(); }) << "]";
+
     // For small segment file (the number of rows is less than chunk_size),
     // the segment iterator will reserve a large amount of memory,
     // especially when there are many columns, many small files, many versions,
