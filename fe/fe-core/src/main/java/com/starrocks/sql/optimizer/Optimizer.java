@@ -512,7 +512,7 @@ public class Optimizer {
 
         ruleRewriteOnlyOnce(tree, rootTaskContext, new DeriveRangeJoinPredicateRule());
 
-        ruleRewriteOnlyOnce(tree, rootTaskContext, new MergeConstantUnionRule());
+        ruleRewriteIterative(tree, rootTaskContext, new MergeConstantUnionRule());
         return tree.getInputs().get(0);
     }
 

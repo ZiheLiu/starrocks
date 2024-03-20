@@ -75,28 +75,28 @@ public class MergeConstantUnionRule extends TransformationRule {
         }
 
         Preconditions.checkState(firstConstantChildIndex >= 0, "firstConstantChildIndex should not be non-positive");
-        OptExpression firstConstantChild = input.getInputs().get(firstConstantChildIndex);
-        LogicalValuesOperator newValuesOp = new LogicalValuesOperator.Builder()
-                .withOperator((LogicalValuesOperator) firstConstantChild.getOp())
-                .setProjection(null)
-                .setRows(newRows)
-                .setColumnRefSet(unionOp.getChildOutputColumns().get(firstConstantChildIndex))
-//                .setColumnRefSet(unionOp.getOutputColumnRefOp())
-                .build();
+
+        if (newInputs.isEmpty() && unionOp.isUnionAll()) {
+            LogicalValuesOperator newValuesOp = new LogicalValuesOperator(unionOp.getOutputColumnRefOp(), newRows);
+            newValuesOp.setProjection(unionOp.getProjection());
+            OptExpression newValuesExpr = OptExpression.create(newValuesOp);
+            return List.of(newValuesExpr);
+        }
+
+        LogicalValuesOperator newValuesOp =
+                new LogicalValuesOperator(unionOp.getChildOutputColumns().get(firstConstantChildIndex), newRows);
         OptExpression newValuesExpr = OptExpression.create(newValuesOp);
 
-        return List.of(newValuesExpr);
+        newInputs.add(newValuesExpr);
+        newChildOutputColumns.add(newValuesOp.getColumnRefSet());
 
-//        newInputs.add(newValuesExpr);
-//        newChildOutputColumns.add(newValuesOp.getColumnRefSet());
-//
-//        LogicalUnionOperator newUnionOp = new LogicalUnionOperator.Builder()
-//                .withOperator(unionOp)
-//                .setChildOutputColumns(newChildOutputColumns)
-//                .build();
-//        OptExpression newUnionExpr = OptExpression.create(newUnionOp, newInputs);
-//
-//        return List.of(newUnionExpr);
+        LogicalUnionOperator newUnionOp = new LogicalUnionOperator.Builder()
+                .withOperator(unionOp)
+                .setChildOutputColumns(newChildOutputColumns)
+                .build();
+        OptExpression newUnionExpr = OptExpression.create(newUnionOp, newInputs);
+
+        return List.of(newUnionExpr);
     }
 
     private static boolean isMergable(OptExpression input) {
@@ -113,15 +113,22 @@ public class MergeConstantUnionRule extends TransformationRule {
     }
 
     private static boolean isConstantUnion(LogicalValuesOperator valuesOp) {
-        List<List<ScalarOperator>> rows = valuesOp.getRows();
-        if (!(valuesOp.getProjection() != null && rows.size() == 1 && rows.get(0).size() == 1)) {
+        if (valuesOp.getProjection() == null ||
+                !valuesOp.getProjection().getColumnRefMap().values().stream().allMatch(ScalarOperator::isConstant)) {
             return false;
         }
+
+        List<List<ScalarOperator>> rows = valuesOp.getRows();
+        if (!(rows.size() == 1 && rows.get(0).size() == 1)) {
+            return false;
+        }
+
         ScalarOperator value = rows.get(0).get(0);
         return value.equals(ConstantOperator.createNull(value.getType()));
     }
 
     private static boolean isConstantValues(LogicalValuesOperator valuesOp) {
-        return valuesOp.getProjection() == null;
+        return valuesOp.getProjection() == null &&
+                valuesOp.getRows().stream().flatMap(List::stream).allMatch(ScalarOperator::isConstant);
     }
 }

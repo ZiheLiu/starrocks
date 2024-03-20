@@ -31,13 +31,15 @@ import java.util.List;
 public class ScanTest extends PlanTestBase {
     @Test
     public void testTemp() throws Exception {
-                String sql = "select 1 union all select 2 union all select 3";
-//        String sql =
-//                "select * from (values (1, 10), (2 + 'a', 20), (3, 30)) " +
-//                        "union all select 4, 40 union all select 5 + 'b', 50 " +
-//                        "union all select v1, v2 from t0 union all select 6, 60";
-//        String sql = "select * from (values (1), (2 + 'a'), (3)) ";
-        String planFragment = getVerboseExplain(sql);
+        //        String sql = "select 1 union all select 2 union all select 3";
+        String sql = "select v1 from t0 union all (select 1 union all select 2 union all select 3) " +
+                "union all select 4 union all (select * from (values (5), (6))tt);";
+        //        String sql =
+        //                "select * from (values (1, 10), (2 + 'a', 20), (3, 30)) " +
+        //                        "union all select 4, 40 union all select 5 + 'b', 50 " +
+        //                        "union all select v1, v2 from t0 union all select 6, 60";
+        //        String sql = "select * from (values (1), (2 + 'a'), (3)) ";
+        String planFragment = getFragmentPlan(sql);
         System.out.println(planFragment);
     }
 
