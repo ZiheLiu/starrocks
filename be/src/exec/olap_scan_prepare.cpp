@@ -336,11 +336,11 @@ StatusOr<PredicateTree> ChunkPredicateBuilder<E>::get_predicate_tree(PredicatePa
 }
 
 template <bool Inverted>
-static bool is_not_in(const auto* pred) {
+static bool is_not_in<Inverted>(const auto* pred) {
     if constexpr (Inverted) {
-        return !pred->is_not_in();
+        return !pred->is_not_in<Inverted>();
     } else {
-        return pred->is_not_in();
+        return pred->is_not_in<Inverted>();
     }
 };
 
@@ -447,7 +447,7 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E>::normalize_in_or_e
                         continue;
                     }
 
-                    if (is_not_in(pred) || pred->null_in_set() ||
+                    if (is_not_in<Inverted>(pred) || pred->null_in_set() ||
                         pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
                         continue;
                     }
@@ -461,7 +461,7 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E>::normalize_in_or_e
                 } else if (pred_type == starrocks::TYPE_DATE) {
                     const auto* pred = down_cast<const VectorizedInConstPredicate<starrocks::TYPE_DATE>*>(root_expr);
 
-                    if (is_not_in(pred) || pred->null_in_set() ||
+                    if (is_not_in<Inverted>(pred) || pred->null_in_set() ||
                         pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
                         continue;
                     }
@@ -560,7 +560,7 @@ Status ChunkPredicateBuilder<E>::normalize_join_runtime_filter(const SlotDescrip
                 // Ensure we don't compute this conjuncts again in olap scanner
                 _normalized_exprs[i] = true;
 
-                if (pred->is_not_in() || pred->null_in_set() ||
+                if (pred->is_not_in<Inverted>() || pred->null_in_set() ||
                     pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
                     continue;
                 }
