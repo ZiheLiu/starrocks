@@ -2273,7 +2273,9 @@ Status SegmentIterator::_apply_del_vector() {
 
 struct BloomFilterSupportChecker {
     bool operator()(const PredicateTreeColumnNode& node) const {
-        const bool support = node.col_pred()->support_bloom_filter();
+        const auto* col_pred = node.col_pred();
+        const auto cid = col_pred->column_id();
+        const bool support = col_pred->support_bloom_filter() && column_iterators[cid]->has_bloom_filter_index();
         if (support) {
             used_nodes.emplace(&node);
         }
