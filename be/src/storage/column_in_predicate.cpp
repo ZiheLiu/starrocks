@@ -161,7 +161,7 @@ public:
 
     std::string debug_string() const override {
         std::stringstream ss;
-        ss << "((columnId=" << _column_id << ")In(";
+        ss << "((columnId=" << _column_id << ")IN(";
         int i = 0;
         for (auto& item : _values) {
             if (i++ != 0) {

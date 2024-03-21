@@ -144,6 +144,20 @@ public:
         return Status::OK();
     }
 
+    std::string debug_string() const override {
+        std::stringstream ss;
+        ss << "((columnId=" << _column_id << ")NOT IN(";
+        int i = 0;
+        for (auto& item : _values) {
+            if (i++ != 0) {
+                ss << ",";
+            }
+            ss << this->type_info()->to_string(&item);
+        }
+        ss << ")";
+        return ss.str();
+    }
+
 private:
     ItemHashSet<ValueType> _values;
 };

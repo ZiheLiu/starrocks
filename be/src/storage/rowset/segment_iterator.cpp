@@ -2283,6 +2283,7 @@ struct BloomFilterSupportChecker {
     bool operator()(const PredicateTreeAndNode& node) {
         bool support = false;
         for (const auto& child : node.children()) {
+            // Use | not || to add all the used nodes to `used_nodes`.
             support |= child.visit(*this);
         }
         if (support) {

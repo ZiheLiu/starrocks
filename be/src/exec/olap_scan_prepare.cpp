@@ -672,7 +672,7 @@ Status ChunkPredicateBuilder<E>::normalize_not_in_or_not_equal_predicate(const S
                         continue;
                     }
                 } else {
-                    if (pred->is_not_in()) {
+                    if (!pred->is_not_in()) {
                         continue;
                     }
                 }
