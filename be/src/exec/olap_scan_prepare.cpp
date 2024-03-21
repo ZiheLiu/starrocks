@@ -336,7 +336,7 @@ StatusOr<PredicateTree> ChunkPredicateBuilder<E>::get_predicate_tree(PredicatePa
 }
 
 template <bool Inverted>
-static bool is_not_in<Inverted>(const auto* pred) {
+static bool is_not_in(const auto* pred) {
     if constexpr (Inverted) {
         return !pred->is_not_in();
     } else {
