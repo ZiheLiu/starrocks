@@ -335,6 +335,15 @@ StatusOr<PredicateTree> ChunkPredicateBuilder<E>::get_predicate_tree(PredicatePa
     return compound_node;
 }
 
+template <bool Inverted>
+static bool is_not_in(const auto* pred) {
+    if constexpr (Inverted) {
+        return !pred->is_not_in();
+    } else {
+        return pred->is_not_in();
+    }
+};
+
 template <ExprContainer E>
 template <LogicalType SlotType, typename RangeValueType, bool Inverted>
 requires(!lt_is_date<SlotType>) Status ChunkPredicateBuilder<E>::normalize_in_or_equal_predicate(
@@ -363,17 +372,8 @@ requires(!lt_is_date<SlotType>) Status ChunkPredicateBuilder<E>::normalize_in_or
                     continue;
                 }
 
-                if constexpr (Inverted) {
-                    if (!pred->is_not_in()) {
-                        continue;
-                    }
-                } else {
-                    if (pred->is_not_in()) {
-                        continue;
-                    }
-                }
-
-                if (pred->null_in_set() || pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
+                if (is_not_in<Inverted>(pred) || pred->null_in_set() ||
+                    pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
                     continue;
                 }
 
@@ -447,7 +447,7 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E>::normalize_in_or_e
                         continue;
                     }
 
-                    if (pred->is_not_in() || pred->null_in_set() ||
+                    if (is_not_in(pred) || pred->null_in_set() ||
                         pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
                         continue;
                     }
@@ -460,7 +460,8 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E>::normalize_in_or_e
                     }
                 } else if (pred_type == starrocks::TYPE_DATE) {
                     const auto* pred = down_cast<const VectorizedInConstPredicate<starrocks::TYPE_DATE>*>(root_expr);
-                    if (pred->is_not_in() || pred->null_in_set() ||
+
+                    if (is_not_in(pred) || pred->null_in_set() ||
                         pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
                         continue;
                     }
@@ -667,17 +668,8 @@ Status ChunkPredicateBuilder<E>::normalize_not_in_or_not_equal_predicate(const S
                     continue;
                 }
 
-                if constexpr (Inverted) {
-                    if (pred->is_not_in()) {
-                        continue;
-                    }
-                } else {
-                    if (!pred->is_not_in()) {
-                        continue;
-                    }
-                }
-
-                if (pred->null_in_set() || pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
+                if (!is_not_in<Inverted>(pred) || pred->null_in_set() ||
+                    pred->hash_set().size() > config::max_pushdown_conditions_per_column) {
                     continue;
                 }
 
