@@ -877,7 +877,7 @@ struct ZoneMapFilterEvaluator {
 };
 
 Status SegmentIterator::_get_row_ranges_by_zone_map() {
-    RETURN_IF(!config::enable_index_zonemap_filter, Status::OK());
+    RETURN_IF(!config::enable_index_page_level_zonemap_filter, Status::OK());
     RETURN_IF(_scan_range.empty(), Status::OK());
 
     SCOPED_RAW_TIMER(&_opts.stats->zone_map_filter_ns);
