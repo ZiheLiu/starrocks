@@ -44,11 +44,15 @@ static bool ignore_cast(const SlotDescriptor& slot, const Expr& expr) {
     return slot.type().is_string_type() && expr.type().is_string_type();
 }
 
-static Expr* get_root_expr(ExprContext* ctx) {
-    if (dynamic_cast<DictMappingExpr*>(ctx->root())) {
-        return ctx->root()->get_child(1);
+static Expr* get_root_expr(Expr* root) {
+    if (dynamic_cast<DictMappingExpr*>(root)) {
+        return root->get_child(1);
     }
-    return ctx->root();
+    return root;
+}
+
+static Expr* get_root_expr(ExprContext* ctx) {
+    return get_root_expr(ctx->root());
 }
 
 template <typename ValueType>
@@ -218,7 +222,7 @@ static TExprOpcode::type maybe_invert_in_and_equal_op(const TExprOpcode::type op
 
 RawExprContainer::RawExprContainer(Expr* root_expr) : root_expr(root_expr) {}
 Expr* RawExprContainer::root() const {
-    return root_expr;
+    return get_root_expr(root_expr);
 }
 StatusOr<ExprContext*> RawExprContainer::expr_context(ObjectPool* obj_pool, RuntimeState* state) const {
     if (new_expr_ctx == nullptr) {
