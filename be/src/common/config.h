@@ -1118,6 +1118,11 @@ CONF_mBool(enable_pindex_rebuild_in_compaction, "true");
 // Used by query cache, cache entries are evicted when it exceeds its capacity(500MB in default)
 CONF_Int64(query_cache_capacity, "536870912");
 
+CONF_mBool(enable_index_segment_level_zonemap_filter, "true");
+CONF_mBool(enable_index_page_level_zonemap_filter, "true");
+CONF_mBool(enable_index_bloom_filter, "true");
+CONF_mBool(enable_index_bitmap_filter, "true");
+
 // When query cache enabled, the operators in the drivers contains cache operator are multilane
 // operators, if the number of lanes is big, Fragment Instance would spend too much time to prepare
 // operators since the number of operators scale up with the number of lanes.
