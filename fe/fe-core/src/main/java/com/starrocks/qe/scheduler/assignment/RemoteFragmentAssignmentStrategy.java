@@ -157,15 +157,14 @@ public class RemoteFragmentAssignmentStrategy implements FragmentAssignmentStrat
         if (connectContext != null && connectContext.getSessionVariable() != null) {
             exchangeInstances = connectContext.getSessionVariable().getExchangeInstanceParallel();
         }
-        List<Long> workerIds;
-        if (exchangeInstances > 0 && maxParallelism > exchangeInstances) {
-            // random select some instance
-            // get distinct host, when parallel_fragment_exec_instance_num > 1, single host may execute several instances
+        List<Long> workerIds = Lists.newArrayList(workerIdSet);
+        if (exchangeInstances > 0) {
+            if (maxParallelism > exchangeInstances) {
+                // random select some instance
+                // get distinct host, when parallel_fragment_exec_instance_num > 1, single host may execute several instances
+                Collections.shuffle(workerIds, random);
+            }
             maxParallelism = exchangeInstances;
-            workerIds = Lists.newArrayList(workerIdSet);
-            Collections.shuffle(workerIds, random);
-        } else {
-            workerIds = Lists.newArrayList(workerIdSet);
         }
 
         for (int i = 0; i < maxParallelism; i++) {
