@@ -1,7 +1,9 @@
 -- name: test_parse_and_rewrite_or_predicate
 
+-- Setup configs.
 set scan_or_to_union_limit = 1;
 set enable_show_predicate_tree_in_profile = true;
+set enable_profile = true;
 
 -- Prepare tables and data.
 CREATE TABLE __row_util_base (
