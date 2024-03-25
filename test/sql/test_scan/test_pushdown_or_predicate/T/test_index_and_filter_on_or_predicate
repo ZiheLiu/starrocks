@@ -1,5 +1,6 @@
 -- name: test_index_and_filter_on_or_predicate @sequential
 
+-- Setup configs.
 set scan_or_to_union_limit = 1;
 set enable_show_predicate_tree_in_profile = true;
 
@@ -103,49 +104,51 @@ insert into t1 (k1, c_str_5_low_non_null1, c_str_6_low_non_null2, c_str_7_seq_no
 insert into t1 (k1, c_str_5_low_non_null1, c_str_6_low_non_null2, c_str_7_seq_non_null1, c_str_8_seq_non_null2) select null, '<null>', '<null>', '<null>', '<null>';
 
 
-create view __profile(idx, k, v) as 
-select 1, 2, 3;
-
 -- create view __profile(idx, k, v) as 
--- with 
---   __profile as (
---       select last_query_id() as query_id, unnest as line from (values(1))t(v) join unnest(split(get_query_profile(last_query_id()), "\n") )
---   ),
---   result as (
---     select 1 as idx, "PushdownPredicates" as k, regexp_extract(line, ".*- PushdownPredicates: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- PushdownPredicates%"
---     UNION ALL
---     select 2, "NonPushdownPredicates" as k, regexp_extract(line, ".*- NonPushdownPredicates: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- NonPushdownPredicates%"
+-- select 1, 2, 3;
+
+create view __profile(idx, k, v) as 
+with 
+  __profile as (
+      select last_query_id() as query_id, unnest as line from (values(1))t(v) join unnest(split(get_query_profile(last_query_id()), "\n") )
+  ),
+  result as (
+    select 1 as idx, "PushdownPredicates" as k, regexp_extract(line, ".*- PushdownPredicates: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- PushdownPredicates%"
+    UNION ALL
+    select 2, "NonPushdownPredicates" as k, regexp_extract(line, ".*- NonPushdownPredicates: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- NonPushdownPredicates%"
     
---     UNION ALL
---     select 3, "PushdownPredicateTree" as k, regexp_extract(line, ".*- PushdownPredicateTree: (.*)", 1) as v from __profile where line like "%- PushdownPredicateTree%"
---     UNION ALL
---     select 4, "NonPushdownPredicateTree" as k, regexp_extract(line, ".*- NonPushdownPredicateTree: (.*)?", 1) as v from __profile where line like "%- NonPushdownPredicateTree%"
+    UNION ALL
+    select 3, "PushdownPredicateTree" as k, regexp_extract(line, ".*- PushdownPredicateTree: (.*)", 1) as v from __profile where line like "%- PushdownPredicateTree%"
+    UNION ALL
+    select 4, "NonPushdownPredicateTree" as k, regexp_extract(line, ".*- NonPushdownPredicateTree: (.*)?", 1) as v from __profile where line like "%- NonPushdownPredicateTree%"
     
---     UNION ALL
---     select 5, "RawRowsRead" as k, regexp_extract(line, ".*- RawRowsRead: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- RawRowsRead%"
---     UNION ALL
---     select 6, "RowsRead" as k, regexp_extract(line, ".*- RowsRead: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- RowsRead%"
+    UNION ALL
+    select 5, "RawRowsRead" as k, regexp_extract(line, ".*- RawRowsRead: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- RawRowsRead%"
+    UNION ALL
+    select 6, "RowsRead" as k, regexp_extract(line, ".*- RowsRead: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- RowsRead%"
     
---     UNION ALL
---     select 7, "SegmentZoneMapFilterRows" as k, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- SegmentZoneMapFilterRows%"
---     UNION ALL
---     select 8, "ZoneMapIndexFilterRows" as k, regexp_extract(line, ".*- ZoneMapIndexFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- ZoneMapIndexFilterRows%"
---     UNION ALL
---     select 9, "BitmapIndexFilterRows" as k, regexp_extract(line, ".*- BitmapIndexFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- BitmapIndexFilterRows%"
---     UNION ALL
---     select 10, "BloomFilterFilterRows" as k, regexp_extract(line, ".*- BloomFilterFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- BloomFilterFilterRows%"
---     UNION ALL
---     select 11, "PredFilterRows" as k, regexp_extract(line, ".*- PredFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- PredFilterRows%"
---     UNION ALL
---     select 12, "DeleteFilterRows" as k, regexp_extract(line, ".*- DeleteFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- DeleteFilterRows%"
---     UNION ALL
---     select 13, "LateMaterialize" as k, 'exist' as v from __profile where line like "%- LateMaterialize%"
+    UNION ALL
+    select 7, "SegmentZoneMapFilterRows" as k, regexp_extract(line, ".*- SegmentZoneMapFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- SegmentZoneMapFilterRows%"
+    UNION ALL
+    select 8, "ZoneMapIndexFilterRows" as k, regexp_extract(line, ".*- ZoneMapIndexFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- ZoneMapIndexFilterRows%"
+    UNION ALL
+    select 9, "BitmapIndexFilterRows" as k, regexp_extract(line, ".*- BitmapIndexFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- BitmapIndexFilterRows%"
+    UNION ALL
+    select 10, "BloomFilterFilterRows" as k, regexp_extract(line, ".*- BloomFilterFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- BloomFilterFilterRows%"
+    UNION ALL
+    select 11, "PredFilterRows" as k, regexp_extract(line, ".*- PredFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- PredFilterRows%"
+    UNION ALL
+    select 12, "DeleteFilterRows" as k, regexp_extract(line, ".*- DeleteFilterRows: (?:.*\\()?(\\d+)\\)?", 1) as v from __profile where line like "%- DeleteFilterRows%"
+    UNION ALL
+    select 13, "LateMaterialize" as k, 'exist' as v from __profile where line like "%- LateMaterialize%"
     
---   )
--- select * from result order by idx, k, v;
+  )
+select * from result order by idx, k, v;
 
 
 -- 1. Test Segment Zonemap.
+
+function: update_be_config("enable_index_segment_level_zonemap_filter", "true")
 
 select count(1) from t1 where c_int_1_seq < 1;
   select * from __profile order by idx, k, v;
@@ -176,10 +179,12 @@ select count(1) from t1 where (c_int_1_seq < 1 and c_int_1_seq * 10 < 100)
 select count(1) from t1 where c_int_1_seq < 1 or c_int_2_seq < 1280000 * 10;
   select * from __profile order by idx, k, v;
   
-
+function: update_be_config("enable_index_segment_level_zonemap_filter", "false")
 
 
 -- 2. Test Bloom Filter.
+
+function: update_be_config("enable_index_bloom_filter", "true")
 
 -- Basic
 -- Support.
@@ -250,49 +255,14 @@ select count(1) from t1
     (c_str_1_seq = 'abc1-4' and c_str_3_low1 = 'b1') or c_int_1_seq= 1280005
   );
   select * from __profile order by idx, k, v;
+  
+function: update_be_config("enable_index_bloom_filter", "false")
 
 
 
 -- 3. Test bitmap.
 
-CREATE TABLE t1 (
-  k1 bigint NULL,
-
-  c_int_1_seq bigint NULL,
-  c_int_2_seq bigint NULL,
-
-  c_str_1_seq String NULL,
-  c_str_2_seq String NULL,
-
-  c_str_3_low1 String NULL,
-  c_str_4_low2 String NULL,
-
-  c_str_5_low_non_null1 String NOT NULL,
-  c_str_6_low_non_null2 String NOT NULL,
-
-  c_str_7_seq_non_null1 String NOT NULL,
-  c_str_8_seq_non_null2 String NOT NULL,
-
-  c_date_1_seq date NULL,
-  c_date_2_seq date NULL,
-  c_datetime_1_seq datetime NULL,
-  c_datetime_2_seq datetime NULL,
-
-  INDEX c_int_1_seq_bitmap_index (c_int_1_seq) USING BITMAP,
-  INDEX c_str_1_seq_bitmap_index (c_str_1_seq) USING BITMAP,
-  INDEX c_str_3_low1_bitmap_index (c_str_3_low1) USING BITMAP,
-  INDEX c_str_5_low_non_null1_bitmap_index (c_str_5_low_non_null1) USING BITMAP,
-  INDEX c_str_7_seq_non_null1_bitmap_index (c_str_7_seq_non_null1) USING BITMAP,
-  INDEX c_date_1_seq_bitmap_index (c_date_1_seq) USING BITMAP,
-  INDEX c_datetime_1_seq_bitmap_index (c_datetime_1_seq) USING BITMAP
-
-) ENGINE=OLAP
-DUPLICATE KEY(`k1`)
-DISTRIBUTED BY HASH(`k1`) BUCKETS 32
-PROPERTIES (
-    "replication_num" = "1",
-    "bloom_filter_columns" = "c_int_1_seq,c_str_1_seq,c_str_3_low1,c_str_5_low_non_null1,c_str_7_seq_non_null1,c_date_1_seq,c_datetime_1_seq"
-);
+function: update_be_config("enable_index_bitmap_filter", "true")
 
 -- Basic.
 select count(1) from t1 where c_int_1_seq = 1280001;
@@ -485,6 +455,9 @@ where
  select * from __profile order by idx, k, v;
 
 
+function: update_be_config("enable_index_bitmap_filter", "false")
+
+
 -- 4. Test late materialize.
 
 select count(k1) from t1 where c_int_1_seq < 1280000 + 128000/3 or c_int_2_seq > 1280000*3 - 1000;
@@ -533,6 +506,8 @@ where
 
 
 -- 6. Test Page Zonemap
+
+function: update_be_config("enable_index_page_level_zonemap_filter", "true")
 
 select count(1) from t1 where c_int_1_seq < 1;
  select * from __profile order by idx, k, v;
@@ -605,6 +580,11 @@ select count(1) from t1 where c_int_2_seq = 1280000*2+20 or c_int_2_seq = 128000
  select * from __profile order by idx, k, v;
 select count(1) from t1 where c_int_2_seq*2 = (1280000*2+20)*2 or c_int_2_seq*2 = (1280000*2+1000)*2 or c_int_2_seq > 1280000*3-2000;
 
+
+function: update_be_config("enable_index_page_level_zonemap_filter", "false")
+
+
+-- Reset configs.
 
 function: update_be_config("enable_index_segment_level_zonemap_filter", "true")
 function: update_be_config("enable_index_page_level_zonemap_filter", "true")
