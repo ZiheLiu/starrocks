@@ -2056,24 +2056,20 @@ public class Coordinator {
                 if (connectContext != null && connectContext.getSessionVariable() != null) {
                     exchangeInstances = connectContext.getSessionVariable().getExchangeInstanceParallel();
                 }
-                if (exchangeInstances > 0 && maxParallelism > exchangeInstances) {
-                    // random select some instance
-                    // get distinct host,  when parallel_fragment_exec_instance_num > 1, single host may execute several instances
-                    List<TNetworkAddress> hosts = Lists.newArrayList(hostSet);
-                    Collections.shuffle(hosts, random);
 
-                    for (int index = 0; index < exchangeInstances; index++) {
-                        FInstanceExecParam instanceParam =
-                                new FInstanceExecParam(null, hosts.get(index % hosts.size()), 0, params);
-                        params.instanceExecParams.add(instanceParam);
+                List<TNetworkAddress> hosts = Lists.newArrayList(hostSet);
+                if (exchangeInstances > 0) {
+                    if (maxParallelism > exchangeInstances) {
+                        // random select some instance
+                        // get distinct host,  when parallel_fragment_exec_instance_num > 1, single host may execute several instances
+                        Collections.shuffle(hosts, random);
                     }
-                } else {
-                    List<TNetworkAddress> hosts = Lists.newArrayList(hostSet);
-                    for (int index = 0; index < maxParallelism; ++index) {
-                        TNetworkAddress host = hosts.get(index % hosts.size());
-                        FInstanceExecParam instanceParam = new FInstanceExecParam(null, host, 0, params);
-                        params.instanceExecParams.add(instanceParam);
-                    }
+                    maxParallelism = exchangeInstances;
+                }
+                for (int index = 0; index < maxParallelism; ++index) {
+                    TNetworkAddress host = hosts.get(index % hosts.size());
+                    FInstanceExecParam instanceParam = new FInstanceExecParam(null, host, 0, params);
+                    params.instanceExecParams.add(instanceParam);
                 }
 
                 // When group by cardinality is smaller than number of backend, only some backends always
