@@ -483,8 +483,9 @@ Status ColumnReader::_zone_map_filter(const std::vector<const ColumnPredicate*>&
             return std::ranges::all_of(predicates,
                                        [&](const ColumnPredicate* pred) { return pred->zone_map_filter(detail); });
         } else {
-            return std::ranges::any_of(predicates,
-                                       [&](const ColumnPredicate* pred) { return pred->zone_map_filter(detail); });
+            return predicates.empty() || std::ranges::any_of(predicates, [&](const ColumnPredicate* pred) {
+                       return pred->zone_map_filter(detail);
+                   });
         }
     };
 

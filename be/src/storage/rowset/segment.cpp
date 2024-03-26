@@ -282,7 +282,8 @@ struct SegmentZoneMapPruner {
         return std::ranges::any_of(node.children(), [this](const auto& child) { return child.visit(*this); });
     }
     bool operator()(const PredicateTreeOrNode& node) const {
-        return std::ranges::none_of(node.children(), [this](const auto& child) { return !child.visit(*this); });
+        return !node.children().empty() &&
+               std::ranges::all_of(node.children(), [this](const auto& child) { return child.visit(*this); });
     }
 
     Segment* parent;
