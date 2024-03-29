@@ -110,8 +110,9 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::OR>::evaluate_or(const
 template <>
 inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const Chunk* chunk, uint8_t* selection,
                                                                          uint16_t from, uint16_t to) const {
+    const auto num_rows = to - from;
     if (_children.empty()) {
-        memset(selection + from, 1, to - from);
+        memset(selection + from, 1, num_rows);
         return Status::OK();
     }
 
@@ -137,7 +138,7 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const C
                     child.visit([&](const auto& pred) { return pred.evaluate_and(chunk, selection, from, to); }));
         }
 
-        const auto num_trues = SIMD::count_nonzero(selection + from, to);
+        const auto num_trues = SIMD::count_nonzero(selection + from, num_rows);
         if (!num_trues) {
             break;
         }
@@ -217,8 +218,9 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate_or(cons
 template <>
 inline Status PredicateTreeCompoundNode<CompoundNodeType::OR>::evaluate(const Chunk* chunk, uint8_t* selection,
                                                                         uint16_t from, uint16_t to) const {
+    const auto num_rows = to - from;
     if (_children.empty()) {
-        memset(selection + from, 1, to - from);
+        memset(selection + from, 1, num_rows);
         return Status::OK();
     }
 
@@ -232,7 +234,7 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::OR>::evaluate(const Ch
                     child.visit([&](const auto& pred) { return pred.evaluate_or(chunk, selection, from, to); }));
         }
 
-        const auto num_falses = SIMD::count_zero(selection + from, to);
+        const auto num_falses = SIMD::count_zero(selection + from, num_rows);
         if (!num_falses) {
             break;
         }
