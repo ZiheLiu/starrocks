@@ -363,12 +363,6 @@ SegmentIterator::SegmentIterator(std::shared_ptr<Segment> segment, Schema schema
     }
     _opts.pred_tree.sort_children();
 
-    // _opts.pred_tree_for_zone_map.sort_children();
-    VLOG_ROW << "[OR] SegmentIterator "
-             << "[pred_tree=" << _opts.pred_tree.visit([](const auto& node) { return node.debug_string(); }) << "]"
-             << "[zone_map_pred_tree="
-             << _opts.pred_tree_for_zone_map.visit([](const auto& node) { return node.debug_string(); }) << "]";
-
     // For small segment file (the number of rows is less than chunk_size),
     // the segment iterator will reserve a large amount of memory,
     // especially when there are many columns, many small files, many versions,
@@ -1875,7 +1869,6 @@ struct BitmapIndexSeeker {
 
     StatusOr<ResultType> operator()(const PredicateTreeAndNode& node) {
         if (!ctx.node_to_bitmapable[&node]) {
-            VLOG_ROW << "[OR] [BitmapIndexSeeker AND] [1] [NOT_USED] [node=" << node.debug_string() << "]";
             return ResultType::NOT_USED;
         }
 
@@ -1896,9 +1889,6 @@ struct BitmapIndexSeeker {
             switch (res_type) {
             case ResultType::ALWAYS_FALSE:
                 ctx.nodes_to_erase.emplace(&node);
-                VLOG_ROW << "[OR] [BitmapIndexSeeker AND] [2] [ALWAYS_FALSE] [node=" << node.debug_string() << "] "
-                         << "[child=" << child.visit([](const auto& child_node) { return child_node.debug_string(); })
-                         << "]";
                 return ResultType::ALWAYS_FALSE;
             case ResultType::ALWAYS_TRUE:
                 used_children.emplace_back(&child);
@@ -1921,8 +1911,6 @@ struct BitmapIndexSeeker {
             // ALWAYS_FALSE
             if (col_ctx.bitmap_ranges.empty()) {
                 ctx.nodes_to_erase.emplace(&node);
-                VLOG_ROW << "[OR] [BitmapIndexSeeker AND] [3] [ALWAYS_FALSE] [node=" << node.debug_string() << "] "
-                         << "[cid=" << cid << "]";
                 return ResultType::ALWAYS_FALSE;
             }
 
@@ -1940,8 +1928,6 @@ struct BitmapIndexSeeker {
 
         if (num_always_true_child == node.children().size()) {
             ctx.nodes_to_erase.emplace(&node);
-            VLOG_ROW << "[OR] [BitmapIndexSeeker AND] [4] [ALWAYS_TRUE] [node=" << node.debug_string() << "] "
-                     << "[num_always_true_child=" << num_always_true_child << "] ";
             return ResultType::ALWAYS_TRUE;
         }
 
@@ -1954,12 +1940,6 @@ struct BitmapIndexSeeker {
         // ---------------------------------------------------------
         if (num_always_true_child >= used_children.size() ||
             (need_estimate_selectivity && mul_selected * 1000 > mul_cardinality * config::bitmap_max_filter_ratio)) {
-            VLOG_ROW << "[OR] [BitmapIndexSeeker AND] [5] [NOT_USED] [node=" << node.debug_string() << "] "
-                     << "[children=" << node.children().size() << "] "
-                     << "[num_always_true_child=" << num_always_true_child << "] "
-                     << "[used_children=" << used_children.size() << "] "
-                     << "[mul_selected=" << mul_selected << "] "
-                     << "[mul_cardinality=" << mul_cardinality << "] ";
             return ResultType::NOT_USED;
         }
 
@@ -1969,18 +1949,11 @@ struct BitmapIndexSeeker {
         }
 
         use_node = true;
-        VLOG_ROW << "[OR] [BitmapIndexSeeker AND] [6] [OK] [node=" << node.debug_string() << "] "
-                 << "[children=" << node.children().size() << "] "
-                 << "[num_always_true_child=" << num_always_true_child << "] "
-                 << "[used_children=" << used_children.size() << "] "
-                 << "[mul_selected=" << mul_selected << "] "
-                 << "[mul_cardinality=" << mul_cardinality << "] ";
         return ResultType::OK;
     }
 
     StatusOr<ResultType> operator()(const PredicateTreeOrNode& node) {
         if (!ctx.node_to_bitmapable[&node]) {
-            VLOG_ROW << "[OR] [BitmapIndexSeeker OR] [1] [NOT_USED] [node=" << node.debug_string() << "]";
             return ResultType::NOT_USED;
         }
 
@@ -2006,9 +1979,6 @@ struct BitmapIndexSeeker {
                 break;
             case ResultType::ALWAYS_TRUE:
                 ctx.nodes_to_erase.emplace(&node);
-                VLOG_ROW << "[OR] [BitmapIndexSeeker OR] [2] [ALWAYS_TRUE] [node=" << node.debug_string() << "] "
-                         << "[child=" << child.visit([](const auto& child_node) { return child_node.debug_string(); })
-                         << "]";
                 return ResultType::ALWAYS_TRUE;
             case ResultType::NOT_USED:
                 has_not_used_child = true;
@@ -2034,8 +2004,6 @@ struct BitmapIndexSeeker {
             // ALWAYS_TRUE
             if (col_ctx.bitmap_ranges.span_size() >= col_ctx.cardinality) {
                 ctx.nodes_to_erase.emplace(&node);
-                VLOG_ROW << "[OR] [BitmapIndexSeeker OR] [3] [ALWAYS_TRUE] [node=" << node.debug_string() << "] "
-                         << "[cid=" << cid << "]";
                 return ResultType::ALWAYS_TRUE;
             } else {
                 // OK
@@ -2046,14 +2014,11 @@ struct BitmapIndexSeeker {
         }
 
         if (has_not_used_child) {
-            VLOG_ROW << "[OR] [BitmapIndexSeeker OR] [4] [ALWAYS_TRUE] [node=" << node.debug_string() << "] ";
             return ResultType::NOT_USED;
         }
 
         if (num_always_false_child == node.children().size()) {
             ctx.nodes_to_erase.emplace(&node);
-            VLOG_ROW << "[OR] [BitmapIndexSeeker OR] [5] [ALWAYS_FALSE] [node=" << node.debug_string() << "] "
-                     << "[num_always_false_child=" << num_always_false_child << "] ";
             return ResultType::ALWAYS_FALSE;
         }
 
@@ -2066,12 +2031,6 @@ struct BitmapIndexSeeker {
         // ---------------------------------------------------------
         if (num_always_false_child >= used_children.size() ||
             (need_estimate_selectivity && mul_selected * 1000 > mul_cardinality * config::bitmap_max_filter_ratio)) {
-            VLOG_ROW << "[OR] [BitmapIndexSeeker OR] [6] [NOT_USED] [node=" << node.debug_string() << "] "
-                     << "[children=" << node.children().size() << "] "
-                     << "[num_always_false_child=" << num_always_false_child << "] "
-                     << "[used_children=" << used_children.size() << "] "
-                     << "[mul_selected=" << mul_selected << "] "
-                     << "[mul_cardinality=" << mul_cardinality << "] ";
             return ResultType::NOT_USED;
         }
 
@@ -2081,12 +2040,6 @@ struct BitmapIndexSeeker {
         }
 
         use_node = true;
-        VLOG_ROW << "[OR] [BitmapIndexSeeker OR] [7] [OK] [node=" << node.debug_string() << "] "
-                 << "[children=" << node.children().size() << "] "
-                 << "[num_always_false_child=" << num_always_false_child << "] "
-                 << "[used_children=" << used_children.size() << "] "
-                 << "[mul_selected=" << mul_selected << "] "
-                 << "[mul_cardinality=" << mul_cardinality << "] ";
         return ResultType::OK;
     }
 

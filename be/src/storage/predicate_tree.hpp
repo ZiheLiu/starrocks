@@ -135,6 +135,11 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const C
             RETURN_IF_ERROR(
                     child.visit([&](const auto& pred) { return pred.evaluate_and(chunk, selection, from, to); }));
         }
+
+        const auto num_trues = SIMD::count_nonzero(selection + from, to);
+        if (!num_trues) {
+            break;
+        }
     }
 
     // Evaluate non-vectorized predicates using evaluate_branchless.
@@ -224,6 +229,11 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::OR>::evaluate(const Ch
         } else {
             RETURN_IF_ERROR(
                     child.visit([&](const auto& pred) { return pred.evaluate_or(chunk, selection, from, to); }));
+        }
+
+        const auto num_falses = SIMD::count_zero(selection + from, to);
+        if (!num_falses) {
+            break;
         }
     }
 
