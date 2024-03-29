@@ -15,6 +15,7 @@
 #pragma once
 
 #include "gutil/strings/substitute.h"
+#include "simd/simd.h"
 #include "storage/predicate_tree.h"
 
 namespace starrocks {
