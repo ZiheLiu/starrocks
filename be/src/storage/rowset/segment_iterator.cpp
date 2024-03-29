@@ -743,6 +743,7 @@ StatusOr<SparseRange<>> SegmentIterator::_get_row_ranges_by_short_key_ranges() {
 }
 
 Status SegmentIterator::_get_row_ranges_by_zone_map() {
+    RETURN_IF(!config::enable_index_page_level_zonemap_filter, Status::OK());
     RETURN_IF(_scan_range.empty(), Status::OK());
 
     SCOPED_RAW_TIMER(&_opts.stats->zone_map_filter_ns);
@@ -1700,6 +1701,7 @@ Status SegmentIterator::_init_bitmap_index_iterators() {
 // filter rows by evaluating column predicates using bitmap indexes.
 // upon return, predicates that have been evaluated by bitmap indexes will be removed.
 Status SegmentIterator::_apply_bitmap_index() {
+    RETURN_IF(!config::enable_index_bitmap_filter, Status::OK());
     RETURN_IF(_scan_range.empty(), Status::OK());
 
     RETURN_IF_ERROR(_init_bitmap_index_iterators());
@@ -1810,6 +1812,7 @@ Status SegmentIterator::_apply_del_vector() {
 }
 
 Status SegmentIterator::_get_row_ranges_by_bloom_filter() {
+    RETURN_IF(!config::enable_index_bloom_filter, Status::OK());
     RETURN_IF(_scan_range.empty(), Status::OK());
     RETURN_IF(_opts.predicates.empty(), Status::OK());
     SCOPED_RAW_TIMER(&_opts.stats->bf_filter_ns);
