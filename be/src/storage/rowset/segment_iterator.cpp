@@ -1781,29 +1781,21 @@ struct BitmapIndexInitializer {
         return false;
     }
 
-    StatusOr<bool> operator()(const PredicateTreeAndNode& node) {
+    template <CompoundNodeType Type>
+    StatusOr<bool> operator()(const PredicateTreeCompoundNode<Type>& node) {
         auto& node_ctx = ctx.emplace(&node, BitmapContext::NodeContext{})->second;
-        bool has_bitmap_index = false;
+        bool has_bitmap_index = Type == CompoundNodeType::AND ? false : true;
         for (const auto& child : node.children()) {
-            parent_type = CompoundNodeType::AND;
+            parent_type = Type;
             parent_node_ctx = &node_ctx;
             ASSIGN_OR_RETURN(const auto child_has_bitmap_index, child.visit(*this));
-            has_bitmap_index |= child_has_bitmap_index;
-        }
-        ctx.is_node_support_bitmap[&node] = has_bitmap_index;
-        return has_bitmap_index;
-    }
-
-    StatusOr<bool> operator()(const PredicateTreeOrNode& node) {
-        auto& node_ctx = ctx.emplace(&node, BitmapContext::NodeContext{})->second;
-        bool has_bitmap_index = true;
-        for (const auto& child : node.children()) {
-            parent_type = CompoundNodeType::OR;
-            parent_node_ctx = &node_ctx;
-            ASSIGN_OR_RETURN(const auto child_has_bitmap_index, child.visit(*this));
-            if (!child_has_bitmap_index) {
-                has_bitmap_index = false;
-                break;
+            if constexpr (Type == CompoundNodeType::AND) {
+                has_bitmap_index |= child_has_bitmap_index;
+            } else {
+                if (!child_has_bitmap_index) {
+                    has_bitmap_index = false;
+                    break;
+                }
             }
         }
         ctx.is_node_support_bitmap[&node] = has_bitmap_index;
@@ -1877,7 +1869,7 @@ struct BitmapIndexSeeker {
 
         for (const auto& [cid, col_ctx] : node_ctx.col_contexts) {
             for (const auto* col_node : col_ctx.nodes) {
-                ASSIGN_OR_RETURN(const auto used, _seek_column_node<CompoundNodeType::AND>(*col_node, node.ctx));
+                ASSIGN_OR_RETURN(const auto used, _seek_column_node<CompoundNodeType::AND>(*col_node, node_ctx));
                 if (used) {
                     used_children.emplace_back(col_node);
                 }
@@ -1969,7 +1961,7 @@ struct BitmapIndexSeeker {
 
         for (const auto& [cid, col_ctx] : node_ctx.col_contexts) {
             for (const auto* col_node : col_ctx.nodes) {
-                ASSIGN_OR_RETURN(const auto used, _seek_column_node<CompoundNodeType::OR>(*col_node, node.ctx));
+                ASSIGN_OR_RETURN(const auto used, _seek_column_node<CompoundNodeType::OR>(*col_node, node_ctx));
                 if (used) {
                     used_children.emplace_back(col_node);
                 } else {
@@ -2051,7 +2043,7 @@ struct BitmapIndexSeeker {
 
     template <CompoundNodeType Type>
     StatusOr<bool> _seek_column_node(const PredicateTreeColumnNode& node,
-                                     const BitmapContext::NodeContext& parent_node_ctx) const {
+                                     BitmapContext::NodeContext& parent_node_ctx) const {
         if (!ctx.is_node_support_bitmap[&node]) {
             return ResultType::NOT_USED;
         }
