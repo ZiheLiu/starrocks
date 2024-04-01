@@ -115,7 +115,7 @@ struct BitmapContext {
 
     std::unordered_map<const PredicateTreeBaseNode*, bool> is_node_support_bitmap;
 
-    std::unordered_set<const PredicateTreeBaseNode*, NodeContext> node_to_context;
+    std::unordered_map<const PredicateTreeBaseNode*, NodeContext> node_to_context;
 
     std::unordered_set<const PredicateTreeBaseNode*> nodes_to_erase;
 };
@@ -1857,7 +1857,7 @@ struct BitmapIndexSeeker {
         }
 
         DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
-        auto& node_ctx = ctx.node_to_context.find(&node)->second;
+        auto& node_ctx = ctx.node_to_context[&node];
 
         std::vector<const PredicateTreeNode*> used_children;
         size_t num_always_true_child = 0;
@@ -1948,7 +1948,7 @@ struct BitmapIndexSeeker {
         }
 
         DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
-        auto& node_ctx = ctx.node_to_context.find(&node)->second;
+        auto& node_ctx = ctx.node_to_context[&node];
 
         std::vector<const PredicateTreeNode*> used_children;
         size_t num_always_false_child = 0;
