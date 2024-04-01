@@ -1740,7 +1740,7 @@ Status SegmentIterator::_encode_to_global_id(ScanContext* ctx) {
 /// `ctx.is_node_support_bitmap` will be updated to indicate whether a predicate node can be applied bitmap to.
 /// Return true if the PredicateTree can be applied bitmap to.
 struct BitmapIndexInitializer {
-    StatusOr<bool> operator()(const PredicateTreeColumnNode& node) const {
+    StatusOr<bool> operator()(const PredicateTreeColumnNode& node) {
         DCHECK(parent_node_ctx != nullptr);
 
         const auto* col_pred = node.col_pred();
@@ -1783,7 +1783,7 @@ struct BitmapIndexInitializer {
 
     template <CompoundNodeType Type>
     StatusOr<bool> operator()(const PredicateTreeCompoundNode<Type>& node) {
-        auto& node_ctx = ctx.emplace(&node, BitmapContext::NodeContext{})->second;
+        auto& node_ctx = ctx.node_to_context.emplace(&node, BitmapContext::NodeContext{})->second;
         bool has_bitmap_index = Type == CompoundNodeType::AND ? false : true;
         for (const auto& child : node.children()) {
             parent_type = Type;
@@ -2045,7 +2045,7 @@ struct BitmapIndexSeeker {
     StatusOr<bool> _seek_column_node(const PredicateTreeColumnNode& node,
                                      BitmapContext::NodeContext& parent_node_ctx) const {
         if (!ctx.is_node_support_bitmap[&node]) {
-            return ResultType::NOT_USED;
+            return false;
         }
 
         const auto* col_pred = node.col_pred();
