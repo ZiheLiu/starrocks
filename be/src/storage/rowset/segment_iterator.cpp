@@ -101,20 +101,22 @@ struct BitmapContext {
     struct ColumnContext {
         SparseRange<> bitmap_ranges;
         size_t cardinality;
-        size_t num_nodes = 0;
+        std::vector<const PredicateTreeColumnNode*> nodes;
         bool has_is_null_pred = false;
     };
 
     struct NodeContext {
         std::unordered_map<ColumnId, ColumnContext> col_contexts;
+        bool used = false;
     };
 
     /// Note that the address of a predicate node is used as the identity,
     /// and therefore do not modify the related PredicateTree, which may cause the address to change.
 
-    std::unordered_map<const PredicateTreeBaseNode*, bool> node_to_bitmapable;
+    std::unordered_map<const PredicateTreeBaseNode*, bool> is_node_support_bitmap;
 
-    std::unordered_map<const PredicateTreeBaseNode*, NodeContext> node_to_context;
+    std::unordered_set<const PredicateTreeBaseNode*, NodeContext> node_to_context;
+
     std::unordered_set<const PredicateTreeBaseNode*> nodes_to_erase;
 };
 
@@ -1735,10 +1737,12 @@ Status SegmentIterator::_encode_to_global_id(ScanContext* ctx) {
 }
 
 /// Initialize bitmap index iterators for the columns related to a PredicateTree.
-/// `ctx.node_to_bitmapable` will be updated to indicate whether a predicate node can be applied bitmap to.
+/// `ctx.is_node_support_bitmap` will be updated to indicate whether a predicate node can be applied bitmap to.
 /// Return true if the PredicateTree can be applied bitmap to.
 struct BitmapIndexInitializer {
     StatusOr<bool> operator()(const PredicateTreeColumnNode& node) const {
+        DCHECK(parent_node_ctx != nullptr);
+
         const auto* col_pred = node.col_pred();
         const auto cid = col_pred->column_id();
 
@@ -1746,59 +1750,89 @@ struct BitmapIndexInitializer {
             return false;
         }
 
-        if (parent->_bitmap_index_iterators[cid] != nullptr) {
-            ctx.node_to_bitmapable[&node] = true;
+        auto* bitmap_iter = parent->_bitmap_index_iterators[cid];
+        if (bitmap_iter == nullptr) {
+            const ColumnUID ucid = cid_2_ucid[cid];
+            // the column's index in this segment file
+            ASSIGN_OR_RETURN(std::shared_ptr<Segment> segment_ptr, parent->_get_dcg_segment(ucid));
+            if (segment_ptr == nullptr) {
+                // find segment from delta column group failed, using main segment
+                segment_ptr = parent->_segment;
+            }
+
+            IndexReadOptions opts;
+            opts.use_page_cache = config::enable_bitmap_index_memory_page_cache || !config::disable_storage_page_cache;
+            opts.kept_in_memory = config::enable_bitmap_index_memory_page_cache;
+            opts.lake_io_opts = parent->_opts.lake_io_opts;
+            opts.read_file = parent->_column_files[cid].get();
+            opts.stats = parent->_opts.stats;
+
+            RETURN_IF_ERROR(segment_ptr->new_bitmap_index_iterator(ucid, opts, &parent->_bitmap_index_iterators[cid]));
+
+            bitmap_iter = parent->_bitmap_index_iterators[cid];
+        }
+
+        if (bitmap_iter != nullptr) {
+            ctx.is_node_support_bitmap[&node] = true;
+            auto& col_ctx = _get_or_create_column_context(bitmap_iter, cid);
+            col_ctx.nodes.emplace_back(&node);
             return true;
         }
-
-        const ColumnUID ucid = cid_2_ucid[cid];
-        // the column's index in this segment file
-        ASSIGN_OR_RETURN(std::shared_ptr<Segment> segment_ptr, parent->_get_dcg_segment(ucid));
-        if (segment_ptr == nullptr) {
-            // find segment from delta column group failed, using main segment
-            segment_ptr = parent->_segment;
-        }
-
-        IndexReadOptions opts;
-        opts.use_page_cache = config::enable_bitmap_index_memory_page_cache || !config::disable_storage_page_cache;
-        opts.kept_in_memory = config::enable_bitmap_index_memory_page_cache;
-        opts.lake_io_opts = parent->_opts.lake_io_opts;
-        opts.read_file = parent->_column_files[cid].get();
-        opts.stats = parent->_opts.stats;
-
-        RETURN_IF_ERROR(segment_ptr->new_bitmap_index_iterator(ucid, opts, &parent->_bitmap_index_iterators[cid]));
-
-        const auto has_bitmap_index = parent->_bitmap_index_iterators[cid] != nullptr;
-        ctx.node_to_bitmapable[&node] = has_bitmap_index;
-        return has_bitmap_index;
+        return false;
     }
 
     StatusOr<bool> operator()(const PredicateTreeAndNode& node) {
+        auto& node_ctx = ctx.emplace(&node, BitmapContext::NodeContext{})->second;
         bool has_bitmap_index = false;
         for (const auto& child : node.children()) {
+            parent_type = CompoundNodeType::AND;
+            parent_node_ctx = &node_ctx;
             ASSIGN_OR_RETURN(const auto child_has_bitmap_index, child.visit(*this));
             has_bitmap_index |= child_has_bitmap_index;
         }
-        ctx.node_to_bitmapable[&node] = has_bitmap_index;
+        ctx.is_node_support_bitmap[&node] = has_bitmap_index;
         return has_bitmap_index;
     }
 
     StatusOr<bool> operator()(const PredicateTreeOrNode& node) {
+        auto& node_ctx = ctx.emplace(&node, BitmapContext::NodeContext{})->second;
         bool has_bitmap_index = true;
         for (const auto& child : node.children()) {
+            parent_type = CompoundNodeType::OR;
+            parent_node_ctx = &node_ctx;
             ASSIGN_OR_RETURN(const auto child_has_bitmap_index, child.visit(*this));
             if (!child_has_bitmap_index) {
                 has_bitmap_index = false;
                 break;
             }
         }
-        ctx.node_to_bitmapable[&node] = has_bitmap_index;
+        ctx.is_node_support_bitmap[&node] = has_bitmap_index;
         return has_bitmap_index;
+    }
+
+    BitmapContext::ColumnContext& _get_or_create_column_context(BitmapIndexIterator* bitmap_iter, ColumnId cid) {
+        auto it = parent_node_ctx->col_contexts.find(cid);
+        if (it == parent_node_ctx->col_contexts.end()) {
+            const auto cardinality = bitmap_iter->bitmap_nums();
+            if (parent_type == CompoundNodeType::AND) {
+                it = parent_node_ctx->col_contexts
+                             .emplace(cid, BitmapContext::ColumnContext{SparseRange<>{0, cardinality}, cardinality})
+                             .first;
+            } else {
+                it = parent_node_ctx->col_contexts
+                             .emplace(cid, BitmapContext::ColumnContext{SparseRange<>{}, cardinality})
+                             .first;
+            }
+        }
+        return it->second;
     }
 
     SegmentIterator* parent;
     BitmapContext& ctx;
     std::unordered_map<ColumnId, ColumnUID>& cid_2_ucid;
+
+    BitmapContext::NodeContext* parent_node_ctx = nullptr;
+    CompoundNodeType parent_type = CompoundNodeType::AND;
 };
 
 Status SegmentIterator::_init_bitmap_index_iterators(BitmapContext& ctx, const PredicateTree& pred_tree) {
@@ -1820,71 +1854,58 @@ struct BitmapIndexSeeker {
     enum class ResultType : uint8_t { ALWAYS_FALSE, ALWAYS_TRUE, NOT_USED, OK };
 
     StatusOr<ResultType> operator()(const PredicateTreeColumnNode& node) const {
-        DCHECK(parent_node_ctx != nullptr);
-
-        if (!ctx.node_to_bitmapable[&node]) {
-            return ResultType::NOT_USED;
-        }
-
-        const auto* col_pred = node.col_pred();
-        const auto cid = col_pred->column_id();
-        auto* bitmap_iter = parent->_bitmap_index_iterators[cid];
-        if (bitmap_iter == nullptr) {
-            return ResultType::NOT_USED;
-        }
-
-        auto it = parent_node_ctx->col_contexts.find(cid);
-        if (it == parent_node_ctx->col_contexts.end()) {
-            const auto cardinality = bitmap_iter->bitmap_nums();
-            if (parent_type == CompoundNodeType::AND) {
-                it = parent_node_ctx->col_contexts
-                             .emplace(cid, BitmapContext::ColumnContext{SparseRange<>{0, cardinality}, cardinality})
-                             .first;
-            } else {
-                it = parent_node_ctx->col_contexts
-                             .emplace(cid, BitmapContext::ColumnContext{SparseRange<>{}, cardinality})
-                             .first;
-            }
-        }
-        auto& col_ctx = it->second;
-
-        SparseRange<> r;
-        const Status st = col_pred->seek_bitmap_dictionary(bitmap_iter, &r);
-        if (st.ok()) {
-            if (parent_type == CompoundNodeType::AND) {
-                col_ctx.bitmap_ranges &= r;
-            } else {
-                col_ctx.bitmap_ranges |= r;
-            }
-            col_ctx.has_is_null_pred |= (col_pred->type() == PredicateType::kIsNull);
-        } else if (st.is_cancelled()) {
-            return ResultType::NOT_USED;
-        } else {
-            return st;
-        }
-
-        col_ctx.num_nodes++;
-        return ResultType::OK;
+        DCHECK(false) << "BitmapIndexSeeker should not reach PredicateTreeColumnNode "
+                      << "[node=" << node.debug_string() << "]";
+        return Status::OK();
     }
 
     StatusOr<ResultType> operator()(const PredicateTreeAndNode& node) {
-        if (!ctx.node_to_bitmapable[&node]) {
+        if (!ctx.is_node_support_bitmap[&node]) {
             return ResultType::NOT_USED;
         }
 
-        BitmapContext::NodeContext node_ctx;
-        bool use_node = false;
-        DeferOp defer([&] {
-            if (use_node) {
-                ctx.node_to_context.emplace(&node, std::move(node_ctx));
-            }
-        });
+        DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
+        auto& node_ctx = ctx.node_to_context[&node];
 
         std::vector<const PredicateTreeNode*> used_children;
         size_t num_always_true_child = 0;
+
+        size_t mul_selected = 1;
+        size_t mul_cardinality = 1;
+        std::vector<ColumnId> cid_to_erase;
+        bool need_estimate_selectivity = false;
+
+        for (const auto& [cid, col_ctx] : node_ctx.col_contexts) {
+            for (const auto* col_node : col_ctx.nodes) {
+                ASSIGN_OR_RETURN(const auto used, _seek_column_node<CompoundNodeType::AND>(*col_node, node.ctx));
+                if (used) {
+                    used_children.emplace_back(col_node);
+                }
+            }
+
+            // ALWAYS_FALSE
+            if (col_ctx.bitmap_ranges.empty()) {
+                ctx.nodes_to_erase.emplace(&node);
+                return ResultType::ALWAYS_FALSE;
+            }
+
+            // ALWAYS_TRUE
+            if (col_ctx.bitmap_ranges.span_size() >= col_ctx.cardinality) {
+                cid_to_erase.emplace_back(cid);
+                num_always_true_child += col_ctx.nodes.size();
+            } else {
+                // OK
+                need_estimate_selectivity = true;
+                mul_selected *= col_ctx.bitmap_ranges.span_size();
+                mul_cardinality *= col_ctx.cardinality;
+            }
+        }
+
         for (const auto& child : node.children()) {
-            parent_type = CompoundNodeType::AND;
-            parent_node_ctx = &node_ctx;
+            if (std::holds_alternative<PredicateTreeColumnNode>(child.node)) {
+                continue;
+            }
+
             ASSIGN_OR_RETURN(const auto res_type, child.visit(*this));
             switch (res_type) {
             case ResultType::ALWAYS_FALSE:
@@ -1900,29 +1921,6 @@ struct BitmapIndexSeeker {
             case ResultType::OK:
                 used_children.emplace_back(&child);
                 break;
-            }
-        }
-
-        size_t mul_selected = 1;
-        size_t mul_cardinality = 1;
-        std::vector<ColumnId> cid_to_erase;
-        bool need_estimate_selectivity = false;
-        for (const auto& [cid, col_ctx] : node_ctx.col_contexts) {
-            // ALWAYS_FALSE
-            if (col_ctx.bitmap_ranges.empty()) {
-                ctx.nodes_to_erase.emplace(&node);
-                return ResultType::ALWAYS_FALSE;
-            }
-
-            // ALWAYS_TRUE
-            if (col_ctx.bitmap_ranges.span_size() >= col_ctx.cardinality) {
-                cid_to_erase.emplace_back(cid);
-                num_always_true_child += col_ctx.num_nodes;
-            } else {
-                // OK
-                need_estimate_selectivity = true;
-                mul_selected *= col_ctx.bitmap_ranges.span_size();
-                mul_cardinality *= col_ctx.cardinality;
             }
         }
 
@@ -1948,29 +1946,61 @@ struct BitmapIndexSeeker {
                     [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
         }
 
-        use_node = true;
+        node_ctx.used = true;
         return ResultType::OK;
     }
 
     StatusOr<ResultType> operator()(const PredicateTreeOrNode& node) {
-        if (!ctx.node_to_bitmapable[&node]) {
+        if (!ctx.is_node_support_bitmap[&node]) {
             return ResultType::NOT_USED;
         }
 
-        BitmapContext::NodeContext node_ctx;
-        bool use_node = false;
-        DeferOp defer([&] {
-            if (use_node) {
-                ctx.node_to_context.emplace(&node, std::move(node_ctx));
-            }
-        });
+        DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
+        auto& node_ctx = ctx.node_to_context[&node];
 
         std::vector<const PredicateTreeNode*> used_children;
         size_t num_always_false_child = 0;
         bool has_not_used_child = false;
+
+        size_t mul_selected = 1;
+        size_t mul_cardinality = 1;
+        std::vector<ColumnId> cid_to_erase;
+        bool need_estimate_selectivity = false;
+
+        for (const auto& [cid, col_ctx] : node_ctx.col_contexts) {
+            for (const auto* col_node : col_ctx.nodes) {
+                ASSIGN_OR_RETURN(const auto used, _seek_column_node<CompoundNodeType::OR>(*col_node, node.ctx));
+                if (used) {
+                    used_children.emplace_back(col_node);
+                } else {
+                    has_not_used_child = true;
+                }
+            }
+
+            // ALWAYS_FALSE
+            if (col_ctx.bitmap_ranges.empty()) {
+                cid_to_erase.emplace_back(cid);
+                num_always_false_child += col_ctx.nodes.size();
+                continue;
+            }
+
+            // ALWAYS_TRUE
+            if (col_ctx.bitmap_ranges.span_size() >= col_ctx.cardinality) {
+                ctx.nodes_to_erase.emplace(&node);
+                return ResultType::ALWAYS_TRUE;
+            } else {
+                // OK
+                need_estimate_selectivity = true;
+                mul_selected *= col_ctx.bitmap_ranges.span_size();
+                mul_cardinality *= col_ctx.cardinality;
+            }
+        }
+
         for (const auto& child : node.children()) {
-            parent_type = CompoundNodeType::OR;
-            parent_node_ctx = &node_ctx;
+            if (std::holds_alternative<PredicateTreeColumnNode>(child.node)) {
+                continue;
+            }
+
             ASSIGN_OR_RETURN(const auto res_type, child.visit(*this));
             switch (res_type) {
             case ResultType::ALWAYS_FALSE:
@@ -1986,30 +2016,6 @@ struct BitmapIndexSeeker {
             case ResultType::OK:
                 used_children.emplace_back(&child);
                 break;
-            }
-        }
-
-        size_t mul_selected = 1;
-        size_t mul_cardinality = 1;
-        std::vector<ColumnId> cid_to_erase;
-        bool need_estimate_selectivity = false;
-        for (const auto& [cid, col_ctx] : node_ctx.col_contexts) {
-            // ALWAYS_FALSE
-            if (col_ctx.bitmap_ranges.empty()) {
-                cid_to_erase.emplace_back(cid);
-                num_always_false_child += col_ctx.num_nodes;
-                continue;
-            }
-
-            // ALWAYS_TRUE
-            if (col_ctx.bitmap_ranges.span_size() >= col_ctx.cardinality) {
-                ctx.nodes_to_erase.emplace(&node);
-                return ResultType::ALWAYS_TRUE;
-            } else {
-                // OK
-                need_estimate_selectivity = true;
-                mul_selected *= col_ctx.bitmap_ranges.span_size();
-                mul_cardinality *= col_ctx.cardinality;
             }
         }
 
@@ -2039,15 +2045,47 @@ struct BitmapIndexSeeker {
                     [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
         }
 
-        use_node = true;
+        node_ctx.used = true;
         return ResultType::OK;
+    }
+
+    template <CompoundNodeType Type>
+    StatusOr<bool> _seek_column_node(const PredicateTreeColumnNode& node,
+                                     const BitmapContext::NodeContext& parent_node_ctx) const {
+        if (!ctx.is_node_support_bitmap[&node]) {
+            return ResultType::NOT_USED;
+        }
+
+        const auto* col_pred = node.col_pred();
+        const auto cid = col_pred->column_id();
+        auto* bitmap_iter = parent->_bitmap_index_iterators[cid];
+        if (bitmap_iter == nullptr) {
+            return false;
+        }
+
+        DCHECK(parent_node_ctx.col_contexts.find(cid) != parent_node_ctx.col_contexts.end());
+        auto& col_ctx = parent_node_ctx.col_contexts.find(cid)->second;
+
+        SparseRange<> r;
+        const Status st = col_pred->seek_bitmap_dictionary(bitmap_iter, &r);
+        if (st.ok()) {
+            if constexpr (Type == CompoundNodeType::AND) {
+                col_ctx.bitmap_ranges &= r;
+            } else {
+                col_ctx.bitmap_ranges |= r;
+            }
+            col_ctx.has_is_null_pred |= (col_pred->type() == PredicateType::kIsNull);
+        } else if (st.is_cancelled()) {
+            return false;
+        } else {
+            return st;
+        }
+
+        return true;
     }
 
     SegmentIterator* parent;
     BitmapContext& ctx;
-
-    BitmapContext::NodeContext* parent_node_ctx = nullptr;
-    CompoundNodeType parent_type = CompoundNodeType::AND;
 };
 
 struct BitmapIndexEvaluator {
@@ -2058,7 +2096,7 @@ struct BitmapIndexEvaluator {
         std::optional<Roaring> result_roaring;
 
         auto it = ctx.node_to_context.find(&node);
-        if (it == ctx.node_to_context.end()) {
+        if (it == ctx.node_to_context.end() || !it->second.used) {
             return result_roaring;
         }
         const auto& node_ctx = it->second;
