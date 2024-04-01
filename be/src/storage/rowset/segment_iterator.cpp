@@ -1857,7 +1857,7 @@ struct BitmapIndexSeeker {
         }
 
         DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
-        auto& node_ctx = ctx.node_to_context[&node];
+        auto& node_ctx = ctx.node_to_context.find(&node)->second;
 
         std::vector<const PredicateTreeNode*> used_children;
         size_t num_always_true_child = 0;
@@ -1948,7 +1948,7 @@ struct BitmapIndexSeeker {
         }
 
         DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
-        auto& node_ctx = ctx.node_to_context[&node];
+        auto& node_ctx = ctx.node_to_context.find(&node)->second;
 
         std::vector<const PredicateTreeNode*> used_children;
         size_t num_always_false_child = 0;
