@@ -1859,7 +1859,7 @@ struct BitmapIndexSeeker {
         DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
         auto& node_ctx = ctx.node_to_context[&node];
 
-        std::vector<const PredicateTreeNode*> used_children;
+        std::vector<const PredicateTreeBaseNode*> used_children;
         size_t num_always_true_child = 0;
 
         size_t mul_selected = 1;
@@ -1904,14 +1904,14 @@ struct BitmapIndexSeeker {
                 ctx.nodes_to_erase.emplace(&node);
                 return ResultType::ALWAYS_FALSE;
             case ResultType::ALWAYS_TRUE:
-                used_children.emplace_back(&child);
+                used_children.emplace_back(&child.node);
                 num_always_true_child++;
                 break;
             case ResultType::NOT_USED:
                 // Do nothing.
                 break;
             case ResultType::OK:
-                used_children.emplace_back(&child);
+                used_children.emplace_back(&child.node);
                 break;
             }
         }
@@ -1933,10 +1933,7 @@ struct BitmapIndexSeeker {
             return ResultType::NOT_USED;
         }
 
-        for (const auto& child : used_children) {
-            ctx.nodes_to_erase.emplace(child->visit(
-                    [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
-        }
+        ctx.nodes_to_erase.insert(used_children.begin(), used_children.end());
 
         node_ctx.used = true;
         return ResultType::OK;
@@ -1950,7 +1947,7 @@ struct BitmapIndexSeeker {
         DCHECK(ctx.node_to_context.find(&node) != ctx.node_to_context.end());
         auto& node_ctx = ctx.node_to_context[&node];
 
-        std::vector<const PredicateTreeNode*> used_children;
+        std::vector<const PredicateTreeBaseNode*> used_children;
         size_t num_always_false_child = 0;
         bool has_not_used_child = false;
 
@@ -1996,7 +1993,7 @@ struct BitmapIndexSeeker {
             ASSIGN_OR_RETURN(const auto res_type, child.visit(*this));
             switch (res_type) {
             case ResultType::ALWAYS_FALSE:
-                used_children.emplace_back(&child);
+                used_children.emplace_back(&child.node);
                 num_always_false_child++;
                 break;
             case ResultType::ALWAYS_TRUE:
@@ -2006,7 +2003,7 @@ struct BitmapIndexSeeker {
                 has_not_used_child = true;
                 break;
             case ResultType::OK:
-                used_children.emplace_back(&child);
+                used_children.emplace_back(&child.node);
                 break;
             }
         }
@@ -2032,10 +2029,7 @@ struct BitmapIndexSeeker {
             return ResultType::NOT_USED;
         }
 
-        for (const auto& child : used_children) {
-            ctx.nodes_to_erase.emplace(child->visit(
-                    [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
-        }
+        ctx.nodes_to_erase.insert(used_children.begin(), used_children.end());
 
         node_ctx.used = true;
         return ResultType::OK;
