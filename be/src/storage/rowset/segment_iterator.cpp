@@ -1783,7 +1783,7 @@ struct BitmapIndexInitializer {
 
     template <CompoundNodeType Type>
     StatusOr<bool> operator()(const PredicateTreeCompoundNode<Type>& node) {
-        auto& node_ctx = ctx.node_to_context.emplace(&node, BitmapContext::NodeContext{})->second;
+        auto& node_ctx = ctx.node_to_context.emplace(&node, BitmapContext::NodeContext{}).first->second;
         bool has_bitmap_index = Type == CompoundNodeType::AND ? false : true;
         for (const auto& child : node.children()) {
             parent_type = Type;
