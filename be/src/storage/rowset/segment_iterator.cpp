@@ -1904,14 +1904,16 @@ struct BitmapIndexSeeker {
                 ctx.nodes_to_erase.emplace(&node);
                 return ResultType::ALWAYS_FALSE;
             case ResultType::ALWAYS_TRUE:
-                used_children.emplace_back(&child.node);
+                used_children.emplace_back(child.visit(
+                        [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
                 num_always_true_child++;
                 break;
             case ResultType::NOT_USED:
                 // Do nothing.
                 break;
             case ResultType::OK:
-                used_children.emplace_back(&child.node);
+                used_children.emplace_back(child.visit(
+                        [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
                 break;
             }
         }
@@ -1993,7 +1995,8 @@ struct BitmapIndexSeeker {
             ASSIGN_OR_RETURN(const auto res_type, child.visit(*this));
             switch (res_type) {
             case ResultType::ALWAYS_FALSE:
-                used_children.emplace_back(&child.node);
+                used_children.emplace_back(child.visit(
+                        [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
                 num_always_false_child++;
                 break;
             case ResultType::ALWAYS_TRUE:
@@ -2003,7 +2006,8 @@ struct BitmapIndexSeeker {
                 has_not_used_child = true;
                 break;
             case ResultType::OK:
-                used_children.emplace_back(&child.node);
+                used_children.emplace_back(child.visit(
+                        [](const auto& child_node) { return static_cast<const PredicateTreeBaseNode*>(&child_node); }));
                 break;
             }
         }
