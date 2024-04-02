@@ -84,6 +84,27 @@ const PredicateTreeCompoundNode<Type>::ColumnPredicateMap& PredicateTreeCompound
     return cid_to_column_preds;
 }
 
+template <CompoundNodeType Type>
+const std::unordered_set<ColumnId>& PredicateTreeCompoundNode<Type>::column_ids() const {
+    if (_cached_column_ids.has_value()) {
+        return _cached_column_ids.value();
+    }
+
+    auto& all_column_ids = _cached_column_ids.emplace();
+    visit(ColumnPredsCollector{all_column_ids});
+    return all_column_ids;
+}
+
+template <CompoundNodeType Type>
+bool PredicateTreeCompoundNode<Type>::contains_column(ColumnId cid) const {
+    return column_ids().contains(cid);
+}
+
+template <CompoundNodeType Type>
+size_t PredicateTreeCompoundNode<Type>::num_columns() const {
+    return column_ids().size();
+}
+
 template <>
 inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const Chunk* chunk, uint8_t* selection,
                                                                          uint16_t from, uint16_t to) const;

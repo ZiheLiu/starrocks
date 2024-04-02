@@ -39,6 +39,13 @@ std::string PredicateTreeColumnNode::debug_string() const {
     return strings::Substitute("{\"pred\":\"$0\"}", _col_pred->debug_string());
 }
 
+bool PredicateTreeColumnNode::contains_column(ColumnId cid) const {
+    return _col_pred->column_id() == cid;
+}
+size_t PredicateTreeColumnNode::num_columns() const {
+    return 1;
+}
+
 // ------------------------------------------------------------------------------------
 // PredicateTreeNode
 // ------------------------------------------------------------------------------------
@@ -74,11 +81,7 @@ struct ColumnPredsCollector {
     void operator()(const PredicateTreeColumnNode& node) const {
         const auto* col_pred = node.col_pred();
         const auto cid = col_pred->column_id();
-        if (auto it = column_preds.find(cid); it != column_preds.end()) {
-            it->second.emplace_back(col_pred);
-        } else {
-            column_preds.emplace(cid, std::vector<const ColumnPredicate*>{col_pred});
-        }
+        column_ids.emplace(cid);
     }
 
     template <CompoundNodeType Type>
@@ -88,24 +91,14 @@ struct ColumnPredsCollector {
         }
     }
 
-    std::map<ColumnId, std::vector<const ColumnPredicate*>>& column_preds;
+    std::unordered_set<ColumnId>& column_ids;
 };
 
-const std::map<ColumnId, std::vector<const ColumnPredicate*>>& PredicateTreeNode::column_preds() const {
-    if (_cached_column_preds.has_value()) {
-        return _cached_column_preds.value();
-    }
-
-    auto& all_column_preds = _cached_column_preds.emplace();
-    visit(ColumnPredsCollector{all_column_preds});
-    return all_column_preds;
-}
-
 bool PredicateTreeNode::contains_column(ColumnId cid) const {
-    return column_preds().contains(cid);
+    return visit([&](const auto& node) { return node.contains_column(cid); });
 }
 size_t PredicateTreeNode::num_columns() const {
-    return column_preds().size();
+    return visit([](const auto& node) { return node.num_columns(); });
 }
 
 struct ChildrenSorter {

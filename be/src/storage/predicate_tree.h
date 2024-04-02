@@ -83,6 +83,9 @@ public:
 
     std::string debug_string() const;
 
+    bool contains_column(ColumnId cid) const;
+    size_t num_columns() const;
+
     using PredicateTreeBaseNodeHelper::evaluate;
 
 private:
@@ -111,6 +114,10 @@ public:
 
     std::string debug_string() const;
 
+    const std::unordered_set<ColumnId>& column_ids() const;
+    bool contains_column(ColumnId cid) const;
+    size_t num_columns() const;
+
     using PredicateTreeBaseNodeHelper<PredicateTreeCompoundNode>::evaluate;
 
 private:
@@ -120,6 +127,8 @@ private:
     mutable std::vector<uint16_t> _selected_idx_buffer;
 
     mutable std::optional<ColumnPredicateMap> _cached_cid_to_column_preds;
+
+    mutable std::optional<std::unordered_set<ColumnId>> _cached_column_ids;
 };
 
 // ------------------------------------------------------------------------------------
@@ -151,7 +160,6 @@ struct PredicateTreeNode {
     void shallow_partition_copy(Vistor&& cond, PredicateTreeNode* true_pred_tree,
                                 PredicateTreeNode* false_pred_tree) const;
 
-    const std::map<ColumnId, std::vector<const ColumnPredicate*>>& column_preds() const;
     bool contains_column(ColumnId cid) const;
     size_t num_columns() const;
 
@@ -159,8 +167,6 @@ struct PredicateTreeNode {
     void sort_children();
 
     PredicateTreeNodeVariant node;
-
-    mutable std::optional<std::map<ColumnId, std::vector<const ColumnPredicate*>>> _cached_column_preds;
 };
 
 } // namespace starrocks
