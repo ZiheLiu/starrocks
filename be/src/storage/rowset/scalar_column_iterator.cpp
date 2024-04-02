@@ -540,7 +540,7 @@ Status ScalarColumnIterator::_do_decode_dict_codes(const int32_t* codes, size_t 
                 s.size = strnlen(s.data, s.size);
                 slices.emplace_back(s);
             }
-            max_slice_len = max(max_slice_len, slices.back().size);
+            max_slice_len = std::max(max_slice_len, slices.back().size);
         } else {
             slices.emplace_back("");
         }
