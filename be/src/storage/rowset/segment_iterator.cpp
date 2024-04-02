@@ -666,14 +666,13 @@ void SegmentIterator::_init_column_predicates() {
 
     _opts.pred_tree.sort_children();
 
-    PredicateTree all_non_expr_pred_tree;
-    _opts.pred_tree.shallow_partition_copy([](const auto& node) { return node.visit(ExprPredicateChecker()); },
-                                           &_expr_pred_tree, &all_non_expr_pred_tree);
-
     PredicateTree useless_pred_tree;
-    all_non_expr_pred_tree.shallow_partition_copy(
-            [](const auto& node) { return node.visit(IndexOnlyPredicateChecker()); }, &useless_pred_tree,
-            &_non_expr_pred_tree);
+    PredicateTree used_pred_tree;
+    _opts.pred_tree.shallow_partition_copy([](const auto& node) { return node.visit(IndexOnlyPredicateChecker()); },
+                                           &useless_pred_tree, &used_pred_tree);
+
+    used_pred_tree.shallow_partition_move([](auto& node) { return node.visit(ExprPredicateChecker()); },
+                                          &_expr_pred_tree, &_non_expr_pred_tree);
 }
 
 Status SegmentIterator::_get_row_ranges_by_keys() {

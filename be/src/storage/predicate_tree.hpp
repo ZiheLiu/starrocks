@@ -320,4 +320,31 @@ void PredicateTreeNode::shallow_partition_copy(Vistor&& cond, PredicateTreeNode*
     });
 }
 
+template <typename Vistor>
+void PredicateTreeNode::shallow_partition_move(Vistor&& cond, PredicateTreeNode* true_pred_tree,
+                                               PredicateTreeNode* false_pred_tree) {
+    visit(overloaded{
+            [&](PredicateTreeColumnNode& node) {
+                if (cond(node)) {
+                    *true_pred_tree = std::move(node);
+                    *false_pred_tree = PredicateTreeNode{};
+                } else {
+                    *true_pred_tree = PredicateTreeNode{};
+                    *false_pred_tree = std::move(node);
+                }
+            },
+            [&]<CompoundNodeType Type>(PredicateTreeCompoundNode<Type>& node) {
+                *true_pred_tree = PredicateTreeNode{PredicateTreeCompoundNode<Type>{}};
+                *false_pred_tree = PredicateTreeNode{PredicateTreeCompoundNode<Type>{}};
+                for (auto& child : node.children()) {
+                    if (cond(child)) {
+                        true_pred_tree->visit([&](auto& pred) { pred.add_child(std::move(child)); });
+                    } else {
+                        false_pred_tree->visit([&](auto& pred) { pred.add_child(std::move(child)); });
+                    }
+                }
+            },
+    });
+}
+
 } // namespace starrocks

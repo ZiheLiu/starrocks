@@ -159,6 +159,8 @@ struct PredicateTreeNode {
     template <typename Vistor>
     void shallow_partition_copy(Vistor&& cond, PredicateTreeNode* true_pred_tree,
                                 PredicateTreeNode* false_pred_tree) const;
+    template <typename Vistor>
+    void shallow_partition_move(Vistor&& cond, PredicateTreeNode* true_pred_tree, PredicateTreeNode* false_pred_tree);
 
     bool contains_column(ColumnId cid) const;
     size_t num_columns() const;
