@@ -412,7 +412,8 @@ public class PlanFragmentBuilder {
 
         private void setUnUsedOutputColumns(PhysicalOlapScanOperator node, OlapScanNode scanNode,
                                             List<ScalarOperator> predicates, OlapTable referenceTable) {
-            if (!ConnectContext.get().getSessionVariable().isEnableFilterUnusedColumnsInScanStage()) {
+            SessionVariable sessionVariable = ConnectContext.get().getSessionVariable();
+            if (!sessionVariable.isEnableFilterUnusedColumnsInScanStage()) {
                 return;
             }
 
@@ -456,7 +457,7 @@ public class PlanFragmentBuilder {
 
             for (ScalarOperator predicate : predicates) {
                 ColumnRefSet usedColumns = predicate.getUsedColumns();
-                if (DecodeVisitor.isSimpleStrictPredicate(predicate)) {
+                if (DecodeVisitor.isSimpleStrictPredicate(predicate, sessionVariable.isEnablePushdownOrPredicate())) {
                     for (int cid : usedColumns.getColumnIds()) {
                         singlePredColumnIds.add(cid);
                     }
