@@ -530,6 +530,7 @@ Status ScalarColumnIterator::_do_decode_dict_codes(const int32_t* codes, size_t 
     auto dict = down_cast<BinaryPlainPageDecoder<Type>*>(_dict_decoder.get());
     std::vector<Slice> slices;
     slices.reserve(size);
+    size_t max_slice_len = 0;
     for (size_t i = 0; i < size; i++) {
         if (codes[i] >= 0) {
             if constexpr (Type != TYPE_CHAR) {
@@ -539,11 +540,12 @@ Status ScalarColumnIterator::_do_decode_dict_codes(const int32_t* codes, size_t 
                 s.size = strnlen(s.data, s.size);
                 slices.emplace_back(s);
             }
+            max_slice_len = max(max_slice_len, slices.back().size);
         } else {
             slices.emplace_back("");
         }
     }
-    [[maybe_unused]] bool ok = words->append_strings(slices);
+    [[maybe_unused]] bool ok = words->append_strings_overflow(slices, max_slice_len);
     DCHECK(ok);
     _opts.stats->bytes_read += static_cast<int64_t>(words->byte_size() + BitmapSize(slices.size()));
     return Status::OK();
