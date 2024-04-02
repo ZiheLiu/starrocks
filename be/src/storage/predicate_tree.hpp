@@ -108,7 +108,10 @@ const std::unordered_set<ColumnId>& PredicateTreeCompoundNode<Type>::column_ids(
     }
 
     auto& all_column_ids = _cached_column_ids.emplace();
-    visit(ColumnPredsCollector{all_column_ids});
+    ColumnPredsCollector collector{all_column_ids};
+    for (const auto& child : _children) {
+        child.visit(collector);
+    }
     return all_column_ids;
 }
 
