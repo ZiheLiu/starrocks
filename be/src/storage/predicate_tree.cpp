@@ -77,23 +77,6 @@ bool PredicateTreeNode::empty() const {
     return visit(EmptyVisitor());
 }
 
-struct ColumnPredsCollector {
-    void operator()(const PredicateTreeColumnNode& node) const {
-        const auto* col_pred = node.col_pred();
-        const auto cid = col_pred->column_id();
-        column_ids.emplace(cid);
-    }
-
-    template <CompoundNodeType Type>
-    void operator()(const PredicateTreeCompoundNode<Type>& node) const {
-        for (const auto& child : node.children()) {
-            child.visit(*this);
-        }
-    }
-
-    std::unordered_set<ColumnId>& column_ids;
-};
-
 bool PredicateTreeNode::contains_column(ColumnId cid) const {
     return visit([&](const auto& node) { return node.contains_column(cid); });
 }
