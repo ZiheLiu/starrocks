@@ -147,7 +147,7 @@ ColumnPtr BinaryColumnBase<T>::replicate(const std::vector<uint32_t>& offsets) {
 
 template <typename T>
 bool BinaryColumnBase<T>::append_strings(const Buffer<Slice>& strs) {
-    const auto offset = _bytes.size();
+    auto offset = _bytes.size();
     for (const auto& s : strs) {
         offset += s.size;
         _offsets.emplace_back(offset);
