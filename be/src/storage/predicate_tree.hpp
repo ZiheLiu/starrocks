@@ -346,11 +346,11 @@ void PredicateTreeNode::shallow_partition_move(Vistor&& cond, PredicateTreeNode*
     visit(overloaded{
             [&](PredicateTreeColumnNode& node) {
                 if (cond(node)) {
-                    *true_pred_tree = std::move(node);
+                    *true_pred_tree = PredicateTreeNode{std::move(node)};
                     *false_pred_tree = PredicateTreeNode{};
                 } else {
                     *true_pred_tree = PredicateTreeNode{};
-                    *false_pred_tree = std::move(node);
+                    *false_pred_tree = PredicateTreeNode{std::move(node)};
                 }
             },
             [&]<CompoundNodeType Type>(PredicateTreeCompoundNode<Type>& node) {
