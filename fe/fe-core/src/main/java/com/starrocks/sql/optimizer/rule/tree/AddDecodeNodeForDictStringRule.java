@@ -1176,7 +1176,7 @@ public class AddDecodeNodeForDictStringRule implements TreeRewriteRule {
                 return false;
             }
 
-            if (!predicate.isAnd() && predicate.isOr()) {
+            if (!predicate.isAnd() && !predicate.isOr()) {
                 return false;
             }
 
