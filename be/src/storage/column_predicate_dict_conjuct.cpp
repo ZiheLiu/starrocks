@@ -70,6 +70,8 @@ public:
 
     Datum value() const { return {}; }
 
+    size_t num_values() const { return _code_mapping.size(); }
+
     std::vector<Datum> values() const {
         std::vector<Datum> res;
         res.reserve(_code_mapping.size());
