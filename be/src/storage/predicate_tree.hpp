@@ -216,7 +216,7 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const C
         }
 
         for (const auto& col_pred : non_vec_preds) {
-            ASSIGN_OR_RETURN(selected_size, col_pred.evaluate_branchless(chunk, selected_idx, selected_size));
+            ASSIGN_OR_RETURN(selected_size, col_pred->evaluate_branchless(chunk, selected_idx, selected_size));
             if (selected_size == 0) {
                 break;
             }
