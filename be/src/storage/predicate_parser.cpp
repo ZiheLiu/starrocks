@@ -21,7 +21,7 @@
 #include "storage/chunk_helper.h"
 #include "storage/column_expr_predicate.h"
 #include "storage/column_predicate.h"
-#include "storage/predicate_tree.hpp"
+#include "storage/predicate_tree/predicate_tree.hpp"
 #include "storage/tablet_schema.h"
 #include "storage/type_utils.h"
 

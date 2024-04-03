@@ -22,7 +22,7 @@
 #include "storage/column_predicate.h"
 #include "storage/conjunctive_predicates.h"
 #include "storage/olap_common.h"
-#include "storage/predicate_tree.hpp"
+#include "storage/predicate_tree/predicate_tree.hpp"
 #include "storage/rowset/column_decoder.h"
 #include "storage/rowset/column_reader.h"
 

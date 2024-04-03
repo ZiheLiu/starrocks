@@ -36,7 +36,7 @@
 #include "simd/simd.h"
 #include "storage/column_expr_predicate.h"
 #include "storage/column_predicate.h"
-#include "storage/predicate_tree.hpp"
+#include "storage/predicate_tree/predicate_tree.hpp"
 #include "storage/range.h"
 #include "storage/rowset/column_reader.h"
 #include "storage/rowset/scalar_column_iterator.h"

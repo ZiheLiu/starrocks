@@ -26,7 +26,7 @@
 #include "storage/olap_runtime_range_pruner.h"
 #include "storage/olap_runtime_range_pruner.hpp"
 #include "storage/predicate_parser.h"
-#include "storage/predicate_tree.hpp"
+#include "storage/predicate_tree/predicate_tree.hpp"
 #include "types/date_value.hpp"
 #include "types/logical_type.h"
 #include "types/logical_type_infra.h"

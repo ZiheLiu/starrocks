@@ -25,7 +25,7 @@
 #include "storage/disjunctive_predicates.h"
 #include "storage/olap_runtime_range_pruner.h"
 #include "storage/options.h"
-#include "storage/predicate_tree.hpp"
+#include "storage/predicate_tree/predicate_tree.hpp"
 #include "storage/seek_range.h"
 #include "storage/tablet_schema.h"
 

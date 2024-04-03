@@ -258,7 +258,7 @@ public:
 
     PredicateType type() const override { return PredicateType::kNotInList; }
 
-    size_t num_values() const override { return _values.size(); }
+    size_t num_values() const override { return _slices.size(); }
     std::vector<Datum> values() const override {
         std::vector<Datum> ret;
         ret.reserve(_slices.size());

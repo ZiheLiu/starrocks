@@ -25,7 +25,7 @@
 #include "storage/lake/versioned_tablet.h"
 #include "storage/olap_runtime_range_pruner.hpp"
 #include "storage/predicate_parser.h"
-#include "storage/predicate_tree.hpp"
+#include "storage/predicate_tree/predicate_tree.hpp"
 #include "storage/projection_iterator.h"
 #include "util/starrocks_metrics.h"
 
