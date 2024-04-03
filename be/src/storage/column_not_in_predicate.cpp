@@ -101,6 +101,7 @@ public:
 
     bool can_vectorized() const override { return false; }
 
+    size_t num_values() const override { return _values.size(); }
     std::vector<Datum> values() const override {
         std::vector<Datum> ret;
         ret.reserve(_values.size());
@@ -257,6 +258,7 @@ public:
 
     PredicateType type() const override { return PredicateType::kNotInList; }
 
+    size_t num_values() const override { return _values.size(); }
     std::vector<Datum> values() const override {
         std::vector<Datum> ret;
         ret.reserve(_slices.size());

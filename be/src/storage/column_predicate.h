@@ -189,6 +189,7 @@ public:
 
     // Constant value in the predicate in vector form. In contrast to `value()`, these value are un-modified.
     virtual std::vector<Datum> values() const { return std::vector<Datum>{}; }
+    virtual size_t num_values() const { return 0; }
 
     [[nodiscard]] virtual Status convert_to(const ColumnPredicate** output, const TypeInfoPtr& target_type_info,
                                             ObjectPool* obj_pool) const = 0;

@@ -235,6 +235,7 @@ public:
     Datum value() const override { return Datum(_value); }
 
     std::vector<Datum> values() const override { return std::vector<Datum>{Datum(_value)}; }
+    size_t num_values() const override { return 1; }
 
     bool can_vectorized() const override { return true; }
 
@@ -557,6 +558,7 @@ public:
     Datum value() const override { return Datum(Slice(_zero_padded_str)); }
 
     std::vector<Datum> values() const override { return std::vector<Datum>{Datum(_value)}; }
+    size_t num_values() const override { return 1; }
 
     bool can_vectorized() const override { return false; }
 

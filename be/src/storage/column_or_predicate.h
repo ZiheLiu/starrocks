@@ -55,6 +55,7 @@ public:
 
     // Always return an empty set.
     std::vector<Datum> values() const override { return std::vector<Datum>{}; }
+    size_t num_values() const override { return 0; }
 
     Status convert_to(const ColumnPredicate** output, const TypeInfoPtr& target_type_info,
                       ObjectPool* obj_pool) const override;

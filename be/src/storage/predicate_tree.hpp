@@ -158,16 +158,20 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const C
     }
 
     // Evaluate vectorized predicates first.
+    std::vector<const PredicateTreeColumnNode*> non_vec_preds;
+    non_vec_preds.reserve(_children.size());
     bool first = true;
-    std::vector<const PredicateTreeNode*> non_vec_children;
-    non_vec_children.reserve(_children.size());
+    bool contains_true = true;
     for (const auto& child : _children) {
-        const bool is_non_vec = child.visit(overloaded{
-                [&](const PredicateTreeColumnNode& node) { return !node.col_pred()->can_vectorized(); },
-                [&]<CompoundNodeType ChildType>(const PredicateTreeCompoundNode<ChildType>& node) { return false; },
+        const auto* non_vec_pred = child.visit(overloaded{
+                [&](const PredicateTreeColumnNode& child_node) -> const PredicateTreeColumnNode* {
+                    return !child_node.col_pred()->can_vectorized() ? &child_node : nullptr;
+                },
+                [&]<CompoundNodeType ChildType>(const PredicateTreeCompoundNode<ChildType>& child_node)
+                        -> const PredicateTreeColumnNode* { return nullptr; },
         });
-        if (is_non_vec) {
-            non_vec_children.emplace_back(&child);
+        if (non_vec_pred != nullptr) {
+            non_vec_preds.emplace_back(non_vec_pred);
             continue;
         }
 
@@ -179,14 +183,19 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const C
                     child.visit([&](const auto& pred) { return pred.evaluate_and(chunk, selection, from, to); }));
         }
 
-        const auto num_trues = SIMD::count_nonzero(selection + from, num_rows);
-        if (!num_trues) {
+        contains_true = SIMD::count_nonzero(selection + from, num_rows);
+        if (!contains_true) {
             break;
         }
     }
 
     // Evaluate non-vectorized predicates using evaluate_branchless.
-    if (!non_vec_children.empty()) {
+    if (contains_true && !non_vec_preds.empty()) {
+        std::sort(non_vec_preds.begin(), non_vec_preds.end(),
+                  [](const PredicateTreeColumnNode* lhs, const PredicateTreeColumnNode* rhs) {
+                      return lhs->col_pred()->num_values() < rhs->col_pred()->num_values();
+                  });
+
         if (UNLIKELY(_selected_idx_buffer.size() < to)) {
             _selected_idx_buffer.resize(to);
         }
@@ -206,8 +215,7 @@ inline Status PredicateTreeCompoundNode<CompoundNodeType::AND>::evaluate(const C
             }
         }
 
-        for (const auto& child : non_vec_children) {
-            const auto& col_pred = std::get<PredicateTreeColumnNode>(child->node);
+        for (const auto& col_pred : non_vec_preds) {
             ASSIGN_OR_RETURN(selected_size, col_pred.evaluate_branchless(chunk, selected_idx, selected_size));
             if (selected_size == 0) {
                 break;

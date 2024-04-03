@@ -156,6 +156,7 @@ public:
     Datum value() const override { return _predicate_operator.value(); }
 
     std::vector<Datum> values() const override { return _predicate_operator.values(); }
+    size_t num_values() const override { return _predicate_operator.num_values(); }
 
     bool can_vectorized() const override { return SpecColumnOperator::can_vectorized(); }
 
