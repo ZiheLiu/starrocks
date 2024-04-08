@@ -15,6 +15,7 @@
 package com.starrocks.sql.optimizer.rule.transformation;
 
 import com.google.common.collect.Lists;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
@@ -68,6 +69,9 @@ public class UnionToValuesRule extends TransformationRule {
 
     @Override
     public boolean check(OptExpression input, OptimizerContext context) {
+        if (ConnectContext.get() == null || ConnectContext.get().getSessionVariable().isEnableMergeConstantUnionAll()) {
+            return false;
+        }
         return input.getInputs().stream()
                 .filter(UnionToValuesRule::isMergeable)
                 .count() > 1;

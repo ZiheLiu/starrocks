@@ -1364,6 +1364,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = ENABLE_REWRITE_SIMPLE_AGG_TO_META_SCAN)
     private boolean enableRewriteSimpleAggToMetaScan = false;
 
+    @VarAttr(name = "enable_merge_constant_union_all")
+    private boolean enableMergeConstantUnionAll = true;
+
     @VariableMgr.VarAttr(name = INTERLEAVING_GROUP_SIZE)
     private int interleavingGroupSize = 10;
 
@@ -3342,6 +3345,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableRewriteSimpleAggToMetaScan() {
         return this.enableRewriteSimpleAggToMetaScan;
+    }
+
+    public boolean isEnableMergeConstantUnionAll() {
+        return this.enableMergeConstantUnionAll;
     }
 
     public boolean getEnablePruneComplexTypes() {
