@@ -91,6 +91,8 @@ public:
 static constexpr uint32_t SALT[8] = {0x47b6137b, 0x44974d91, 0x8824ad5b, 0xa2b7289d,
                                      0x705495c7, 0x2df1424b, 0x9efc4947, 0x5c6bfb31};
 
+class JoinRuntimeFilter;
+
 // Modify from https://github.com/FastFilter/fastfilter_cpp/blob/master/src/bloom/simd-block.h
 // This is avx2 simd implementation for paper <<Cache-, Hash- and Space-Efficient Bloom Filters>>
 class SimdBlockFilter {
@@ -172,7 +174,9 @@ public:
     size_t deserialize(const uint8_t* data);
     void merge(const SimdBlockFilter& bf);
     bool check_equal(const SimdBlockFilter& bf) const;
-    uint32_t directory_mask() const { return _directory_mask; }
+    uint32_t directory_mask() const {
+        return _directory_mask;
+    }
 
     void clear();
     // whether this bloom filter can be used
@@ -180,9 +184,13 @@ public:
     // we still send this rf but ignore bloom filter and only keep min/max filter,
     // in this case, we will use clear() to release the memory of bloom filter,
     // we can use can_use() to check if this bloom filter can be used
-    bool can_use() const { return _directory != nullptr; }
+    bool can_use() const {
+        return _directory != nullptr;
+    }
 
 private:
+    friend class JoinRuntimeFilter;
+
     // The number of bits to set in a tiny Bloom filter block
 
     // For scalar version:
