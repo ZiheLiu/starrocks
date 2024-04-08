@@ -740,6 +740,22 @@ public:
             dispatch_layout<WithModuloArg<ModuloOp>::HashValueCompute>(_global, layout, columns, num_rows,
                                                                        _hash_partition_bf.size(), _hash_values);
         }
+
+        LOG(WARNING) << "[RF] compute_partition_index "
+                     << "[_join_mode" << std::to_string(_join_mode) << "] "
+                     << "[num_rows" << std::to_string(num_rows) << "] "
+                     << "[compatibility" << std::to_string(ctx->compatibility) << "] "
+                     << "[use_reduce" << std::to_string(use_reduce) << "]";
+        for (const auto* column : columns) {
+            LOG(WARNING) << "[RF] compute_partition_index "
+                         << "[_join_mode" << std::to_string(_join_mode) << "] "
+                         << "[column" << column->debug_string() << "] ";
+        }
+        for (auto& hash_value : _hash_values) {
+            LOG(WARNING) << "[RF] compute_partition_index "
+                         << "[_join_mode" << std::to_string(_join_mode) << "] "
+                         << "[hash_value" << std::to_string(hash_value) << "] ";
+        }
     }
 
 private:
