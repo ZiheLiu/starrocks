@@ -218,7 +218,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
     LOG(WARNING) << "[RF] deserialize Basic "
                  << "[_join_mode" << _join_mode << "] "
                  << "[_has_null" << _has_null << "] "
-                 << "[_global" << _si_globalze << "] "
+                 << "[_global" << _global << "] "
                  << "[_size" << _size << "] "
                  << "[_always_true" << _always_true << "] "
                  << "[_rf_version" << _rf_version << "] ";
@@ -230,7 +230,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
                  << "[_directory" << _bf._directory << "] ";
     if (_bf._directory != nullptr) {
         for (int i = 0; i < (1 << _bf._log_num_buckets); i++) {
-            for (int j = 0; j < BITS_SET_PER_BLOCK; j++) {
+            for (int j = 0; j < SimdBlockFilter::BITS_SET_PER_BLOCK; j++) {
                 LOG(WARNING) << "[RF] deserialize BF "
                              << "[_join_mode" << _join_mode << "] "
                              << "[" << i << "," << j << ":" << _bf._directory[i][j] << "] ";
@@ -247,7 +247,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
                      << "[_directory" << bf._directory << "] ";
         if (bf._directory != nullptr) {
             for (int i = 0; i < (1 << bf._log_num_buckets); i++) {
-                for (int j = 0; j < BITS_SET_PER_BLOCK; j++) {
+                for (int j = 0; j < SimdBlockFilter::BITS_SET_PER_BLOCK; j++) {
                     LOG(WARNING) << "[RF] deserialize Partitioned BF "
                                  << "[_join_mode" << _join_mode << "] "
                                  << "[" << i << "," << j << ":" << bf._directory[i][j] << "] ";
