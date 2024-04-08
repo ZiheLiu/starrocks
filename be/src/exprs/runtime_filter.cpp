@@ -216,7 +216,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
     }
 
     LOG(WARNING) << "[RF] deserialize Basic "
-                 << "[_join_mode" << _join_mode << "] "
+                 << "[_join_mode" << std::to_string(_join_mode) << "] "
                  << "[_has_null" << _has_null << "] "
                  << "[_global" << _global << "] "
                  << "[_size" << _size << "] "
@@ -224,7 +224,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
                  << "[_rf_version" << _rf_version << "] ";
 
     LOG(WARNING) << "[RF] deserialize BF "
-                 << "[_join_mode" << _join_mode << "] "
+                 << "[_join_mode" << std::to_string(_join_mode) << "] "
                  << "[_log_num_buckets" << _bf._log_num_buckets << "] "
                  << "[_directory_mask" << _bf._directory_mask << "] "
                  << "[_directory" << _bf._directory << "] ";
@@ -232,7 +232,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
         for (int i = 0; i < (1 << _bf._log_num_buckets); i++) {
             for (int j = 0; j < SimdBlockFilter::BITS_SET_PER_BLOCK; j++) {
                 LOG(WARNING) << "[RF] deserialize BF "
-                             << "[_join_mode" << _join_mode << "] "
+                             << "[_join_mode" << std::to_string(_join_mode) << "] "
                              << "[" << i << "," << j << ":" << _bf._directory[i][j] << "] ";
             }
         }
@@ -241,7 +241,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
     int pid = 0;
     for (const auto& bf : _hash_partition_bf) {
         LOG(WARNING) << "[RF] deserialize Partitioned BF #" << pid++ << " "
-                     << "[_join_mode" << _join_mode << "] "
+                     << "[_join_mode" << std::to_string(_join_mode) << "] "
                      << "[_log_num_buckets" << bf._log_num_buckets << "] "
                      << "[_directory_mask" << bf._directory_mask << "] "
                      << "[_directory" << bf._directory << "] ";
@@ -249,7 +249,7 @@ size_t JoinRuntimeFilter::deserialize(int serialize_version, const uint8_t* data
             for (int i = 0; i < (1 << bf._log_num_buckets); i++) {
                 for (int j = 0; j < SimdBlockFilter::BITS_SET_PER_BLOCK; j++) {
                     LOG(WARNING) << "[RF] deserialize Partitioned BF "
-                                 << "[_join_mode" << _join_mode << "] "
+                                 << "[_join_mode" << std::to_string(_join_mode) << "] "
                                  << "[" << i << "," << j << ":" << bf._directory[i][j] << "] ";
                 }
             }
