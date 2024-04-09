@@ -112,6 +112,9 @@ public:
     static uint8_t apply(uint8_t a, uint8_t b) { return a | b; }
 };
 
+class ColumnPredicate;
+using ColumnPredicatePred = std::unique_ptr<ColumnPredicate>;
+
 // ColumnPredicate represents a predicate that can only be applied to a column.
 class ColumnPredicate {
 public:
@@ -158,6 +161,8 @@ public:
     // Return false to filter out a data page.
     virtual bool bloom_filter(const BloomFilter* bf) const { return true; }
 
+    virtual bool support_bitmap_filter() const { return false; }
+
     [[nodiscard]] virtual Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const {
         return Status::Cancelled("not implemented");
     }
@@ -184,6 +189,7 @@ public:
 
     // Constant value in the predicate in vector form. In contrast to `value()`, these value are un-modified.
     virtual std::vector<Datum> values() const { return std::vector<Datum>{}; }
+    virtual size_t num_values() const { return 0; }
 
     [[nodiscard]] virtual Status convert_to(const ColumnPredicate** output, const TypeInfoPtr& target_type_info,
                                             ObjectPool* obj_pool) const = 0;

@@ -412,7 +412,8 @@ public class PlanFragmentBuilder {
 
         private void setUnUsedOutputColumns(PhysicalOlapScanOperator node, OlapScanNode scanNode,
                                             List<ScalarOperator> predicates, OlapTable referenceTable) {
-            if (!ConnectContext.get().getSessionVariable().isEnableFilterUnusedColumnsInScanStage()) {
+            SessionVariable sessionVariable = ConnectContext.get().getSessionVariable();
+            if (!sessionVariable.isEnableFilterUnusedColumnsInScanStage()) {
                 return;
             }
 
@@ -425,16 +426,9 @@ public class PlanFragmentBuilder {
                 return;
             }
 
-            List<ColumnRefOperator> outputColumns = node.getOutputColumns();
-            // if outputColumns is empty, skip this optimization
-            if (outputColumns.isEmpty()) {
-                return;
-            }
-            Set<Integer> outputColumnIds = new HashSet<Integer>();
-            for (ColumnRefOperator colref : outputColumns) {
-                outputColumnIds.add(colref.getId());
-            }
-
+            Set<Integer> outputColumnIds = node.getOutputColumns().stream()
+                    .map(ColumnRefOperator::getId)
+                    .collect(Collectors.toSet());
             // NOTE:
             // - only support push down single predicate(eg, a = xx) to scan node.
             // - only keys in agg-key model (aggregation/unique_key model) and primary-key model can be included in
@@ -456,7 +450,7 @@ public class PlanFragmentBuilder {
 
             for (ScalarOperator predicate : predicates) {
                 ColumnRefSet usedColumns = predicate.getUsedColumns();
-                if (DecodeVisitor.isSimpleStrictPredicate(predicate)) {
+                if (DecodeVisitor.isSimpleStrictPredicate(predicate, sessionVariable.isEnablePushdownOrPredicate())) {
                     for (int cid : usedColumns.getColumnIds()) {
                         singlePredColumnIds.add(cid);
                     }
@@ -467,8 +461,13 @@ public class PlanFragmentBuilder {
                 }
             }
 
+
             Set<Integer> unUsedOutputColumnIds = new HashSet<>();
             for (Integer newCid : singlePredColumnIds) {
+                if (outputColumnIds.isEmpty()) {
+                    outputColumnIds.add(newCid);
+                    continue;
+                }
                 if (!complexPredColumnIds.contains(newCid) && !outputColumnIds.contains(newCid)) {
                     unUsedOutputColumnIds.add(newCid);
                 }

@@ -235,6 +235,7 @@ public:
     Datum value() const override { return Datum(_value); }
 
     std::vector<Datum> values() const override { return std::vector<Datum>{Datum(_value)}; }
+    size_t num_values() const override { return 1; }
 
     bool can_vectorized() const override { return true; }
 
@@ -262,6 +263,8 @@ public:
         const auto& max = detail.max_value();
         return this->type_info()->cmp(Datum(this->_value), max) <= 0;
     }
+
+    bool support_bitmap_filter() const override { return true; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
@@ -297,6 +300,8 @@ public:
         const auto& max = detail.max_value();
         return this->type_info()->cmp(Datum(this->_value), max) < 0;
     }
+
+    bool support_bitmap_filter() const override { return true; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
@@ -334,6 +339,8 @@ public:
         return (this->type_info()->cmp(Datum(this->_value), min) >= 0) & !max.is_null();
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
         bool exact_match = false;
@@ -369,6 +376,8 @@ public:
         const auto& max = detail.max_value();
         return (this->type_info()->cmp(Datum(this->_value), min) > 0) & !max.is_null();
     }
+
+    bool support_bitmap_filter() const override { return true; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
@@ -406,6 +415,8 @@ public:
         const auto type_info = this->type_info();
         return type_info->cmp(Datum(this->_value), min) >= 0 && type_info->cmp(Datum(this->_value), max) <= 0;
     }
+
+    bool support_bitmap_filter() const override { return true; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
@@ -449,6 +460,8 @@ public:
             : Base(PredicateType::kNE, type_info, id, value) {}
 
     bool zone_map_filter(const ZoneMapDetail& detail) const override { return true; }
+
+    bool support_bitmap_filter() const override { return false; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         return Status::Cancelled("not-equal predicate not support bitmap index");
@@ -545,6 +558,7 @@ public:
     Datum value() const override { return Datum(Slice(_zero_padded_str)); }
 
     std::vector<Datum> values() const override { return std::vector<Datum>{Datum(_value)}; }
+    size_t num_values() const override { return 1; }
 
     bool can_vectorized() const override { return false; }
 
@@ -603,6 +617,8 @@ public:
         return bf->test_bytes(padded.data, padded.size);
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         // see the comment in `predicate_parser.cpp`.
         Slice padded_value(Base::_zero_padded_str);
@@ -635,6 +651,8 @@ public:
         return this->type_info()->cmp(Datum(this->_value), max) <= 0;
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         // Can NOT use `_value` here, see the comment in `predicate_parser.cpp`.
         Slice padded_value(Base::_zero_padded_str);
@@ -666,6 +684,8 @@ public:
         const auto& max = detail.max_value();
         return this->type_info()->cmp(Datum(this->_value), max) < 0;
     }
+
+    bool support_bitmap_filter() const override { return true; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         // Can NOT use `_value` here, see comment in predicate_parser.cpp.
@@ -700,6 +720,8 @@ public:
         return (type_info->cmp(Datum(this->_value), min) > 0) & !max.is_null();
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         Slice padded_value(Base::_zero_padded_str);
         range->clear();
@@ -731,6 +753,8 @@ public:
         return (this->type_info()->cmp(Datum(this->_value), min) >= 0) & !max.is_null();
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         Slice padded_value(Base::_zero_padded_str);
         range->clear();
@@ -757,6 +781,8 @@ public:
             : Base(PredicateType::kNE, type_info, id, value) {}
 
     bool zone_map_filter(const ZoneMapDetail& detail) const override { return true; }
+
+    bool support_bitmap_filter() const override { return false; }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         return Status::Cancelled("not-equal predicate not support bitmap index");

@@ -49,6 +49,7 @@ public:
 
     static constexpr bool can_vectorized() { return true; }
 
+    static constexpr bool support_bitmap_filter() { return false; }
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const {
         return Status::Cancelled("not implemented");
     }
@@ -68,6 +69,8 @@ public:
     bool padding_zeros(size_t len) const { return false; }
 
     Datum value() const { return {}; }
+
+    size_t num_values() const { return _code_mapping.size(); }
 
     std::vector<Datum> values() const {
         std::vector<Datum> res;

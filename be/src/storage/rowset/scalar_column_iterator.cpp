@@ -358,22 +358,29 @@ Status ScalarColumnIterator::_read_data_page(const OrdinalPageIndexIterator& ite
 }
 
 Status ScalarColumnIterator::get_row_ranges_by_zone_map(const std::vector<const ColumnPredicate*>& predicates,
-                                                        const ColumnPredicate* del_predicate,
-                                                        SparseRange<>* row_ranges) {
+                                                        const ColumnPredicate* del_predicate, SparseRange<>* row_ranges,
+                                                        CompoundNodeType pred_relation) {
     DCHECK(row_ranges->empty());
     if (_reader->has_zone_map()) {
+        if (!_delete_partial_satisfied_pages.has_value()) {
+            _delete_partial_satisfied_pages.emplace();
+        }
         IndexReadOptions opts;
         opts.use_page_cache = config::enable_zonemap_index_memory_page_cache || !config::disable_storage_page_cache;
         opts.kept_in_memory = config::enable_zonemap_index_memory_page_cache;
         opts.lake_io_opts = _opts.lake_io_opts;
         opts.read_file = _opts.read_file;
         opts.stats = _opts.stats;
-        RETURN_IF_ERROR(_reader->zone_map_filter(predicates, del_predicate, &_delete_partial_satisfied_pages,
-                                                 row_ranges, opts));
+        RETURN_IF_ERROR(_reader->zone_map_filter(predicates, del_predicate, &_delete_partial_satisfied_pages.value(),
+                                                 row_ranges, opts, pred_relation));
     } else {
         row_ranges->add({0, static_cast<rowid_t>(_reader->num_rows())});
     }
     return Status::OK();
+}
+
+bool ScalarColumnIterator::has_bloom_filter_index() const {
+    return _reader->has_bloom_filter_index();
 }
 
 Status ScalarColumnIterator::get_row_ranges_by_bloom_filter(const std::vector<const ColumnPredicate*>& predicates,
@@ -523,6 +530,7 @@ Status ScalarColumnIterator::_do_decode_dict_codes(const int32_t* codes, size_t 
     auto dict = down_cast<BinaryPlainPageDecoder<Type>*>(_dict_decoder.get());
     std::vector<Slice> slices;
     slices.reserve(size);
+    size_t max_slice_len = 0;
     for (size_t i = 0; i < size; i++) {
         if (codes[i] >= 0) {
             if constexpr (Type != TYPE_CHAR) {
@@ -532,11 +540,12 @@ Status ScalarColumnIterator::_do_decode_dict_codes(const int32_t* codes, size_t 
                 s.size = strnlen(s.data, s.size);
                 slices.emplace_back(s);
             }
+            max_slice_len = std::max(max_slice_len, slices.back().size);
         } else {
             slices.emplace_back("");
         }
     }
-    [[maybe_unused]] bool ok = words->append_strings(slices);
+    [[maybe_unused]] bool ok = words->append_strings_overflow(slices, max_slice_len);
     DCHECK(ok);
     _opts.stats->bytes_read += static_cast<int64_t>(words->byte_size() + BitmapSize(slices.size()));
     return Status::OK();
@@ -600,8 +609,8 @@ int ScalarColumnIterator::dict_size() {
 }
 
 bool ScalarColumnIterator::_contains_deleted_row(uint32_t page_index) const {
-    if (_reader->has_zone_map()) {
-        return _delete_partial_satisfied_pages.count(page_index) > 0;
+    if (_reader->has_zone_map() && _delete_partial_satisfied_pages.has_value()) {
+        return _delete_partial_satisfied_pages.value().count(page_index) > 0;
     }
     // if there is no zone map should be treated as DEL_PARTIAL_SATISFIED
     return true;

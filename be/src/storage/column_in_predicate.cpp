@@ -100,6 +100,8 @@ public:
         return false;
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
         for (auto value : _values) {
@@ -131,6 +133,7 @@ public:
 
     bool can_vectorized() const override { return false; }
 
+    size_t num_values() const override { return _values.size(); }
     std::vector<Datum> values() const override {
         std::vector<Datum> ret;
         ret.reserve(_values.size());
@@ -159,7 +162,7 @@ public:
 
     std::string debug_string() const override {
         std::stringstream ss;
-        ss << "(columnId=" << _column_id << ",In(";
+        ss << "((columnId=" << _column_id << ")IN(";
         int i = 0;
         for (auto& item : _values) {
             if (i++ != 0) {
@@ -269,6 +272,8 @@ public:
         return false;
     }
 
+    bool support_bitmap_filter() const override { return true; }
+
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         range->clear();
         for (const std::string& s : _zero_padded_strs) {
@@ -299,6 +304,7 @@ public:
 
     PredicateType type() const override { return PredicateType::kInList; }
 
+    size_t num_values() const override { return _slices.size(); }
     std::vector<Datum> values() const override {
         std::vector<Datum> ret;
         ret.reserve(_slices.size());

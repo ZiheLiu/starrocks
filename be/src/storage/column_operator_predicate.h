@@ -156,8 +156,11 @@ public:
     Datum value() const override { return _predicate_operator.value(); }
 
     std::vector<Datum> values() const override { return _predicate_operator.values(); }
+    size_t num_values() const override { return _predicate_operator.num_values(); }
 
     bool can_vectorized() const override { return SpecColumnOperator::can_vectorized(); }
+
+    bool support_bitmap_filter() const override { return SpecColumnOperator::support_bitmap_filter(); }
 
     Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const override {
         return _predicate_operator.seek_bitmap_dictionary(iter, range);

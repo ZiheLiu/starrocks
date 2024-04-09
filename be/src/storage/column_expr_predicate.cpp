@@ -210,8 +210,8 @@ std::string ColumnExprPredicate::debug_string() const {
     return ss.str();
 }
 
-Status ColumnExprPredicate::try_to_rewrite_for_zone_map_filter(starrocks::ObjectPool* pool,
-                                                               std::vector<const ColumnExprPredicate*>* output) const {
+Status ColumnExprPredicate::try_to_rewrite_for_zone_map_filter(ObjectPool* pool,
+                                                               std::vector<ColumnExprPredicate*>* output) const {
     DCHECK(pool != nullptr);
     DCHECK(output != nullptr);
     ExprContext* pred_from_planner = _expr_ctxs[0];

@@ -55,8 +55,7 @@ public:
     // output is only valid when returning Status::OK()
     // if output is empty, it means that the conditions of rewriting is not met
     // otherwise, it will contain one or more predicates which form the conjunction normal form
-    Status try_to_rewrite_for_zone_map_filter(starrocks::ObjectPool* pool,
-                                              std::vector<const ColumnExprPredicate*>* output) const;
+    Status try_to_rewrite_for_zone_map_filter(ObjectPool* pool, std::vector<ColumnExprPredicate*>* output) const;
 
 private:
     ColumnExprPredicate(TypeInfoPtr type_info, ColumnId column_id, RuntimeState* state,

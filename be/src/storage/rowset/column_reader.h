@@ -47,6 +47,7 @@
 #include "common/statusor.h"
 #include "gen_cpp/segment.pb.h"
 #include "runtime/mem_pool.h"
+#include "storage/predicate_tree/predicate_tree_fwd.h"
 #include "storage/range.h"
 #include "storage/rowset/bitmap_index_reader.h"
 #include "storage/rowset/bloom_filter_index_reader.h"
@@ -139,7 +140,7 @@ public:
     Status zone_map_filter(const std::vector<const ::starrocks::ColumnPredicate*>& p,
                            const ::starrocks::ColumnPredicate* del_predicate,
                            std::unordered_set<uint32_t>* del_partial_filtered_pages, SparseRange<>* row_ranges,
-                           const IndexReadOptions& opts);
+                           const IndexReadOptions& opts, CompoundNodeType pred_relation);
 
     // segment-level zone map filter.
     // Return false to filter out this segment.
@@ -147,6 +148,8 @@ public:
     bool segment_zone_map_filter(const std::vector<const ::starrocks::ColumnPredicate*>& predicates) const;
 
     // prerequisite: at least one predicate in |predicates| support bloom filter.
+    // Consider the relation among |predicates| is disjunction,
+    // that is, keep the row_ranges that satisfy any predicate in predicates.
     Status bloom_filter(const std::vector<const ::starrocks::ColumnPredicate*>& p, SparseRange<>* ranges,
                         const IndexReadOptions& opts);
 
@@ -179,6 +182,7 @@ private:
 
     Status _calculate_row_ranges(const std::vector<uint32_t>& page_indexes, SparseRange<>* row_ranges);
 
+    template <CompoundNodeType PredRelation>
     Status _zone_map_filter(const std::vector<const ColumnPredicate*>& predicates, const ColumnPredicate* del_predicate,
                             std::unordered_set<uint32_t>* del_partial_filtered_pages, std::vector<uint32_t>* pages);
 
