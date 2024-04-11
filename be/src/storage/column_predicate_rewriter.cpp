@@ -573,7 +573,7 @@ Status GlobalDictPredicatesRewriter::rewrite_predicate(ObjectPool* pool, Predica
 struct ZonemapPredicatesRewriterVisitor {
     template <CompoundNodeType ParentType>
     Status operator()(const PredicateColumnNode& node, PredicateCompoundNode<ParentType>& parent) const {
-        return ZonemapPredicatesRewriter::_rewrite_predicate(node.col_pred(), parent);
+        return ZonemapPredicatesRewriter::_rewrite_predicate(pool, node.col_pred(), parent);
     }
 
     template <CompoundNodeType Type, CompoundNodeType ParentType>
