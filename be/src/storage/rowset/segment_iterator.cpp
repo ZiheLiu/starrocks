@@ -343,8 +343,6 @@ SegmentIterator::SegmentIterator(std::shared_ptr<Segment> segment, Schema schema
           _opts(std::move(options)),
           _predicate_columns(_opts.pred_tree.num_columns()) {
     _cid_to_predicates = _opts.pred_tree.get_immediate_column_predicate_map();
-    // TODO(liuzihe: support or predicate).
-    DCHECK(_opts.pred_tree.root().compound_children().empty());
 
     // For small segment file (the number of rows is less than chunk_size),
     // the segment iterator will reserve a large amount of memory,
@@ -1853,7 +1851,7 @@ Status SegmentIterator::_apply_inverted_index() {
 
     roaring::Roaring row_bitmap = range2roaring(_scan_range);
     size_t input_rows = row_bitmap.cardinality();
-    std::vector<const ColumnPredicate*> erased_preds;
+    std::unordered_set<const ColumnPredicate*> erased_preds;
 
     std::unordered_map<ColumnId, ColumnId> cid_2_fid;
     for (int i = 0; i < _schema.num_fields(); i++) {
@@ -1873,7 +1871,7 @@ Status SegmentIterator::_apply_inverted_index() {
             if (_inverted_index_iterators[cid]->is_untokenized() || pred->type() == PredicateType::kExpr) {
                 Status res = pred->seek_inverted_index(column_name, _inverted_index_iterators[cid], &row_bitmap);
                 if (res.ok()) {
-                    erased_preds.emplace_back(pred);
+                    erased_preds.emplace(pred);
                 }
             }
         }
@@ -1884,10 +1882,18 @@ Status SegmentIterator::_apply_inverted_index() {
     // ---------------------------------------------------------
     // Erase predicates that hit inverted index.
     // ---------------------------------------------------------
-    for (const ColumnPredicate* pred : erased_preds) {
-        PredicateList& pred_list = _cid_to_predicates[pred->column_id()];
-        pred_list.erase(std::find(pred_list.begin(), pred_list.end(), pred));
-    }
+    PredicateAndNode new_root;
+    PredicateAndNode useless_root;
+    _opts.pred_tree.release_root().partition_move(
+            [&](const auto& node_var) {
+                return node_var.visit(overloaded{
+                        [&](const PredicateColumnNode& node) { return !erased_preds.contains(node.col_pred()); },
+                        [&](const auto&) { return true; },
+                });
+            },
+            &new_root, &useless_root);
+    _opts.pred_tree = PredicateTree::create(std::move(new_root));
+    _cid_to_predicates = _opts.pred_tree.get_immediate_column_predicate_map();
 
     _opts.stats->rows_gin_filtered += input_rows - _scan_range.span_size();
     return Status::OK();
