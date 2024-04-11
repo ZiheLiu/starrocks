@@ -223,6 +223,8 @@ public:
     DISALLOW_COPY_AND_MOVE(Segment);
 
 private:
+    friend struct SegmentZoneMapPruner;
+
     struct DummyDeleter {
         void operator()(const TabletSchema*) {}
     };
