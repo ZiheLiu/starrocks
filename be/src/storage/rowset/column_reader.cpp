@@ -342,6 +342,8 @@ Status ColumnReader::_parse_zone_map(const ZoneMapPB& zm, ZoneMapDetail* detail)
 }
 
 // prerequisite: at least one predicate in |predicates| support bloom filter.
+// Consider the relation among |predicates| is disjunction,
+// that is, keep the row_ranges that satisfy any predicate in predicates.
 Status ColumnReader::bloom_filter(const std::vector<const ColumnPredicate*>& predicates, SparseRange<>* row_ranges,
                                   const IndexReadOptions& opts) {
     RETURN_IF_ERROR(_load_bloom_filter_index(opts));
@@ -365,13 +367,14 @@ Status ColumnReader::bloom_filter(const std::vector<const ColumnPredicate*>& pre
     for (const auto& pid : page_ids) {
         std::unique_ptr<BloomFilter> bf;
         RETURN_IF_ERROR(bf_iter->read_bloom_filter(pid, &bf));
-        for (const auto* pred : predicates) {
-            if ((pred->support_bloom_filter() && pred->bloom_filter(bf.get())) ||
-                (pred->support_ngram_bloom_filter() &&
-                 pred->ngram_bloom_filter(bf.get(), _get_reader_options_for_ngram()))) {
-                bf_row_ranges.add(
-                        Range<>(_ordinal_index->get_first_ordinal(pid), _ordinal_index->get_last_ordinal(pid) + 1));
-            }
+        const bool satisfy = std::ranges::any_of(predicates, [&](const ColumnPredicate* pred) {
+            return (pred->support_bloom_filter() && pred->bloom_filter(bf.get())) ||
+                   (pred->support_ngram_bloom_filter() &&
+                    pred->ngram_bloom_filter(bf.get(), _get_reader_options_for_ngram()));
+        });
+        if (satisfy) {
+            bf_row_ranges.add(
+                    Range<>(_ordinal_index->get_first_ordinal(pid), _ordinal_index->get_last_ordinal(pid) + 1));
         }
     }
     *row_ranges = row_ranges->intersection(bf_row_ranges);
