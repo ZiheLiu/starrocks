@@ -158,6 +158,8 @@ public:
     // Return false to filter out a data page.
     virtual bool bloom_filter(const BloomFilter* bf) const { return true; }
 
+    virtual bool support_bitmap_filter() const { return false; }
+
     [[nodiscard]] virtual Status seek_bitmap_dictionary(BitmapIndexIterator* iter, SparseRange<>* range) const {
         return Status::Cancelled("not implemented");
     }
