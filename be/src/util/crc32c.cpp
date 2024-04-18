@@ -22,6 +22,10 @@
 #ifdef __SSE4_2__
 #include <nmmintrin.h>
 #endif
+#if defined(__ARM_NEON) && defined(__aarch64__)
+#include <arm_acle.h>
+#include <arm_neon.h>
+#endif
 #include "util/coding.h"
 
 namespace starrocks::crc32c {
@@ -178,6 +182,11 @@ static inline void Fast_CRC32(uint64_t* l, uint8_t const** p) {
     *l = _mm_crc32_u32(static_cast<unsigned int>(*l), LE_LOAD32(*p));
     *p += 4;
     *l = _mm_crc32_u32(static_cast<unsigned int>(*l), LE_LOAD32(*p));
+    *p += 4;
+#elif defined(__ARM_NEON) && defined(__aarch64__)
+    *l = __crc32cw(static_cast<unsigned int>(*l), LE_LOAD32(*p));
+    *p += 4;
+    *l = __crc32cw(static_cast<unsigned int>(*l), LE_LOAD32(*p));
     *p += 4;
 #endif
 }
