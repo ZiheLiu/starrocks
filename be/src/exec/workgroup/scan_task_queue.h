@@ -214,25 +214,7 @@ public:
     void close() override;
 
     StatusOr<ScanTask> take() override;
-    ALWAYS_INLINE bool try_offer(ScanTask task) override {
-        std::lock_guard<std::mutex> lock(_global_mutex);
-
-        if (task.peak_scan_task_queue_size_counter != nullptr) {
-            task.peak_scan_task_queue_size_counter->set(_num_tasks);
-        }
-
-        auto* wg_entity = _sched_entity(task.workgroup);
-        wg_entity->set_in_queue(this);
-        RETURN_IF_UNLIKELY(!wg_entity->queue()->try_offer(std::move(task)), false);
-
-        if (_wg_entities.find(wg_entity) == _wg_entities.end()) {
-            _enqueue_workgroup(wg_entity);
-        }
-
-        _num_tasks++;
-        _cv.notify_one();
-        return true;
-    }
+    ALWAYS_INLINE bool try_offer(ScanTask task) override;
     void force_put(ScanTask task) override;
 
     size_t size() const override { return _num_tasks.load(std::memory_order_acquire); }
