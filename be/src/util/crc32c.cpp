@@ -179,8 +179,9 @@ static inline void Fast_CRC32(uint64_t* l, uint8_t const** p) {
     *p += 4;
     *l = __crc32cw(static_cast<unsigned int>(*l), LE_LOAD32(*p));
     *p += 4;
-#endif
+#else
     Slow_CRC32(l, p);
+#endif // defined(__ARM_NEON) && defined(__aarch64__)
 #elif defined(__LP64__) || defined(_WIN64)
     *l = _mm_crc32_u64(*l, LE_LOAD64(*p));
     *p += 8;
