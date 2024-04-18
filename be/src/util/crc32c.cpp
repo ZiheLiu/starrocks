@@ -237,11 +237,7 @@ uint32_t ExtendImpl(uint32_t crc, const char* buf, size_t size) {
 }
 
 uint32_t Extend(uint32_t crc, const char* buf, size_t size) {
-#ifdef __SSE4_2__
     return ExtendImpl<Fast_CRC32>(crc, buf, size);
-#else
-    return ExtendImpl<Slow_CRC32>(crc, buf, size);
-#endif
 }
 
 } // namespace starrocks::crc32c
