@@ -19,6 +19,7 @@
 #include "exec/pipeline/scan/balanced_chunk_buffer.h"
 #include "exec/workgroup/work_group.h"
 #include "runtime/exec_env.h"
+#include "runtime/global_dict/parser.h"
 #include "runtime/runtime_state.h"
 
 namespace starrocks::pipeline {
@@ -137,6 +138,7 @@ ConnectorScanOperatorFactory::ConnectorScanOperatorFactory(int32_t id, ScanNode*
 
 Status ConnectorScanOperatorFactory::do_prepare(RuntimeState* state) {
     const auto& conjunct_ctxs = _scan_node->conjunct_ctxs();
+    DictOptimizeParser::disable_open_rewrite(&conjunct_ctxs);
     RETURN_IF_ERROR(Expr::prepare(conjunct_ctxs, state));
     RETURN_IF_ERROR(Expr::open(conjunct_ctxs, state));
     return Status::OK();
