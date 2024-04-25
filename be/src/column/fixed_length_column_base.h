@@ -21,6 +21,7 @@
 #include "column/datum.h"
 #include "column/vectorized_fwd.h"
 #include "common/statusor.h"
+#include "gutil/strings/fastmem.h"
 #include "runtime/decimalv2_value.h"
 #include "types/date_value.hpp"
 #include "types/timestamp_value.h"
@@ -143,7 +144,7 @@ public:
         size_t dst_offset = _data.size();
         raw::stl_vector_resize_uninitialized(&_data, _data.size() + count);
         T* dst = _data.data() + dst_offset;
-        memcpy(dst, buff, length);
+        strings::memcpy_inlined(dst, buff, length);
         return count;
     }
 
