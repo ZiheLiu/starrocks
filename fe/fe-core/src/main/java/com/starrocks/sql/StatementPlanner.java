@@ -237,10 +237,13 @@ public class StatementPlanner {
              * currently only used in Spark/Flink Connector
              * Because the connector sends only simple queries, it only needs to remove the output fragment
              */
-            return PlanFragmentBuilder.createPhysicalPlan(
+            ExecPlan execPlan = PlanFragmentBuilder.createPhysicalPlan(
                     optimizedPlan, session, logicalPlan.getOutputColumn(), columnRefFactory, colNames,
                     resultSinkType,
                     !session.getSessionVariable().isSingleNodeExecPlan());
+            execPlan.setLogicalPlan(logicalPlan);
+            execPlan.setColumnRefFactory(columnRefFactory);
+            return execPlan;
         }
     }
 
@@ -310,6 +313,8 @@ public class StatementPlanner {
                 isSchemaValid = olapTables.stream().allMatch(t -> OptimisticVersion.validateTableUpdate(t,
                         finalPlanStartTime));
                 if (isSchemaValid) {
+                    plan.setLogicalPlan(logicalPlan);
+                    plan.setColumnRefFactory(columnRefFactory);
                     return plan;
                 }
             }

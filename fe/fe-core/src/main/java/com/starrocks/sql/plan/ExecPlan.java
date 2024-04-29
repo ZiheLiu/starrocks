@@ -28,7 +28,9 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.Explain;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.optimizer.OptExpression;
+import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
+import com.starrocks.sql.optimizer.transformer.LogicalPlan;
 import com.starrocks.thrift.TExplainLevel;
 
 import java.util.ArrayList;
@@ -56,6 +58,9 @@ public class ExecPlan {
     private final Map<Integer, OptExpression> optExpressions = Maps.newHashMap();
 
     private volatile ProfilingExecPlan profilingPlan;
+    private LogicalPlan logicalPlan;
+    private ColumnRefFactory columnRefFactory;
+
 
     @VisibleForTesting
     public ExecPlan() {
@@ -216,5 +221,21 @@ public class ExecPlan {
                 break;
         }
         return getExplainString(tlevel);
+    }
+
+    public LogicalPlan getLogicalPlan() {
+        return logicalPlan;
+    }
+
+    public void setLogicalPlan(LogicalPlan logicalPlan) {
+        this.logicalPlan = logicalPlan;
+    }
+
+    public ColumnRefFactory getColumnRefFactory() {
+        return columnRefFactory;
+    }
+
+    public void setColumnRefFactory(ColumnRefFactory columnRefFactory) {
+        this.columnRefFactory = columnRefFactory;
     }
 }

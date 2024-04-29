@@ -40,9 +40,9 @@ import java.util.Set;
 public class PhysicalOlapScanOperator extends PhysicalScanOperator {
     private final DistributionSpec distributionSpec;
     private final long selectedIndexId;
-    private final List<Long> selectedTabletId;
+    private List<Long> selectedTabletId;
     private final List<Long> hintsReplicaId;
-    private final List<Long> selectedPartitionId;
+    private List<Long> selectedPartitionId;
 
     private boolean isPreAggregation;
     private String turnOffReason;
@@ -96,8 +96,16 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
         return selectedIndexId;
     }
 
+    public void setSelectedPartitionId(List<Long> selectedPartitionId) {
+        this.selectedPartitionId = selectedPartitionId;
+    }
+
     public List<Long> getSelectedPartitionId() {
         return selectedPartitionId;
+    }
+
+    public void setSelectedTabletId(List<Long> tabletId) {
+        this.selectedTabletId = tabletId;
     }
 
     public List<Long> getSelectedTabletId() {
