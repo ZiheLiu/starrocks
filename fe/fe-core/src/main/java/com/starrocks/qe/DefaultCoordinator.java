@@ -270,15 +270,14 @@ public class DefaultCoordinator extends Coordinator {
         }
 
         shortCircuitExecutor = ShortCircuitExecutor.create(context, fragments, scanNodes, descTable,
-                isBinaryRow, jobSpec.isNeedReport());
+                isBinaryRow, jobSpec.isNeedReport(), coordinatorPreprocessor.getWorkerProvider());
 
         if (null != shortCircuitExecutor) {
             isShortCircuit = true;
         }
 
-        this.queryProfile =
-                new QueryRuntimeProfile(connectContext, jobSpec, executionDAG.getFragmentsInCreatedOrder().size(),
-                        isShortCircuit);
+        this.queryProfile = new QueryRuntimeProfile(connectContext, jobSpec, executionDAG.getFragmentsInCreatedOrder().size(),
+                isShortCircuit);
     }
 
     @Override
@@ -1142,7 +1141,7 @@ public class DefaultCoordinator extends Coordinator {
         return connectContext.getCurrentWarehouse();
     }
 
-    private void execShortCircuit() {
+    private void execShortCircuit() throws Exception {
         shortCircuitExecutor.exec();
     }
 }
