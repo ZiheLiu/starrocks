@@ -167,7 +167,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
 
         private final SlotSubQueue[] subQueues;
         private int size = 0;
-        private final int totalWeight;
+        private int totalWeight = 0;
 
         private SlotContext nextSlotToPeak = null;
 
@@ -180,7 +180,6 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
             int curMinSlots = 1 << lastSubQueueLog2Bound;
             int curWeight = 1;
             this.subQueues = new SlotSubQueue[NUM_SUB_QUEUES];
-            int totalWeight = 0;
             for (int i = subQueues.length - 1; i >= 0; i--) {
                 subQueues[i] = new SlotSubQueue(curWeight);
                 totalWeight += curWeight;
@@ -196,7 +195,6 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                     curMinSlots = curMinSlots >>> 1;
                 }
             }
-            this.totalWeight = totalWeight;
         }
 
         public int size() {
@@ -215,6 +213,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                 size++;
 
                 if (subQueue.slots.size() == 1) {
+                    final int prevTotalWeight = totalWeight;
                     if (subQueue.isPaused()) {
                         subQueue.resumeState();
                     }
@@ -223,10 +222,10 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                         // If the previous peaked slot is in a lower priority sub-queue due to this higher priority sub-queue is empty,
                         // peak the slot in this higher priority sub-queue instead.
                         SlotSubQueue prevPeakSubQueue = subQueues[nextSlotToPeak.getSubQueueIndex()];
-                        if (prevPeakSubQueue.state + totalWeight < subQueue.state) {
+                        if (prevPeakSubQueue.state + prevTotalWeight < subQueue.state) {
                             nextSlotToPeak = slotContext;
                             subQueue.state -= totalWeight;
-                            prevPeakSubQueue.state += totalWeight;
+                            prevPeakSubQueue.state += prevTotalWeight;
                         }
                     }
                 }
@@ -299,7 +298,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
             return Math.max(0, Math.min(index, NUM_SUB_QUEUES - 1));
         }
 
-        private static class SlotSubQueue {
+        private class SlotSubQueue {
             private static final int PAUSED_WEIGHT = 0;
 
             private final LinkedHashMap<TUniqueId, SlotContext> slots = Maps.newLinkedHashMap();
@@ -319,12 +318,16 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                 state = toResumeState;
                 toResumeState = 0;
                 weight = staticWeight;
+
+                totalWeight += staticWeight;
             }
 
             public void pauseState() {
                 toResumeState = state;
                 state = Integer.MIN_VALUE;
                 weight = PAUSED_WEIGHT;
+
+                totalWeight -= staticWeight;
             }
 
             public boolean isPaused() {
