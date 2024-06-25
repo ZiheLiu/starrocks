@@ -721,7 +721,7 @@ public class ShowExecutorTest {
         Backend backend = new Backend(1L, "127.0.0.1", 12345);
         backend.setCpuCores(16);
         backend.setMemLimitBytes(100L);
-        backend.updateResourceUsage(0, 100L, 1L, 30);
+        backend.updateResourceUsage(0, 1L, 30);
         clusterInfo.addBackend(backend);
 
         NodeMgr nodeMgr = new NodeMgr();
@@ -804,7 +804,7 @@ public class ShowExecutorTest {
         ComputeNode node = new ComputeNode(1L, "127.0.0.1", 80);
         node.setCpuCores(16);
         node.setMemLimitBytes(100L);
-        node.updateResourceUsage(10, 100L, 1L, 30);
+        node.updateResourceUsage(10, 1L, 30);
         TDataCacheMetrics tDataCacheMetrics = new TDataCacheMetrics();
         tDataCacheMetrics.setStatus(TDataCacheStatus.NORMAL);
         tDataCacheMetrics.setDisk_quota_bytes(1024 * 1024 * 1024);

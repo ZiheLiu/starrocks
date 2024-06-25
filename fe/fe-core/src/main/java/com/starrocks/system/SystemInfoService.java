@@ -659,7 +659,7 @@ public class SystemInfoService implements GsonPostProcessable {
         node.updateDataCacheMetrics(dataCacheMetrics);
     }
 
-    public void updateResourceUsage(long backendId, int numRunningQueries, long memLimitBytes, long memUsedBytes,
+    public void updateResourceUsage(long backendId, int numRunningQueries, long memUsedBytes,
                                     int cpuUsedPermille, List<TResourceGroupUsage> groupUsages) {
         ComputeNode node = getBackendOrComputeNode(backendId);
         if (node == null) {
@@ -667,7 +667,7 @@ public class SystemInfoService implements GsonPostProcessable {
             return;
         }
 
-        node.updateResourceUsage(numRunningQueries, memLimitBytes, memUsedBytes, cpuUsedPermille);
+        node.updateResourceUsage(numRunningQueries, memUsedBytes, cpuUsedPermille);
 
         if (groupUsages != null) {
             List<Pair<ResourceGroup, TResourceGroupUsage>> groupAndUsages = new ArrayList<>(groupUsages.size());

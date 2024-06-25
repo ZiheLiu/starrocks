@@ -386,9 +386,7 @@ public class ComputeNode implements IComputable, Writable {
         return cpuUsedPermille;
     }
 
-    public void updateResourceUsage(int numRunningQueries, long memLimitBytes, long memUsedBytes,
-                                    int cpuUsedPermille) {
-
+    public void updateResourceUsage(int numRunningQueries, long memUsedBytes, int cpuUsedPermille) {
         this.numRunningQueries = numRunningQueries;
         // memLimitBytes is set by heartbeats instead of reports.
         this.memUsedBytes = memUsedBytes;
