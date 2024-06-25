@@ -191,7 +191,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                 MetricRepo.COUNTER_QUERY_QUEUE_CATEGORY_SLOT_MIN_SLOTS.getMetric(category).setValue(curMinSlots * numWorkers);
 
                 if (curMinSlots > 1) {
-                    curWeight = curWeight << 1;
+                    curWeight = curWeight + curWeight << 1;
                     curMinSlots = curMinSlots >>> 1;
                 }
             }
