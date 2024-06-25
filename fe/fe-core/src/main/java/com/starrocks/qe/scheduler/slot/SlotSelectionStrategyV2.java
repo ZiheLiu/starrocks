@@ -181,7 +181,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
             int curWeight = 1;
             this.subQueues = new SlotSubQueue[NUM_SUB_QUEUES];
             for (int i = subQueues.length - 1; i >= 0; i--) {
-                subQueues[i] = new SlotSubQueue(curWeight);
+                subQueues[i] = new SlotSubQueue(i, curWeight);
                 totalWeight += curWeight;
 
                 String category = String.valueOf(i);
@@ -191,7 +191,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                 MetricRepo.COUNTER_QUERY_QUEUE_CATEGORY_SLOT_MIN_SLOTS.getMetric(category).setValue(curMinSlots * numWorkers);
 
                 if (curMinSlots > 1) {
-                    curWeight = curWeight << 2;
+                    curWeight = curWeight << 1;
                     curMinSlots = curMinSlots >>> 1;
                 }
             }
@@ -224,8 +224,8 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                         SlotSubQueue prevPeakSubQueue = subQueues[nextSlotToPeak.getSubQueueIndex()];
                         if (prevPeakSubQueue.state + prevTotalWeight < subQueue.state) {
                             nextSlotToPeak = slotContext;
-                            subQueue.state -= totalWeight;
-                            prevPeakSubQueue.state += prevTotalWeight;
+                            subQueue.incrState(-totalWeight);
+                            prevPeakSubQueue.incrState(prevTotalWeight);
                         }
                     }
                 }
@@ -276,7 +276,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
             for (int i = 0; i < subQueues.length; i++) {
                 SlotSubQueue queue = subQueues[i];
 
-                queue.state += queue.weight;
+                queue.incrState(queue.weight);
 
                 if (queue.slots.isEmpty()) {
                     if (!queue.isPaused()) {
@@ -287,7 +287,7 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
                 }
             }
 
-            subQueues[maxQueueIndex].state -= totalWeight;
+            subQueues[maxQueueIndex].incrState(-totalWeight);
 
             return maxQueueIndex;
         }
@@ -301,13 +301,16 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
         private class SlotSubQueue {
             private static final int PAUSED_WEIGHT = 0;
 
+            private final int queueIndex;
+
             private final LinkedHashMap<TUniqueId, SlotContext> slots = Maps.newLinkedHashMap();
             private final int staticWeight;
             private int weight;
             private int state;
             private int toResumeState;
 
-            public SlotSubQueue(int weight) {
+            public SlotSubQueue(int queueIndex, int weight) {
+                this.queueIndex = queueIndex;
                 this.staticWeight = weight;
                 this.weight = weight;
                 this.state = 0;
@@ -332,6 +335,11 @@ public class SlotSelectionStrategyV2 implements SlotSelectionStrategy {
 
             public boolean isPaused() {
                 return weight == PAUSED_WEIGHT;
+            }
+
+            public void incrState(int incr) {
+                this.state += incr;
+                MetricRepo.COUNTER_QUERY_QUEUE_CATEGORY_SLOT_STATE.getMetric(String.valueOf(queueIndex)).increase((long) incr);
             }
         }
     }

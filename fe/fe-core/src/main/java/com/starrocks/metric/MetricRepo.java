@@ -123,6 +123,9 @@ public final class MetricRepo {
     public static final MetricWithLabelGroup<GaugeMetricImpl<Integer>> COUNTER_QUERY_QUEUE_CATEGORY_SLOT_MIN_SLOTS =
             new MetricWithLabelGroup<>("category",
                     () -> new GaugeMetricImpl<>("query_queue_slot_category_min_slots", MetricUnit.REQUESTS, ""));
+    public static final MetricWithLabelGroup<LongCounterMetric> COUNTER_QUERY_QUEUE_CATEGORY_SLOT_STATE =
+            new MetricWithLabelGroup<>("category",
+                    () -> new LongCounterMetric("query_queue_slot_category_state", MetricUnit.REQUESTS, ""));
 
     public static LongCounterMetric COUNTER_UNFINISHED_BACKUP_JOB;
     public static LongCounterMetric COUNTER_UNFINISHED_RESTORE_JOB;
