@@ -1530,20 +1530,20 @@ static Status sort_multi_array_column(FunctionContext* ctx, const Column* src_co
     dest_offsets_column->get_data() = src_offsets_column->get_data();
 
     // Unpack each key array column.
-    std::vector<ColumnPtr> key_elements_columns(num_key_columns);
-    std::vector<const uint32_t*> offsets_per_key_column(num_key_columns);
-    std::vector<const uint8_t*> nulls_per_key_column(num_key_columns, nullptr);
+    std::vector<ColumnPtr> elements_per_key_col(num_key_columns);
+    std::vector<const uint32_t*> offsets_per_key_col(num_key_columns);
+    std::vector<const uint8_t*> nulls_per_key_col(num_key_columns, nullptr);
     for (size_t i = 0; i < num_key_columns; ++i) {
         const Column* key_column = key_columns[i];
         if (key_column->is_nullable()) {
             const auto* key_nullable_column = down_cast<const NullableColumn*>(key_column);
-            nulls_per_key_column[i] = key_nullable_column->immutable_null_column_data().data();
+            nulls_per_key_col[i] = key_nullable_column->immutable_null_column_data().data();
             key_column = key_nullable_column->data_column().get();
         }
 
         const auto* key_array_column = down_cast<const ArrayColumn*>(key_column);
-        key_elements_columns[i] = key_array_column->elements_column();
-        offsets_per_key_column[i] = key_array_column->offsets().get_data().data();
+        elements_per_key_col[i] = key_array_column->elements_column();
+        offsets_per_key_col[i] = key_array_column->offsets().get_data().data();
     }
 
     const SortDescs sort_desc = SortDescs::asc_null_first(num_src_element_rows);
@@ -1564,42 +1564,43 @@ static Status sort_multi_array_column(FunctionContext* ctx, const Column* src_co
 
         if (src_null_column != nullptr && src_null_column->get_data()[row_i]) {
             fill_key_sort_index(src_start_offset, src_end_offset);
-        } else {
-            const auto cur_num_src_elements = src_end_offset - src_start_offset;
+            continue;
+        }
 
-            std::vector<ColumnPtr> cur_key_elements_columns;
-            std::vector<uint32_t> cur_key_offsets;
-            cur_key_elements_columns.reserve(num_key_columns);
-            cur_key_offsets.reserve(num_key_columns);
+        const auto cur_num_src_elements = src_end_offset - src_start_offset;
 
-            // Get non-nullable key columns.
-            for (size_t key_col_i = 0; key_col_i < num_key_columns; ++key_col_i) {
-                if (nulls_per_key_column[key_col_i] && nulls_per_key_column[key_col_i]) {
-                    continue;
-                }
+        std::vector<ColumnPtr> cur_elements_per_key_col;
+        std::vector<uint32_t> cur_offset_per_key_col;
+        cur_elements_per_key_col.reserve(num_key_columns);
+        cur_offset_per_key_col.reserve(num_key_columns);
 
-                const auto* offsets = offsets_per_key_column[key_col_i];
-
-                const auto cur_num_key_elements = offsets[row_i + 1] - offsets[row_i];
-                if (cur_num_src_elements != cur_num_key_elements) {
-                    return Status::InvalidArgument("Input arrays' size are not equal in array_sortby_multi.");
-                }
-
-                cur_key_elements_columns.push_back(key_elements_columns[key_col_i]);
-                cur_key_offsets.push_back(offsets[row_i]);
-            }
-
-            if (cur_key_elements_columns.empty()) {
-                fill_key_sort_index(src_start_offset, src_end_offset);
+        // Get non-nullable key columns.
+        for (size_t key_col_i = 0; key_col_i < num_key_columns; ++key_col_i) {
+            if (nulls_per_key_col[key_col_i] && nulls_per_key_col[key_col_i][row_i]) {
                 continue;
             }
 
-            Permutation perm;
-            RETURN_IF_ERROR(sort_and_tie_columns(cancel, cur_key_elements_columns, sort_desc, &perm,
-                                                 {src_start_offset, src_end_offset}, cur_key_offsets));
-            for (const auto& item : perm) {
-                key_sort_index.push_back(item.index_in_chunk);
+            const auto* key_offsets = offsets_per_key_col[key_col_i];
+
+            const auto cur_num_key_elements = key_offsets[row_i + 1] - key_offsets[row_i];
+            if (cur_num_src_elements != cur_num_key_elements) {
+                return Status::InvalidArgument("Input arrays' size are not equal in array_sortby_multi.");
             }
+
+            cur_elements_per_key_col.push_back(elements_per_key_col[key_col_i]);
+            cur_offset_per_key_col.push_back(key_offsets[row_i]);
+        }
+
+        if (cur_elements_per_key_col.empty()) {
+            fill_key_sort_index(src_start_offset, src_end_offset);
+            continue;
+        }
+
+        Permutation perm;
+        RETURN_IF_ERROR(sort_and_tie_columns(cancel, cur_elements_per_key_col, sort_desc, &perm,
+                                             {src_start_offset, src_end_offset}, cur_offset_per_key_col));
+        for (const auto& item : perm) {
+            key_sort_index.push_back(item.index_in_chunk);
         }
     }
 
