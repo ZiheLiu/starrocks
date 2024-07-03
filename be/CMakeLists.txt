@@ -384,7 +384,7 @@ message(STATUS "Using gRPC ${gRPC_VERSION}")
 get_target_property(gRPC_INCLUDE_DIR gRPC::grpc INTERFACE_INCLUDE_DIRECTORIES)
 include_directories(SYSTEM ${gRPC_INCLUDE_DIR})
 add_library(protobuf::libprotobuf ALIAS protobuf)
-add_library(ZLIB::ZLIB ALIAS libz)
+#add_library(ZLIB::ZLIB ALIAS libz)
 
 # Disable libdefalte on aarch64
 if ("${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86" OR "${CMAKE_BUILD_TARGET_ARCH}" STREQUAL "x86_64")

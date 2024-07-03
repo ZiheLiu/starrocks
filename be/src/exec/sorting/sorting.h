@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <span>
+
 #include "column/chunk.h"
 #include "column/datum.h"
 #include "column/nullable_column.h"
@@ -40,9 +42,10 @@ Status sort_and_tie_column(const std::atomic<bool>& cancel, const ColumnPtr& col
 // Sort multiple columns using column-wise algorithm, output the order in permutation array
 Status sort_and_tie_columns(const std::atomic<bool>& cancel, const Columns& columns, const SortDescs& sort_desc,
                             Permutation* permutation);
-Status sort_and_tie_columns(const std::atomic<bool>& cancel, const Columns& columns, const SortDescs& sort_desc,
-                            Permutation* permutation, std::pair<int, int> range,
-                            const std::vector<uint32_t>& column_offsets);
+Status sort_and_tie_columns(const std::atomic<bool>& cancel, const std::vector<const Column*>& columns,
+                            const SortDescs& sort_desc, SmallPermutation& perm,
+                            const std::span<const uint32_t> src_offsets,
+                            const std::vector<std::span<const uint32_t>>& offsets_per_key);
 
 // Sort multiple columns, and stable
 Status stable_sort_and_tie_columns(const std::atomic<bool>& cancel, const Columns& columns, const SortDescs& sort_desc,

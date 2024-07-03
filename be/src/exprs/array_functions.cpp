@@ -1530,8 +1530,8 @@ static Status sort_multi_array_column(FunctionContext* ctx, const Column* src_co
     dest_offsets_column->get_data() = src_offsets_column->get_data();
 
     // Unpack each key array column.
-    std::vector<ColumnPtr> elements_per_key_col(num_key_columns);
-    std::vector<const uint32_t*> offsets_per_key_col(num_key_columns);
+    std::vector<const Column*> elements_per_key_col(num_key_columns);
+    std::vector<std::span<const uint32_t>> offsets_per_key_col(num_key_columns);
     std::vector<const uint8_t*> nulls_per_key_col(num_key_columns, nullptr);
     for (size_t i = 0; i < num_key_columns; ++i) {
         const Column* key_column = key_columns[i];
@@ -1542,68 +1542,41 @@ static Status sort_multi_array_column(FunctionContext* ctx, const Column* src_co
         }
 
         const auto* key_array_column = down_cast<const ArrayColumn*>(key_column);
-        elements_per_key_col[i] = key_array_column->elements_column();
-        offsets_per_key_col[i] = key_array_column->offsets().get_data().data();
+        elements_per_key_col[i] = key_array_column->elements_column().get();
+        offsets_per_key_col[i] = key_array_column->offsets().get_data();
     }
 
-    const SortDescs sort_desc = SortDescs::asc_null_first(num_src_element_rows);
-    const std::atomic<bool>& cancel = ctx->state()->cancelled_ref();
-
-    std::vector<uint32_t> key_sort_index;
-    key_sort_index.reserve(num_src_element_rows);
-
-    auto fill_key_sort_index = [&key_sort_index](size_t start, size_t end) {
-        for (size_t i = start; i < end; ++i) {
-            key_sort_index.push_back(i);
-        }
-    };
-
+    // Check if the number of elements in each array column of each row is exactly the same.
     for (size_t row_i = 0; row_i < num_rows; ++row_i) {
-        const auto src_start_offset = src_offsets_column->get_data()[row_i];
-        const auto src_end_offset = src_offsets_column->get_data()[row_i + 1];
-
         if (src_null_column != nullptr && src_null_column->get_data()[row_i]) {
-            fill_key_sort_index(src_start_offset, src_end_offset);
             continue;
         }
 
-        const auto cur_num_src_elements = src_end_offset - src_start_offset;
-
-        std::vector<ColumnPtr> cur_elements_per_key_col;
-        std::vector<uint32_t> cur_offset_per_key_col;
-        cur_elements_per_key_col.reserve(num_key_columns);
-        cur_offset_per_key_col.reserve(num_key_columns);
-
-        // Get non-nullable key columns.
+        const auto cur_num_src_elements =
+                src_offsets_column->get_data()[row_i + 1] - src_offsets_column->get_data()[row_i];
         for (size_t key_col_i = 0; key_col_i < num_key_columns; ++key_col_i) {
             if (nulls_per_key_col[key_col_i] && nulls_per_key_col[key_col_i][row_i]) {
                 continue;
             }
 
-            const auto* key_offsets = offsets_per_key_col[key_col_i];
-
-            const auto cur_num_key_elements = key_offsets[row_i + 1] - key_offsets[row_i];
+            const auto cur_num_key_elements =
+                    offsets_per_key_col[key_col_i][row_i + 1] - offsets_per_key_col[key_col_i][row_i];
             if (cur_num_src_elements != cur_num_key_elements) {
                 return Status::InvalidArgument("Input arrays' size are not equal in array_sortby_multi.");
             }
-
-            cur_elements_per_key_col.push_back(elements_per_key_col[key_col_i]);
-            cur_offset_per_key_col.push_back(key_offsets[row_i]);
-        }
-
-        if (cur_elements_per_key_col.empty()) {
-            fill_key_sort_index(src_start_offset, src_end_offset);
-            continue;
-        }
-
-        Permutation perm;
-        RETURN_IF_ERROR(sort_and_tie_columns(cancel, cur_elements_per_key_col, sort_desc, &perm,
-                                             {src_start_offset, src_end_offset}, cur_offset_per_key_col));
-        for (const auto& item : perm) {
-            key_sort_index.push_back(item.index_in_chunk);
         }
     }
 
+    const SortDescs sort_desc = SortDescs::asc_null_first(num_src_element_rows);
+    const std::atomic<bool>& cancel = ctx->state()->cancelled_ref();
+    SmallPermutation permutation;
+    RETURN_IF_ERROR(sort_and_tie_columns(cancel, elements_per_key_col, sort_desc, permutation,
+                                         src_offsets_column->get_data(), offsets_per_key_col));
+
+    std::vector<uint32_t> key_sort_index(num_src_element_rows);
+    for (int i = 0; i < num_src_element_rows; i++) {
+        key_sort_index[i] = permutation[i].index_in_chunk;
+    }
     dest_elements_column->append_selective(*src_elements_column, key_sort_index);
 
     return Status::OK();
@@ -1643,6 +1616,7 @@ StatusOr<ColumnPtr> ArrayFunctions::array_sortby_multi(FunctionContext* ctx, con
             dest_null_column->get_data().assign(src_null_column->get_data().begin(), src_null_column->get_data().end());
         } else {
             dest_null_column->get_data().resize(chunk_size, 0);
+            src_null_column = nullptr;
         }
         dest_nullable_column->set_has_null(src_nullable_column->has_null());
 

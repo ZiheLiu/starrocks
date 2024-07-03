@@ -163,7 +163,6 @@ inline size_t find_zero(const std::vector<uint8_t>& list, size_t start) {
 inline size_t find_nonzero(const std::vector<uint8_t>& list, size_t start) {
     return find_byte<uint8_t>(list, start, 1);
 }
-
 inline size_t find_nonzero(const std::vector<uint8_t>& list, size_t start, size_t count) {
     return find_byte<uint8_t>(list, start, count, 1);
 }
