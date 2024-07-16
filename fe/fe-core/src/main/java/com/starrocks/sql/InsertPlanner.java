@@ -900,7 +900,11 @@ public class InsertPlanner {
         OlapTable table = (OlapTable) targetTable;
 
         if (KeysType.DUP_KEYS.equals(table.getKeysType())) {
-            return new PhysicalPropertySet();
+
+            DistributionProperty distributionProperty = DistributionProperty
+                    .createProperty(new GatherDistributionSpec());
+            return new PhysicalPropertySet(distributionProperty);
+//            return new PhysicalPropertySet();
         }
 
         // No extra distribution property is needed if replication num is 1

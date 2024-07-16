@@ -961,7 +961,7 @@ public class ReplayFromDumpTest extends ReplayFromDumpTestBase {
     @Test
     public void testTemp() throws Exception {
         Pair<QueryDumpInfo, String> replayPair =
-                getPlanFragment(getDumpInfoFromFile("query_dump/lzh_only_query_dump"),
+                getPlanFragment(getDumpInfoFromFile("query_dump/lzh_insert_query_dump"),
                         connectContext.getSessionVariable(), TExplainLevel.NORMAL);
         System.out.println(replayPair.second);
     }
