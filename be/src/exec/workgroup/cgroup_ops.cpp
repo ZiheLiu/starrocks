@@ -71,7 +71,7 @@ StatusOr<int64_t> read_cgroup_int64(std::string_view path) {
     ScopedFdCloser fd_closer(fd);
 
     char buf[20];
-    if (read(fd, buf, sizeof(buf) < 0)) {
+    if (read(fd, buf, sizeof(buf)) < 0) {
         LOG(WARNING) << LOG_PREFIX << "Failed to read from cgroup file "
                      << "[path=" << path << "] [error=" << strerror(errno) << "]";
         return Status::InternalError(
