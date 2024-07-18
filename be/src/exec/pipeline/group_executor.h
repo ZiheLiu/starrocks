@@ -17,7 +17,9 @@
 #include <unordered_map>
 
 #include "common/statusor.h"
+#include "exec/pipeline/pipeline_driver_executor.h"
 #include "exec/pipeline/pipeline_fwd.h"
+#include "exec/workgroup/scan_executor.h"
 #include "exec/workgroup/work_group_fwd.h"
 
 namespace starrocks::pipeline {
