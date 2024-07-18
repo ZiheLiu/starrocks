@@ -73,8 +73,7 @@ workgroup::ScanExecutor* GroupExecutor::get_or_create_scan_executor(const workgr
             .build(&scan_worker_thread_pool_with_workgroup);
     ctx.scan_executor = std::make_unique<workgroup::ScanExecutor>(
             std::move(scan_worker_thread_pool_with_workgroup),
-            std::make_unique<workgroup::WorkGroupScanTaskQueue>(
-                    workgroup::WorkGroupScanTaskQueue::SchedEntityType::OLAP));
+            std::make_unique<workgroup::PriorityScanTaskQueue>(config::pipeline_scan_thread_pool_queue_size));
     ctx.scan_executor->initialize(_max_scan_threads);
 
     return ctx.scan_executor.get();
@@ -99,8 +98,7 @@ workgroup::ScanExecutor* GroupExecutor::get_or_create_connector_scan_executor(co
             .build(&connector_scan_worker_thread_pool_with_workgroup);
     ctx.connector_scan_executor = std::make_unique<workgroup::ScanExecutor>(
             std::move(connector_scan_worker_thread_pool_with_workgroup),
-            std::make_unique<workgroup::WorkGroupScanTaskQueue>(
-                    workgroup::WorkGroupScanTaskQueue::SchedEntityType::CONNECTOR));
+            std::make_unique<workgroup::PriorityScanTaskQueue>(config::pipeline_scan_thread_pool_queue_size));
     ctx.connector_scan_executor->initialize(_max_connector_scan_threads);
 
     return ctx.connector_scan_executor.get();
