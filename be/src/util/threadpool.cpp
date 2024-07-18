@@ -38,6 +38,8 @@
 #include <ostream>
 
 #include "common/logging.h"
+#include "exec/workgroup/cgroup_ops.h"
+#include "exec/workgroup/work_group_fwd.h"
 #include "gutil/macros.h"
 #include "gutil/map_util.h"
 #include "gutil/strings/substitute.h"
@@ -91,7 +93,7 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_idle_timeout(const MonoDelta& idle_tim
     return *this;
 }
 
-ThreadPoolBuilder& ThreadPoolBuilder::set_wgid(WorkGroupId wgid) {
+ThreadPoolBuilder& ThreadPoolBuilder::set_wgid(workgroup::WorkGroupId wgid) {
     _wgid = wgid;
     return *this;
 }
@@ -256,7 +258,8 @@ ThreadPool::ThreadPool(const ThreadPoolBuilder& builder)
           _active_threads(0),
           _total_queued_tasks(0),
           _tokenless(new_token(ExecutionMode::CONCURRENT)),
-          _wgid(builder._wgid) {}
+          _wgid(builder._wgid),
+          _cgroup_ops(builder._cgroup_ops) {}
 
 ThreadPool::~ThreadPool() noexcept {
     // There should only be one live token: the one used in tokenless submission.
@@ -507,8 +510,13 @@ void ThreadPool::dispatch_thread() {
     // Owned by this worker thread and added/removed from _idle_threads as needed.
     IdleThread me;
 
-    if (_wgid != ABSENT_WORKGROUP_ID) {
+    if (_wgid != workgroup::ABSENT_WORKGROUP_ID && _cgroup_ops != nullptr) {
         // TODO(lzh): attach thread to workgroup.
+        if (auto status = _cgroup_ops->attach(_wgid, Thread::current_thread_id()); !status.ok()) {
+            LOG(WARNING) << "[CGroup] Failed to attach thread to cgroup "
+                         << "[wgid=" << _wgid << "] [tid=" << Thread::current_thread_id()
+                         << "] [error=" << status.to_string() << "]";
+        }
     }
 
     while (true) {

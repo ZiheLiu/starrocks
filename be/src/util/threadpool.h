@@ -53,7 +53,7 @@
 #include "util/bthreads/semaphore.h"
 // resolve `barrier` macro conflicts with boost/thread.hpp header file
 #undef barrier
-#include "exec/workgroup/workg_group_fwd.h"
+#include "exec/workgroup/work_group_fwd.h"
 #include "util/metrics.h"
 #include "util/monotime.h"
 #include "util/priority_queue.h"
@@ -125,7 +125,7 @@ public:
     ThreadPoolBuilder& set_max_threads(int max_threads);
     ThreadPoolBuilder& set_max_queue_size(int max_queue_size);
     ThreadPoolBuilder& set_idle_timeout(const MonoDelta& idle_timeout);
-    ThreadPoolBuilder& set_wgid(WorkGroupId wgid);
+    ThreadPoolBuilder& set_wgid(workgroup::WorkGroupId wgid);
 
     // Instantiate a new ThreadPool with the existing builder arguments.
     [[nodiscard]] Status build(std::unique_ptr<ThreadPool>* pool) const;
@@ -137,7 +137,8 @@ private:
     int _max_threads;
     int _max_queue_size;
     MonoDelta _idle_timeout;
-    WorkGroupId _wgid = ABSENT_WORKGROUP_ID;
+    workgroup::WorkGroupId _wgid = workgroup::ABSENT_WORKGROUP_ID;
+    workgroup::CGroupOps* _cgroup_ops = nullptr;
 
     ThreadPoolBuilder(const ThreadPoolBuilder&) = delete;
     const ThreadPoolBuilder& operator=(const ThreadPoolBuilder&) = delete;
@@ -391,7 +392,8 @@ private:
     // Total time in nanoseconds to execute tasks.
     CoreLocalCounter<int64_t> _total_execute_time_ns{MetricUnit::NOUNIT};
 
-    const WorkGroupId _wgid;
+    const workgroup::WorkGroupId _wgid;
+    workgroup::CGroupOps* _cgroup_ops;
 
     ThreadPool(const ThreadPool&) = delete;
     const ThreadPool& operator=(const ThreadPool&) = delete;

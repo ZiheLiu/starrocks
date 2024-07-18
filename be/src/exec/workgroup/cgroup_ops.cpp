@@ -268,7 +268,7 @@ StatusOr<int64_t> CGroupOpsV1::_read_cfs_period_us() {
 CGroupOpsPtr CGroupOps::create(int num_cpu_cores) {
     auto cgroup_ops_v1 = std::make_unique<CGroupOpsV1>(num_cpu_cores);
     if (const auto status = cgroup_ops_v1->init(); !status.ok()) {
-        LOG(WARNING) << LOG_PREFIX << "Failed to initialize CGroupOpsV1 [error=" << status << "]";
+        LOG(WARNING) << LOG_PREFIX << "Failed to initialize CGroupOpsV1 [error=" << status.to_string() << "]";
         return std::make_unique<CGroupOpsDummy>();
     }
     return cgroup_ops_v1;
