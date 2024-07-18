@@ -79,7 +79,7 @@ StatusOr<int64_t> read_cgroup_int64(std::string_view path) {
     }
 
     int64_t value;
-    if (sscanf(buf, "%lld", &value) != 1) {
+    if (sscanf(buf, "%ld", &value) != 1) {
         LOG(WARNING) << LOG_PREFIX << "Cannot convert the content to int64_t "
                      << "[path=" << path << "] [content=" << buf << "] [error=" << strerror(errno) << "]";
         return Status::InternalError(fmt::format(
@@ -164,8 +164,8 @@ private:
     static std::string _build_path(BaseDir base_dir, WorkGroupId wgid);
     static StatusOr<int64_t> _read_cfs_period_us();
 
-    static constexpr std::string ROOT_PATH = "/sys/fs/cgroup/cpu/starrocks";
-    static constexpr std::string GROUP_ROOT_PATH = ROOT_PATH + "/root";
+    static inline const std::string ROOT_PATH = "/sys/fs/cgroup/cpu/starrocks";
+    static inline const std::string GROUP_ROOT_PATH = ROOT_PATH + "/root";
     static constexpr int64_t DEFAULT_CPU_PERIOD_US = 100'000;
 
     const int _num_cpu_cores;

@@ -38,9 +38,9 @@ public:
                   int64_t max_connector_scan_threads);
     ~GroupExecutor();
 
-    StatusOr<DriverExecutor*> get_or_create_driver_executor(const workgroup::WorkGroup& wg);
-    StatusOr<workgroup::ScanExecutor*> get_or_create_scan_executor(const workgroup::WorkGroup& wg);
-    StatusOr<workgroup::ScanExecutor*> get_or_create_connector_scan_executor(const workgroup::WorkGroup& wg);
+    DriverExecutor* get_or_create_driver_executor(const workgroup::WorkGroup& wg);
+    workgroup::ScanExecutor* get_or_create_scan_executor(const workgroup::WorkGroup& wg);
+    workgroup::ScanExecutor* get_or_create_connector_scan_executor(const workgroup::WorkGroup& wg);
 
     void close();
 

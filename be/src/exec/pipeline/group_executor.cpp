@@ -30,7 +30,7 @@ GroupExecutor::GroupExecutor(workgroup::CGroupOps* cgroup_ops, int64_t max_drive
 
 GroupExecutor::~GroupExecutor() = default;
 
-StatusOr<DriverExecutor*> GroupExecutor::get_or_create_driver_executor(const workgroup::WorkGroup& wg) {
+DriverExecutor* GroupExecutor::get_or_create_driver_executor(const workgroup::WorkGroup& wg) {
     std::lock_guard guard(_lock);
 
     auto& ctx = _get_or_create_context_inlock(wg);
@@ -39,13 +39,14 @@ StatusOr<DriverExecutor*> GroupExecutor::get_or_create_driver_executor(const wor
     }
 
     std::unique_ptr<ThreadPool> wg_driver_executor_thread_pool;
-    RETURN_IF_ERROR(ThreadPoolBuilder("pip_exe" + std::to_string(wg.id()))
-                            .set_min_threads(0)
-                            .set_max_threads(_max_driver_threads)
-                            .set_max_queue_size(1000)
-                            .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .set_wgid(wg.id())
-                            .build(&wg_driver_executor_thread_pool));
+    // TODO(lzh): handle error
+    (void)ThreadPoolBuilder("pip_exe" + std::to_string(wg.id()))
+            .set_min_threads(0)
+            .set_max_threads(_max_driver_threads)
+            .set_max_queue_size(1000)
+            .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
+            .set_wgid(wg.id())
+            .build(&wg_driver_executor_thread_pool);
     ctx.driver_executor =
             std::make_unique<GlobalDriverExecutor>("pip_exe", std::move(wg_driver_executor_thread_pool), false);
     ctx.driver_executor->initialize(_max_driver_threads);
@@ -53,7 +54,7 @@ StatusOr<DriverExecutor*> GroupExecutor::get_or_create_driver_executor(const wor
     return ctx.driver_executor.get();
 }
 
-StatusOr<workgroup::ScanExecutor*> GroupExecutor::get_or_create_scan_executor(const workgroup::WorkGroup& wg) {
+workgroup::ScanExecutor* GroupExecutor::get_or_create_scan_executor(const workgroup::WorkGroup& wg) {
     std::lock_guard guard(_lock);
 
     auto& ctx = _get_or_create_context_inlock(wg);
@@ -62,13 +63,14 @@ StatusOr<workgroup::ScanExecutor*> GroupExecutor::get_or_create_scan_executor(co
     }
 
     std::unique_ptr<ThreadPool> scan_worker_thread_pool_with_workgroup;
-    RETURN_IF_ERROR(ThreadPoolBuilder("scan_io" + std::to_string(wg.id()))
-                            .set_min_threads(0)
-                            .set_max_threads(_max_scan_threads)
-                            .set_max_queue_size(1000)
-                            .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .set_wgid(wg.id())
-                            .build(&scan_worker_thread_pool_with_workgroup));
+    // TODO(lzh): handle error
+    (void)ThreadPoolBuilder("scan_io" + std::to_string(wg.id()))
+            .set_min_threads(0)
+            .set_max_threads(_max_scan_threads)
+            .set_max_queue_size(1000)
+            .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
+            .set_wgid(wg.id())
+            .build(&scan_worker_thread_pool_with_workgroup);
     ctx.scan_executor = std::make_unique<workgroup::ScanExecutor>(
             std::move(scan_worker_thread_pool_with_workgroup),
             std::make_unique<workgroup::WorkGroupScanTaskQueue>(
@@ -78,8 +80,7 @@ StatusOr<workgroup::ScanExecutor*> GroupExecutor::get_or_create_scan_executor(co
     return ctx.scan_executor.get();
 }
 
-StatusOr<workgroup::ScanExecutor*> GroupExecutor::get_or_create_connector_scan_executor(
-        const workgroup::WorkGroup& wg) {
+workgroup::ScanExecutor* GroupExecutor::get_or_create_connector_scan_executor(const workgroup::WorkGroup& wg) {
     std::lock_guard guard(_lock);
 
     auto& ctx = _get_or_create_context_inlock(wg);
@@ -88,13 +89,14 @@ StatusOr<workgroup::ScanExecutor*> GroupExecutor::get_or_create_connector_scan_e
     }
 
     std::unique_ptr<ThreadPool> connector_scan_worker_thread_pool_with_workgroup;
-    RETURN_IF_ERROR(ThreadPoolBuilder("con_scan_io" + std::to_string(wg.id()))
-                            .set_min_threads(0)
-                            .set_max_threads(_max_connector_scan_threads)
-                            .set_max_queue_size(1000)
-                            .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .set_wgid(wg.id())
-                            .build(&connector_scan_worker_thread_pool_with_workgroup));
+    // TODO(lzh): handle error
+    (void)ThreadPoolBuilder("con_scan_io" + std::to_string(wg.id()))
+            .set_min_threads(0)
+            .set_max_threads(_max_connector_scan_threads)
+            .set_max_queue_size(1000)
+            .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
+            .set_wgid(wg.id())
+            .build(&connector_scan_worker_thread_pool_with_workgroup);
     ctx.connector_scan_executor = std::make_unique<workgroup::ScanExecutor>(
             std::move(connector_scan_worker_thread_pool_with_workgroup),
             std::make_unique<workgroup::WorkGroupScanTaskQueue>(
