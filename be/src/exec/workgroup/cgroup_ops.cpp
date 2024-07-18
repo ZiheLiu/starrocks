@@ -177,7 +177,8 @@ Status CGroupOpsV1::init() {
     RETURN_IF_ERROR(validate_cgroup_dir(_build_path(BaseDir::ROOT, CGroupFile::MAX_CPU_CORES)));
     RETURN_IF_ERROR(validate_cgroup_dir(_build_path(BaseDir::ROOT, CGroupFile::CFS_PERIOD)));
 
-    RETURN_IF_ERROR(delete_cgroup_dir(GROUP_ROOT_PATH));
+    // TODO(lzh): clear cgroup dir.
+    // RETURN_IF_ERROR(delete_cgroup_dir(GROUP_ROOT_PATH));
     RETURN_IF_ERROR(create_cgroup_dir(GROUP_ROOT_PATH));
 
     ASSIGN_OR_RETURN(_cpu_period_us, _read_cfs_period_us());
