@@ -194,7 +194,7 @@ Status FragmentExecutor::_prepare_workgroup(ExecEnv* exec_env, const UnifiedExec
     _fragment_ctx->set_workgroup(wg);
     _wg = wg;
 
-    ASSIGN_OR_RETURN(_driver_executor, exec_env->group_executor()->get_or_create_driver_executor(*wg));
+    _driver_executor = exec_env->group_executor()->get_or_create_driver_executor(*wg);
     _fragment_ctx->attach_driver_executor(_driver_executor);
 
     return Status::OK();
@@ -815,7 +815,7 @@ Status FragmentExecutor::execute(ExecEnv* exec_env) {
     prepare_success = true;
 
     DCHECK(_fragment_ctx->enable_resource_group());
-    ASSIGN_OR_RETURN(auto* executor, exec_env->group_executor()->get_or_create_driver_executor(*_wg));
+    auto* executor = exec_env->group_executor()->get_or_create_driver_executor(*_wg);
     RETURN_IF_ERROR(_fragment_ctx->submit_active_drivers(executor));
 
     return Status::OK();
