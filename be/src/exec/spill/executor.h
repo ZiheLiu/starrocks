@@ -19,6 +19,7 @@
 #include <utility>
 
 #include "common/compiler_util.h"
+#include "exec/pipeline/group_executor.h"
 #include "exec/pipeline/pipeline_fwd.h"
 #include "exec/pipeline/query_context.h"
 #include "exec/workgroup/scan_executor.h"
@@ -104,7 +105,7 @@ struct IOTaskExecutor {
             auto io_ctx = std::any_cast<SpillIOTaskContextPtr>(task_ctx.task_context_data);
             use_local_io_executor = io_ctx->use_local_io_executor;
         }
-        auto* pool = get_executor(use_local_io_executor);
+        auto* pool = get_executor(use_local_io_executor, *task_ctx.wg);
         if (pool->submit(std::move(task))) {
             return Status::OK();
         } else {
@@ -114,14 +115,15 @@ struct IOTaskExecutor {
     static void force_submit(workgroup::ScanTask task) {
         const auto& task_ctx = task.get_work_context();
         auto io_ctx = std::any_cast<SpillIOTaskContextPtr>(task_ctx.task_context_data);
-        auto* pool = get_executor(io_ctx->use_local_io_executor);
+        auto* pool = get_executor(io_ctx->use_local_io_executor, *task_ctx.wg);
         pool->force_submit(std::move(task));
     }
 
 private:
     inline static workgroup::ScanExecutor* get_executor(bool use_local_io_executor, const workgroup::WorkGroup& wg) {
-        return use_local_io_executor ? ExecEnv::GetInstance()->group_executor()->get_or_create_scan_executor(wg);
-                                     : ExecEnv::GetInstance()->group_executor()->get_or_create_connector_scan_executor(wg);
+        return use_local_io_executor
+                       ? ExecEnv::GetInstance()->group_executor()->get_or_create_scan_executor(wg).value()
+                       : ExecEnv::GetInstance()->group_executor()->get_or_create_connector_scan_executor(wg).value();
     }
 };
 
