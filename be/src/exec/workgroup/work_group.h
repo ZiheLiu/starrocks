@@ -229,7 +229,7 @@ private:
 
     // Specified limitations
     size_t _cpu_limit;
-    size_t _max_cpu_cores = -1;
+    size_t _max_cpu_cores = 0;
     double _memory_limit;
     int64_t _memory_limit_bytes = -1;
     size_t _concurrency_limit = 0;
