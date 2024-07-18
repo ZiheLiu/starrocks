@@ -22,7 +22,7 @@
 #include "exec/pipeline/pipeline_driver_queue.h"
 #include "exec/pipeline/query_context.h"
 #include "exec/workgroup/scan_task_queue.h"
-#include "exec/workgroup/workg_group_fwd.h"
+#include "exec/workgroup/work_group_fwd.h"
 #include "runtime/mem_tracker.h"
 #include "storage/olap_define.h"
 #include "util/blocking_queue.hpp"
