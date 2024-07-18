@@ -22,7 +22,13 @@
 
 namespace starrocks::pipeline {
 
-struct GroupContext;
+struct GroupContext {
+    const int64_t cpu_weight;
+    const int64_t max_cpu_cores;
+    std::unique_ptr<DriverExecutor> driver_executor = nullptr;
+    std::unique_ptr<workgroup::ScanExecutor> scan_executor = nullptr;
+    std::unique_ptr<workgroup::ScanExecutor> connector_scan_executor = nullptr;
+};
 
 class GroupExecutor {
 public:
