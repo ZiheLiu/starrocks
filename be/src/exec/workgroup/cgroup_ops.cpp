@@ -34,7 +34,7 @@ namespace starrocks::workgroup {
 // utils
 // ------------------------------------------------------------------------------------
 
-static constexpr std::string LOG_PREFIX = "[CGroup] ";
+static const std::string LOG_PREFIX = "[CGroup] ";
 
 namespace {
 
