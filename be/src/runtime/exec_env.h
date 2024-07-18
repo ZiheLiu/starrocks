@@ -91,6 +91,7 @@ namespace pipeline {
 class DriverExecutor;
 class QueryContextManager;
 class DriverLimiter;
+class GroupExecutor;
 } // namespace pipeline
 
 namespace lake {
@@ -250,7 +251,7 @@ public:
 
     // Empty destructor because the compiler-generated one requires full
     // declarations for classes in scoped_ptrs.
-    ~ExecEnv() = default;
+    ~ExecEnv();
 
     std::string token() const;
     ExternalScanContextMgr* external_scan_context_mgr() { return _external_scan_context_mgr; }
@@ -280,7 +281,9 @@ public:
     ThreadPool* load_rpc_pool() { return _load_rpc_pool.get(); }
     ThreadPool* dictionary_cache_pool() { return _dictionary_cache_pool.get(); }
     FragmentMgr* fragment_mgr() { return _fragment_mgr; }
-    starrocks::pipeline::DriverExecutor* wg_driver_executor() { return _wg_driver_executor; }
+    pipeline::DriverExecutor* wg_driver_executor() { return _wg_driver_executor; }
+    pipeline::GroupExecutor* group_executor() { return _group_executor.get(); }
+    workgroup::CGroupOps* cgroup_ops() { return _cgroup_ops.get(); }
     BaseLoadPathMgr* load_path_mgr() { return _load_path_mgr; }
     BfdParser* bfd_parser() const { return _bfd_parser; }
     BrokerMgr* broker_mgr() const { return _broker_mgr; }
@@ -369,6 +372,8 @@ private:
     pipeline::DriverExecutor* _wg_driver_executor = nullptr;
     pipeline::DriverLimiter* _driver_limiter = nullptr;
     int64_t _max_executor_threads = 0; // Max thread number of executor
+    workgroup::CGroupOpsPtr _cgroup_ops;
+    std::unique_ptr<pipeline::GroupExecutor> _group_executor = nullptr;
 
     BaseLoadPathMgr* _load_path_mgr = nullptr;
 

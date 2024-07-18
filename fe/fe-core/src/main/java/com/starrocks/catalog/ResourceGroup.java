@@ -184,6 +184,9 @@ public class ResourceGroup {
         if (cpuCoreLimit != null) {
             twg.setCpu_core_limit(cpuCoreLimit);
         }
+        if (maxCpuCores != null) {
+            twg.setMax_cpu_cores(maxCpuCores);
+        }
         if (memLimit != null) {
             twg.setMem_limit(memLimit);
         }

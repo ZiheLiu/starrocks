@@ -45,9 +45,11 @@
 #include "common/configbase.h"
 #include "common/logging.h"
 #include "exec/pipeline/driver_limiter.h"
+#include "exec/pipeline/group_executor.h"
 #include "exec/pipeline/pipeline_driver_executor.h"
 #include "exec/pipeline/query_context.h"
 #include "exec/spill/dir_manager.h"
+#include "exec/workgroup/cgroup_ops.h"
 #include "exec/workgroup/scan_executor.h"
 #include "exec/workgroup/work_group.h"
 #include "exprs/jit/jit_engine.h"
@@ -300,6 +302,8 @@ int64_t GlobalEnv::calc_max_query_memory(int64_t process_mem_limit, int64_t perc
     return process_mem_limit * percent / 100;
 }
 
+ExecEnv::~ExecEnv() = default;
+
 Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
     _store_paths = store_paths;
     _external_scan_context_mgr = new ExternalScanContextMgr(this);
@@ -442,6 +446,13 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
                                                 workgroup::WorkGroupScanTaskQueue::SchedEntityType::CONNECTOR));
     _connector_scan_executor->initialize(connector_num_io_threads);
 
+    const int num_io_threads = config::pipeline_scan_thread_pool_thread_num <= 0
+                                       ? CpuInfo::num_cores()
+                                       : config::pipeline_scan_thread_pool_thread_num;
+    _cgroup_ops = workgroup::CGroupOps::create(CpuInfo::num_cores());
+    _group_executor = std::make_unique<pipeline::GroupExecutor>(_cgroup_ops.get(), _max_executor_threads,
+                                                                num_io_threads, connector_num_io_threads);
+
     workgroup::DefaultWorkGroupInitialization default_workgroup_init;
 
     if (store_paths.empty() && as_cn) {
@@ -499,10 +510,6 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
     _frontend_client_cache->init_metrics(StarRocksMetrics::instance()->metrics(), "frontend");
     _broker_client_cache->init_metrics(StarRocksMetrics::instance()->metrics(), "broker");
     RETURN_IF_ERROR(_result_mgr->init());
-
-    int num_io_threads = config::pipeline_scan_thread_pool_thread_num <= 0
-                                 ? CpuInfo::num_cores()
-                                 : config::pipeline_scan_thread_pool_thread_num;
 
     std::unique_ptr<ThreadPool> scan_worker_thread_pool_with_workgroup;
     RETURN_IF_ERROR(ThreadPoolBuilder("pip_wg_scan_io")
@@ -614,6 +621,10 @@ void ExecEnv::stop() {
         _wg_driver_executor->close();
     }
 
+    if (_group_executor) {
+        _group_executor->close();
+    }
+
     if (_agent_server) {
         _agent_server->stop();
     }
@@ -694,6 +705,7 @@ void ExecEnv::destroy() {
     SAFE_DELETE(_bfd_parser);
     SAFE_DELETE(_load_path_mgr);
     SAFE_DELETE(_wg_driver_executor);
+    _group_executor.reset();
     SAFE_DELETE(_brpc_stub_cache);
     SAFE_DELETE(_udf_call_pool);
     SAFE_DELETE(_pipeline_prepare_pool);

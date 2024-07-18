@@ -280,8 +280,10 @@ set(EXEC_FILES
     pipeline/group_execution/execution_group_builder.cpp
     pipeline/group_execution/group_operator.cpp
     workgroup/work_group.cpp
+    workgroup/cgroup_ops.cpp
     workgroup/scan_executor.cpp
     workgroup/scan_task_queue.cpp
+    pipeline/group_executor.cpp
     query_cache/multilane_operator.cpp
     query_cache/cache_operator.cpp
     query_cache/cache_manager.cpp

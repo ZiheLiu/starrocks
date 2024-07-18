@@ -91,6 +91,11 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_idle_timeout(const MonoDelta& idle_tim
     return *this;
 }
 
+ThreadPoolBuilder& ThreadPoolBuilder::set_wgid(WorkGroupId wgid) {
+    _wgid = wgid;
+    return *this;
+}
+
 Status ThreadPoolBuilder::build(std::unique_ptr<ThreadPool>* pool) const {
     pool->reset(new ThreadPool(*this));
     RETURN_IF_ERROR((*pool)->init());
@@ -250,7 +255,8 @@ ThreadPool::ThreadPool(const ThreadPoolBuilder& builder)
           _num_threads_pending_start(0),
           _active_threads(0),
           _total_queued_tasks(0),
-          _tokenless(new_token(ExecutionMode::CONCURRENT)) {}
+          _tokenless(new_token(ExecutionMode::CONCURRENT)),
+          _wgid(builder._wgid) {}
 
 ThreadPool::~ThreadPool() noexcept {
     // There should only be one live token: the one used in tokenless submission.
@@ -500,6 +506,10 @@ void ThreadPool::dispatch_thread() {
 
     // Owned by this worker thread and added/removed from _idle_threads as needed.
     IdleThread me;
+
+    if (_wgid != ABSENT_WORKGROUP_ID) {
+        // TODO(lzh): attach thread to workgroup.
+    }
 
     while (true) {
         // Note: Status::Aborted() is used to indicate normal shutdown.

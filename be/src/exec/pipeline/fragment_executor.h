@@ -121,7 +121,7 @@ private:
     // 6. pipeline driver
     Status _prepare_query_ctx(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request);
     Status _prepare_fragment_ctx(const UnifiedExecPlanFragmentParams& request);
-    Status _prepare_workgroup(const UnifiedExecPlanFragmentParams& request);
+    Status _prepare_workgroup(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request);
     Status _prepare_runtime_state(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request);
     Status _prepare_exec_plan(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request);
     Status _prepare_global_dict(const UnifiedExecPlanFragmentParams& request);
@@ -135,6 +135,7 @@ private:
     QueryContext* _query_ctx = nullptr;
     FragmentContextPtr _fragment_ctx = nullptr;
     workgroup::WorkGroupPtr _wg = nullptr;
+    DriverExecutor* _driver_executor = nullptr;
 };
 } // namespace pipeline
 } // namespace starrocks

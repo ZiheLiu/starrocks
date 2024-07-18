@@ -16,35 +16,29 @@
 
 #include <memory>
 
-namespace starrocks::pipeline {
-class DriverQueue;
-}
+#include "common/status.h"
+#include "exec/workgroup/work_group_fwd.h"
 
 namespace starrocks::workgroup {
 
-using WorkGroupId = int64_t;
-static constexpr WorkGroupId ABSENT_WORKGROUP_ID = -1;
-
-class WorkGroup;
-using WorkGroupPtr = std::shared_ptr<WorkGroup>;
-
-class ScanTaskQueue;
-
-template <typename Q>
-class WorkGroupSchedEntity;
-using WorkGroupDriverSchedEntity = WorkGroupSchedEntity<pipeline::DriverQueue>;
-using WorkGroupScanSchedEntity = WorkGroupSchedEntity<ScanTaskQueue>;
-
-class WorkGroupManager;
-class ScanExecutor;
-
-struct RunningQueryToken;
-using RunningQueryTokenPtr = std::unique_ptr<RunningQueryToken>;
-
-struct ScanTask;
-struct ScanTaskGroup;
-
 class CGroupOps;
 using CGroupOpsPtr = std::unique_ptr<CGroupOps>;
+
+class CGroupOps {
+public:
+    CGroupOps() = default;
+    virtual ~CGroupOps() = default;
+
+    virtual Status init() = 0;
+
+    virtual Status create_group(WorkGroupId wgid) = 0;
+
+    virtual Status set_cpu_weight(WorkGroupId wgid, int64_t cpu_weight) = 0;
+    virtual Status set_max_cpu_cores(WorkGroupId wgid, int64_t max_cpu_cores) = 0;
+
+    virtual Status attach(WorkGroupId wgid, int64_t tid) = 0;
+
+    static CGroupOpsPtr create(int num_cpu_cores);
+};
 
 } // namespace starrocks::workgroup

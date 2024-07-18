@@ -35,6 +35,7 @@
 #include "exec/scan_node.h"
 #include "exec/tablet_sink.h"
 #include "exec/workgroup/work_group.h"
+#include "group_executor.h"
 #include "gutil/casts.h"
 #include "gutil/map_util.h"
 #include "runtime/data_stream_mgr.h"
@@ -169,7 +170,7 @@ Status FragmentExecutor::_prepare_fragment_ctx(const UnifiedExecPlanFragmentPara
     return Status::OK();
 }
 
-Status FragmentExecutor::_prepare_workgroup(const UnifiedExecPlanFragmentParams& request) {
+Status FragmentExecutor::_prepare_workgroup(ExecEnv* exec_env, const UnifiedExecPlanFragmentParams& request) {
     WorkGroupPtr wg;
     if (!request.common().__isset.workgroup || request.common().workgroup.id == WorkGroup::DEFAULT_WG_ID) {
         wg = WorkGroupManager::instance()->get_default_workgroup();
@@ -192,6 +193,9 @@ Status FragmentExecutor::_prepare_workgroup(const UnifiedExecPlanFragmentParams&
 
     _fragment_ctx->set_workgroup(wg);
     _wg = wg;
+
+    ASSIGN_OR_RETURN(_driver_executor, exec_env->group_executor()->get_or_create_driver_executor(*wg));
+    _fragment_ctx->attach_driver_executor(_driver_executor);
 
     return Status::OK();
 }
@@ -578,12 +582,12 @@ bool FragmentExecutor::_is_in_colocate_exec_group(PlanNodeId plan_node_id) {
     return false;
 }
 
-void create_adaptive_group_initialize_events(RuntimeState* state, PipelineGroupMap&& unready_pipeline_groups) {
+void create_adaptive_group_initialize_events(RuntimeState* state, PipelineGroupMap&& unready_pipeline_groups,
+                                             DriverExecutor* driver_executor) {
     if (unready_pipeline_groups.empty()) {
         return;
     }
 
-    auto* driver_executor = state->exec_env()->wg_driver_executor();
     for (auto& [leader_source_op, pipelines] : unready_pipeline_groups) {
         EventPtr group_initialize_event =
                 Event::create_collect_stats_source_initialize_event(driver_executor, std::move(pipelines));
@@ -661,7 +665,7 @@ Status FragmentExecutor::_prepare_pipeline_driver(ExecEnv* exec_env, const Unifi
     });
 
     if (!unready_pipeline_groups.empty()) {
-        create_adaptive_group_initialize_events(runtime_state, std::move(unready_pipeline_groups));
+        create_adaptive_group_initialize_events(runtime_state, std::move(unready_pipeline_groups), _driver_executor);
     }
 
     // Acquire driver token to avoid overload
@@ -764,7 +768,7 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
     }
     {
         SCOPED_RAW_TIMER(&profiler.prepare_runtime_state_time);
-        RETURN_IF_ERROR(_prepare_workgroup(request));
+        RETURN_IF_ERROR(_prepare_workgroup(exec_env, request));
         RETURN_IF_ERROR(_prepare_runtime_state(exec_env, request));
 
         auto mem_tracker = _fragment_ctx->runtime_state()->instance_mem_tracker();
@@ -811,7 +815,7 @@ Status FragmentExecutor::execute(ExecEnv* exec_env) {
     prepare_success = true;
 
     DCHECK(_fragment_ctx->enable_resource_group());
-    auto* executor = exec_env->wg_driver_executor();
+    ASSIGN_OR_RETURN(auto* executor, exec_env->group_executor()->get_or_create_driver_executor(*_wg));
     RETURN_IF_ERROR(_fragment_ctx->submit_active_drivers(executor));
 
     return Status::OK();

@@ -102,6 +102,11 @@ WorkGroup::WorkGroup(const TWorkGroup& twg)
     } else {
         _cpu_limit = -1;
     }
+    if (twg.__isset.max_cpu_cores) {
+        _max_cpu_cores = twg.max_cpu_cores;
+    } else {
+        _max_cpu_cores = -1;
+    }
     if (twg.__isset.mem_limit) {
         _memory_limit = twg.mem_limit;
     } else {

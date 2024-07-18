@@ -153,7 +153,7 @@ void FragmentContext::set_final_status(const Status& status) {
             } else {
                 LOG(WARNING) << ss.str();
             }
-            DriverExecutor* executor = _runtime_state->exec_env()->wg_driver_executor();
+            DriverExecutor* executor = _driver_executor;
             iterate_drivers([executor](const DriverPtr& driver) { executor->cancel(driver.get()); });
         }
     }

@@ -119,9 +119,9 @@ struct IOTaskExecutor {
     }
 
 private:
-    inline static workgroup::ScanExecutor* get_executor(bool use_local_io_executor) {
-        return use_local_io_executor ? ExecEnv::GetInstance()->scan_executor()
-                                     : ExecEnv::GetInstance()->connector_scan_executor();
+    inline static workgroup::ScanExecutor* get_executor(bool use_local_io_executor, const workgroup::WorkGroup& wg) {
+        return use_local_io_executor ? ExecEnv::GetInstance()->group_executor()->get_or_create_scan_executor(wg);
+                                     : ExecEnv::GetInstance()->group_executor()->get_or_create_connector_scan_executor(wg);
     }
 };
 

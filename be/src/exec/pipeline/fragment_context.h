@@ -169,6 +169,8 @@ public:
     bool enable_group_execution() const { return _enable_group_execution; }
     void set_enable_group_execution(bool enable_group_execution) { _enable_group_execution = enable_group_execution; }
 
+    void attach_driver_executor(DriverExecutor* driver_executor) { _driver_executor = driver_executor; }
+
 private:
     bool _enable_group_execution = false;
     // Id of this query
@@ -224,6 +226,8 @@ private:
     size_t _expired_log_count = 0;
 
     std::atomic<int64_t> _last_report_exec_state_ns = MonotonicNanos();
+
+    DriverExecutor* _driver_executor;
 
     RuntimeProfile::Counter* _jit_counter = nullptr;
     RuntimeProfile::Counter* _jit_timer = nullptr;

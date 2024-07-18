@@ -22,6 +22,7 @@
 #include "exec/pipeline/pipeline_driver_queue.h"
 #include "exec/pipeline/query_context.h"
 #include "exec/workgroup/scan_task_queue.h"
+#include "exec/workgroup/workg_group_fwd.h"
 #include "runtime/mem_tracker.h"
 #include "storage/olap_define.h"
 #include "util/blocking_queue.hpp"
@@ -137,9 +138,10 @@ public:
 
     MemTracker* connector_scan_mem_tracker() { return _connector_scan_mem_tracker.get(); }
 
-    int64_t id() const { return _id; }
+    WorkGroupId id() const { return _id; }
     int64_t version() const { return _version; }
     const std::string& name() const { return _name; }
+    size_t max_cpu_cores() const { return _max_cpu_cores; }
     size_t cpu_limit() const { return _cpu_limit; }
     size_t mem_limit() const { return _memory_limit; }
     int64_t mem_limit_bytes() const { return _memory_limit_bytes; }
@@ -221,12 +223,13 @@ private:
     static constexpr size_t ABSENT_CONCURRENCY_LIMIT = 0;
 
     std::string _name;
-    int64_t _id;
+    WorkGroupId _id;
     int64_t _version;
     WorkGroupType _type;
 
     // Specified limitations
     size_t _cpu_limit;
+    size_t _max_cpu_cores = -1;
     double _memory_limit;
     int64_t _memory_limit_bytes = -1;
     size_t _concurrency_limit = 0;
