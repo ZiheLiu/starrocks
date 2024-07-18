@@ -373,7 +373,7 @@ private:
     pipeline::DriverLimiter* _driver_limiter = nullptr;
     int64_t _max_executor_threads = 0; // Max thread number of executor
     workgroup::CGroupOpsPtr _cgroup_ops;
-    std::unique_ptr<pipeline::GroupExecutor> _group_executor = nullptr;
+    std::unique_ptr<pipeline::GroupExecutor> _group_executor;
 
     BaseLoadPathMgr* _load_path_mgr = nullptr;
 
