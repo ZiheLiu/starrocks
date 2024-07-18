@@ -123,10 +123,10 @@ GroupContext& GroupExecutor::_get_or_create_context_inlock(const workgroup::Work
                        .first;
 
         // TODO(lzh): handle error
-        _cgroup_ops->create_group(wg.id());
-        _cgroup_ops->set_cpu_weight(wg.id(), wg.cpu_limit());
+        (void)_cgroup_ops->create_group(wg.id());
+        (void)_cgroup_ops->set_cpu_weight(wg.id(), wg.cpu_limit());
         if (wg.max_cpu_cores() > 0) {
-            _cgroup_ops->set_max_cpu_cores(wg.id(), wg.max_cpu_cores());
+            (void)_cgroup_ops->set_max_cpu_cores(wg.id(), wg.max_cpu_cores());
         }
     }
 
