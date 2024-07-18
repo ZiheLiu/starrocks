@@ -247,7 +247,7 @@ public:
     }
 
     // only used for test
-    ExecEnv() = default;
+    ExecEnv();
 
     // Empty destructor because the compiler-generated one requires full
     // declarations for classes in scoped_ptrs.

@@ -302,6 +302,7 @@ int64_t GlobalEnv::calc_max_query_memory(int64_t process_mem_limit, int64_t perc
     return process_mem_limit * percent / 100;
 }
 
+ExecEnv::ExecEnv() = default;
 ExecEnv::~ExecEnv() = default;
 
 Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
