@@ -29,7 +29,8 @@
 namespace starrocks::pipeline {
 
 GlobalDriverExecutor::GlobalDriverExecutor(const std::string& name, std::unique_ptr<ThreadPool> thread_pool,
-                                           bool enable_resource_group)
+                                           bool enable_resource_group, workgroup::CGroupOps* cgroup_ops,
+                                           workgroup::WorkGroupId wgid)
         : Base(name),
           _driver_queue(enable_resource_group ? std::unique_ptr<DriverQueue>(std::make_unique<WorkGroupDriverQueue>())
                                               : std::make_unique<QuerySharedDriverQueue>()),

@@ -31,12 +31,15 @@ using PipelineDriverPollerPtr = std::unique_ptr<PipelineDriverPoller>;
 
 class PipelineDriverPoller {
 public:
-    explicit PipelineDriverPoller(DriverQueue* driver_queue)
+    explicit PipelineDriverPoller(DriverQueue* driver_queue, workgroup::CGroupOps* cgroup_ops = nullptr,
+                                  workgroup::WorkGroupId wgid = workgroup::ABSENT_WORKGROUP_ID)
             : _driver_queue(driver_queue),
               _polling_thread(nullptr),
               _is_polling_thread_initialized(false),
               _is_shutdown(false),
-              _blocked_driver_queue_len(0) {}
+              _blocked_driver_queue_len(0),
+              _cgroup_ops(cgroup_ops),
+              _wgid(wgid) {}
 
     using DriverList = std::list<DriverRawPtr>;
 
@@ -84,5 +87,8 @@ private:
     DriverList _parked_drivers;
 
     std::atomic<size_t> _blocked_driver_queue_len;
+
+    workgroup::CGroupOps* _cgroup_ops = nullptr;
+    workgroup::WorkGroupId _wgid = workgroup::ABSENT_WORKGROUP_ID;
 };
 } // namespace starrocks::pipeline

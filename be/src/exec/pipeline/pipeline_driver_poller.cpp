@@ -15,6 +15,8 @@
 #include "pipeline_driver_poller.h"
 
 #include <chrono>
+
+#include "exec/workgroup/cgroup_ops.h"
 namespace starrocks::pipeline {
 
 void PipelineDriverPoller::start() {
@@ -39,6 +41,15 @@ void PipelineDriverPoller::shutdown() {
 
 void PipelineDriverPoller::run_internal() {
     this->_is_polling_thread_initialized.store(true, std::memory_order_release);
+
+    if (_wgid != workgroup::ABSENT_WORKGROUP_ID && _cgroup_ops != nullptr) {
+        if (auto status = _cgroup_ops->attach(_wgid, Thread::current_thread_id()); !status.ok()) {
+            LOG(WARNING) << "[CGroup] Failed to attach thread to cgroup "
+                         << "[wgid=" << _wgid << "] [tid=" << Thread::current_thread_id()
+                         << "] [error=" << status.to_string() << "]";
+        }
+    }
+
     DriverList tmp_blocked_drivers;
     int spin_count = 0;
     std::vector<DriverRawPtr> ready_drivers;

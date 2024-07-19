@@ -48,8 +48,8 @@ DriverExecutor* GroupExecutor::get_or_create_driver_executor(const workgroup::Wo
             .set_cgroup_ops(_cgroup_ops)
             .set_wgid(wg.id())
             .build(&wg_driver_executor_thread_pool);
-    ctx.driver_executor =
-            std::make_unique<GlobalDriverExecutor>("pip_exe", std::move(wg_driver_executor_thread_pool), false);
+    ctx.driver_executor = std::make_unique<GlobalDriverExecutor>("pip_exe", std::move(wg_driver_executor_thread_pool),
+                                                                 false, _cgroup_ops, wg.id());
     ctx.driver_executor->initialize(_max_driver_threads);
 
     return ctx.driver_executor.get();

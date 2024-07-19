@@ -69,7 +69,9 @@ protected:
 
 class GlobalDriverExecutor final : public FactoryMethod<DriverExecutor, GlobalDriverExecutor> {
 public:
-    GlobalDriverExecutor(const std::string& name, std::unique_ptr<ThreadPool> thread_pool, bool enable_resource_group);
+    GlobalDriverExecutor(const std::string& name, std::unique_ptr<ThreadPool> thread_pool, bool enable_resource_group,
+                         workgroup::CGroupOps* cgroup_ops = nullptr,
+                         workgroup::WorkGroupId wgid = workgroup::ABSENT_WORKGROUP_ID);
     ~GlobalDriverExecutor() override = default;
     void initialize(int32_t num_threads) override;
     void change_num_threads(int32_t num_threads) override;
