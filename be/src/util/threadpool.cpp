@@ -98,6 +98,11 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_wgid(workgroup::WorkGroupId wgid) {
     return *this;
 }
 
+ThreadPoolBuilder& ThreadPoolBuilder::set_cgroup_ops(workgroup::CGroupOps* cgroup_ops) {
+    _cgroup_ops = cgroup_ops;
+    return *this;
+}
+
 Status ThreadPoolBuilder::build(std::unique_ptr<ThreadPool>* pool) const {
     pool->reset(new ThreadPool(*this));
     RETURN_IF_ERROR((*pool)->init());

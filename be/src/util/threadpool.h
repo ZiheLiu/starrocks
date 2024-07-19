@@ -126,6 +126,7 @@ public:
     ThreadPoolBuilder& set_max_queue_size(int max_queue_size);
     ThreadPoolBuilder& set_idle_timeout(const MonoDelta& idle_timeout);
     ThreadPoolBuilder& set_wgid(workgroup::WorkGroupId wgid);
+    ThreadPoolBuilder& set_cgroup_ops(workgroup::CGroupOps* cgroup_ops);
 
     // Instantiate a new ThreadPool with the existing builder arguments.
     [[nodiscard]] Status build(std::unique_ptr<ThreadPool>* pool) const;

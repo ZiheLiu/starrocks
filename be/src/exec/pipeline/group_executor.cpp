@@ -45,6 +45,7 @@ DriverExecutor* GroupExecutor::get_or_create_driver_executor(const workgroup::Wo
             .set_max_threads(_max_driver_threads)
             .set_max_queue_size(1000)
             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
+            .set_cgroup_ops(_cgroup_ops)
             .set_wgid(wg.id())
             .build(&wg_driver_executor_thread_pool);
     ctx.driver_executor =
@@ -69,6 +70,7 @@ workgroup::ScanExecutor* GroupExecutor::get_or_create_scan_executor(const workgr
             .set_max_threads(_max_scan_threads)
             .set_max_queue_size(1000)
             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
+            .set_cgroup_ops(_cgroup_ops)
             .set_wgid(wg.id())
             .build(&scan_worker_thread_pool_with_workgroup);
     ctx.scan_executor = std::make_unique<workgroup::ScanExecutor>(
@@ -94,6 +96,7 @@ workgroup::ScanExecutor* GroupExecutor::get_or_create_connector_scan_executor(co
             .set_max_threads(_max_connector_scan_threads)
             .set_max_queue_size(1000)
             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
+            .set_cgroup_ops(_cgroup_ops)
             .set_wgid(wg.id())
             .build(&connector_scan_worker_thread_pool_with_workgroup);
     ctx.connector_scan_executor = std::make_unique<workgroup::ScanExecutor>(
