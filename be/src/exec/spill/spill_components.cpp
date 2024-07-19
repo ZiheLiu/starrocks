@@ -647,7 +647,7 @@ Status PartitionedSpillerWriter::_split_partition(workgroup::YieldContext& yield
                                                                       hash_data.size() - left_channel_size));
                 }
             }
-            BREAK_IF_YIELD(yield_ctx.wg, &yield_ctx.need_yield, yield_ctx.time_spent_ns);
+            BREAK_IF_YIELD(&yield_ctx.need_yield, yield_ctx.time_spent_ns);
         }
         TRY_CATCH_ALLOC_SCOPE_END()
     }

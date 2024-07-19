@@ -138,7 +138,7 @@ struct SyncTaskExecutor {
     static void force_submit(workgroup::ScanTask task) { (void)submit(std::move(task)); }
 };
 
-#define BREAK_IF_YIELD(wg, yield, time_spent_ns)                       \
+#define BREAK_IF_YIELD(yield, time_spent_ns)                           \
     if (time_spent_ns >= workgroup::WorkGroup::YIELD_MAX_TIME_SPENT) { \
         *yield = true;                                                 \
         break;                                                         \

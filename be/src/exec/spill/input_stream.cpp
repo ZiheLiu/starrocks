@@ -37,7 +37,6 @@ static const int chunk_buffer_max_size = 2;
 Status YieldableRestoreTask::do_read(workgroup::YieldContext& yield_ctx, SerdeContext& context) {
     size_t num_eos = 0;
     yield_ctx.total_yield_point_cnt = _sub_stream.size();
-    auto wg = yield_ctx.wg;
     while (yield_ctx.yield_point < yield_ctx.total_yield_point_cnt) {
         {
             SCOPED_RAW_TIMER(&yield_ctx.time_spent_ns);
@@ -57,7 +56,7 @@ Status YieldableRestoreTask::do_read(workgroup::YieldContext& yield_ctx, SerdeCo
             num_eos += _sub_stream[i]->eof();
         }
 
-        BREAK_IF_YIELD(wg, &yield_ctx.need_yield, yield_ctx.time_spent_ns);
+        BREAK_IF_YIELD(&yield_ctx.need_yield, yield_ctx.time_spent_ns);
     }
 
     if (num_eos == _sub_stream.size()) {

@@ -257,9 +257,8 @@ Status SpillableHashJoinProbeOperator::_load_partition_build_side(workgroup::Yie
     int64_t hash_table_mem_usage = builder->hash_table_mem_usage();
     enum SpillLoadPartitionStage { BEGIN = 0, FINISH = 1 };
     ctx.total_yield_point_cnt = FINISH;
-    auto wg = ctx.wg;
     while (!finish && !_is_finished) {
-        BREAK_IF_YIELD(wg, &ctx.need_yield, ctx.time_spent_ns);
+        BREAK_IF_YIELD(&ctx.need_yield, ctx.time_spent_ns);
         {
             SCOPED_RAW_TIMER(&ctx.time_spent_ns);
             if (state->is_cancelled()) {
