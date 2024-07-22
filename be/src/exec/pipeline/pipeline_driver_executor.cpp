@@ -35,7 +35,7 @@ GlobalDriverExecutor::GlobalDriverExecutor(const std::string& name, std::unique_
           _driver_queue(enable_resource_group ? std::unique_ptr<DriverQueue>(std::make_unique<WorkGroupDriverQueue>())
                                               : std::make_unique<QuerySharedDriverQueue>()),
           _thread_pool(std::move(thread_pool)),
-          _blocked_driver_poller(new PipelineDriverPoller(_driver_queue.get())),
+          _blocked_driver_poller(new PipelineDriverPoller(_driver_queue.get(), cgroup_ops, wgid)),
           _exec_state_reporter(new ExecStateReporter()),
           _audit_statistics_reporter(new AuditStatisticsReporter()) {
     REGISTER_GAUGE_STARROCKS_METRIC(pipe_driver_schedule_count, [this]() { return _schedule_count.load(); });

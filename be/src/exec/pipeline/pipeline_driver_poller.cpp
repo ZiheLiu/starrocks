@@ -21,8 +21,11 @@ namespace starrocks::pipeline {
 
 void PipelineDriverPoller::start() {
     DCHECK(this->_polling_thread.get() == nullptr);
+
+    const std::string name =
+            _wgid == workgroup::ABSENT_WORKGROUP_ID ? "pipe_poller" : "pipe_poller_" + std::to_string(_wgid);
     auto status = Thread::create(
-            "pipeline", "pipeline_poller", [this]() { run_internal(); }, &this->_polling_thread);
+            "pipeline", name, [this]() { run_internal(); }, &this->_polling_thread);
     if (!status.ok()) {
         LOG(FATAL) << "Fail to create PipelineDriverPoller: error=" << status.to_string();
     }
