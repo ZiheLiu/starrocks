@@ -458,6 +458,8 @@ public:
     void set_worker_id(uint32_t worker_id) { _worker_id = worker_id; }
     uint32_t worker_id() const { return _worker_id; }
 
+    RuntimeProfile::Counter* submit_lock_timer() { return _submit_lock_timer; }
+
 protected:
     PipelineDriver()
             : _operators(),
@@ -554,6 +556,8 @@ protected:
     RuntimeProfile::Counter* _followup_input_empty_timer = nullptr;
     RuntimeProfile::Counter* _output_full_timer = nullptr;
     RuntimeProfile::Counter* _pending_finish_timer = nullptr;
+
+    RuntimeProfile::Counter* _submit_lock_timer = nullptr;
 
     MonotonicStopWatch* _total_timer_sw = nullptr;
     MonotonicStopWatch* _pending_timer_sw = nullptr;

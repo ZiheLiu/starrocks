@@ -226,6 +226,7 @@ void WorkGroupDriverQueue::put_back(const DriverRawPtr driver) {
     watch.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
     const auto elapsed_time = watch.elapsed_time();
+    driver->submit_lock_timer()->update(elapsed_time);
     if (elapsed_time >= config::resource_group_log_time_ns) {
         LOG(WARNING) << "[TEST] put_back to driver_queue lock slow, elapsed_time=" << elapsed_time;
     }
@@ -238,6 +239,9 @@ void WorkGroupDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
     watch.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
     const auto elapsed_time = watch.elapsed_time();
+    for (auto* driver : drivers) {
+        driver->submit_lock_timer()->update(elapsed_time);
+    }
     if (elapsed_time >= config::resource_group_log_time_ns) {
         LOG(WARNING) << "[TEST] put_back to driver_queue lock slow, elapsed_time=" << elapsed_time;
     }
@@ -250,6 +254,7 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
     watch.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
     const auto elapsed_time = watch.elapsed_time();
+    driver->submit_lock_timer()->update(elapsed_time);
     if (elapsed_time >= config::resource_group_log_time_ns) {
         LOG(WARNING) << "[TEST] put_back to driver_queue lock slow, elapsed_time=" << elapsed_time;
     }
