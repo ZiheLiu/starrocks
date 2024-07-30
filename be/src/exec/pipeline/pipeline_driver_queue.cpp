@@ -263,7 +263,10 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
 }
 
 StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block, const uint32_t worker_id) {
+    MonotonicStopWatch watch;
+    watch.start();
     std::unique_lock<std::mutex> lock(_global_mutex);
+    const auto lock_time = watch.elapsed_time();
 
     workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
     while (wg_entity == nullptr) {
@@ -292,6 +295,7 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block, const uint32
             _cv.wait_for(lock, std::chrono::nanoseconds(sleep_ns));
         }
     }
+    const auto take_time = watch.elapsed_time();
 
     // If wg only contains one ready driver, it will be not ready anymore
     // after taking away the only one driver.
@@ -302,7 +306,10 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block, const uint32
     auto maybe_driver = wg_entity->queue()->take(block, worker_id);
     if (maybe_driver.ok() && maybe_driver.value() != nullptr) {
         --_num_drivers;
-        maybe_driver.value()->set_worker_id(worker_id);
+        auto* driver = maybe_driver.value();
+        driver->set_worker_id(worker_id);
+        driver->take_lock_timer()->update(lock_time);
+        driver->take_timer()->update(take_time);
     }
     return maybe_driver;
 }
