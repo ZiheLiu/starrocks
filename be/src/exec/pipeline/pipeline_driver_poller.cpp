@@ -132,6 +132,7 @@ void PipelineDriverPoller::run_internal() {
                 } else {
                     if (driver->workgroup()->is_throttled()) {
                         ++driver_it;
+                        continue;
                     }
 
                     auto status_or_is_not_blocked = driver->is_not_blocked();
