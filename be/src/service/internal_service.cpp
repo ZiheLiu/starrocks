@@ -284,9 +284,15 @@ void PInternalServiceImplBase<T>::exec_plan_fragment(google::protobuf::RpcContro
                                                      PExecPlanFragmentResult* response,
                                                      google::protobuf::Closure* done) {
     auto task = [=]() { this->_exec_plan_fragment(cntl_base, request, response, done); };
+    MonotonicStopWatch watch;
+    watch.start();
     if (!_exec_env->query_rpc_pool()->try_offer(std::move(task))) {
         ClosureGuard closure_guard(done);
         Status::ServiceUnavailable("submit exec_plan_fragment task failed").to_protobuf(response->mutable_status());
+    }
+    const auto elapsed_time = watch.elapsed_time();
+    if (elapsed_time >= config::resource_group_log_time_ns) {
+        LOG(WARNING) << "[TEST] exec_plan_fragment lock slow, elapsed_time=" << elapsed_time;
     }
 }
 

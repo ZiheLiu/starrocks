@@ -23,7 +23,7 @@ namespace starrocks::workgroup {
 /// PriorityScanTaskQueue.
 PriorityScanTaskQueue::PriorityScanTaskQueue(size_t max_elements) : _queue(max_elements) {}
 
-StatusOr<ScanTask> PriorityScanTaskQueue::take() {
+StatusOr<ScanTask> PriorityScanTaskQueue::take(uint32_t worker_id) {
     ScanTask task;
     if (_queue.blocking_get(&task)) {
         return task;
@@ -72,7 +72,7 @@ void MultiLevelFeedScanTaskQueue::close() {
     _cv.notify_all();
 }
 
-StatusOr<ScanTask> MultiLevelFeedScanTaskQueue::take() {
+StatusOr<ScanTask> MultiLevelFeedScanTaskQueue::take(uint32_t worker_id) {
     std::unique_lock<std::mutex> lock(_global_mutex);
 
     int queue_idx = -1;
@@ -168,7 +168,7 @@ void WorkGroupScanTaskQueue::close() {
     _cv.notify_all();
 }
 
-StatusOr<ScanTask> WorkGroupScanTaskQueue::take() {
+StatusOr<ScanTask> WorkGroupScanTaskQueue::take(uint32_t worker_id) {
     std::unique_lock<std::mutex> lock(_global_mutex);
 
     workgroup::WorkGroupScanSchedEntity* wg_entity = nullptr;
@@ -181,7 +181,7 @@ StatusOr<ScanTask> WorkGroupScanTaskQueue::take() {
 
         if (_wg_entities.empty()) {
             _cv.wait(lock);
-        } else if (wg_entity = _take_next_wg(); wg_entity == nullptr) {
+        } else if (wg_entity = _take_next_wg(worker_id); wg_entity == nullptr) {
             int64_t cur_ns = MonotonicNanos();
             int64_t sleep_ns = _bandwidth_control_period_end_ns - cur_ns;
             if (sleep_ns <= 0) {
@@ -201,7 +201,11 @@ StatusOr<ScanTask> WorkGroupScanTaskQueue::take() {
 
     _num_tasks--;
 
-    return wg_entity->queue()->take();
+    auto task = wg_entity->queue()->take(worker_id);
+    if (task.ok()) {
+        *task.value().worker_id = worker_id;
+    }
+    return task;
 }
 
 bool WorkGroupScanTaskQueue::try_offer(ScanTask task) {
@@ -266,15 +270,37 @@ void WorkGroupScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_n
         _wg_entities.emplace(wg_entity);
         _update_min_wg();
     }
+
+    const auto worker_id = *task.worker_id;
+    wg_entity->unaccounted_runtime_ns -= wg_entity->unaccounted_runtime_ns_per_worker[worker_id];
+    wg_entity->unaccounted_runtime_ns_per_worker[worker_id] = 0;
 }
 
-bool WorkGroupScanTaskQueue::should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const {
-    if (_throttled(_sched_entity(wg), unaccounted_runtime_ns)) {
+bool WorkGroupScanTaskQueue::should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns,
+                                          uint32_t worker_id) const {
+    if (worker_id < config::resource_group_max_cpu_cores) {
+        return false;
+    }
+
+    WorkGroupScanSchedEntity* wg_entity;
+    if (_sched_entity_type == SchedEntityType::CONNECTOR) {
+        wg_entity = const_cast<WorkGroup*>(wg)->connector_scan_sched_entity();
+    } else {
+        wg_entity = const_cast<WorkGroup*>(wg)->scan_sched_entity();
+    }
+
+    if (unaccounted_runtime_ns != 0) {
+        wg_entity->unaccounted_runtime_ns +=
+                unaccounted_runtime_ns - wg_entity->unaccounted_runtime_ns_per_worker[worker_id];
+        wg_entity->unaccounted_runtime_ns_per_worker[worker_id] = unaccounted_runtime_ns;
+    }
+    unaccounted_runtime_ns = wg_entity->unaccounted_runtime_ns;
+
+    if (_throttled(wg_entity, unaccounted_runtime_ns)) {
         return true;
     }
 
     // Return true, if the minimum-vruntime workgroup is not current workgroup anymore.
-    auto* wg_entity = _sched_entity(wg);
     auto* min_entity = _min_wg_entity.load();
     return min_entity != wg_entity && min_entity &&
            min_entity->vruntime_ns() < wg_entity->vruntime_ns() + unaccounted_runtime_ns / wg_entity->cpu_limit();
@@ -285,12 +311,48 @@ bool WorkGroupScanTaskQueue::_throttled(const workgroup::WorkGroupScanSchedEntit
     if (wg_entity->is_sq_wg()) {
         return false;
     }
+
     if (!workgroup::WorkGroupManager::instance()->is_sq_wg_running()) {
         return false;
     }
 
+    auto* wg_entity_mutable = const_cast<workgroup::WorkGroupScanSchedEntity*>(wg_entity);
+    if (wg_entity_mutable->workgroup()->is_throttled()) {
+        return true;
+    }
+
     int64_t bandwidth_usage = unaccounted_runtime_ns + _bandwidth_usage_ns;
-    return bandwidth_usage >= _bandwidth_quota_ns();
+    const bool is_throttled = bandwidth_usage >= _bandwidth_quota_ns();
+    if (is_throttled) {
+        wg_entity_mutable->workgroup()->set_throttled(true);
+    }
+    return is_throttled;
+}
+
+bool WorkGroupScanTaskQueue::_throttled(const workgroup::WorkGroupScanSchedEntity* wg_entity, uint32_t worker_id,
+                                        int64_t unaccounted_runtime_ns) const {
+    if (wg_entity->is_sq_wg()) {
+        return false;
+    }
+    if (!workgroup::WorkGroupManager::instance()->is_sq_wg_running()) {
+        return false;
+    }
+
+    if (worker_id < config::resource_group_max_cpu_cores) {
+        return true;
+    }
+
+    auto* wg_entity_mutable = const_cast<workgroup::WorkGroupScanSchedEntity*>(wg_entity);
+    if (wg_entity_mutable->workgroup()->is_throttled()) {
+        return true;
+    }
+
+    int64_t bandwidth_usage = unaccounted_runtime_ns + _bandwidth_usage_ns;
+    const bool is_throttled = bandwidth_usage >= _bandwidth_quota_ns();
+    if (is_throttled) {
+        wg_entity_mutable->workgroup()->set_throttled(true);
+    }
+    return is_throttled;
 }
 
 void WorkGroupScanTaskQueue::_update_min_wg() {
@@ -306,6 +368,18 @@ workgroup::WorkGroupScanSchedEntity* WorkGroupScanTaskQueue::_take_next_wg() {
     workgroup::WorkGroupScanSchedEntity* min_unthrottled_wg_entity = nullptr;
     for (const auto& wg_entity : _wg_entities) {
         if (!_throttled(wg_entity)) {
+            min_unthrottled_wg_entity = wg_entity;
+            break;
+        }
+    }
+
+    return min_unthrottled_wg_entity;
+}
+
+workgroup::WorkGroupScanSchedEntity* WorkGroupScanTaskQueue::_take_next_wg(uint32_t worker_id) {
+    workgroup::WorkGroupScanSchedEntity* min_unthrottled_wg_entity = nullptr;
+    for (const auto& wg_entity : _wg_entities) {
+        if (!_throttled(wg_entity, worker_id)) {
             min_unthrottled_wg_entity = wg_entity;
             break;
         }
@@ -358,6 +432,12 @@ void WorkGroupScanTaskQueue::_update_bandwidth_control_period() {
             _bandwidth_usage_ns -= bandwidth_quota;
         } else {
             _bandwidth_usage_ns = bandwidth_quota;
+        }
+
+        if (_bandwidth_usage_ns < bandwidth_quota) {
+            for (auto* wg_entity : _wg_entities) {
+                wg_entity->workgroup()->set_throttled(false);
+            }
         }
     }
 }

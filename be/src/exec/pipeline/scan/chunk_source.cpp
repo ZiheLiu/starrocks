@@ -48,7 +48,7 @@ void ChunkSource::unpin_chunk_token() {
 }
 
 Status ChunkSource::buffer_next_batch_chunks_blocking(RuntimeState* state, size_t batch_size,
-                                                      const workgroup::WorkGroup* running_wg) {
+                                                      const workgroup::WorkGroup* running_wg, uint32_t worker_id) {
     if (!_status.ok()) {
         return _status;
     }
@@ -92,7 +92,7 @@ Status ChunkSource::buffer_next_batch_chunks_blocking(RuntimeState* state, size_
         }
 
         if (running_wg != nullptr && time_spent_ns >= workgroup::WorkGroup::YIELD_PREEMPT_MAX_TIME_SPENT &&
-            _scan_sched_entity(running_wg)->in_queue()->should_yield(running_wg, time_spent_ns)) {
+            _scan_sched_entity(running_wg)->in_queue()->should_yield(running_wg, time_spent_ns, worker_id)) {
             break;
         }
     }

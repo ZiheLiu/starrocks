@@ -787,6 +787,9 @@ CONF_Int64(pipeline_scan_queue_mode, "0");
 CONF_Int64(pipeline_scan_queue_level_time_slice_base_ns, "100000000");
 CONF_Double(pipeline_scan_queue_ratio_of_adjacent_queue, "1.5");
 
+CONF_mInt32(resource_group_max_cpu_cores, "8");
+CONF_mInt64(resource_group_log_time_ns, "10000000");
+
 CONF_Int32(pipeline_analytic_max_buffer_size, "128");
 CONF_Int32(pipeline_analytic_removable_chunk_num, "128");
 CONF_Bool(pipeline_analytic_enable_streaming_process, "true");

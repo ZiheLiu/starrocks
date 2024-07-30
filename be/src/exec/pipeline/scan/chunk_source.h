@@ -53,7 +53,7 @@ public:
     bool has_next_chunk() const { return _status.ok(); }
 
     Status buffer_next_batch_chunks_blocking(RuntimeState* state, size_t batch_size,
-                                             const workgroup::WorkGroup* running_wg);
+                                             const workgroup::WorkGroup* running_wg, uint32_t worker_id);
 
     // Counters of scan
     int64_t get_cpu_time_spent() const { return _cpu_time_spent_ns; }

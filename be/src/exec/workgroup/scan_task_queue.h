@@ -110,6 +110,7 @@ public:
     int priority = 0;
     std::shared_ptr<ScanTaskGroup> task_group = nullptr;
     RuntimeProfile::HighWaterMarkCounter* peak_scan_task_queue_size_counter = nullptr;
+    std::shared_ptr<uint32_t> worker_id = std::make_shared<uint32_t>(0);
 };
 
 /// There are three types of ScanTaskQueue:
@@ -126,7 +127,7 @@ public:
 
     virtual void close() = 0;
 
-    virtual StatusOr<ScanTask> take() = 0;
+    virtual StatusOr<ScanTask> take(uint32_t worker_id) = 0;
     virtual bool try_offer(ScanTask task) = 0;
     virtual void force_put(ScanTask task) = 0;
 
@@ -134,7 +135,7 @@ public:
     bool empty() const { return size() == 0; }
 
     virtual void update_statistics(ScanTask& task, int64_t runtime_ns) = 0;
-    virtual bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const = 0;
+    virtual bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns, uint32_t worker_id = 0) const = 0;
 };
 
 class MultiLevelFeedScanTaskQueue final : public ScanTaskQueue {
@@ -144,14 +145,16 @@ public:
 
     void close() override;
 
-    StatusOr<ScanTask> take() override;
+    StatusOr<ScanTask> take(uint32_t worker_id) override;
     bool try_offer(ScanTask task) override;
     void force_put(ScanTask task) override;
 
     size_t size() const override { return _num_tasks; }
 
     void update_statistics(ScanTask& task, int64_t runtime_ns) override;
-    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override { return false; }
+    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns, uint32_t worker_id = 0) const override {
+        return false;
+    }
 
     static constexpr int NUM_QUEUES = 8;
     static double ratio_of_adjacent_queue() { return config::pipeline_scan_queue_ratio_of_adjacent_queue; }
@@ -191,14 +194,16 @@ public:
 
     void close() override { _queue.shutdown(); }
 
-    StatusOr<ScanTask> take() override;
+    StatusOr<ScanTask> take(uint32_t worker_id) override;
     bool try_offer(ScanTask task) override;
     void force_put(ScanTask task) override;
 
     size_t size() const override { return _queue.get_size(); }
 
     void update_statistics(ScanTask& task, int64_t runtime_ns) override {}
-    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override { return false; }
+    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns, uint32_t worker_id = 0) const override {
+        return false;
+    }
 
 private:
     BlockingPriorityQueue<ScanTask> _queue;
@@ -213,22 +218,25 @@ public:
 
     void close() override;
 
-    StatusOr<ScanTask> take() override;
+    StatusOr<ScanTask> take(uint32_t worker_id) override;
     bool try_offer(ScanTask task) override;
     void force_put(ScanTask task) override;
 
     size_t size() const override { return _num_tasks.load(std::memory_order_acquire); }
 
     void update_statistics(ScanTask& task, int64_t runtime_ns) override;
-    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns) const override;
+    bool should_yield(const WorkGroup* wg, int64_t unaccounted_runtime_ns, uint32_t worker_id = 0) const override;
 
 private:
     /// These methods should be guarded by the outside _global_mutex.
     workgroup::WorkGroupScanSchedEntity* _take_next_wg();
+    workgroup::WorkGroupScanSchedEntity* _take_next_wg(uint32_t worker_id);
     // _update_min_wg is invoked when an entity is enqueued or dequeued from _wg_entities.
     void _update_min_wg();
     // Apply hard bandwidth control to non-short-query workgroups, when there are queries of the short-query workgroup.
     bool _throttled(const workgroup::WorkGroupScanSchedEntity* wg_entity, int64_t unaccounted_runtime_ns = 0) const;
+    bool _throttled(const workgroup::WorkGroupScanSchedEntity* wg_entity, uint32_t worker_id,
+                    int64_t unaccounted_runtime_ns = 0) const;
     // _update_bandwidth_control_period resets period_end_ns and period_usage_ns, when a new period comes.
     // It is invoked when taking a task to execute or an executed task is finished.
     void _update_bandwidth_control_period();

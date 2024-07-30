@@ -184,6 +184,17 @@ void PipelineDriverPoller::add_blocked_driver(const DriverRawPtr driver) {
     _cond.notify_one();
 }
 
+void PipelineDriverPoller::add_blocked_driver(const std::vector<DriverRawPtr>& drivers) {
+    std::unique_lock<std::mutex> lock(_global_mutex);
+    _blocked_driver_queue_len += drivers.size();
+    for (auto* driver : drivers) {
+        _blocked_drivers.push_back(driver);
+        driver->_pending_timer_sw->reset();
+        driver->driver_acct().clean_local_queue_infos();
+    }
+    _cond.notify_one();
+}
+
 void PipelineDriverPoller::park_driver(const DriverRawPtr driver) {
     std::unique_lock<std::mutex> lock(_global_parked_mutex);
     VLOG_ROW << "Add to parked driver:" << driver->to_readable_string();

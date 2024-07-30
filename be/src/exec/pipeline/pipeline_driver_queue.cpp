@@ -80,7 +80,7 @@ void QuerySharedDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
     put_back(driver);
 }
 
-StatusOr<DriverRawPtr> QuerySharedDriverQueue::take(const bool block) {
+StatusOr<DriverRawPtr> QuerySharedDriverQueue::take(const bool block, const uint32_t worker_id) {
     // -1 means no candidates; else has candidate.
     int queue_idx = -1;
     double target_accu_time = 0;
@@ -222,23 +222,42 @@ void WorkGroupDriverQueue::close() {
 }
 
 void WorkGroupDriverQueue::put_back(const DriverRawPtr driver) {
+    MonotonicStopWatch watch;
+    watch.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
+    const auto elapsed_time = watch.elapsed_time();
+    if (elapsed_time >= config::resource_group_log_time_ns) {
+        LOG(WARNING) << "[TEST] put_back to driver_queue lock slow, elapsed_time=" << elapsed_time;
+    }
+
     _put_back<false>(driver);
 }
 
 void WorkGroupDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
+    MonotonicStopWatch watch;
+    watch.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
-    for (const auto driver : drivers) {
-        _put_back<false>(driver);
+    const auto elapsed_time = watch.elapsed_time();
+    if (elapsed_time >= config::resource_group_log_time_ns) {
+        LOG(WARNING) << "[TEST] put_back to driver_queue lock slow, elapsed_time=" << elapsed_time;
     }
+
+    _put_back<false>(drivers);
 }
 
 void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
+    MonotonicStopWatch watch;
+    watch.start();
     std::lock_guard<std::mutex> lock(_global_mutex);
+    const auto elapsed_time = watch.elapsed_time();
+    if (elapsed_time >= config::resource_group_log_time_ns) {
+        LOG(WARNING) << "[TEST] put_back to driver_queue lock slow, elapsed_time=" << elapsed_time;
+    }
+
     _put_back<true>(driver);
 }
 
-StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
+StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block, const uint32_t worker_id) {
     std::unique_lock<std::mutex> lock(_global_mutex);
 
     workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
@@ -254,7 +273,7 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
                 return nullptr;
             }
             _cv.wait(lock);
-        } else if (wg_entity = _take_next_wg(); wg_entity == nullptr) {
+        } else if (wg_entity = _take_next_wg(worker_id); wg_entity == nullptr) {
             int64_t cur_ns = MonotonicNanos();
             int64_t sleep_ns = _bandwidth_control_period_end_ns - cur_ns;
             if (sleep_ns <= 0) {
@@ -275,9 +294,10 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
         _dequeue_workgroup(wg_entity);
     }
 
-    auto maybe_driver = wg_entity->queue()->take(block);
+    auto maybe_driver = wg_entity->queue()->take(block, worker_id);
     if (maybe_driver.ok() && maybe_driver.value() != nullptr) {
         --_num_drivers;
+        maybe_driver.value()->set_worker_id(worker_id);
     }
     return maybe_driver;
 }
@@ -319,6 +339,10 @@ void WorkGroupDriverQueue::update_statistics(const DriverRawPtr driver) {
         _update_min_wg();
     }
 
+    const auto worker_id = driver->worker_id();
+    wg_entity->unaccounted_runtime_ns -= wg_entity->unaccounted_runtime_ns_per_worker[worker_id];
+    wg_entity->unaccounted_runtime_ns_per_worker[worker_id] = 0;
+
     wg_entity->queue()->update_statistics(driver);
 }
 
@@ -329,18 +353,29 @@ size_t WorkGroupDriverQueue::size() const {
 }
 
 bool WorkGroupDriverQueue::should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const {
-    if (_throttled(driver->workgroup()->driver_sched_entity(), unaccounted_runtime_ns)) {
+    const auto worker_id = driver->worker_id();
+    if (worker_id < config::resource_group_max_cpu_cores) {
+        return false;
+    }
+
+    auto* wg_entity = driver->workgroup()->driver_sched_entity();
+
+    wg_entity->unaccounted_runtime_ns +=
+            unaccounted_runtime_ns - wg_entity->unaccounted_runtime_ns_per_worker[worker_id];
+    wg_entity->unaccounted_runtime_ns_per_worker[worker_id] = unaccounted_runtime_ns;
+    unaccounted_runtime_ns = wg_entity->unaccounted_runtime_ns;
+
+    if (_throttled(wg_entity, unaccounted_runtime_ns)) {
         return true;
     }
 
     // Return true, if the minimum-vruntime workgroup is not current workgroup anymore.
-    auto* wg_entity = driver->workgroup()->driver_sched_entity();
     auto* min_entity = _min_wg_entity.load();
     return min_entity != wg_entity && min_entity &&
            min_entity->vruntime_ns() < wg_entity->vruntime_ns() + unaccounted_runtime_ns / wg_entity->cpu_limit();
 }
 
-bool WorkGroupDriverQueue::_throttled(const workgroup::WorkGroupDriverSchedEntity* wg_entity,
+bool WorkGroupDriverQueue::_throttled(workgroup::WorkGroupDriverSchedEntity* wg_entity,
                                       int64_t unaccounted_runtime_ns) const {
     if (wg_entity->is_sq_wg()) {
         return false;
@@ -349,8 +384,38 @@ bool WorkGroupDriverQueue::_throttled(const workgroup::WorkGroupDriverSchedEntit
         return false;
     }
 
+    if (wg_entity->workgroup()->is_throttled()) {
+        return true;
+    }
+
     int64_t bandwidth_usage = unaccounted_runtime_ns + _bandwidth_usage_ns;
-    return bandwidth_usage >= _bandwidth_quota_ns();
+    const bool is_throttled = bandwidth_usage >= _bandwidth_quota_ns();
+    if (is_throttled) {
+        wg_entity->workgroup()->set_throttled(true);
+    }
+    return is_throttled;
+}
+
+bool WorkGroupDriverQueue::_throttled(workgroup::WorkGroupDriverSchedEntity* wg_entity, uint32_t worker_id,
+                                      int64_t unaccounted_runtime_ns) const {
+    if (wg_entity->is_sq_wg()) {
+        return false;
+    }
+
+    if (worker_id < config::resource_group_max_cpu_cores) {
+        return true;
+    }
+
+    if (wg_entity->workgroup()->is_throttled()) {
+        return true;
+    }
+
+    int64_t bandwidth_usage = unaccounted_runtime_ns + _bandwidth_usage_ns;
+    const bool is_throttled = bandwidth_usage >= _bandwidth_quota_ns();
+    if (is_throttled) {
+        wg_entity->workgroup()->set_throttled(true);
+    }
+    return is_throttled;
 }
 
 template <bool from_executor>
@@ -371,6 +436,32 @@ void WorkGroupDriverQueue::_put_back(const DriverRawPtr driver) {
     _cv.notify_one();
 }
 
+template <bool from_executor>
+void WorkGroupDriverQueue::_put_back(const std::vector<DriverRawPtr>& drivers) {
+    if (drivers.empty()) {
+        return;
+    }
+
+    auto* wg_entity = drivers[0]->workgroup()->driver_sched_entity();
+    wg_entity->set_in_queue(this);
+    wg_entity->queue()->put_back(drivers);
+
+    drivers[0]->update_peak_driver_queue_size_counter(_num_drivers);
+    for (auto* driver : drivers) {
+        driver->set_in_queue(this);
+    }
+
+    if (!_wg_entities.contains(wg_entity)) {
+        _enqueue_workgroup<from_executor>(wg_entity);
+    }
+
+    _num_drivers += drivers.size();
+
+    for (auto* _ : drivers) {
+        _cv.notify_one();
+    }
+}
+
 void WorkGroupDriverQueue::_update_min_wg() {
     auto* min_wg_entity = _take_next_wg();
     if (min_wg_entity == nullptr) {
@@ -384,6 +475,18 @@ workgroup::WorkGroupDriverSchedEntity* WorkGroupDriverQueue::_take_next_wg() {
     workgroup::WorkGroupDriverSchedEntity* min_unthrottled_wg_entity = nullptr;
     for (auto* wg_entity : _wg_entities) {
         if (!_throttled(wg_entity)) {
+            min_unthrottled_wg_entity = wg_entity;
+            break;
+        }
+    }
+
+    return min_unthrottled_wg_entity;
+}
+
+workgroup::WorkGroupDriverSchedEntity* WorkGroupDriverQueue::_take_next_wg(uint32_t worker_id) {
+    workgroup::WorkGroupDriverSchedEntity* min_unthrottled_wg_entity = nullptr;
+    for (auto* wg_entity : _wg_entities) {
+        if (!_throttled(wg_entity, worker_id)) {
             min_unthrottled_wg_entity = wg_entity;
             break;
         }
@@ -440,6 +543,12 @@ void WorkGroupDriverQueue::_update_bandwidth_control_period() {
             _bandwidth_usage_ns -= bandwidth_quota;
         } else {
             _bandwidth_usage_ns = bandwidth_quota;
+        }
+
+        if (_bandwidth_usage_ns < bandwidth_quota) {
+            for (auto* wg_entity : _wg_entities) {
+                wg_entity->workgroup()->set_throttled(false);
+            }
         }
     }
 }

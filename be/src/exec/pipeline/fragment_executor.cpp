@@ -807,6 +807,15 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
 }
 
 Status FragmentExecutor::execute(ExecEnv* exec_env) {
+    auto* profile = _fragment_ctx->runtime_state()->runtime_profile();
+    auto* prepare_instance_timer = ADD_TIMER(profile, "FragmentInstancePrepareTime");
+    SCOPED_TIMER(prepare_instance_timer);
+
+    auto* prepare_driver_timer =
+            ADD_CHILD_TIMER_THESHOLD(profile, "prepare-pipeline-driver", "FragmentInstancePrepareTime", 10_ms);
+    auto* submit_driver_timer =
+            ADD_CHILD_TIMER_THESHOLD(profile, "submit-pipeline-driver", "FragmentInstancePrepareTime", 10_ms);
+
     bool prepare_success = false;
     DeferOp defer([this, &prepare_success]() {
         if (!prepare_success) {
@@ -814,18 +823,13 @@ Status FragmentExecutor::execute(ExecEnv* exec_env) {
         }
     });
 
-    auto* profile = _fragment_ctx->runtime_state()->runtime_profile();
-    auto* prepare_instance_timer = ADD_TIMER(profile, "FragmentInstancePrepareTime");
-    auto* prepare_driver_timer =
-            ADD_CHILD_TIMER_THESHOLD(profile, "prepare-pipeline-driver", "FragmentInstancePrepareTime", 10_ms);
-
     {
-        SCOPED_TIMER(prepare_instance_timer);
         SCOPED_TIMER(prepare_driver_timer);
         RETURN_IF_ERROR(_fragment_ctx->prepare_active_drivers());
     }
     prepare_success = true;
 
+    SCOPED_TIMER(submit_driver_timer);
     DCHECK(_fragment_ctx->enable_resource_group());
     auto* executor = exec_env->wg_driver_executor();
     RETURN_IF_ERROR(_fragment_ctx->submit_active_drivers(executor));

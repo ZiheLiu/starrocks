@@ -67,7 +67,10 @@ Status NormalExecutionGroup::prepare_drivers(RuntimeState* state) {
 
 void NormalExecutionGroup::submit_active_drivers() {
     VLOG_QUERY << "submit_active_drivers:" << to_string();
-    return for_each_active_driver(_pipelines, [this](const DriverPtr& driver) { _executor->submit(driver.get()); });
+    std::vector<DriverRawPtr> drivers;
+    for_each_active_driver(_pipelines,
+                           [this, &drivers](const DriverPtr& driver) { drivers.emplace_back(driver.get()); });
+    return _executor->submit(drivers);
 }
 
 void NormalExecutionGroup::add_pipeline(PipelineRawPtr pipeline) {

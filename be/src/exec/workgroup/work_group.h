@@ -87,6 +87,9 @@ public:
     void incr_runtime_ns(int64_t runtime_ns);
     void adjust_runtime_ns(int64_t runtime_ns);
 
+    std::vector<int64_t> unaccounted_runtime_ns_per_worker = std::vector<int64_t>(16, 0);
+    std::atomic<int64_t> unaccounted_runtime_ns{0};
+
 private:
     WorkGroup* _workgroup; // The workgroup owning this entity.
 
@@ -205,6 +208,9 @@ public:
     void incr_cpu_runtime_ns(int64_t delta_ns) { _cpu_runtime_ns += delta_ns; }
     int64_t cpu_runtime_ns() const { return _cpu_runtime_ns; }
 
+    void set_throttled(bool throttled) { _is__throttled.store(throttled, std::memory_order_release); }
+    bool is_throttled() const { return _is__throttled.load(std::memory_order_acquire); }
+
     static constexpr int64 DEFAULT_WG_ID = 0;
     static constexpr int64 DEFAULT_MV_WG_ID = 1;
     static constexpr int64 DEFAULT_VERSION = 0;
@@ -249,6 +255,8 @@ private:
     std::atomic<size_t> _acc_num_drivers = 0;
     int64_t _vacuum_ttl = std::numeric_limits<int64_t>::max();
 
+    std::atomic<bool> _is__throttled{false};
+
     // Metrics of this workgroup
     std::atomic<int64_t> _num_running_queries = 0;
     std::atomic<int64_t> _num_total_queries = 0;
@@ -281,7 +289,7 @@ public:
 
     void incr_num_running_sq_drivers() { _num_running_sq_drivers++; }
     void decr_num_running_sq_drivers() { _num_running_sq_drivers--; }
-    bool is_sq_wg_running() const { return _num_running_sq_drivers > 0; }
+    bool is_sq_wg_running() const { return true; }
     size_t normal_workgroup_cpu_hard_limit() const;
 
     void update_metrics();

@@ -41,6 +41,7 @@ public:
     virtual void initialize(int32_t num_threads) {}
     virtual void change_num_threads(int32_t num_threads) {}
     virtual void submit(DriverRawPtr driver) = 0;
+    virtual void submit(const std::vector<DriverRawPtr>& driver) = 0;
     virtual void cancel(DriverRawPtr driver) = 0;
     virtual void close() = 0;
 
@@ -74,6 +75,7 @@ public:
     void initialize(int32_t num_threads) override;
     void change_num_threads(int32_t num_threads) override;
     void submit(DriverRawPtr driver) override;
+    void submit(const std::vector<DriverRawPtr>& driver) override;
     void cancel(DriverRawPtr driver) override;
     void close() override;
     void report_exec_state(QueryContext* query_ctx, FragmentContext* fragment_ctx, const Status& status, bool done,
@@ -90,7 +92,7 @@ public:
 private:
     using Base = FactoryMethod<DriverExecutor, GlobalDriverExecutor>;
     void _worker_thread();
-    StatusOr<DriverRawPtr> _get_next_driver(std::queue<DriverRawPtr>& local_driver_queue);
+    StatusOr<DriverRawPtr> _get_next_driver(std::queue<DriverRawPtr>& local_driver_queue, uint32_t worker_id);
     void _finalize_driver(DriverRawPtr driver, RuntimeState* runtime_state, DriverState state);
     RuntimeProfile* _build_merged_instance_profile(QueryContext* query_ctx, FragmentContext* fragment_ctx,
                                                    ObjectPool* obj_pool);

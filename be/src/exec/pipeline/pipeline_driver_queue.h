@@ -35,7 +35,7 @@ public:
     // *from_executor* means that the executor thread puts the driver back to the queue.
     virtual void put_back_from_executor(const DriverRawPtr driver) = 0;
 
-    virtual StatusOr<DriverRawPtr> take(const bool block) = 0;
+    virtual StatusOr<DriverRawPtr> take(const bool block, const uint32_t worker_id) = 0;
     virtual void cancel(DriverRawPtr driver) = 0;
 
     // Update statistics of the driver's workgroup,
@@ -109,7 +109,7 @@ public:
     void update_statistics(const DriverRawPtr driver) override;
 
     // Return cancelled status, if the queue is closed.
-    StatusOr<DriverRawPtr> take(const bool block) override;
+    StatusOr<DriverRawPtr> take(const bool block, const uint32_t worker_id) override;
 
     void cancel(DriverRawPtr driver) override;
 
@@ -163,7 +163,7 @@ public:
     // Return cancelled status, if the queue is closed.
     // Firstly, select the work group with the minimum vruntime.
     // Secondly, select the proper driver from the driver queue of this work group.
-    StatusOr<DriverRawPtr> take(const bool block) override;
+    StatusOr<DriverRawPtr> take(const bool block, const uint32_t worker_id) override;
 
     void cancel(DriverRawPtr driver) override;
 
@@ -177,12 +177,17 @@ private:
     /// These methods should be guarded by the outside _global_mutex.
     template <bool from_executor>
     void _put_back(const DriverRawPtr driver);
+    template <bool from_executor>
+    void _put_back(const std::vector<DriverRawPtr>& drivers);
     workgroup::WorkGroupDriverSchedEntity* _take_next_wg();
+    workgroup::WorkGroupDriverSchedEntity* _take_next_wg(uint32_t worker_id);
     // _update_min_wg is invoked when an entity is enqueued or dequeued from _wg_entities.
     void _update_min_wg();
     // Apply hard bandwidth control to non-short-query workgroups, when there are queries of the short-query workgroup.
-    bool _throttled(const workgroup::WorkGroupDriverSchedEntity* wg_entity, int64_t unaccounted_runtime_ns = 0) const;
+    bool _throttled(workgroup::WorkGroupDriverSchedEntity* wg_entity, int64_t unaccounted_runtime_ns = 0) const;
     // _update_bandwidth_control_period resets period_end_ns and period_usage_ns, when a new period comes.
+    bool _throttled(workgroup::WorkGroupDriverSchedEntity* wg_entity, uint32_t worker_id,
+                    int64_t unaccounted_runtime_ns = 0) const;
     // It is invoked when taking a task to execute or an executed task is finished.
     void _update_bandwidth_control_period();
     template <bool from_executor>

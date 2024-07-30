@@ -90,7 +90,7 @@ void GlobalDriverExecutor::_worker_thread() {
             current_thread->set_idle(true);
         }
 
-        auto maybe_driver = _get_next_driver(local_driver_queue);
+        auto maybe_driver = _get_next_driver(local_driver_queue, worker_id);
         if (maybe_driver.status().is_cancelled()) {
             return;
         }
@@ -221,7 +221,8 @@ void GlobalDriverExecutor::_worker_thread() {
     }
 }
 
-StatusOr<DriverRawPtr> GlobalDriverExecutor::_get_next_driver(std::queue<DriverRawPtr>& local_driver_queue) {
+StatusOr<DriverRawPtr> GlobalDriverExecutor::_get_next_driver(std::queue<DriverRawPtr>& local_driver_queue,
+                                                              uint32_t worker_id) {
     DriverRawPtr driver = nullptr;
     if (!local_driver_queue.empty()) {
         const size_t local_driver_num = local_driver_queue.size();
@@ -245,7 +246,7 @@ StatusOr<DriverRawPtr> GlobalDriverExecutor::_get_next_driver(std::queue<DriverR
     // If local driver queue is not empty, we cannot block here. Otherwise these local drivers may not be scheduled until
     // ready queue is not empty.
     const bool need_block = local_driver_queue.empty();
-    return this->_driver_queue->take(need_block);
+    return this->_driver_queue->take(need_block, worker_id);
 }
 
 void GlobalDriverExecutor::submit(DriverRawPtr driver) {
@@ -273,6 +274,46 @@ void GlobalDriverExecutor::submit(DriverRawPtr driver) {
             this->_driver_queue->put_back(driver);
         }
     }
+}
+
+void GlobalDriverExecutor::submit(const std::vector<DriverRawPtr>& drivers) {
+    std::vector<DriverRawPtr> blocking_drivers;
+    blocking_drivers.reserve(drivers.size());
+    std::vector<DriverRawPtr> ready_drivers;
+    ready_drivers.reserve(drivers.size());
+
+    for (auto* driver : drivers) {
+        driver->start_timers();
+
+        if (driver->is_precondition_block()) {
+            driver->set_driver_state(DriverState::PRECONDITION_BLOCK);
+            driver->mark_precondition_not_ready();
+            blocking_drivers.emplace_back(driver);
+            // this->_blocked_driver_poller->add_blocked_driver(driver);
+        } else {
+            if (driver->has_precondition() && !driver->precondition_prepared()) driver->mark_precondition_ready();
+
+            driver->submit_operators();
+
+            // Try to add the driver to poller first.
+            if (!driver->source_operator()->is_finished() && !driver->source_operator()->has_output()) {
+                driver->set_driver_state(DriverState::INPUT_EMPTY);
+                blocking_drivers.emplace_back(driver);
+                // if (typeid(*driver) == typeid(StreamPipelineDriver)) {
+                //     driver->set_driver_state(DriverState::EPOCH_FINISH);
+                //     this->_blocked_driver_poller->park_driver(driver);
+                // } else {
+                //     driver->set_driver_state(DriverState::INPUT_EMPTY);
+                //     this->_blocked_driver_poller->add_blocked_driver(driver);
+                // }
+            } else {
+                ready_drivers.emplace_back(driver);
+            }
+        }
+    }
+
+    this->_blocked_driver_poller->add_blocked_driver(blocking_drivers);
+    this->_driver_queue->put_back(ready_drivers);
 }
 
 void GlobalDriverExecutor::cancel(DriverRawPtr driver) {

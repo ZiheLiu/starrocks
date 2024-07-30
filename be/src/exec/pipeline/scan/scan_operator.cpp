@@ -170,6 +170,11 @@ bool ScanOperator::has_output() const {
         return false;
     }
 
+    // auto* wg_queue = _workgroup->scan_sched_entity()->in_queue();
+    // if (wg_queue != nullptr && wg_queue->should_yield(_workgroup.get(), 0, 0)) {
+    //     return false;
+    // }
+
     // Can pick up more morsels or submit more tasks
     if (!_morsel_queue->empty()) {
         auto status_or_is_ready = _morsel_queue->ready_for_next();
@@ -178,10 +183,18 @@ bool ScanOperator::has_output() const {
         }
     }
 
+    std::vector<int> need_check_ids;
     for (int i = 0; i < _io_tasks_per_scan_operator; ++i) {
+        if (_chunk_sources[i] != nullptr && !_is_io_task_running[i]) {
+            need_check_ids.emplace_back(i);
+        }
+    }
+    if (!need_check_ids.empty()) {
         std::shared_lock guard(_task_mutex);
-        if (_chunk_sources[i] != nullptr && !_is_io_task_running[i] && _chunk_sources[i]->has_next_chunk()) {
-            return true;
+        for (const int i : need_check_ids) {
+            if (_chunk_sources[i] != nullptr && !_is_io_task_running[i] && _chunk_sources[i]->has_next_chunk()) {
+                return true;
+            }
         }
     }
 
@@ -401,8 +414,8 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
     task.task_group = down_cast<const ScanOperatorFactory*>(_factory)->scan_task_group();
     task.peak_scan_task_queue_size_counter = _peak_scan_task_queue_size_counter;
     const auto io_task_start_nano = MonotonicNanos();
-    task.work_function = [wp = _query_ctx, this, state, chunk_source_index, query_trace_ctx, driver_id,
-                          io_task_start_nano](auto& ctx) {
+    task.work_function = [wp = _query_ctx, worker_id = task.worker_id, this, state, chunk_source_index, query_trace_ctx,
+                          driver_id, io_task_start_nano](auto& ctx) {
         if (auto sp = wp.lock()) {
             // set driver_id/query_id/fragment_instance_id to thread local
             // driver_id will be used in some Expr such as regex_replace
@@ -430,7 +443,8 @@ Status ScanOperator::_trigger_next_scan(RuntimeState* state, int chunk_source_in
             int64_t prev_cpu_time = chunk_source->get_cpu_time_spent();
             int64_t prev_scan_rows = chunk_source->get_scan_rows();
             int64_t prev_scan_bytes = chunk_source->get_scan_bytes();
-            auto status = chunk_source->buffer_next_batch_chunks_blocking(state, kIOTaskBatchSize, _workgroup.get());
+            auto status = chunk_source->buffer_next_batch_chunks_blocking(state, kIOTaskBatchSize, _workgroup.get(),
+                                                                          *worker_id);
 
             if (!status.ok() && !status.is_end_of_file()) {
                 LOG(ERROR) << "scan fragment " << print_id(state->fragment_instance_id()) << " driver "

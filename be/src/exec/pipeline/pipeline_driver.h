@@ -455,6 +455,9 @@ public:
         return source_operator()->is_epoch_finishing() || sink_operator()->is_epoch_finishing();
     }
 
+    void set_worker_id(uint32_t worker_id) { _worker_id = worker_id; }
+    uint32_t worker_id() const { return _worker_id; }
+
 protected:
     PipelineDriver()
             : _operators(),
@@ -525,6 +528,8 @@ protected:
     // The index of QuerySharedDriverQueue._queues which this driver belongs to.
     size_t _driver_queue_level = 0;
     std::atomic<bool> _in_ready_queue{false};
+
+    uint32_t _worker_id = 0;
 
     // metrics
     RuntimeProfile::Counter* _total_timer = nullptr;
