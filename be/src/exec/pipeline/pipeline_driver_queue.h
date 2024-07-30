@@ -224,6 +224,7 @@ private:
 
     // Cache the minimum entity, used to check should_yield() without lock.
     std::atomic<workgroup::WorkGroupDriverSchedEntity*> _min_wg_entity = nullptr;
+    std::set<workgroup::WorkGroup*> _throttled_wgs;
 
     // Hard bandwidth control to non-short-query workgroups.
     // - The control period is 100ms, and the total quota of non-short-query workgroups is 100ms*(vCPUs-rt_wg.cpu_limit).

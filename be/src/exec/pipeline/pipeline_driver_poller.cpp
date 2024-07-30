@@ -15,6 +15,8 @@
 #include "pipeline_driver_poller.h"
 
 #include <chrono>
+
+#include "exec/workgroup/work_group.h"
 namespace starrocks::pipeline {
 
 void PipelineDriverPoller::start() {
@@ -128,6 +130,10 @@ void PipelineDriverPoller::run_internal() {
                     remove_blocked_driver(_local_blocked_drivers, driver_it);
                     ready_drivers.emplace_back(driver);
                 } else {
+                    if (driver->workgroup()->is_throttled()) {
+                        ++driver_it;
+                    }
+
                     auto status_or_is_not_blocked = driver->is_not_blocked();
                     if (!status_or_is_not_blocked.ok()) {
                         driver->fragment_ctx()->cancel(status_or_is_not_blocked.status());

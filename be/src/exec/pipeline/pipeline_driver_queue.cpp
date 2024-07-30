@@ -321,6 +321,10 @@ void WorkGroupDriverQueue::update_statistics(const DriverRawPtr driver) {
     int64_t runtime_ns = driver->driver_acct().get_last_time_spent();
     auto* wg_entity = driver->workgroup()->driver_sched_entity();
 
+    if (wg_entity->workgroup()->is_throttled()) {
+        _throttled_wgs.emplace(wg_entity->workgroup());
+    }
+
     // Update bandwidth control information.
     _update_bandwidth_control_period();
     if (!wg_entity->is_sq_wg()) {
@@ -546,9 +550,10 @@ void WorkGroupDriverQueue::_update_bandwidth_control_period() {
         }
 
         if (_bandwidth_usage_ns < bandwidth_quota) {
-            for (auto* wg_entity : _wg_entities) {
-                wg_entity->workgroup()->set_throttled(false);
+            for (auto* wg : _throttled_wgs) {
+                wg->set_throttled(false);
             }
+            _throttled_wgs.clear();
         }
     }
 }

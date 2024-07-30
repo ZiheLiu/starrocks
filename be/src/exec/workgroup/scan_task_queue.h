@@ -271,6 +271,8 @@ private:
     // MUST guarantee the entity is not in set, when updating its vruntime.
     WorkgroupSet _wg_entities;
 
+    std::set<WorkGroup*> _throttled_wgs;
+
     size_t _sum_cpu_limit = 0;
 
     // Cache the minimum entity, used to check should_yield() without lock.

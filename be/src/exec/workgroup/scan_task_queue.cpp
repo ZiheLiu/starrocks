@@ -258,6 +258,10 @@ void WorkGroupScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_n
         _bandwidth_usage_ns += runtime_ns;
     }
 
+    if (wg->is_throttled()) {
+        _throttled_wgs.emplace(wg);
+    }
+
     // Update sched entity information.
     bool is_in_queue = _wg_entities.find(wg_entity) != _wg_entities.end();
     if (is_in_queue) {
@@ -435,9 +439,10 @@ void WorkGroupScanTaskQueue::_update_bandwidth_control_period() {
         }
 
         if (_bandwidth_usage_ns < bandwidth_quota) {
-            for (auto* wg_entity : _wg_entities) {
-                wg_entity->workgroup()->set_throttled(false);
+            for (auto* wg : _throttled_wgs) {
+                wg->set_throttled(false);
             }
+            _throttled_wgs.clear();
         }
     }
 }
