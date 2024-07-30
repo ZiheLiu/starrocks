@@ -74,6 +74,11 @@ void PipelineDriverPoller::run_internal() {
             while (driver_it != _local_blocked_drivers.end()) {
                 auto* driver = *driver_it;
 
+                if (driver->workgroup()->is_throttled()) {
+                    ++driver_it;
+                    continue;
+                }
+
                 if (!driver->is_query_never_expired() && driver->query_ctx()->is_query_expired()) {
                     // there are not any drivers belonging to a query context can make progress for an expiration period
                     // indicates that some fragments are missing because of failed exec_plan_fragment invocation. in
@@ -130,11 +135,6 @@ void PipelineDriverPoller::run_internal() {
                     remove_blocked_driver(_local_blocked_drivers, driver_it);
                     ready_drivers.emplace_back(driver);
                 } else {
-                    if (driver->workgroup()->is_throttled()) {
-                        ++driver_it;
-                        continue;
-                    }
-
                     auto status_or_is_not_blocked = driver->is_not_blocked();
                     if (!status_or_is_not_blocked.ok()) {
                         driver->fragment_ctx()->cancel(status_or_is_not_blocked.status());
