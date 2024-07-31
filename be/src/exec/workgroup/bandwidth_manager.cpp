@@ -196,7 +196,7 @@ void BandwidthManager::_run_internal() {
 
         const auto end_ns = cur_ns + PERIOD_NS;
         _end_ns = end_ns;
-        const int64_t sleep_ns = std::clamp(cur_ns - MonotonicNanos(), 1L, PERIOD_NS);
+        const int64_t sleep_ns = std::clamp(end_ns - MonotonicNanos(), 1L, PERIOD_NS);
         _cv.wait_for(lock, std::chrono::nanoseconds(sleep_ns));
     }
 }
