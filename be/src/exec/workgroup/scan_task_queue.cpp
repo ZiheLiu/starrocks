@@ -15,6 +15,7 @@
 #include "exec/workgroup/scan_task_queue.h"
 
 #include "common/status.h"
+#include "exec/workgroup/bandwidth_manager.h"
 #include "exec/workgroup/work_group.h"
 #include "exec/workgroup/work_group_fwd.h"
 
@@ -44,6 +45,12 @@ void PriorityScanTaskQueue::force_put(ScanTask task) {
         task.peak_scan_task_queue_size_counter->set(_queue.get_size());
     }
     _queue.force_put(std::move(task));
+}
+
+void PriorityScanTaskQueue::force_put(std::vector<ScanTask>&& tasks) {
+    for (auto& task : tasks) {
+        force_put(std::move(task));
+    }
 }
 
 /// MultiLevelFeedScanTaskQueue.
@@ -125,6 +132,12 @@ bool MultiLevelFeedScanTaskQueue::try_offer(ScanTask task) {
     return true;
 }
 
+void MultiLevelFeedScanTaskQueue::force_put(std::vector<ScanTask>&& tasks) {
+    for (auto& task : tasks) {
+        force_put(std::move(task));
+    }
+}
+
 void MultiLevelFeedScanTaskQueue::force_put(ScanTask task) {
     (void)try_offer(std::move(task));
 }
@@ -204,7 +217,34 @@ StatusOr<ScanTask> WorkGroupScanTaskQueue::take() {
     return wg_entity->queue()->take();
 }
 
+void WorkGroupScanTaskQueue::force_put(std::vector<ScanTask>&& tasks) {
+    std::lock_guard<std::mutex> lock(_global_mutex);
+
+    for (auto& task : tasks) {
+        if (task.peak_scan_task_queue_size_counter != nullptr) {
+            task.peak_scan_task_queue_size_counter->set(_num_tasks);
+        }
+
+        auto* wg_entity = _sched_entity(task.workgroup);
+        wg_entity->set_in_queue(this);
+        wg_entity->queue()->force_put(std::move(task));
+
+        if (_wg_entities.find(wg_entity) == _wg_entities.end()) {
+            _enqueue_workgroup(wg_entity);
+        }
+    }
+
+    _num_tasks += tasks.size();
+    for (int i = 0; i < tasks.size(); i++) {
+        _cv.notify_one();
+    }
+}
+
 bool WorkGroupScanTaskQueue::try_offer(ScanTask task) {
+    if (ExecEnv::GetInstance()->bw_manager()->try_add_task(this, task)) {
+        return true;
+    }
+
     std::lock_guard<std::mutex> lock(_global_mutex);
 
     if (task.peak_scan_task_queue_size_counter != nullptr) {

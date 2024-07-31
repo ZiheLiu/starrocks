@@ -41,4 +41,6 @@ using RunningQueryTokenPtr = std::unique_ptr<RunningQueryToken>;
 struct ScanTask;
 struct ScanTaskGroup;
 
+class BandwidthManager;
+
 } // namespace starrocks::workgroup

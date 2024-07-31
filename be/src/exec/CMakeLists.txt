@@ -286,6 +286,7 @@ set(EXEC_FILES
     workgroup/work_group.cpp
     workgroup/scan_executor.cpp
     workgroup/scan_task_queue.cpp
+    workgroup/bandwidth_manager.cpp
     query_cache/multilane_operator.cpp
     query_cache/cache_operator.cpp
     query_cache/cache_manager.cpp

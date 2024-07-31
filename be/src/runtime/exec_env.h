@@ -246,11 +246,11 @@ public:
     }
 
     // only used for test
-    ExecEnv() = default;
+    ExecEnv();
 
     // Empty destructor because the compiler-generated one requires full
     // declarations for classes in scoped_ptrs.
-    ~ExecEnv() = default;
+    ~ExecEnv();
 
     std::string token() const;
     ExternalScanContextMgr* external_scan_context_mgr() { return _external_scan_context_mgr; }
@@ -335,6 +335,8 @@ public:
 
     ThreadPool* delete_file_thread_pool();
 
+    workgroup::BandwidthManager* bw_manager() const { return _bw_manager.get(); }
+
 private:
     void _wait_for_fragments_finish();
 
@@ -354,6 +356,8 @@ private:
 
     ThreadPool* _load_segment_thread_pool = nullptr;
     ThreadPool* _load_rowset_thread_pool = nullptr;
+
+    std::unique_ptr<workgroup::BandwidthManager> _bw_manager;
 
     workgroup::ScanExecutor* _scan_executor = nullptr;
     workgroup::ScanExecutor* _connector_scan_executor = nullptr;

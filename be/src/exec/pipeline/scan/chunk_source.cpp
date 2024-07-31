@@ -19,6 +19,7 @@
 #include "common/statusor.h"
 #include "exec/pipeline/scan/balanced_chunk_buffer.h"
 #include "exec/pipeline/scan/scan_operator.h"
+#include "exec/workgroup/bandwidth_manager.h"
 #include "exec/workgroup/work_group.h"
 #include "runtime/runtime_state.h"
 namespace starrocks::pipeline {
@@ -54,6 +55,13 @@ Status ChunkSource::buffer_next_batch_chunks_blocking(RuntimeState* state, size_
     }
 
     int64_t time_spent_ns = 0;
+    int64_t accounted_time_spent_ns = 0;
+
+    DeferOp defer([&time_spent_ns, &accounted_time_spent_ns, state, running_wg] {
+        state->exec_env()->bw_manager()->update_statistics(const_cast<workgroup::WorkGroup*>(running_wg),
+                                                           time_spent_ns - accounted_time_spent_ns);
+    });
+
     auto [owner_id, version] = _morsel->get_lane_owner_and_version();
     for (size_t i = 0; i < batch_size && !state->is_cancelled(); ++i) {
         {
@@ -91,9 +99,13 @@ Status ChunkSource::buffer_next_batch_chunks_blocking(RuntimeState* state, size_
             break;
         }
 
-        if (running_wg != nullptr && time_spent_ns >= workgroup::WorkGroup::YIELD_PREEMPT_MAX_TIME_SPENT &&
-            _scan_sched_entity(running_wg)->in_queue()->should_yield(running_wg, time_spent_ns)) {
-            break;
+        if (running_wg != nullptr && time_spent_ns >= workgroup::WorkGroup::YIELD_PREEMPT_MAX_TIME_SPENT) {
+            const int64_t delta_ns = time_spent_ns - accounted_time_spent_ns;
+            accounted_time_spent_ns = time_spent_ns;
+            if (state->exec_env()->bw_manager()->is_throlled(const_cast<workgroup::WorkGroup*>(running_wg), delta_ns) ||
+                _scan_sched_entity(running_wg)->in_queue()->should_yield(running_wg, time_spent_ns)) {
+                break;
+            }
         }
     }
     return _status;

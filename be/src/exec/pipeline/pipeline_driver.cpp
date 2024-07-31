@@ -29,6 +29,7 @@
 #include "exec/query_cache/lane_arbiter.h"
 #include "exec/query_cache/multilane_operator.h"
 #include "exec/query_cache/ticket_checker.h"
+#include "exec/workgroup/bandwidth_manager.h"
 #include "exec/workgroup/work_group.h"
 #include "gen_cpp/InternalService_types.h"
 #include "gutil/casts.h"
@@ -235,6 +236,7 @@ StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int w
     size_t total_chunks_moved = 0;
     size_t total_rows_moved = 0;
     int64_t time_spent = 0;
+    int64_t accounted_time_spent = 0;
     Status return_status = Status::OK();
     DeferOp defer([&]() {
         if (ScanOperator* scan = source_scan_operator()) {
@@ -242,6 +244,7 @@ StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int w
         }
 
         _update_statistics(runtime_state, total_chunks_moved, total_rows_moved, time_spent);
+        runtime_state->exec_env()->bw_manager()->update_statistics(_workgroup.get(), time_spent - accounted_time_spent);
     });
 
     if (ScanOperator* scan = source_scan_operator()) {
@@ -392,11 +395,15 @@ StatusOr<DriverState> PipelineDriver::process(RuntimeState* runtime_state, int w
             }
             if (_workgroup != nullptr &&
                 (time_spent >= YIELD_PREEMPT_MAX_TIME_SPENT_NS ||
-                 driver_acct().get_accumulated_local_wait_time_spent() > YIELD_PREEMPT_MAX_TIME_SPENT_NS) &&
-                _workgroup->driver_sched_entity()->in_queue()->should_yield(this, time_spent)) {
-                should_yield = true;
-                COUNTER_UPDATE(_yield_by_preempt_counter, 1);
-                break;
+                 driver_acct().get_accumulated_local_wait_time_spent() > YIELD_PREEMPT_MAX_TIME_SPENT_NS)) {
+                const int64_t delta_ns = time_spent - accounted_time_spent;
+                accounted_time_spent = time_spent;
+                if (runtime_state->exec_env()->bw_manager()->is_throlled(_workgroup.get(), delta_ns) ||
+                    _workgroup->driver_sched_entity()->in_queue()->should_yield(this, time_spent)) {
+                    should_yield = true;
+                    COUNTER_UPDATE(_yield_by_preempt_counter, 1);
+                    break;
+                }
             }
         }
         // close finished operators and update _first_unfinished index
@@ -659,10 +666,12 @@ void PipelineDriver::finalize(RuntimeState* runtime_state, DriverState state, in
     copied_driver.set_workgroup(_workgroup);
     copied_driver.set_in_queue(_in_queue);
     copied_driver.set_driver_queue_level(_driver_queue_level);
-    DeferOp defer([&copied_driver, &time_spent]() {
+    DeferOp defer([&copied_driver, &time_spent, bw_manager = runtime_state->exec_env()->bw_manager()]() {
         if (copied_driver._in_queue != nullptr) {
             copied_driver._update_driver_acct(0, 0, time_spent);
             copied_driver._in_queue->update_statistics(&copied_driver);
+
+            bw_manager->update_statistics(copied_driver.workgroup(), time_spent);
         }
     });
     SCOPED_RAW_TIMER(&time_spent);

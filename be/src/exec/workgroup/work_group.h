@@ -205,6 +205,9 @@ public:
     void incr_cpu_runtime_ns(int64_t delta_ns) { _cpu_runtime_ns += delta_ns; }
     int64_t cpu_runtime_ns() const { return _cpu_runtime_ns; }
 
+    bool is_throlled() const { return _is_throlled.load(std::memory_order_acquire); }
+    void set_throlled(bool throlled) { _is_throlled.store(throlled, std::memory_order_release); }
+
     static constexpr int64 DEFAULT_WG_ID = 0;
     static constexpr int64 DEFAULT_MV_WG_ID = 1;
     static constexpr int64 DEFAULT_VERSION = 0;
@@ -257,6 +260,8 @@ private:
     /// The total CPU runtime cost in nanos unit, including driver execution time, and the cpu execution time of
     /// other threads including Source and Sink threads.
     std::atomic<int64_t> _cpu_runtime_ns = 0;
+
+    std::atomic<bool> _is_throlled{false};
 };
 
 // WorkGroupManager is a singleton used to manage WorkGroup instances in BE, it has an io queue and a cpu queues for

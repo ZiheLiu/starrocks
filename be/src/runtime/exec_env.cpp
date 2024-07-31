@@ -48,6 +48,7 @@
 #include "exec/pipeline/pipeline_driver_executor.h"
 #include "exec/pipeline/query_context.h"
 #include "exec/spill/dir_manager.h"
+#include "exec/workgroup/bandwidth_manager.h"
 #include "exec/workgroup/scan_executor.h"
 #include "exec/workgroup/work_group.h"
 #include "exprs/jit/jit_engine.h"
@@ -300,6 +301,9 @@ int64_t GlobalEnv::calc_max_query_memory(int64_t process_mem_limit, int64_t perc
     return process_mem_limit * percent / 100;
 }
 
+ExecEnv::ExecEnv() = default;
+ExecEnv::~ExecEnv() = default;
+
 Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
     _store_paths = store_paths;
     _external_scan_context_mgr = new ExternalScanContextMgr(this);
@@ -391,6 +395,9 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
                             .set_max_queue_size(INT32_MAX) // unlimit queue size
                             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
                             .build(&_dictionary_cache_pool));
+
+    _bw_manager = std::make_unique<workgroup::BandwidthManager>();
+    _bw_manager->start();
 
     std::unique_ptr<ThreadPool> driver_executor_thread_pool;
     _max_executor_threads = CpuInfo::num_cores();
@@ -608,6 +615,10 @@ void ExecEnv::stop() {
 
     if (_pipeline_sink_io_pool) {
         _pipeline_sink_io_pool->shutdown();
+    }
+
+    if (_bw_manager) {
+        _bw_manager->shutdown();
     }
 
     if (_wg_driver_executor) {

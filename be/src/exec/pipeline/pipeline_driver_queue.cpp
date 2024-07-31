@@ -15,6 +15,7 @@
 #include "exec/pipeline/pipeline_driver_queue.h"
 
 #include "exec/pipeline/source_operator.h"
+#include "exec/workgroup/bandwidth_manager.h"
 #include "exec/workgroup/work_group.h"
 #include "gutil/strings/substitute.h"
 
@@ -222,18 +223,31 @@ void WorkGroupDriverQueue::close() {
 }
 
 void WorkGroupDriverQueue::put_back(const DriverRawPtr driver) {
+    if (ExecEnv::GetInstance()->bw_manager()->try_add_task(this, driver)) {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(_global_mutex);
     _put_back<false>(driver);
 }
 
 void WorkGroupDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
+    const auto unthrolled_drivers = ExecEnv::GetInstance()->bw_manager()->try_add_task(this, drivers);
+    if (unthrolled_drivers.empty()) {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(_global_mutex);
-    for (const auto driver : drivers) {
+    for (const auto driver : unthrolled_drivers) {
         _put_back<false>(driver);
     }
 }
 
 void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
+    if (ExecEnv::GetInstance()->bw_manager()->try_add_task(this, driver)) {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(_global_mutex);
     _put_back<true>(driver);
 }

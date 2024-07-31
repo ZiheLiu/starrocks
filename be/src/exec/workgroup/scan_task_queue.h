@@ -127,6 +127,7 @@ public:
     virtual void close() = 0;
 
     virtual StatusOr<ScanTask> take() = 0;
+    virtual void force_put(std::vector<ScanTask>&& tasks) = 0;
     virtual bool try_offer(ScanTask task) = 0;
     virtual void force_put(ScanTask task) = 0;
 
@@ -145,6 +146,7 @@ public:
     void close() override;
 
     StatusOr<ScanTask> take() override;
+    void force_put(std::vector<ScanTask>&& tasks) override;
     bool try_offer(ScanTask task) override;
     void force_put(ScanTask task) override;
 
@@ -192,6 +194,7 @@ public:
     void close() override { _queue.shutdown(); }
 
     StatusOr<ScanTask> take() override;
+    void force_put(std::vector<ScanTask>&& tasks) override;
     bool try_offer(ScanTask task) override;
     void force_put(ScanTask task) override;
 
@@ -214,6 +217,7 @@ public:
     void close() override;
 
     StatusOr<ScanTask> take() override;
+    void force_put(std::vector<ScanTask>&& tasks) override;
     bool try_offer(ScanTask task) override;
     void force_put(ScanTask task) override;
 
