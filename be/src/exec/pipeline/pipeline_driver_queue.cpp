@@ -308,12 +308,12 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
 }
 
 StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block, const uint32_t worker_id) {
+    _update_bandwidth_control_period(nullptr);
+
     MonotonicStopWatch watch;
     watch.start();
     std::unique_lock<std::mutex> lock(_global_mutex);
     const auto lock_time = watch.elapsed_time();
-
-    _update_bandwidth_control_period(nullptr);
 
     workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
     while (wg_entity == nullptr) {
