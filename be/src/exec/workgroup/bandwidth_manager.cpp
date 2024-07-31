@@ -162,17 +162,24 @@ void BandwidthManager::_run_internal() {
                 wg->set_throlled(false);
             }
 
-            for (auto& [ready_queue, tasks] : _driver_tasks) {
-                ready_queue->put_back(tasks);
-            }
-
-            for (auto& [ready_queue, tasks] : _scan_tasks) {
-                ready_queue->force_put(std::move(tasks));
-            }
-
             _wgs.clear();
-            _driver_tasks.clear();
-            _scan_tasks.clear();
+
+            std::unordered_map<ScanTaskQueue*, std::vector<ScanTask>> scan_tasks;
+            std::unordered_map<pipeline::DriverQueue*, std::vector<pipeline::DriverRawPtr>> driver_tasks;
+            _driver_tasks.swap(driver_tasks);
+            _scan_tasks.swap(scan_tasks);
+
+            {
+                lock.unlock();
+                DeferOp defer_lock([&lock] { lock.lock(); });
+
+                for (auto& [ready_queue, tasks] : driver_tasks) {
+                    ready_queue->put_back(tasks);
+                }
+                for (auto& [ready_queue, tasks] : scan_tasks) {
+                    ready_queue->force_put(std::move(tasks));
+                }
+            }
         }
 
         const int64_t sleep_ns = std::clamp(MonotonicNanos() - cur_ns, 1L, PERIOD_NS);
