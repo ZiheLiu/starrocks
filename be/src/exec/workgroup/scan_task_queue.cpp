@@ -190,8 +190,6 @@ StatusOr<ScanTask> WorkGroupScanTaskQueue::take() {
             return Status::Cancelled("Shutdown");
         }
 
-        _update_bandwidth_control_period();
-
         if (_wg_entities.empty()) {
             _cv.wait(lock);
         } else if (wg_entity = _take_next_wg(); wg_entity == nullptr) {
@@ -288,8 +286,6 @@ void WorkGroupScanTaskQueue::update_statistics(ScanTask& task, int64_t runtime_n
     auto* wg = task.workgroup;
     auto* wg_entity = _sched_entity(wg);
 
-    // Update bandwidth control information.
-    _update_bandwidth_control_period();
     if (!wg_entity->is_sq_wg()) {
         _bandwidth_usage_ns += runtime_ns;
     }
@@ -322,15 +318,7 @@ bool WorkGroupScanTaskQueue::should_yield(const WorkGroup* wg, int64_t unaccount
 
 bool WorkGroupScanTaskQueue::_throttled(const workgroup::WorkGroupScanSchedEntity* wg_entity,
                                         int64_t unaccounted_runtime_ns) const {
-    if (wg_entity->is_sq_wg()) {
-        return false;
-    }
-    if (!workgroup::WorkGroupManager::instance()->is_sq_wg_running()) {
-        return false;
-    }
-
-    int64_t bandwidth_usage = unaccounted_runtime_ns + _bandwidth_usage_ns;
-    return bandwidth_usage >= _bandwidth_quota_ns();
+    return false;
 }
 
 void WorkGroupScanTaskQueue::_update_min_wg() {

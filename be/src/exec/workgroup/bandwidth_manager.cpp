@@ -151,7 +151,7 @@ void BandwidthManager::_run_internal() {
             } else if (old_usage_ns < 2 * quota_ns) {
                 new_usage_ns = old_usage_ns - quota_ns;
             } else {
-                new_usage_ns = old_usage_ns;
+                new_usage_ns = quota_ns;
             }
         } while (!_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
 

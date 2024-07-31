@@ -261,8 +261,6 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
             return Status::Cancelled("Shutdown");
         }
 
-        _update_bandwidth_control_period();
-
         if (_wg_entities.empty()) {
             if (!block) {
                 return nullptr;
@@ -315,8 +313,6 @@ void WorkGroupDriverQueue::update_statistics(const DriverRawPtr driver) {
     int64_t runtime_ns = driver->driver_acct().get_last_time_spent();
     auto* wg_entity = driver->workgroup()->driver_sched_entity();
 
-    // Update bandwidth control information.
-    _update_bandwidth_control_period();
     if (!wg_entity->is_sq_wg()) {
         _bandwidth_usage_ns += runtime_ns;
     }
@@ -356,15 +352,7 @@ bool WorkGroupDriverQueue::should_yield(const DriverRawPtr driver, int64_t unacc
 
 bool WorkGroupDriverQueue::_throttled(const workgroup::WorkGroupDriverSchedEntity* wg_entity,
                                       int64_t unaccounted_runtime_ns) const {
-    if (wg_entity->is_sq_wg()) {
-        return false;
-    }
-    if (!workgroup::WorkGroupManager::instance()->is_sq_wg_running()) {
-        return false;
-    }
-
-    int64_t bandwidth_usage = unaccounted_runtime_ns + _bandwidth_usage_ns;
-    return bandwidth_usage >= _bandwidth_quota_ns();
+    return false;
 }
 
 template <bool from_executor>
