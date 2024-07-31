@@ -189,7 +189,7 @@ private:
     bool _throttled(workgroup::WorkGroupDriverSchedEntity* wg_entity, uint32_t worker_id,
                     int64_t unaccounted_runtime_ns = 0) const;
     // It is invoked when taking a task to execute or an executed task is finished.
-    void _update_bandwidth_control_period();
+    void _update_bandwidth_control_period(std::unique_lock<std::mutex>* lock);
     template <bool from_executor>
     void _enqueue_workgroup(workgroup::WorkGroupDriverSchedEntity* wg_entity);
     void _dequeue_workgroup(workgroup::WorkGroupDriverSchedEntity* wg_entity);
@@ -224,8 +224,10 @@ private:
 
     // Cache the minimum entity, used to check should_yield() without lock.
     std::atomic<workgroup::WorkGroupDriverSchedEntity*> _min_wg_entity = nullptr;
-    std::set<workgroup::WorkGroup*> _throttled_wgs;
 
+    mutable std::mutex _throlled_mutex;
+    std::vector<DriverRawPtr> _throttled_drivers;
+    std::set<workgroup::WorkGroup*> _throttled_wgs;
     // Hard bandwidth control to non-short-query workgroups.
     // - The control period is 100ms, and the total quota of non-short-query workgroups is 100ms*(vCPUs-rt_wg.cpu_limit).
     // - The non-short-query workgroups cannot be executed in the current period, if their usage exceeds quota.
