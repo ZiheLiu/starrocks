@@ -162,10 +162,10 @@ void BandwidthManager::_run_internal() {
             }
         } while (!_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
 
-        // LOG(WARNING) << "[TEST] BandwidthManager::_run_internal() "
-        //              << "[old_usage_ns=" << old_usage_ns << "] "
-        //              << "[new_usage_ns=" << new_usage_ns << "] "
-        //              << "[quota_ns=" << quota_ns << "]";
+        LOG(WARNING) << "[TEST] BandwidthManager::_run_internal() "
+                     << "[old_usage_ns=" << old_usage_ns << "] "
+                     << "[new_usage_ns=" << new_usage_ns << "] "
+                     << "[quota_ns=" << quota_ns << "]";
 
         std::unique_lock lock(_mutex);
 
