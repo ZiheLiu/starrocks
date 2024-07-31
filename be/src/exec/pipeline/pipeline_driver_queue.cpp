@@ -267,9 +267,9 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
             }
             _cv.wait(lock);
         } else if (wg_entity = _take_next_wg(); wg_entity == nullptr) {
-            int64_t cur_ns = MonotonicNanos();
-            int64_t sleep_ns = _bandwidth_control_period_end_ns - cur_ns;
-            if (sleep_ns <= 0) {
+            const int64_t cur_ns = MonotonicNanos();
+            const int64_t sleep_ns = ExecEnv::GetInstance()->bw_manager()->end_ns() - cur_ns;
+            if (sleep_ns <= 0 || sleep_ns > BANDWIDTH_CONTROL_PERIOD_NS) {
                 continue;
             }
 
@@ -352,7 +352,8 @@ bool WorkGroupDriverQueue::should_yield(const DriverRawPtr driver, int64_t unacc
 
 bool WorkGroupDriverQueue::_throttled(const workgroup::WorkGroupDriverSchedEntity* wg_entity,
                                       int64_t unaccounted_runtime_ns) const {
-    return false;
+    return ExecEnv::GetInstance()->bw_manager()->is_throlled(
+            const_cast<workgroup::WorkGroupDriverSchedEntity*>(wg_entity)->workgroup());
 }
 
 template <bool from_executor>

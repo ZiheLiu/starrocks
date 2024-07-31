@@ -40,6 +40,8 @@ public:
     std::vector<pipeline::DriverRawPtr> try_add_task(pipeline::DriverQueue* ready_queue,
                                                      const std::vector<pipeline::DriverRawPtr>& tasks);
 
+    int64_t end_ns() const { return _end_ns.load(); }
+
 private:
     void _run_internal();
     static int64_t _quota_ns();
@@ -52,6 +54,7 @@ private:
     std::atomic<bool> _is_shutdown{false};
 
     std::atomic<int64_t> _usage_ns{0};
+    std::atomic<int64_t> _end_ns{0};
 
     std::mutex _mutex;
     std::condition_variable _cv;
