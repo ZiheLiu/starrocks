@@ -57,12 +57,12 @@ bool BandwidthManager::is_throlled(WorkGroup* wg, int64_t delta_ns) {
         new_usage_ns = old_usage_ns + delta_ns;
     } while (!_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
 
-    LOG(WARNING) << "[TEST] BandwidthManager::is_throlled() "
-                 << "[old_usage_ns=" << old_usage_ns << "] "
-                 << "[new_usage_ns=" << new_usage_ns << "] "
-                 << "[delta_ns=" << delta_ns << "] "
-                 << "[quota_ns=" << _quota_ns() << "] "
-                 << "[is_throlled=" << (new_usage_ns >= _quota_ns()) << "] ";
+    // LOG(WARNING) << "[TEST] BandwidthManager::is_throlled() "
+    //              << "[old_usage_ns=" << old_usage_ns << "] "
+    //              << "[new_usage_ns=" << new_usage_ns << "] "
+    //              << "[delta_ns=" << delta_ns << "] "
+    //              << "[quota_ns=" << _quota_ns() << "] "
+    //              << "[is_throlled=" << (new_usage_ns >= _quota_ns()) << "] ";
 
     return new_usage_ns >= _quota_ns();
 }
@@ -162,10 +162,10 @@ void BandwidthManager::_run_internal() {
             }
         } while (!_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
 
-        LOG(WARNING) << "[TEST] BandwidthManager::_run_internal() "
-                     << "[old_usage_ns=" << old_usage_ns << "] "
-                     << "[new_usage_ns=" << new_usage_ns << "] "
-                     << "[quota_ns=" << quota_ns << "]";
+        // LOG(WARNING) << "[TEST] BandwidthManager::_run_internal() "
+        //              << "[old_usage_ns=" << old_usage_ns << "] "
+        //              << "[new_usage_ns=" << new_usage_ns << "] "
+        //              << "[quota_ns=" << quota_ns << "]";
 
         std::unique_lock lock(_mutex);
 
