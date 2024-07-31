@@ -55,7 +55,7 @@ bool BandwidthManager::is_throlled(WorkGroup* wg, int64_t delta_ns) {
     do {
         old_usage_ns = _usage_ns.load(std::memory_order::relaxed);
         new_usage_ns = old_usage_ns + delta_ns;
-    } while (_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
+    } while (!_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
 
     return new_usage_ns >= _quota_ns();
 }
@@ -153,7 +153,7 @@ void BandwidthManager::_run_internal() {
             } else {
                 new_usage_ns = old_usage_ns;
             }
-        } while (_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
+        } while (!_usage_ns.compare_exchange_strong(old_usage_ns, new_usage_ns));
 
         std::unique_lock lock(_mutex);
 
