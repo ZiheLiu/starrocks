@@ -15,6 +15,8 @@
 #include "pipeline_driver_poller.h"
 
 #include <chrono>
+
+#include "exec/workgroup/work_group.h"
 namespace starrocks::pipeline {
 
 void PipelineDriverPoller::start() {
@@ -71,6 +73,11 @@ void PipelineDriverPoller::run_internal() {
             auto driver_it = _local_blocked_drivers.begin();
             while (driver_it != _local_blocked_drivers.end()) {
                 auto* driver = *driver_it;
+
+                if (driver->workgroup()->is_throlled()) {
+                    ++driver_it;
+                    continue;
+                }
 
                 if (!driver->is_query_never_expired() && driver->query_ctx()->is_query_expired()) {
                     // there are not any drivers belonging to a query context can make progress for an expiration period
