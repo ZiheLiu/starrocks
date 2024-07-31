@@ -246,7 +246,9 @@ void WorkGroupDriverQueue::put_back(const std::vector<DriverRawPtr>& drivers) {
         LOG(WARNING) << "[TEST] put_back to driver_queue lock slow, elapsed_time=" << elapsed_time;
     }
 
-    _put_back<false>(drivers);
+    for (auto* driver : drivers) {
+        _put_back<false>(driver);
+    }
 }
 
 void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
