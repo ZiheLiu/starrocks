@@ -268,10 +268,8 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
             _cv.wait(lock);
         } else if (wg_entity = _take_next_wg(); wg_entity == nullptr) {
             const int64_t cur_ns = MonotonicNanos();
-            const int64_t sleep_ns = ExecEnv::GetInstance()->bw_manager()->end_ns() - cur_ns;
-            if (sleep_ns <= 0 || sleep_ns > BANDWIDTH_CONTROL_PERIOD_NS) {
-                continue;
-            }
+            const int64_t sleep_ns = std::clamp(ExecEnv::GetInstance()->bw_manager()->end_ns() - cur_ns, 1L,
+                                                BANDWIDTH_CONTROL_PERIOD_NS);
 
             if (!block) {
                 return nullptr;
