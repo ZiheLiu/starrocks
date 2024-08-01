@@ -99,7 +99,7 @@ std::vector<ScanTask> BandwidthManager::try_add_task(ScanTaskQueue* ready_queue,
     std::vector<ScanTask> unthrolled_tasks;
     std::vector<ScanTask> throlled_tasks;
     for (auto& task : tasks) {
-        if (is_throlled(task.workgroup())) {
+        if (is_throlled(task.workgroup)) {
             throlled_tasks.emplace_back(std::move(task));
         } else {
             unthrolled_tasks.emplace_back(std::move(task));
@@ -110,8 +110,8 @@ std::vector<ScanTask> BandwidthManager::try_add_task(ScanTaskQueue* ready_queue,
         std::lock_guard lock(_mutex);
 
         for (auto& task : throlled_tasks) {
-            if (is_throlled(task.workgroup())) {
-                auto* wg = task.workgroup();
+            if (is_throlled(task.workgroup)) {
+                auto* wg = task.workgroup;
                 wg->set_throlled(true);
                 _wgs.emplace(wg);
                 _scan_tasks[ready_queue].emplace_back(std::move(task));
