@@ -16,6 +16,7 @@
 
 #include <chrono>
 
+#include "exec/workgroup/bandwidth_manager.h"
 #include "exec/workgroup/work_group.h"
 namespace starrocks::pipeline {
 
@@ -44,6 +45,7 @@ void PipelineDriverPoller::run_internal() {
     DriverList tmp_blocked_drivers;
     int spin_count = 0;
     std::vector<DriverRawPtr> ready_drivers;
+    std::vector<DriverRawPtr> throlled_drivers;
     while (!_is_shutdown.load(std::memory_order_acquire)) {
         {
             std::unique_lock<std::mutex> lock(_global_mutex);
@@ -74,8 +76,9 @@ void PipelineDriverPoller::run_internal() {
             while (driver_it != _local_blocked_drivers.end()) {
                 auto* driver = *driver_it;
 
-                if (driver->workgroup()->is_throlled()) {
-                    ++driver_it;
+                if (ExecEnv::GetInstance()->bw_manager()->is_throlled(driver->workgroup())) {
+                    remove_blocked_driver(_local_blocked_drivers, driver_it);
+                    throlled_drivers.emplace_back(driver);
                     continue;
                 }
 
@@ -150,13 +153,20 @@ void PipelineDriverPoller::run_internal() {
             }
         }
 
-        if (ready_drivers.empty()) {
+        if (ready_drivers.empty() && throlled_drivers.empty()) {
             spin_count += 1;
         } else {
             spin_count = 0;
+        }
 
+        if (!ready_drivers.empty()) {
             _driver_queue->put_back(ready_drivers);
             ready_drivers.clear();
+        }
+
+        if (!throlled_drivers.empty()) {
+            ExecEnv::GetInstance()->bw_manager()->add_task(this, throlled_drivers);
+            throlled_drivers.clear();
         }
 
         if (spin_count != 0 && spin_count % 64 == 0) {
@@ -189,6 +199,21 @@ void PipelineDriverPoller::add_blocked_driver(const DriverRawPtr driver) {
     driver->_pending_timer_sw->reset();
     driver->driver_acct().clean_local_queue_infos();
     _cond.notify_one();
+}
+
+void PipelineDriverPoller::add_blocked_driver(const std::vector<DriverRawPtr>& drivers) {
+    std::unique_lock<std::mutex> lock(_global_mutex);
+    for (auto* driver : drivers) {
+        _blocked_drivers.push_back(driver);
+        driver->_pending_timer_sw->reset();
+        driver->driver_acct().clean_local_queue_infos();
+    }
+
+    _blocked_driver_queue_len += drivers.size();
+
+    for (int i = 0; i < drivers.size(); i++) {
+        _cond.notify_one();
+    }
 }
 
 void PipelineDriverPoller::park_driver(const DriverRawPtr driver) {

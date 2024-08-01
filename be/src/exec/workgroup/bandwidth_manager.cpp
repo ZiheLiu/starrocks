@@ -171,6 +171,17 @@ std::vector<pipeline::DriverRawPtr> BandwidthManager::try_add_task(pipeline::Dri
     return unthrolled_tasks;
 }
 
+void BandwidthManager::add_task(pipeline::PipelineDriverPoller* blocked_queue,
+                                const std::vector<pipeline::DriverRawPtr>& tasks) {
+    std::lock_guard lock(_mutex);
+    for (auto* task : tasks) {
+        auto* wg = task->workgroup();
+        wg->set_throlled(true);
+        _wgs.emplace(wg);
+        _blocked_driver_tasks[blocked_queue].emplace_back(std::move(task));
+    }
+}
+
 void BandwidthManager::_run_internal() {
     _is_polling_thread_initialized.store(true, std::memory_order_release);
 
@@ -207,8 +218,11 @@ void BandwidthManager::_run_internal() {
 
             std::unordered_map<ScanTaskQueue*, std::vector<ScanTask>> scan_tasks;
             std::unordered_map<pipeline::DriverQueue*, std::vector<pipeline::DriverRawPtr>> driver_tasks;
+            std::unordered_map<pipeline::PipelineDriverPoller*, std::vector<pipeline::DriverRawPtr>>
+                    blocked_driver_tasks;
             _driver_tasks.swap(driver_tasks);
             _scan_tasks.swap(scan_tasks);
+            _blocked_driver_tasks.swap(blocked_driver_tasks);
 
             {
                 lock.unlock();
@@ -219,6 +233,9 @@ void BandwidthManager::_run_internal() {
                 }
                 for (auto& [ready_queue, tasks] : scan_tasks) {
                     ready_queue->force_put(std::move(tasks));
+                }
+                for (auto& [blocked_queue, tasks] : blocked_driver_tasks) {
+                    blocked_queue->add_blocked_driver(tasks);
                 }
             }
         }

@@ -18,6 +18,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "exec/pipeline/pipeline_driver_poller.h"
 #include "exec/pipeline/pipeline_fwd.h"
 #include "exec/workgroup/work_group_fwd.h"
 #include "gutil/ref_counted.h"
@@ -41,6 +42,7 @@ public:
     bool try_add_task(pipeline::DriverQueue* ready_queue, pipeline::DriverRawPtr task);
     std::vector<pipeline::DriverRawPtr> try_add_task(pipeline::DriverQueue* ready_queue,
                                                      const std::vector<pipeline::DriverRawPtr>& tasks);
+    void add_task(pipeline::PipelineDriverPoller* blocked_queue, const std::vector<pipeline::DriverRawPtr>& tasks);
 
     int64_t end_ns() const { return _end_ns.load(); }
 
@@ -64,6 +66,7 @@ private:
     std::unordered_set<WorkGroup*> _wgs;
     std::unordered_map<ScanTaskQueue*, std::vector<ScanTask>> _scan_tasks;
     std::unordered_map<pipeline::DriverQueue*, std::vector<pipeline::DriverRawPtr>> _driver_tasks;
+    std::unordered_map<pipeline::PipelineDriverPoller*, std::vector<pipeline::DriverRawPtr>> _blocked_driver_tasks;
 };
 
 } // namespace starrocks::workgroup
