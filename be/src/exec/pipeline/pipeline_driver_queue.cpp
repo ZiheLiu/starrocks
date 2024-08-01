@@ -253,10 +253,9 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
 }
 
 StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
-    std::unique_lock<std::mutex> lock(_global_mutex);
+    std::unique_lock lock(_global_mutex);
 
-    workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
-    while (wg_entity == nullptr) {
+    while (true) {
         if (_is_closed) {
             return Status::Cancelled("Shutdown");
         }
@@ -269,23 +268,11 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
             continue;
         }
 
-        ASSIGN_OR_RETURN(wg_entity, _take_next_wg(lock));
-        if (wg_entity != nullptr) {
-            break;
+        ASSIGN_OR_RETURN(auto driver, _take_next_wg(lock, block));
+        if (driver != nullptr || !block) {
+            return driver;
         }
     }
-
-    // If wg only contains one ready driver, it will be not ready anymore
-    // after taking away the only one driver.
-    if (wg_entity->queue()->size() == 1) {
-        _dequeue_workgroup(wg_entity);
-    }
-
-    auto maybe_driver = wg_entity->queue()->take(block);
-    if (maybe_driver.ok() && maybe_driver.value() != nullptr) {
-        --_num_drivers;
-    }
-    return maybe_driver;
 }
 
 void WorkGroupDriverQueue::cancel(DriverRawPtr driver) {
@@ -377,14 +364,28 @@ void WorkGroupDriverQueue::_update_min_wg() {
     }
 }
 
-StatusOr<workgroup::WorkGroupDriverSchedEntity*> WorkGroupDriverQueue::_take_next_wg(
-        std::unique_lock<std::mutex>& lock) {
+StatusOr<DriverRawPtr> WorkGroupDriverQueue::_take_next_wg(std::unique_lock<std::mutex>& lock, bool block) {
     std::vector<DriverRawPtr> throlled_drivers;
     std::vector<workgroup::WorkGroupDriverSchedEntity*> throlled_wgs;
-    workgroup::WorkGroupDriverSchedEntity* min_unthrottled_wg_entity = nullptr;
+
+    DeferOp defer_process_throlled([&] {
+        if (throlled_drivers.empty()) {
+            return;
+        }
+
+        lock.unlock();
+        DeferOp defer_lock([&lock] { lock.lock(); });
+
+        const auto unthrolled_drivers = ExecEnv::GetInstance()->bw_manager()->try_add_task(this, throlled_drivers);
+        if (!unthrolled_drivers.empty()) {
+            put_back(unthrolled_drivers);
+        }
+    });
+
+    workgroup::WorkGroupDriverSchedEntity* res_wg_entity = nullptr;
     for (auto* wg_entity : _wg_entities) {
         if (!_throttled(wg_entity)) {
-            min_unthrottled_wg_entity = wg_entity;
+            res_wg_entity = wg_entity;
             break;
         }
 
@@ -398,18 +399,23 @@ StatusOr<workgroup::WorkGroupDriverSchedEntity*> WorkGroupDriverQueue::_take_nex
     for (auto* wg_entity : throlled_wgs) {
         _dequeue_workgroup(wg_entity);
     }
+    _num_drivers -= throlled_drivers.size();
 
-    {
-        lock.unlock();
-        DeferOp defer_lock([&lock] { lock.lock(); });
-
-        const auto unthrolled_drivers = ExecEnv::GetInstance()->bw_manager()->try_add_task(this, throlled_drivers);
-        if (!unthrolled_drivers.empty()) {
-            put_back(unthrolled_drivers);
-        }
+    if (res_wg_entity == nullptr) {
+        return nullptr;
     }
 
-    return min_unthrottled_wg_entity;
+    // If wg only contains one ready driver, it will be not ready anymore
+    // after taking away the only one driver.
+    if (res_wg_entity->queue()->size() == 1) {
+        _dequeue_workgroup(res_wg_entity);
+    }
+
+    auto maybe_driver = res_wg_entity->queue()->take(block);
+    if (maybe_driver.ok() && maybe_driver.value() != nullptr) {
+        --_num_drivers;
+    }
+    return maybe_driver;
 }
 
 workgroup::WorkGroupDriverSchedEntity* WorkGroupDriverQueue::_take_next_wg() {

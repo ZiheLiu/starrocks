@@ -177,7 +177,7 @@ private:
     /// These methods should be guarded by the outside _global_mutex.
     template <bool from_executor>
     void _put_back(const DriverRawPtr driver);
-    StatusOr<workgroup::WorkGroupDriverSchedEntity*> _take_next_wg(std::unique_lock<std::mutex>& lock);
+    StatusOr<DriverRawPtr> _take_next_wg(std::unique_lock<std::mutex>& lock, bool block);
     workgroup::WorkGroupDriverSchedEntity* _take_next_wg();
     // _update_min_wg is invoked when an entity is enqueued or dequeued from _wg_entities.
     void _update_min_wg();
