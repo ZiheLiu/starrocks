@@ -229,6 +229,7 @@ public:
 private:
     /// These methods should be guarded by the outside _global_mutex.
     workgroup::WorkGroupScanSchedEntity* _take_next_wg();
+    StatusOr<WorkGroupScanSchedEntity*> _take_next_wg(std::unique_lock<std::mutex>& lock);
     // _update_min_wg is invoked when an entity is enqueued or dequeued from _wg_entities.
     void _update_min_wg();
     // Apply hard bandwidth control to non-short-query workgroups, when there are queries of the short-query workgroup.

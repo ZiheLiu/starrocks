@@ -21,6 +21,7 @@
 #include "exec/pipeline/pipeline_fwd.h"
 #include "exec/workgroup/work_group_fwd.h"
 #include "gutil/ref_counted.h"
+#include "scan_task_queue.h"
 #include "util/thread.h"
 
 namespace starrocks::workgroup {
@@ -36,6 +37,7 @@ public:
     void update_statistics(WorkGroup* wg, int64_t delta_ns);
 
     bool try_add_task(ScanTaskQueue* ready_queue, ScanTask& task);
+    std::vector<ScanTask> try_add_task(ScanTaskQueue* ready_queue, std::vector<ScanTask>& tasks);
     bool try_add_task(pipeline::DriverQueue* ready_queue, pipeline::DriverRawPtr task);
     std::vector<pipeline::DriverRawPtr> try_add_task(pipeline::DriverQueue* ready_queue,
                                                      const std::vector<pipeline::DriverRawPtr>& tasks);

@@ -266,16 +266,12 @@ StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
                 return nullptr;
             }
             _cv.wait(lock);
-        } else if (wg_entity = _take_next_wg(); wg_entity == nullptr) {
-            const int64_t cur_ns = MonotonicNanos();
-            const int64_t sleep_ns = std::clamp(ExecEnv::GetInstance()->bw_manager()->end_ns() - cur_ns, 1L,
-                                                BANDWIDTH_CONTROL_PERIOD_NS);
+            continue;
+        }
 
-            if (!block) {
-                return nullptr;
-            }
-            // All the ready tasks are throttled, so wait until the new period or a new task comes.
-            _cv.wait_for(lock, std::chrono::nanoseconds(sleep_ns));
+        ASSIGN_OR_RETURN(wg_entity, _take_next_wg(lock));
+        if (wg_entity != nullptr) {
+            break;
         }
     }
 
@@ -379,6 +375,41 @@ void WorkGroupDriverQueue::_update_min_wg() {
     } else {
         _min_wg_entity = min_wg_entity;
     }
+}
+
+StatusOr<workgroup::WorkGroupDriverSchedEntity*> WorkGroupDriverQueue::_take_next_wg(
+        std::unique_lock<std::mutex>& lock) {
+    std::vector<DriverRawPtr> throlled_drivers;
+    std::vector<workgroup::WorkGroupDriverSchedEntity*> throlled_wgs;
+    workgroup::WorkGroupDriverSchedEntity* min_unthrottled_wg_entity = nullptr;
+    for (auto* wg_entity : _wg_entities) {
+        if (!_throttled(wg_entity)) {
+            min_unthrottled_wg_entity = wg_entity;
+            break;
+        }
+
+        while (!wg_entity->queue()->empty()) {
+            ASSIGN_OR_RETURN(auto driver, wg_entity->queue()->take(false));
+            throlled_drivers.emplace_back(driver);
+        }
+        throlled_wgs.emplace_back(wg_entity);
+    }
+
+    for (auto* wg_entity : throlled_wgs) {
+        _dequeue_workgroup(wg_entity);
+    }
+
+    {
+        lock.unlock();
+        DeferOp defer_lock([&lock] { lock.lock(); });
+
+        const auto unthrolled_drivers = ExecEnv::GetInstance()->bw_manager()->try_add_task(this, throlled_drivers);
+        if (!unthrolled_drivers.empty()) {
+            put_back(unthrolled_drivers);
+        }
+    }
+
+    return min_unthrottled_wg_entity;
 }
 
 workgroup::WorkGroupDriverSchedEntity* WorkGroupDriverQueue::_take_next_wg() {

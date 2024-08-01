@@ -182,9 +182,9 @@ void WorkGroupScanTaskQueue::close() {
 }
 
 StatusOr<ScanTask> WorkGroupScanTaskQueue::take() {
-    std::unique_lock<std::mutex> lock(_global_mutex);
+    std::unique_lock lock(_global_mutex);
 
-    workgroup::WorkGroupScanSchedEntity* wg_entity = nullptr;
+    WorkGroupScanSchedEntity* wg_entity = nullptr;
     while (wg_entity == nullptr) {
         if (_is_closed) {
             return Status::Cancelled("Shutdown");
@@ -192,13 +192,12 @@ StatusOr<ScanTask> WorkGroupScanTaskQueue::take() {
 
         if (_wg_entities.empty()) {
             _cv.wait(lock);
-        } else if (wg_entity = _take_next_wg(); wg_entity == nullptr) {
-            const int64_t cur_ns = MonotonicNanos();
-            const int64_t sleep_ns = std::clamp(ExecEnv::GetInstance()->bw_manager()->end_ns() - cur_ns, 1L,
-                                                BANDWIDTH_CONTROL_PERIOD_NS);
+            continue;
+        }
 
-            // All the ready tasks are throttled, so wait until the new period or a new task comes.
-            _cv.wait_for(lock, std::chrono::nanoseconds(sleep_ns));
+        ASSIGN_OR_RETURN(wg_entity, _take_next_wg(lock));
+        if (wg_entity != nullptr) {
+            break;
         }
     }
 
@@ -329,12 +328,46 @@ void WorkGroupScanTaskQueue::_update_min_wg() {
     }
 }
 
-workgroup::WorkGroupScanSchedEntity* WorkGroupScanTaskQueue::_take_next_wg() {
-    workgroup::WorkGroupScanSchedEntity* min_unthrottled_wg_entity = nullptr;
+WorkGroupScanSchedEntity* WorkGroupScanTaskQueue::_take_next_wg() {
+    WorkGroupScanSchedEntity* min_unthrottled_wg_entity = nullptr;
     for (const auto& wg_entity : _wg_entities) {
         if (!_throttled(wg_entity)) {
             min_unthrottled_wg_entity = wg_entity;
             break;
+        }
+    }
+
+    return min_unthrottled_wg_entity;
+}
+
+StatusOr<WorkGroupScanSchedEntity*> WorkGroupScanTaskQueue::_take_next_wg(std::unique_lock<std::mutex>& lock) {
+    std::vector<ScanTask> throlled_tasks;
+    std::vector<WorkGroupScanSchedEntity*> throlled_wgs;
+    WorkGroupScanSchedEntity* min_unthrottled_wg_entity = nullptr;
+    for (auto* wg_entity : _wg_entities) {
+        if (!_throttled(wg_entity)) {
+            min_unthrottled_wg_entity = wg_entity;
+            break;
+        }
+
+        while (!wg_entity->queue()->empty()) {
+            ASSIGN_OR_RETURN(auto task, wg_entity->queue()->take());
+            throlled_tasks.emplace_back(std::move(task));
+        }
+        throlled_wgs.emplace_back(wg_entity);
+    }
+
+    for (auto* wg_entity : throlled_wgs) {
+        _dequeue_workgroup(wg_entity);
+    }
+
+    {
+        lock.unlock();
+        DeferOp defer_lock([&lock] { lock.lock(); });
+
+        auto unthrolled_drivers = ExecEnv::GetInstance()->bw_manager()->try_add_task(this, throlled_tasks);
+        if (!unthrolled_drivers.empty()) {
+            force_put(std::move(unthrolled_drivers));
         }
     }
 
