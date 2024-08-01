@@ -205,9 +205,9 @@ void WorkGroupScanTaskQueue::force_put(std::vector<ScanTask>&& tasks) {
     std::lock_guard<std::mutex> lock(_global_mutex);
 
     for (auto& task : tasks) {
-        if (task.peak_scan_task_queue_size_counter != nullptr) {
-            task.peak_scan_task_queue_size_counter->set(_num_tasks);
-        }
+        // if (task.peak_scan_task_queue_size_counter != nullptr) {
+        //     task.peak_scan_task_queue_size_counter->set(_num_tasks);
+        // }
 
         auto* wg_entity = _sched_entity(task.workgroup);
         wg_entity->set_in_queue(this);
