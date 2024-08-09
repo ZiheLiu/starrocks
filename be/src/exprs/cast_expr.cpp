@@ -350,6 +350,7 @@ CUSTOMIZE_FN_CAST(TYPE_VARCHAR, TYPE_OBJECT, cast_from_string_to_bitmap_fn);
 
 // all int(tinyint, smallint, int, bigint, largeint) cast implements
 DEFINE_UNARY_FN_WITH_IMPL(ImplicitToNumber, value) {
+    LOG(WARNING) << "[TEST] ImplicitToNumber " << value << ", " << ((ResultType)value) << std::endl;
     return value;
 }
 
