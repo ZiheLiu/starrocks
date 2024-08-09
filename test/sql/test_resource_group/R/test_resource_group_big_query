@@ -48,14 +48,14 @@ with w1 as (select * from t1 union all select * from t1
     union all select * from t1 union all select * from t1)
 select /*+SET_VAR(resource_group='rg_${uuid0}')*/ count(1) from w1;
 -- result:
-E: (1064, 'exceed big query cpu limit: current is 1004567794ns but limit is 1000000000ns')
+[REGEX].*exceed big query cpu limit: current is 1004567794ns but limit is 1000000000ns.*
 -- !result
 alter resource group rg_${uuid0} with ('big_query_cpu_second_limit'='0','big_query_scan_rows_limit'='1');
 -- result:
 -- !result
 select /*+SET_VAR(resource_group='rg_${uuid0}')*/ count(1) from t1;
 -- result:
-E: (1064, 'exceed big query scan_rows limit: current is 262144 but limit is 1')
+[REGEX].*exceed big query scan_rows limit: current is 262144 but limit is 1.*
 -- !result
 select count(1) from t1;
 -- result:
