@@ -215,6 +215,14 @@ public:
                                   DecimalType<To>* dec_value) {
         double delta = value >= 0 ? 0.5 : -0.5; // go to the nearest integer
         *dec_value = static_cast<To>(scale_factor * static_cast<double>(value) + delta);
+        if constexpr (is_decimal64<To>) {
+            LOG(WARNING) << "[TEST] [DecimalV3Cast] from_float: "
+                         << "[value=" << std::to_string(value) << "] "
+                         << "[scale_factor=" << std::to_string(scale_factor) << "] "
+                         << "[temp=" << std::to_string(scale_factor * static_cast<double>(value) + delta) << "] "
+                         << "[dec_value="
+                         << std::to_string(static_cast<To>(scale_factor * static_cast<double>(value) + delta)) << "] ";
+        }
         if constexpr (is_decimal32<To> || is_decimal64<To>) {
             // Depending on the compiler implement, std::numeric_limits<T>::max() or std::numeric_limits<T>::max() both could be returned,
             // when overflow is happenning in casting.
