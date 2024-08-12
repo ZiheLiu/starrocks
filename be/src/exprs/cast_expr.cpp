@@ -357,7 +357,9 @@ DEFINE_UNARY_FN_WITH_IMPL(ImplicitToNumber, value) {
 
 template <typename T>
 static std::string double_to_string_with_precision(T value) {
-    if constexpr (!std::is_floating_point_v<T>) {
+    if constexpr (!std::is_same_v<T, int128_t>) {
+        return "int128";
+    } else if constexpr (!std::is_floating_point_v<T>) {
         return std::to_string(value);
     } else {
         std::ostringstream out;
