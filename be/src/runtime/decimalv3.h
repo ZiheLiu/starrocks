@@ -19,6 +19,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iomanip>
 #include <string>
 #include <type_traits>
 
@@ -206,6 +207,19 @@ public:
     }
 
     template <typename T>
+    static std::string double_to_string_with_precision(T value) {
+        if constexpr (std::is_same_v<T, int128_t>) {
+            return "int128";
+        } else if constexpr (!std::is_floating_point_v<T>) {
+            return std::to_string(value);
+        } else {
+            std::ostringstream out;
+            out << std::setprecision(22) << std::fixed << value;
+            return out.str();
+        }
+    }
+
+    template <typename T>
     static constexpr T float_lower_overflow_indicator = std::numeric_limits<T>::max();
     template <typename T>
     static constexpr T float_upper_overflow_indicator = std::numeric_limits<T>::min();
@@ -217,9 +231,10 @@ public:
         *dec_value = static_cast<To>(scale_factor * static_cast<double>(value) + delta);
         if constexpr (is_decimal64<To>) {
             LOG(WARNING) << "[TEST] [DecimalV3Cast] from_float: "
-                         << "[value=" << std::to_string(value) << "] "
+                         << "[value=" << double_to_string_with_precision(value) << "] "
                          << "[scale_factor=" << std::to_string(scale_factor) << "] "
-                         << "[temp=" << std::to_string(scale_factor * static_cast<double>(value) + delta) << "] "
+                         << "[temp="
+                         << double_to_string_with_precision(scale_factor * static_cast<double>(value) + delta) << "] "
                          << "[dec_value="
                          << std::to_string(static_cast<To>(scale_factor * static_cast<double>(value) + delta)) << "] ";
         }
