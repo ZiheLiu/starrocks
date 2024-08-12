@@ -355,30 +355,55 @@ DEFINE_UNARY_FN_WITH_IMPL(ImplicitToNumber, value) {
     return value;
 }
 
+template <typename T>
+static std::string double_to_string_with_precision(T value) {
+    if constexpr (!std::is_floating_point_v<T>) {
+        return std::to_string(value);
+    } else {
+        std::ostringstream out;
+        out << std::setprecision(22) << std::fixed << value;
+        return out.str();
+    }
+}
+
 DEFINE_UNARY_FN_WITH_IMPL(NumberCheck, value) {
     // std::numeric_limits<T>::lowest() is a finite value x such that there is no other
     // finite value y where y < x.
     // This is different from std::numeric_limits<T>::min() for floating-point types.
     // So we use lowest instead of min for lower bound of all types.
     LOG(WARNING) << "[TEST] NumberCheck "
-                 << "[value=" << value << "] "
-                 << "[lowest=" << (Type)std::numeric_limits<ResultType>::lowest() << "] "
-                 << "[max=" << (Type)std::numeric_limits<ResultType>::max() << "] "
+                 << "[in_type=" << typeid(Type).name() << "] "
+                 << "[out_type=" << typeid(ResultType).name() << "] "
+                 << "[value=" << double_to_string_with_precision(value) << "] "
+                 << "[lowest=" << double_to_string_with_precision((Type)std::numeric_limits<ResultType>::lowest())
+                 << "] "
+                 << "[max=" << double_to_string_with_precision((Type)std::numeric_limits<ResultType>::max()) << "] "
                  << "[result="
                  << ((value < (Type)std::numeric_limits<ResultType>::lowest()) |
                      (value > (Type)std::numeric_limits<ResultType>::max()))
                  << "] ";
-    return (value < (Type)std::numeric_limits<ResultType>::lowest()) |
-           (value > (Type)std::numeric_limits<ResultType>::max());
+
+    if constexpr (std::is_floating_point_v<Type> && std::is_integral_v<ResultType>) {
+        LOG(WARNING) << "check_overlfow "
+                     << "[lower="
+                     << double_to_string_with_precision(static_cast<Type>(std::numeric_limits<ResultType>::lowest()))
+                     << "] "
+                     << "[upper="
+                     << double_to_string_with_precision(static_cast<Type>(2) *
+                                                        (std::numeric_limits<ResultType>::max() / 2 + 1))
+                     << "] "
+                     << "[value=" << double_to_string_with_precision(value) << "] "
+                     << "[out=" << double_to_string_with_precision(static_cast<ResultType>(value)) << "] " << std::endl;
+        return !(static_cast<Type>(std::numeric_limits<ResultType>::lowest()) <= value &&
+                 value < static_cast<Type>(2) * (std::numeric_limits<ResultType>::max() / 2 + 1));
+    } else {
+        return (value < (Type)std::numeric_limits<ResultType>::lowest()) |
+               (value > (Type)std::numeric_limits<ResultType>::max());
+    }
 }
 
 DEFINE_UNARY_FN_WITH_IMPL(NumberCheckWithThrowException, value) {
-    // std::numeric_limits<T>::lowest() is a finite value x such that there is no other
-    // finite value y where y < x.
-    // This is different from std::numeric_limits<T>::min() for floating-point types.
-    // So we use lowest instead of min for lower bound of all types.
-    auto result = (value < (Type)std::numeric_limits<ResultType>::lowest()) |
-                  (value > (Type)std::numeric_limits<ResultType>::max());
+    const auto result = NumberCheck::apply<Type, ResultType>(value);
     if (result) {
         std::stringstream ss;
         if constexpr (std::is_same_v<Type, __int128_t>) {
