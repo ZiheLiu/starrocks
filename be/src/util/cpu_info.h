@@ -82,6 +82,10 @@ public:
 
     static std::string debug_string();
 
+    static std::vector<size_t> get_core_ids();
+
+    static bool is_cgroup_without_cpuset() { return is_cgroup_without_cpuset_; }
+
 private:
     /// Initialize NUMA-related state - called from Init();
     static void _init_numa();
@@ -104,6 +108,8 @@ private:
     static int num_cores_;
     static int max_num_cores_;
     static std::string model_name_;
+
+    static bool is_cgroup_without_cpuset_;
 
     /// Maximum possible number of NUMA nodes.
     static int max_num_numa_nodes_;

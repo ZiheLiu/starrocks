@@ -214,6 +214,14 @@ public class ResourceGroup {
         if (resourceGroupType != null) {
             twg.setWorkgroup_type(resourceGroupType);
         }
+
+        // TODO(lzh): set dedicated_cpu_cores use dedicatedCpuCores.
+        if (maxCpuCores != null) {
+            twg.setDedicated_cpu_cores(maxCpuCores);
+        } else if (resourceGroupType == TWorkGroupType.WG_SHORT_QUERY) {
+            twg.setDedicated_cpu_cores(cpuCoreLimit);
+        }
+
         twg.setVersion(version);
         return twg;
     }

@@ -91,6 +91,11 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_idle_timeout(const MonoDelta& idle_tim
     return *this;
 }
 
+ThreadPoolBuilder& ThreadPoolBuilder::set_cpuids(const CpuUtil::CpuIds& cpuids) {
+    _cpuids = cpuids;
+    return *this;
+}
+
 Status ThreadPoolBuilder::build(std::unique_ptr<ThreadPool>* pool) const {
     pool->reset(new ThreadPool(*this));
     RETURN_IF_ERROR((*pool)->init());
@@ -250,7 +255,8 @@ ThreadPool::ThreadPool(const ThreadPoolBuilder& builder)
           _num_threads_pending_start(0),
           _active_threads(0),
           _total_queued_tasks(0),
-          _tokenless(new_token(ExecutionMode::CONCURRENT)) {}
+          _tokenless(new_token(ExecutionMode::CONCURRENT)),
+          _cpuids(builder._cpuids) {}
 
 ThreadPool::~ThreadPool() noexcept {
     // There should only be one live token: the one used in tokenless submission.
@@ -487,6 +493,17 @@ Status ThreadPool::update_max_threads(int max_threads) {
     return Status::OK();
 }
 
+void ThreadPool::bind_cpus(const CpuUtil::CpuIds& cpuids) {
+    std::lock_guard<std::mutex> lock(_lock);
+    _cpuids = cpuids;
+
+    _binded_cpuids = true;
+    for (const auto* thread : _threads) {
+        _binded_cpuids = _binded_cpuids && !_cpuids.empty() &&
+                         CpuUtil::bind_cpus(thread->tid(), thread->pthread_id(), _cpuids).ok();
+    }
+}
+
 void ThreadPool::dispatch_thread() {
     std::unique_lock l(_lock);
     auto current_thread = Thread::current_thread();
@@ -500,6 +517,9 @@ void ThreadPool::dispatch_thread() {
 
     // Owned by this worker thread and added/removed from _idle_threads as needed.
     IdleThread me;
+
+    // TODO(lzh): merge _binded_cpuids for each thread.
+    _binded_cpuids = _binded_cpuids && !_cpuids.empty() && CpuUtil::bind_cpus(_cpuids).ok();
 
     while (true) {
         // Note: Status::Aborted() is used to indicate normal shutdown.

@@ -19,6 +19,7 @@
 #include "common/statusor.h"
 #include "exec/pipeline/scan/balanced_chunk_buffer.h"
 #include "exec/pipeline/scan/scan_operator.h"
+#include "exec/workgroup/scan_task_queue.h"
 #include "exec/workgroup/work_group.h"
 #include "runtime/runtime_state.h"
 namespace starrocks::pipeline {

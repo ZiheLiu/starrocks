@@ -93,4 +93,8 @@ void ScanExecutor::force_submit(ScanTask task) {
     _task_queue->force_put(std::move(task));
 }
 
+void ScanExecutor::bind_cpus(const CpuUtil::CpuIds& cpuids) {
+    _thread_pool->bind_cpus(cpuids);
+}
+
 } // namespace starrocks::workgroup

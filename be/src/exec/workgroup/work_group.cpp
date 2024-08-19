@@ -17,9 +17,12 @@
 #include <utility>
 
 #include "common/config.h"
+#include "exec/pipeline/pipeline_driver_executor.h"
 #include "exec/workgroup/scan_task_queue.h"
 #include "glog/logging.h"
+#include "pipeline_executors.h"
 #include "runtime/exec_env.h"
+#include "scan_executor.h"
 #include "util/cpu_info.h"
 #include "util/metrics.h"
 #include "util/starrocks_metrics.h"
@@ -116,6 +119,10 @@ WorkGroup::WorkGroup(const TWorkGroup& twg)
         _cpu_weight = twg.cpu_core_limit;
     }
 
+    if (twg.__isset.dedicated_cpu_cores) {
+        _dedicated_cpu_cores = twg.dedicated_cpu_cores;
+    }
+
     if (twg.__isset.mem_limit) {
         _memory_limit = twg.mem_limit;
     }
@@ -196,12 +203,12 @@ void WorkGroup::init() {
 std::string WorkGroup::to_string() const {
     return fmt::format(
             "(id:{}, name:{}, version:{}, "
-            "cpu_limit:{}, mem_limit:{}, concurrency_limit:{}, "
+            "cpu_weight:{}, dedicated_cpu_cores:{}, mem_limit:{}, concurrency_limit:{}, "
             "bigquery: (cpu_second_limit:{}, mem_limit:{}, scan_rows_limit:{}), "
             "spill_mem_limit_threshold:{}"
             ")",
-            _id, _name, _version, _cpu_weight, _memory_limit_bytes, _concurrency_limit, big_query_cpu_second_limit(),
-            _big_query_mem_limit, _big_query_scan_rows_limit, _spill_mem_limit_threshold);
+            _id, _name, _version, _cpu_weight, _dedicated_cpu_cores, _memory_limit_bytes, _concurrency_limit,
+            big_query_cpu_second_limit(), _big_query_mem_limit, _big_query_scan_rows_limit, _spill_mem_limit_threshold);
 }
 
 void WorkGroup::incr_num_running_drivers() {
@@ -262,10 +269,15 @@ void WorkGroup::copy_metrics(const WorkGroup& rhs) {
     _bigquery_count = rhs.bigquery_count();
 }
 
-/// WorkGroupManager.
-WorkGroupManager::WorkGroupManager() = default;
+// ------------------------------------------------------------------------------------
+// WorkGroupManager
+// ------------------------------------------------------------------------------------
+
+WorkGroupManager::WorkGroupManager(PipelineExecutorsConfig executors_manager_conf)
+        : _executors_manager(this, std::move(executors_manager_conf)) {}
 
 WorkGroupManager::~WorkGroupManager() = default;
+
 void WorkGroupManager::destroy() {
     std::unique_lock write_lock(_mutex);
 
@@ -288,8 +300,8 @@ WorkGroupPtr WorkGroupManager::add_workgroup(const WorkGroupPtr& wg) {
 
 void WorkGroupManager::add_metrics_unlocked(const WorkGroupPtr& wg, UniqueLockType& unique_lock) {
     std::call_once(init_metrics_once_flag, []() {
-        StarRocksMetrics::instance()->metrics()->register_hook("work_group_metrics_hook",
-                                                               [] { WorkGroupManager::instance()->update_metrics(); });
+        StarRocksMetrics::instance()->metrics()->register_hook(
+                "work_group_metrics_hook", [] { ExecEnv::GetInstance()->workgroup_manager()->update_metrics(); });
     });
 
     if (_wg_metrics.count(wg->name()) == 0) {
@@ -381,7 +393,7 @@ void WorkGroupManager::add_metrics_unlocked(const WorkGroupPtr& wg, UniqueLockTy
     _wg_metrics[wg->name()]->group_unique_id = wg->unique_id();
 }
 
-double _calculate_ratio(int64_t curr_value, int64_t sum_value) {
+static double _calculate_ratio(int64_t curr_value, int64_t sum_value) {
     if (sum_value <= 0) {
         return 0;
     }
@@ -481,10 +493,6 @@ WorkGroupPtr WorkGroupManager::get_default_mv_workgroup() {
     return _workgroups.at(unique_id);
 }
 
-// ------------------------------------------------------------------------------------
-// WorkGroupManager
-// ------------------------------------------------------------------------------------
-
 void WorkGroupManager::apply(const std::vector<TWorkGroupOp>& ops) {
     std::unique_lock write_lock(_mutex);
 
@@ -531,6 +539,7 @@ void WorkGroupManager::create_workgroup_unlocked(const WorkGroupPtr& wg, UniqueL
     if (_workgroup_versions.count(wg->id()) && _workgroup_versions[wg->id()] >= wg->version()) {
         return;
     }
+
     wg->init();
     _workgroups[unique_id] = wg;
 
@@ -538,9 +547,9 @@ void WorkGroupManager::create_workgroup_unlocked(const WorkGroupPtr& wg, UniqueL
 
     // old version exists, so mark the stale version delete
     if (_workgroup_versions.count(wg->id())) {
-        auto stale_version = _workgroup_versions[wg->id()];
+        const auto stale_version = _workgroup_versions[wg->id()];
         DCHECK(stale_version < wg->version());
-        auto old_unique_id = WorkGroup::create_unique_id(wg->id(), stale_version);
+        const auto old_unique_id = WorkGroup::create_unique_id(wg->id(), stale_version);
         if (_workgroups.count(old_unique_id)) {
             _workgroups[old_unique_id]->mark_del();
             _workgroup_expired_versions.push_back(old_unique_id);
@@ -549,10 +558,16 @@ void WorkGroupManager::create_workgroup_unlocked(const WorkGroupPtr& wg, UniqueL
             // Copy metrics from old version work-group
             auto& old_wg = _workgroups[old_unique_id];
             wg->copy_metrics(*old_wg);
+
+            _executors_manager.reclaim_cpuids_from_worgroup(old_wg.get());
         }
     }
     // install new version
     _workgroup_versions[wg->id()] = wg->version();
+
+    _executors_manager.assign_cpuids_to_workgroup(wg.get());
+    _executors_manager.create_and_assign_executors(wg.get());
+    _executors_manager.update_common_executors();
 
     // Update metrics
     add_metrics_unlocked(wg, unique_lock);
@@ -581,7 +596,10 @@ void WorkGroupManager::delete_workgroup_unlocked(const WorkGroupPtr& wg) {
     auto unique_id = WorkGroup::create_unique_id(id, curr_version);
     auto wg_it = _workgroups.find(unique_id);
     if (wg_it != _workgroups.end()) {
-        wg_it->second->mark_del();
+        const auto& old_wg = wg_it->second;
+        old_wg->mark_del();
+        _executors_manager.reclaim_cpuids_from_worgroup(old_wg.get());
+        _executors_manager.update_common_executors();
         _workgroup_expired_versions.push_back(unique_id);
         LOG(INFO) << "workgroup expired version: " << wg->name() << "(" << wg->id() << "," << curr_version << ")";
     }
@@ -606,16 +624,40 @@ void WorkGroupManager::for_each_workgroup(const WorkGroupConsumer& consumer) con
     }
 }
 
+Status WorkGroupManager::start() {
+    return _executors_manager.start_common_executors();
+}
+
+void WorkGroupManager::close() {
+    std::unique_lock write_lock(_mutex);
+    _executors_manager.close();
+}
+
+void WorkGroupManager::for_each_executors(const ExecutorsManager::ExecutorsConsumer& consumer) const {
+    std::shared_lock read_lock(_mutex);
+    _executors_manager.for_each_executors(consumer);
+}
+
+void WorkGroupManager::change_num_connector_scan_threads(uint32_t num_connector_scan_threads) {
+    std::unique_lock write_lock(_mutex);
+    _executors_manager.change_num_connector_scan_threads(num_connector_scan_threads);
+}
+
+void WorkGroupManager::change_enable_resource_group_cpu_borrowing(bool val) {
+    std::unique_lock write_lock(_mutex);
+    _executors_manager.change_enable_resource_group_cpu_borrowing(val);
+}
+
 // ------------------------------------------------------------------------------------
 // DefaultWorkGroupInitialization
 // ------------------------------------------------------------------------------------
 
 DefaultWorkGroupInitialization::DefaultWorkGroupInitialization() {
     auto default_wg = create_default_workgroup();
-    WorkGroupManager::instance()->add_workgroup(default_wg);
+    ExecEnv::GetInstance()->workgroup_manager()->add_workgroup(default_wg);
 
     auto default_mv_wg = create_default_mv_workgroup();
-    WorkGroupManager::instance()->add_workgroup(default_mv_wg);
+    ExecEnv::GetInstance()->workgroup_manager()->add_workgroup(default_mv_wg);
 }
 
 std::shared_ptr<WorkGroup> DefaultWorkGroupInitialization::create_default_workgroup() {

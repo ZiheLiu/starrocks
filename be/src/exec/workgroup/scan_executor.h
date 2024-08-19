@@ -39,6 +39,8 @@ public:
 
     void force_submit(ScanTask task);
 
+    void bind_cpus(const CpuUtil::CpuIds& cpuids);
+
 private:
     void worker_thread();
 

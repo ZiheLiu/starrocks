@@ -53,6 +53,7 @@
 #include "util/bthreads/semaphore.h"
 // resolve `barrier` macro conflicts with boost/thread.hpp header file
 #undef barrier
+#include "cpu_util.h"
 #include "util/metrics.h"
 #include "util/monotime.h"
 #include "util/priority_queue.h"
@@ -124,6 +125,7 @@ public:
     ThreadPoolBuilder& set_max_threads(int max_threads);
     ThreadPoolBuilder& set_max_queue_size(int max_queue_size);
     ThreadPoolBuilder& set_idle_timeout(const MonoDelta& idle_timeout);
+    ThreadPoolBuilder& set_cpuids(const CpuUtil::CpuIds& cpuids);
 
     // Instantiate a new ThreadPool with the existing builder arguments.
     Status build(std::unique_ptr<ThreadPool>* pool) const;
@@ -135,6 +137,7 @@ private:
     int _max_threads;
     int _max_queue_size;
     MonoDelta _idle_timeout;
+    CpuUtil::CpuIds _cpuids;
 
     ThreadPoolBuilder(const ThreadPoolBuilder&) = delete;
     const ThreadPoolBuilder& operator=(const ThreadPoolBuilder&) = delete;
@@ -254,6 +257,10 @@ public:
     int64_t total_pending_time_ns() const { return _total_pending_time_ns.value(); }
 
     int64_t total_execute_time_ns() const { return _total_execute_time_ns.value(); }
+
+    bool binded_cpuids() const { return _binded_cpuids; }
+
+    void bind_cpus(const CpuUtil::CpuIds& cpuids);
 
 private:
     friend class ThreadPoolBuilder;
@@ -378,6 +385,9 @@ private:
 
     // ExecutionMode::CONCURRENT token used by the pool for tokenless submission.
     std::unique_ptr<ThreadPoolToken> _tokenless;
+
+    CpuUtil::CpuIds _cpuids;
+    bool _binded_cpuids = true;
 
     // Total number of tasks that have finished
     CoreLocalCounter<int64_t> _total_executed_tasks{MetricUnit::NOUNIT};
