@@ -223,7 +223,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
             }
 
             Optional<Backend> be = pick(scanBackendIds, aliveIdToBackends);
-            if (be.isEmpty()) {
+            if (!be.isPresent()) {
                 workerProvider.reportWorkerNotFoundException();
             }
             be.ifPresent(backend -> backend2Tablets.computeIfAbsent(be.get().getBrpcAddress(), k -> new ArrayList<>())
@@ -235,7 +235,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
     private Map<TNetworkAddress, List<TExecShortCircuitParams>> createRequests() throws UserException {
         Map<TNetworkAddress, List<TExecShortCircuitParams>> toSendRequests = Maps.newHashMap();
         Optional<PlanNode> planNode = getOlapScanNode();
-        if (planNode.isEmpty()) {
+        if (!planNode.isPresent()) {
             return toSendRequests;
         }
         OlapScanNode olapScanNode = ((OlapScanNode) planNode.get());
