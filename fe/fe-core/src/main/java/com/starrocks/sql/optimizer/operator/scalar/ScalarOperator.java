@@ -298,7 +298,7 @@ public abstract class ScalarOperator implements Cloneable {
                     new ConstantOperator(realObjectValue, expr.getType()).castTo(predicate.getChild(1).getType());
             predicate.setChild(1, constantOperator);
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            //            throw new RuntimeException(e);
         }
     }
 }
