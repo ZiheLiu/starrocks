@@ -24,7 +24,6 @@ import com.starrocks.sql.optimizer.operator.OperatorType;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
 import static java.util.Objects.requireNonNull;
 
@@ -294,10 +293,12 @@ public abstract class ScalarOperator implements Cloneable {
 
     private static void updateSingleLiteralPredicate(ScalarOperator predicate, Expr expr) {
         Object realObjectValue = ((LiteralExpr) expr).getRealObjectValue();
-        Optional<ConstantOperator> constantOperator =
-                new ConstantOperator(realObjectValue, expr.getType()).castTo(predicate.getChild(1).getType());
-        if (constantOperator.isPresent()) {
-            predicate.setChild(1, constantOperator.get());
+        try {
+            ConstantOperator constantOperator =
+                    new ConstantOperator(realObjectValue, expr.getType()).castTo(predicate.getChild(1).getType());
+            predicate.setChild(1, constantOperator);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }
