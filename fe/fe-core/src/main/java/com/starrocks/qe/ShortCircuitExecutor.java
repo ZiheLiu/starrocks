@@ -30,13 +30,13 @@ import com.starrocks.system.Backend;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TScanRangeLocations;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
-import java.util.Set;
 
 public class ShortCircuitExecutor {
 
@@ -98,7 +98,7 @@ public class ShortCircuitExecutor {
         throw new StarRocksPlannerException("Not implement ShortCircuit Executor class", ErrorType.INTERNAL_ERROR);
     }
 
-    protected static Optional<Backend> pick(Set<Long> backendId, Map<Long, Backend> aliveBackends) {
+    protected static Optional<Backend> pick(Collection<Long> backendId, Map<Long, Backend> aliveBackends) {
         for (Long beId : backendId) {
             Optional<Backend> backend = Optional.ofNullable(aliveBackends.get(beId));
             if (backend.isPresent()) {

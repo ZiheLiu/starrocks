@@ -22,6 +22,7 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.SetMultimap;
+import com.google.common.collect.Sets;
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.common.UserException;
@@ -54,6 +55,7 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TDeserializer;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -214,10 +216,16 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         for (TScanRangeLocations range : scanRangeLocations) {
             TInternalScanRange internalScanRange = range.getScan_range().getInternal_scan_range();
-            Set<Long> scanBackendIds =
-                    range.getLocations().stream().map(TScanRangeLocation::getBackend_id).collect(Collectors.toSet());
             TabletWithVersion tabletWithVersion = new TabletWithVersion(internalScanRange.getTablet_id(),
                     internalScanRange.getVersion());
+
+            Set<Long> scanBackendIdSet = Sets.newHashSet();
+            List<Long> scanBackendIds = new ArrayList<>(range.getLocations().size());
+            for (TScanRangeLocation location : range.getLocations()) {
+                if (scanBackendIdSet.add(location.getBackend_id())) {
+                    scanBackendIds.add(location.getBackend_id());
+                }
+            }
 
             Optional<Backend> be = pick(scanBackendIds, aliveIdToBackends);
             if (be.isEmpty()) {
