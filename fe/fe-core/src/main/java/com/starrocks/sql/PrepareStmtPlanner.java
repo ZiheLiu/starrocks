@@ -14,6 +14,8 @@
 
 package com.starrocks.sql;
 
+import com.starrocks.analysis.Expr;
+import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.http.HttpConnectContext;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.PrepareStmtContext;
@@ -27,7 +29,9 @@ import com.starrocks.sql.optimizer.operator.Operator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalOlapScanOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
+import com.starrocks.sql.optimizer.rewrite.BaseScalarOperatorShuttle;
 import com.starrocks.sql.optimizer.rewrite.OptDistributionPruner;
 import com.starrocks.sql.optimizer.rewrite.OptOlapPartitionPruner;
 import com.starrocks.sql.optimizer.transformer.LogicalPlan;
@@ -98,7 +102,9 @@ public class PrepareStmtPlanner {
 
         Operator operator = logicalPlan.getRoot().getInputs().get(0).getOp();
         if (operator instanceof LogicalFilterOperator) {
-            ScalarOperator.updateLiteralPredicates(operator.getPredicate(), executeStmt.getParamsExpr());
+            ParameterReplacer replacer = new ParameterReplacer(executeStmt.getParamsExpr());
+            ScalarOperator newPredicate = operator.getPredicate().accept(replacer, null);
+            operator.setPredicate(newPredicate);
         }
 
         rePlanOptimizedPlan(logicalPlan, optimizedPlan);
@@ -128,6 +134,25 @@ public class PrepareStmtPlanner {
                 logicalOlapScanOperator.getSelectedPartitionId());
 
         physicalOlapScanOperator.setSelectedTabletId(pruneTabletIds);
+    }
+
+    private static class ParameterReplacer extends BaseScalarOperatorShuttle {
+        private final List<Expr> params;
+
+        private int idx;
+        public ParameterReplacer(List<Expr> params) {
+            this.params = params;
+            idx = 0;
+        }
+
+        @Override
+        public ScalarOperator visitConstant(ConstantOperator literal, Void context) {
+            LiteralExpr literalExpr = (LiteralExpr) params.get(idx);
+            ConstantOperator constantOperator = new ConstantOperator(literalExpr.getRealObjectValue(), literalExpr.getType());
+            idx++;
+            return constantOperator;
+        }
+
     }
 
 }
