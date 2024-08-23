@@ -115,13 +115,13 @@ public class PrepareStmtPlanner {
         LogicalOlapScanOperator logicalScanOperator =
                 (LogicalOlapScanOperator) logicalPlan.getRoot().getInputs().get(0).getInputs().get(0)
                         .getInputs().get(0).getOp();
+        logicalScanOperator.setPredicate(predicate);
+        logicalScanOperator.buildColumnFilters(predicate);
+
         LogicalOlapScanOperator logicalOlapScanOperator =
                 OptOlapPartitionPruner.prunePartitions(logicalScanOperator);
-        logicalOlapScanOperator
-                .buildColumnFilters(predicate);
 
         // update optimized plan partitionIds and tabletIds with predicates
-        optimizedPlan.getOp().setPredicate(predicate);
         PhysicalOlapScanOperator physicalOlapScanOperator = (PhysicalOlapScanOperator) optimizedPlan.getOp();
         physicalOlapScanOperator.setSelectedPartitionId(logicalOlapScanOperator.getSelectedPartitionId());
         List<Long> pruneTabletIds = OptDistributionPruner.pruneTabletIds(logicalOlapScanOperator,
