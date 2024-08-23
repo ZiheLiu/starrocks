@@ -19,9 +19,9 @@ package com.starrocks.qe;
 
 import com.google.common.base.Objects;
 import com.google.common.base.Stopwatch;
-import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.SetMultimap;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.common.UserException;
@@ -53,6 +53,7 @@ import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 import org.apache.thrift.TDeserializer;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -84,13 +85,13 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
             return;
         }
         Stopwatch watch = Stopwatch.createUnstarted();
-        SetMultimap<TNetworkAddress, TExecShortCircuitParams> be2ShortCircuitRequests = createRequests();
+        Map<TNetworkAddress, List<TExecShortCircuitParams>> be2ShortCircuitRequests = createRequests();
         Queue<RowBatch> rowBatchQueue = new LinkedList<>();
         AtomicReference<RuntimeProfile> runtimeProfile = new AtomicReference<>();
         AtomicLong affectedRows = new AtomicLong();
 
         // all data will be pruned by fe
-        if (be2ShortCircuitRequests.keys().size() == 0) {
+        if (be2ShortCircuitRequests.isEmpty()) {
             rowBatchQueue.offer(new RowBatch());
             result = new ShortCircuitResult(rowBatchQueue, affectedRows.get(), runtimeProfile.get());
             return;
@@ -99,7 +100,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
         AtomicInteger i = new AtomicInteger();
         MetricRepo.COUNTER_SHORTCIRCUIT_QUERY.increase(1L);
         MetricRepo.COUNTER_SHORTCIRCUIT_RPC.increase((long) be2ShortCircuitRequests.size());
-        be2ShortCircuitRequests.forEach((beAddress, tRequest) -> {
+        be2ShortCircuitRequests.forEach((beAddress, tRequests) -> tRequests.forEach(tRequest -> {
             PBackendService service = BrpcProxy.getBackendService(beAddress);
             try {
                 PExecShortCircuitRequest pRequest = new PExecShortCircuitRequest();
@@ -130,7 +131,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
 
                 byte[] serialResult = pRequest.getSerializedResult();
                 RowBatch rowBatch = new RowBatch();
-                rowBatch.setEos(i.incrementAndGet() == be2ShortCircuitRequests.keys().size());
+                rowBatch.setEos(i.incrementAndGet() == be2ShortCircuitRequests.size());
                 if (serialResult != null && serialResult.length > 0) {
                     TDeserializer deserializer = new TDeserializer();
                     TResultBatch resultBatch = new TResultBatch();
@@ -156,7 +157,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
                         + e.getMessage() + " backend: " + beAddress.getHostname() + ", port:" + beAddress.getPort(), e);
             }
 
-        });
+        }));
 
         result = new ShortCircuitResult(rowBatchQueue, affectedRows.get(), runtimeProfile.get());
     }
@@ -201,8 +202,8 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
      *
      * @return
      */
-    private SetMultimap<TNetworkAddress, TabletWithVersion> assignTablet2Backends() throws NonRecoverableException {
-        SetMultimap<TNetworkAddress, TabletWithVersion> backend2Tablets = HashMultimap.create();
+    private Map<TNetworkAddress, List<TabletWithVersion>> assignTablet2Backends() throws NonRecoverableException {
+        Map<TNetworkAddress, List<TabletWithVersion>> backend2Tablets = Maps.newHashMap();
         ImmutableMap<Long, Backend> idToBackends =
                 GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getIdToBackend();
         Map<Long, Backend> aliveIdToBackends = idToBackends.entrySet().stream()
@@ -210,22 +211,29 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
         for (TScanRangeLocations range : scanRangeLocations) {
             TInternalScanRange internalScanRange = range.getScan_range().getInternal_scan_range();
-            Set<Long> scanBackendIds =
-                    range.getLocations().stream().map(TScanRangeLocation::getBackend_id).collect(Collectors.toSet());
             TabletWithVersion tabletWithVersion = new TabletWithVersion(internalScanRange.getTablet_id(),
                     internalScanRange.getVersion());
+
+            Set<Long> scanBackendIdSet = Sets.newHashSet();
+            List<Long> scanBackendIds = new ArrayList<>(range.getLocations().size());
+            for (TScanRangeLocation location : range.getLocations()) {
+                if (scanBackendIdSet.add(location.getBackend_id())) {
+                    scanBackendIds.add(location.getBackend_id());
+                }
+            }
 
             Optional<Backend> be = pick(scanBackendIds, aliveIdToBackends);
             if (be.isEmpty()) {
                 workerProvider.reportWorkerNotFoundException();
             }
-            be.ifPresent(backend -> backend2Tablets.put(be.get().getBrpcAddress(), tabletWithVersion));
+            be.ifPresent(backend -> backend2Tablets.computeIfAbsent(be.get().getBrpcAddress(), k -> new ArrayList<>())
+                            .add(tabletWithVersion));
         }
         return backend2Tablets;
     }
 
-    private SetMultimap<TNetworkAddress, TExecShortCircuitParams> createRequests() throws UserException {
-        SetMultimap<TNetworkAddress, TExecShortCircuitParams> toSendRequests = HashMultimap.create();
+    private Map<TNetworkAddress, List<TExecShortCircuitParams>> createRequests() throws UserException {
+        Map<TNetworkAddress, List<TExecShortCircuitParams>> toSendRequests = Maps.newHashMap();
         Optional<PlanNode> planNode = getOlapScanNode();
         if (planNode.isEmpty()) {
             return toSendRequests;
@@ -242,7 +250,7 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
         }).collect(Collectors.toList());
 
         // fill tablet id and version , then bind be network
-        SetMultimap<TNetworkAddress, TabletWithVersion> be2Tablets = assignTablet2Backends();
+        Map<TNetworkAddress, List<TabletWithVersion>> be2Tablets = assignTablet2Backends();
 
         olapScanNode.clearScanNodeForThriftBuild();
         be2Tablets.forEach((be, tableVersion) -> {
@@ -264,7 +272,9 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
                     .collect(Collectors.toList());
             commonRequest.setVersions(versions);
             commonRequest.setPlan(planFragment.getPlanRoot().treeToThrift());
-            toSendRequests.put(be, commonRequest);
+
+            toSendRequests.computeIfAbsent(be, k -> new ArrayList<>())
+                    .add(commonRequest);
         });
 
         return toSendRequests;
