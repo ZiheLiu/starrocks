@@ -1211,6 +1211,7 @@ public class StmtExecutor {
             ctx.setReturnFromFE(false);
             ctx.setExecPlan(execPlan);
             ctx.setCoordinator(coord);
+            ctx.getState().setEof();
         } else {
             boolean needSendResult = !isPlanAdvisorAnalyze && !isExplainAnalyze
                     && !context.getSessionVariable().isEnableExecutionOnly();
