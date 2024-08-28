@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.ast;
 
 import com.starrocks.analysis.Predicate;
@@ -88,9 +87,15 @@ public class CreateResourceGroupStmt extends DdlStmt {
         if (resourceGroup.getResourceGroupType() == null) {
             resourceGroup.setResourceGroupType(TWorkGroupType.WG_NORMAL);
         }
-        if (resourceGroup.getCpuCoreLimit() == null) {
-            throw new SemanticException("property 'cpu_core_limit' is absent");
+
+        if (resourceGroup.getResourceGroupType() == TWorkGroupType.WG_SHORT_QUERY &&
+                (resourceGroup.getDedicatedCpuCores() != null && resourceGroup.getDedicatedCpuCores() > 0)) {
+            throw new SemanticException("'short_query' ResourceGroup cannot set 'dedicated_cpu_cores', " +
+                    "since it use 'cpu_weight' as 'dedicated_cpu_cores'");
         }
+
+        ResourceGroup.validateCpuParameters(resourceGroup.getCpuWeight(), resourceGroup.getDedicatedCpuCores());
+
         if (resourceGroup.getMemLimit() == null) {
             throw new SemanticException("property 'mem_limit' is absent");
         }

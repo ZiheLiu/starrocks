@@ -219,6 +219,7 @@ void WorkGroupDriverQueue::close() {
     std::lock_guard<std::mutex> lock(_global_mutex);
     _is_closed = true;
     _cv.notify_all();
+    _cv_for_borrowed_cpus.notify_all();
 }
 
 void WorkGroupDriverQueue::put_back(const DriverRawPtr driver) {
@@ -241,21 +242,28 @@ void WorkGroupDriverQueue::put_back_from_executor(const DriverRawPtr driver) {
 StatusOr<DriverRawPtr> WorkGroupDriverQueue::take(const bool block) {
     std::unique_lock<std::mutex> lock(_global_mutex);
 
-    workgroup::WorkGroupDriverSchedEntity* wg_entity = nullptr;
-    while (wg_entity == nullptr) {
+    workgroup::WorkGroupDriverSchedEntity* wg_entity;
+    while (true) {
         if (_is_closed) {
             return Status::Cancelled("Shutdown");
         }
 
-        if (_wg_entities.empty()) {
-            if (!block) {
-                return nullptr;
-            }
-            _cv.wait(lock);
-            continue;
+        wg_entity = _take_next_wg();
+        if (wg_entity != nullptr &&
+            !ExecEnv::GetInstance()->workgroup_manager()->should_yield(wg_entity->workgroup())) {
+            break;
         }
 
-        wg_entity = _take_next_wg();
+        if (!block) {
+            return nullptr;
+        }
+
+        if (wg_entity == nullptr) {
+            _cv.wait(lock);
+        } else {
+            _cv.notify_all();
+            _cv_for_borrowed_cpus.wait_for(lock, std::chrono::milliseconds(50));
+        }
     }
 
     // If wg only contains one ready driver, it will be not ready anymore
@@ -312,6 +320,9 @@ size_t WorkGroupDriverQueue::size() const {
 }
 
 bool WorkGroupDriverQueue::should_yield(const DriverRawPtr driver, int64_t unaccounted_runtime_ns) const {
+    if (ExecEnv::GetInstance()->workgroup_manager()->should_yield(driver->workgroup())) {
+        return true;
+    }
     // Return true, if the minimum-vruntime workgroup is not current workgroup anymore.
     auto* wg_entity = driver->workgroup()->driver_sched_entity();
     auto* min_entity = _min_wg_entity.load();

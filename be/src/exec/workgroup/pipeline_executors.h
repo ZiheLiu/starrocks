@@ -24,7 +24,7 @@ namespace starrocks::workgroup {
 struct PipelineExecutorsConfig {
     PipelineExecutorsConfig(uint32_t num_total_cores, uint32_t num_total_driver_threads,
                             uint32_t num_total_scan_threads, uint32_t num_total_connector_scan_threads,
-                            CpuUtil::CpuIds total_cpuids, bool enable_bind_cpus);
+                            CpuUtil::CpuIds total_cpuids, bool enable_bind_cpus, bool enable_cpu_borrowing);
 
     std::string to_string() const;
 
@@ -36,17 +36,19 @@ struct PipelineExecutorsConfig {
     CpuUtil::CpuIds total_cpuids;
 
     bool enable_bind_cpus;
+    bool enable_cpu_borrowing;
 };
 
 class PipelineExecutors {
 public:
-    PipelineExecutors(const PipelineExecutorsConfig& conf, std::string name, CpuUtil::CpuIds cpuids);
+    PipelineExecutors(const PipelineExecutorsConfig& conf, std::string name, CpuUtil::CpuIds cpuids,
+                      std::vector<CpuUtil::CpuIds> borrowed_cpuids);
     ~PipelineExecutors();
 
     Status start();
     void close();
 
-    void change_cpus(CpuUtil::CpuIds cpuids);
+    void change_cpus(CpuUtil::CpuIds cpuids, std::vector<CpuUtil::CpuIds> borrowed_cpuids);
     void notify_num_total_connector_scan_threads_changed() const;
     void notify_config_changed() const;
 
@@ -62,18 +64,14 @@ private:
     uint32_t num_connector_scan_threads() const {
         return calculate_num_threads(_conf.num_total_connector_scan_threads);
     }
-    uint32_t calculate_num_threads(uint32_t num_total_threads) const {
-        if (_cpuids.empty()) {
-            return num_total_threads;
-        }
-        return std::max<uint32_t>(1, num_total_threads * _cpuids.size() / _conf.num_total_cores);
-    }
+    uint32_t calculate_num_threads(uint32_t num_total_threads) const;
 
 private:
     const PipelineExecutorsConfig& _conf;
     const std::string _name;
 
     CpuUtil::CpuIds _cpuids;
+    std::vector<CpuUtil::CpuIds> _borrowed_cpu_ids;
 
     std::unique_ptr<pipeline::DriverExecutor> _driver_executor;
     std::unique_ptr<ScanExecutor> _scan_executor;

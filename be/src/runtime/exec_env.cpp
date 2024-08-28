@@ -434,10 +434,10 @@ Status ExecEnv::init(const std::vector<StorePath>& store_paths, bool as_cn) {
                 << "hdfs_client_hedged_read_threadpool_size should greater than 0";
     }
 
-    const bool enable_bind_cpus = !config::enable_resource_group_cpu_borrowing && !CpuInfo::is_cgroup_without_cpuset();
-    workgroup::PipelineExecutorsConfig executors_manager_opts(CpuInfo::num_cores(), _max_executor_threads,
-                                                              num_io_threads, connector_num_io_threads,
-                                                              CpuInfo::get_core_ids(), enable_bind_cpus);
+    const bool enable_bind_cpus = config::enable_resource_group_bind_cpus && !CpuInfo::is_cgroup_without_cpuset();
+    workgroup::PipelineExecutorsConfig executors_manager_opts(
+            CpuInfo::num_cores(), _max_executor_threads, num_io_threads, connector_num_io_threads,
+            CpuInfo::get_core_ids(), enable_bind_cpus, config::enable_resource_group_cpu_borrowing);
     _workgroup_manager = std::make_unique<workgroup::WorkGroupManager>(std::move(executors_manager_opts));
     RETURN_IF_ERROR(_workgroup_manager->start());
 

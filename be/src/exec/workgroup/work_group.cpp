@@ -115,7 +115,7 @@ WorkGroup::WorkGroup(const TWorkGroup& twg)
           _driver_sched_entity(this),
           _scan_sched_entity(this),
           _connector_scan_sched_entity(this) {
-    if (twg.__isset.cpu_core_limit) {
+    if (twg.__isset.cpu_core_limit && twg.cpu_core_limit > 0) {
         _cpu_weight = twg.cpu_core_limit;
     }
 
@@ -551,15 +551,15 @@ void WorkGroupManager::create_workgroup_unlocked(const WorkGroupPtr& wg, UniqueL
         DCHECK(stale_version < wg->version());
         const auto old_unique_id = WorkGroup::create_unique_id(wg->id(), stale_version);
         if (_workgroups.count(old_unique_id)) {
-            _workgroups[old_unique_id]->mark_del();
+            auto& old_wg = _workgroups[old_unique_id];
+
+            _executors_manager.reclaim_cpuids_from_worgroup(old_wg.get());
+            old_wg->mark_del();
             _workgroup_expired_versions.push_back(old_unique_id);
             LOG(INFO) << "workgroup expired version: " << wg->name() << "(" << wg->id() << "," << stale_version << ")";
 
             // Copy metrics from old version work-group
-            auto& old_wg = _workgroups[old_unique_id];
             wg->copy_metrics(*old_wg);
-
-            _executors_manager.reclaim_cpuids_from_worgroup(old_wg.get());
         }
     }
     // install new version
@@ -597,8 +597,8 @@ void WorkGroupManager::delete_workgroup_unlocked(const WorkGroupPtr& wg) {
     auto wg_it = _workgroups.find(unique_id);
     if (wg_it != _workgroups.end()) {
         const auto& old_wg = wg_it->second;
-        old_wg->mark_del();
         _executors_manager.reclaim_cpuids_from_worgroup(old_wg.get());
+        old_wg->mark_del();
         _executors_manager.update_common_executors();
         _workgroup_expired_versions.push_back(unique_id);
         LOG(INFO) << "workgroup expired version: " << wg->name() << "(" << wg->id() << "," << curr_version << ")";
@@ -633,6 +633,10 @@ void WorkGroupManager::close() {
     _executors_manager.close();
 }
 
+bool WorkGroupManager::should_yield(const WorkGroup* wg) const {
+    return _executors_manager.should_yield(wg);
+}
+
 void WorkGroupManager::for_each_executors(const ExecutorsManager::ExecutorsConsumer& consumer) const {
     std::shared_lock read_lock(_mutex);
     _executors_manager.for_each_executors(consumer);
@@ -643,7 +647,12 @@ void WorkGroupManager::change_num_connector_scan_threads(uint32_t num_connector_
     _executors_manager.change_num_connector_scan_threads(num_connector_scan_threads);
 }
 
-void WorkGroupManager::change_enable_resource_group_cpu_borrowing(bool val) {
+void WorkGroupManager::change_enable_resource_group_bind_cpus(const bool val) {
+    std::unique_lock write_lock(_mutex);
+    _executors_manager.change_enable_resource_group_bind_cpus(val);
+}
+
+void WorkGroupManager::change_enable_resource_group_cpu_borrowing(const bool val) {
     std::unique_lock write_lock(_mutex);
     _executors_manager.change_enable_resource_group_cpu_borrowing(val);
 }

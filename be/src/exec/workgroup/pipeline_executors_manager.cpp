@@ -20,8 +20,9 @@ namespace starrocks::workgroup {
 
 ExecutorsManager::ExecutorsManager(WorkGroupManager* parent, PipelineExecutorsConfig conf)
         : _parent(parent), _conf(std::move(conf)) {
-    for (const auto& cpuid : _conf.total_cpuids) {
-        _cpuid_to_wg[cpuid] = nullptr;
+    _wg_to_cpuids[COMMON_WORKGROUP] = _conf.total_cpuids;
+    for (auto cpuid : _conf.total_cpuids) {
+        _cpu_owners[cpuid].set_wg(COMMON_WORKGROUP);
     }
 }
 
@@ -30,57 +31,72 @@ void ExecutorsManager::close() const {
 }
 
 Status ExecutorsManager::start_common_executors() {
-    _common_executors = std::make_unique<PipelineExecutors>(_conf, "com", CpuUtil::CpuIds{});
+    _common_executors =
+            std::make_unique<PipelineExecutors>(_conf, "com", _conf.total_cpuids, std::vector<CpuUtil::CpuIds>{});
     return _common_executors->start();
 }
 
 void ExecutorsManager::update_common_executors() const {
-    _common_executors->change_cpus(get_cpuids_of_workgroup(nullptr));
+    std::vector<CpuUtil::CpuIds> borrowed_cpuids;
+    if (_conf.enable_cpu_borrowing) {
+        for (const auto& [wg, cpuids] : _wg_to_cpuids) {
+            if (wg != COMMON_WORKGROUP) {
+                borrowed_cpuids.emplace_back(cpuids);
+            }
+        }
+    }
+    _common_executors->change_cpus(get_cpuids_of_workgroup(COMMON_WORKGROUP), borrowed_cpuids);
 }
 
 void ExecutorsManager::assign_cpuids_to_workgroup(WorkGroup* wg) {
-    const size_t num_target_cpuids = wg->dedicated_cpu_cores();
-    size_t num_assigned_cpuids = 0;
-    CpuUtil::CpuIds cpuids;
-    for (auto& [cpuid, cur_wg] : _cpuid_to_wg) {
-        if (num_assigned_cpuids >= num_target_cpuids) {
-            break;
-        }
-
-        if (cur_wg == nullptr) {
-            cur_wg = wg;
-            num_assigned_cpuids++;
-            cpuids.emplace_back(cpuid);
-        }
+    if (_wg_to_cpuids.contains(wg)) {
+        return;
     }
+
+    const auto& common_cpuids = get_cpuids_of_workgroup(COMMON_WORKGROUP);
+
+    CpuUtil::CpuIds cpuids;
+    CpuUtil::CpuIds new_common_cpuids;
+    const size_t n = std::min<size_t>({wg->dedicated_cpu_cores(), common_cpuids.size(), _conf.num_total_cores - 1});
+    std::copy_n(common_cpuids.begin(), n, std::back_inserter(cpuids));
+    std::copy(common_cpuids.begin() + n, common_cpuids.end(), std::back_inserter(new_common_cpuids));
 
     LOG(INFO) << "[WORKGROUP] assign cpuids to workgroup "
               << "[workgroup=" << wg->to_string() << "] "
               << "[cpuids=" << CpuUtil::to_string(cpuids) << "] ";
+
+    if (!cpuids.empty()) {
+        for (auto cpuid : cpuids) {
+            _cpu_owners[cpuid].set_wg(wg);
+        }
+        _wg_to_cpuids[wg] = std::move(cpuids);
+    }
+    if (new_common_cpuids.size() != common_cpuids.size()) {
+        _wg_to_cpuids[COMMON_WORKGROUP] = std::move(new_common_cpuids);
+    }
 }
 
 void ExecutorsManager::reclaim_cpuids_from_worgroup(WorkGroup* wg) {
-    CpuUtil::CpuIds cpuids;
-    for (auto& [cpuid, cur_wg] : _cpuid_to_wg) {
-        if (cur_wg == wg) {
-            cur_wg = nullptr;
-            cpuids.emplace_back(cpuid);
-        }
-    }
-
+    const auto& cpuids = get_cpuids_of_workgroup(wg);
     LOG(INFO) << "[WORKGROUP] reclaim cpuids from workgroup "
               << "[workgroup=" << wg->to_string() << "] "
               << "[cpuids=" << CpuUtil::to_string(cpuids) << "] ";
+
+    std::ranges::copy(cpuids, std::back_inserter(_wg_to_cpuids[COMMON_WORKGROUP]));
+    _wg_to_cpuids.erase(wg);
+
+    for (auto cpuid : cpuids) {
+        _cpu_owners[cpuid].set_wg(COMMON_WORKGROUP);
+    }
 }
 
-CpuUtil::CpuIds ExecutorsManager::get_cpuids_of_workgroup(WorkGroup* wg) const {
-    CpuUtil::CpuIds cpuids;
-    for (const auto& [cpuid, cur_wg] : _cpuid_to_wg) {
-        if (cur_wg == wg) {
-            cpuids.emplace_back(cpuid);
-        }
+const CpuUtil::CpuIds& ExecutorsManager::get_cpuids_of_workgroup(WorkGroup* wg) const {
+    static const CpuUtil::CpuIds empty_cpuids;
+    const auto it = _wg_to_cpuids.find(wg);
+    if (it == _wg_to_cpuids.end()) {
+        return empty_cpuids;
     }
-    return cpuids;
+    return it->second;
 }
 
 PipelineExecutors* ExecutorsManager::create_and_assign_executors(WorkGroup* wg) const {
@@ -91,7 +107,8 @@ PipelineExecutors* ExecutorsManager::create_and_assign_executors(WorkGroup* wg) 
         return _common_executors.get();
     }
 
-    auto executors = std::make_unique<PipelineExecutors>(_conf, std::to_string(wg->id()), get_cpuids_of_workgroup(wg));
+    auto executors = std::make_unique<PipelineExecutors>(_conf, std::to_string(wg->id()), get_cpuids_of_workgroup(wg),
+                                                         std::vector<CpuUtil::CpuIds>{});
     if (const Status status = executors->start(); !status.ok()) {
         LOG(WARNING) << "[WORKGROUP] failed to start executors for workgroup "
                      << "[workgroup=" << wg->to_string() << "] "
@@ -121,14 +138,23 @@ void ExecutorsManager::change_num_connector_scan_threads(uint32_t num_connector_
     for_each_executors([](const auto& executors) { executors.notify_num_total_connector_scan_threads_changed(); });
 }
 
-void ExecutorsManager::change_enable_resource_group_cpu_borrowing(bool val) {
-    const auto prev_val = _conf.enable_bind_cpus;
-    _conf.enable_bind_cpus = !val && !CpuInfo::is_cgroup_without_cpuset();
-    if (_conf.enable_bind_cpus == prev_val) {
+void ExecutorsManager::change_enable_resource_group_bind_cpus(bool val) {
+    const auto new_val = val && !CpuInfo::is_cgroup_without_cpuset();
+    if (_conf.enable_bind_cpus == new_val) {
         return;
     }
+    _conf.enable_bind_cpus = new_val;
 
     for_each_executors([](const auto& executors) { executors.notify_config_changed(); });
+}
+
+void ExecutorsManager::change_enable_resource_group_cpu_borrowing(bool val) {
+    if (_conf.enable_cpu_borrowing == val) {
+        return;
+    }
+    _conf.enable_cpu_borrowing = val;
+
+    update_common_executors();
 }
 
 void ExecutorsManager::for_each_executors(const ExecutorsConsumer& consumer) const {
@@ -140,6 +166,44 @@ void ExecutorsManager::for_each_executors(const ExecutorsConsumer& consumer) con
     if (_common_executors) {
         consumer(*_common_executors);
     }
+}
+
+bool ExecutorsManager::should_yield(const WorkGroup* wg) const {
+    if (!_conf.enable_cpu_borrowing) {
+        return false;
+    }
+
+    if (wg->dedicated_executors() != nullptr) {
+        return false;
+    }
+
+    const Thread* thread = Thread::current_thread();
+    if (thread == nullptr) {
+        return false;
+    }
+
+    const auto it = _cpu_owners.find(thread->first_binded_cpuid());
+    if (it == _cpu_owners.end()) {
+        return false;
+    }
+
+    // Check before using `get_wg`, which is a little heavy.
+    if (it->second.raw_wg == nullptr) {
+        return false;
+    }
+    const auto owner_wg = it->second.get_wg();
+    return owner_wg != nullptr && owner_wg->num_running_queries() > 0;
+}
+
+void ExecutorsManager::CpuOwnerContext::set_wg(WorkGroup* new_wg) {
+    // TODO: use std::atomic<std::shared_ptr> instead of std::shared_ptr with atomic load/store,
+    // when our compiler support it.
+    std::atomic_store(&wg, new_wg == nullptr ? nullptr : new_wg->shared_from_this());
+    raw_wg = new_wg;
+}
+
+std::shared_ptr<WorkGroup> ExecutorsManager::CpuOwnerContext::get_wg() const {
+    return std::atomic_load(&wg);
 }
 
 } // namespace starrocks::workgroup

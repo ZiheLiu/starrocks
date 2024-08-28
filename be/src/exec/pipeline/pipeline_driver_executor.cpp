@@ -64,7 +64,9 @@ void GlobalDriverExecutor::change_num_threads(int32_t num_threads) {
         return;
     }
     for (int i = old_num_threads; i < num_threads; ++i) {
-        (void)_thread_pool->submit_func([this]() { this->_worker_thread(); });
+        if (_num_threads_setter.should_expand()) {
+            (void)_thread_pool->submit_func([this]() { this->_worker_thread(); });
+        }
     }
 }
 
@@ -78,7 +80,7 @@ void GlobalDriverExecutor::_worker_thread() {
     const int worker_id = _next_id++;
     std::queue<DriverRawPtr> local_driver_queue;
     while (true) {
-        if (_num_threads_setter.should_shrink()) {
+        if (local_driver_queue.empty() && _num_threads_setter.should_shrink()) {
             break;
         }
         // Reset TLS state
@@ -507,8 +509,9 @@ RuntimeProfile* GlobalDriverExecutor::_build_merged_instance_profile(QueryContex
     return new_instance_profile;
 }
 
-void GlobalDriverExecutor::bind_cpus(const CpuUtil::CpuIds& cpuids) {
-    _thread_pool->bind_cpus(cpuids);
+void GlobalDriverExecutor::bind_cpus(const CpuUtil::CpuIds& cpuids,
+                                     const std::vector<CpuUtil::CpuIds>& borrowed_cpuids) {
+    _thread_pool->bind_cpus(cpuids, borrowed_cpuids);
     _blocked_driver_poller->bind_cpus(cpuids);
 }
 

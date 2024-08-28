@@ -16,35 +16,38 @@
 
 #include <fmt/format.h>
 
+#include "common/config.h"
 #include "util/thread.h"
 
 namespace starrocks {
 
-Status CpuUtil::bind_cpus(int64_t tid, pthread_t thread, const std::vector<size_t>& cpuids) {
+void CpuUtil::bind_cpus(Thread* thread, const std::vector<size_t>& cpuids) {
     if (cpuids.empty()) {
-        return Status::OK();
+        return;
     }
 
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    for (const auto cpu_id : cpuids) {
-        CPU_SET(cpu_id, &cpuset);
+    auto do_bind_cpus = [&] {
+        if (!config::enable_resource_group_bind_cpus) {
+            return 0;
+        }
+
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        for (const auto cpu_id : cpuids) {
+            CPU_SET(cpu_id, &cpuset);
+        }
+
+        return pthread_setaffinity_np(thread->pthread_id(), sizeof(cpu_set_t), &cpuset);
+    };
+
+    if (const int res = do_bind_cpus(); res != 0) {
+        LOG(WARNING) << fmt::format("failed to bind cpus [tid={}] [cpuids={}] [error_code={}] [error={}]",
+                                    pthread_self(), to_string(cpuids), res, std::strerror(res));
+        return;
     }
 
-    const int res = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (res == 0) {
-        LOG(INFO) << "bind cpus [tid=" << tid << "] [thread=" << thread << "] [cpuids=" << to_string(cpuids) << "]";
-        return Status::OK();
-    }
-
-    const std::string error_msg = fmt::format("failed to bind cpus [tid={}] [cpuids={}] [error_code={}] [error={}]",
-                                              pthread_self(), to_string(cpuids), res, std::strerror(res));
-    LOG(WARNING) << error_msg;
-    return Status::InternalError(error_msg);
-}
-
-Status CpuUtil::bind_cpus(const std::vector<size_t>& cpuids) {
-    return bind_cpus(Thread::current_thread_id(), pthread_self(), cpuids);
+    thread->set_num_binded_cpu_cores(config::enable_resource_group_bind_cpus ? cpuids.size() : 0);
+    thread->set_first_binded_cpuid(cpuids[0]);
 }
 
 std::string CpuUtil::to_string(const CpuIds& cpuids) {

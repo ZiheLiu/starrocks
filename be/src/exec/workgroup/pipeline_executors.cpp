@@ -29,28 +29,34 @@ namespace starrocks::workgroup {
 PipelineExecutorsConfig::PipelineExecutorsConfig(uint32_t num_total_cores, uint32_t num_total_driver_threads,
                                                  uint32_t num_total_scan_threads,
                                                  uint32_t num_total_connector_scan_threads,
-                                                 CpuUtil::CpuIds total_cpuids, bool enable_bind_cpus)
+                                                 CpuUtil::CpuIds total_cpuids, bool enable_bind_cpus,
+                                                 bool enable_cpu_borrowing)
         : num_total_cores(num_total_cores),
           num_total_driver_threads(num_total_driver_threads),
           num_total_scan_threads(num_total_scan_threads),
           num_total_connector_scan_threads(num_total_connector_scan_threads),
           total_cpuids(std::move(total_cpuids)),
-          enable_bind_cpus(enable_bind_cpus) {}
+          enable_bind_cpus(enable_bind_cpus),
+          enable_cpu_borrowing(enable_cpu_borrowing) {}
 
 std::string PipelineExecutorsConfig::to_string() const {
     return fmt::format(
             "([num_total_cores={}] [num_total_driver_threads={}] [num_total_scan_threads={}] "
-            "[num_total_connector_scan_threads={}] [enable_bind_cpus={}])",
+            "[num_total_connector_scan_threads={}] [enable_bind_cpus={}] [enable_cpu_borrowing={}])",
             num_total_cores, num_total_driver_threads, num_total_scan_threads, num_total_connector_scan_threads,
-            enable_bind_cpus);
+            enable_bind_cpus, enable_cpu_borrowing);
 }
 
 // ------------------------------------------------------------------------------------
 // PipelineExecutors
 // ------------------------------------------------------------------------------------
 
-PipelineExecutors::PipelineExecutors(const PipelineExecutorsConfig& conf, std::string name, CpuUtil::CpuIds cpuids)
-        : _conf(conf), _name(std::move(name)), _cpuids(std::move(cpuids)) {}
+PipelineExecutors::PipelineExecutors(const PipelineExecutorsConfig& conf, std::string name, CpuUtil::CpuIds cpuids,
+                                     std::vector<CpuUtil::CpuIds> borrowed_cpuids)
+        : _conf(conf),
+          _name(std::move(name)),
+          _cpuids(std::move(cpuids)),
+          _borrowed_cpu_ids(std::move(borrowed_cpuids)) {}
 
 PipelineExecutors::~PipelineExecutors() {
     close();
@@ -70,19 +76,17 @@ Status PipelineExecutors::start() {
     }
     _stage = Stage::STARTED;
 
-    const CpuUtil::CpuIds empty_cpuids;
-    const auto& cpuids = _conf.enable_bind_cpus ? _cpuids : empty_cpuids;
-
     std::unique_ptr<ThreadPool> driver_executor_thread_pool;
-    RETURN_IF_ERROR(ThreadPoolBuilder("pip_exec_" + _name) // pipeline executor for workgroup
+    RETURN_IF_ERROR(ThreadPoolBuilder("pip_exec_" + _name)
                             .set_min_threads(0)
                             .set_max_threads(num_driver_threads())
                             .set_max_queue_size(1000)
                             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .set_cpuids(cpuids)
+                            .set_cpuids(_cpuids)
+                            .set_borrowed_cpuids(_borrowed_cpu_ids)
                             .build(&driver_executor_thread_pool));
     _driver_executor = std::make_unique<pipeline::GlobalDriverExecutor>(_name, std::move(driver_executor_thread_pool),
-                                                                        true, cpuids);
+                                                                        true, _cpuids);
     _driver_executor->initialize(num_driver_threads());
 
     std::unique_ptr<ThreadPool> scan_thread_pool;
@@ -91,11 +95,11 @@ Status PipelineExecutors::start() {
                             .set_max_threads(num_scan_threads())
                             .set_max_queue_size(1000)
                             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .set_cpuids(cpuids)
+                            .set_cpuids(_cpuids)
+                            .set_borrowed_cpuids(_borrowed_cpu_ids)
                             .build(&scan_thread_pool));
     _scan_executor = std::make_unique<ScanExecutor>(
-            std::move(scan_thread_pool),
-            std::make_unique<WorkGroupScanTaskQueue>(ScanSchedEntityType::OLAP));
+            std::move(scan_thread_pool), std::make_unique<WorkGroupScanTaskQueue>(ScanSchedEntityType::OLAP));
     _scan_executor->initialize(num_scan_threads());
 
     std::unique_ptr<ThreadPool> connector_scan_thread_pool;
@@ -104,11 +108,12 @@ Status PipelineExecutors::start() {
                             .set_max_threads(num_connector_scan_threads())
                             .set_max_queue_size(1000)
                             .set_idle_timeout(MonoDelta::FromMilliseconds(2000))
-                            .set_cpuids(cpuids)
+                            .set_cpuids(_cpuids)
+                            .set_borrowed_cpuids(_borrowed_cpu_ids)
                             .build(&connector_scan_thread_pool));
-    _connector_scan_executor = std::make_unique<ScanExecutor>(
-            std::move(connector_scan_thread_pool),
-            std::make_unique<WorkGroupScanTaskQueue>(ScanSchedEntityType::CONNECTOR));
+    _connector_scan_executor =
+            std::make_unique<ScanExecutor>(std::move(connector_scan_thread_pool),
+                                           std::make_unique<WorkGroupScanTaskQueue>(ScanSchedEntityType::CONNECTOR));
     _connector_scan_executor->initialize(num_connector_scan_threads());
 
     LOG(INFO) << "[WORKGROUP] start executors " << to_string();
@@ -137,12 +142,13 @@ void PipelineExecutors::close() {
     LOG(INFO) << "[WORKGROUP] close executors " << to_string();
 }
 
-void PipelineExecutors::change_cpus(CpuUtil::CpuIds cpuids) {
-    const size_t num_pre_cpus = _cpuids.size();
-    _cpuids = std::move(cpuids);
-    if (num_pre_cpus == _cpuids.size()) {
+void PipelineExecutors::change_cpus(CpuUtil::CpuIds cpuids, std::vector<CpuUtil::CpuIds> borrowed_cpuids) {
+    if (_cpuids == cpuids && _borrowed_cpu_ids == borrowed_cpuids) {
         return;
     }
+
+    _cpuids = std::move(cpuids);
+    _borrowed_cpu_ids = std::move(borrowed_cpuids);
 
     notify_config_changed();
 }
@@ -153,18 +159,23 @@ void PipelineExecutors::notify_num_total_connector_scan_threads_changed() const 
 }
 
 void PipelineExecutors::notify_config_changed() const {
-    const auto& cpuids = _conf.enable_bind_cpus ? _cpuids : _conf.total_cpuids;
-
-    _driver_executor->bind_cpus(cpuids);
+    _driver_executor->bind_cpus(_cpuids, _borrowed_cpu_ids);
     _driver_executor->change_num_threads(num_driver_threads());
 
-    _scan_executor->bind_cpus(cpuids);
+    _scan_executor->bind_cpus(_cpuids, _borrowed_cpu_ids);
     _scan_executor->change_num_threads(num_scan_threads());
 
-    _connector_scan_executor->bind_cpus(cpuids);
+    _connector_scan_executor->bind_cpus(_cpuids, _borrowed_cpu_ids);
     _connector_scan_executor->change_num_threads(num_connector_scan_threads());
 
     LOG(INFO) << "[WORKGROUP] change cpus and threads of executors " << to_string();
+}
+
+uint32_t PipelineExecutors::calculate_num_threads(uint32_t num_total_threads) const {
+    if (!_borrowed_cpu_ids.empty() || _cpuids.empty()) {
+        return num_total_threads;
+    }
+    return std::max<uint32_t>(1, num_total_threads * _cpuids.size() / _conf.num_total_cores);
 }
 
 } // namespace starrocks::workgroup

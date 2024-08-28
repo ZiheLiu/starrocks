@@ -20,13 +20,14 @@
 
 namespace starrocks {
 
+class Thread;
+
 class CpuUtil {
 public:
     using CpuId = size_t;
     using CpuIds = std::vector<CpuId>;
 
-    static Status bind_cpus(const std::vector<size_t>& cpuids);
-    static Status bind_cpus(int64_t tid, pthread_t thread, const std::vector<size_t>& cpuids);
+    static void bind_cpus(Thread* thread, const std::vector<size_t>& cpuids);
 
     static std::string to_string(const CpuIds& cpuids);
 };

@@ -63,7 +63,7 @@ public:
 
     virtual size_t calculate_parked_driver(const ConstDriverPredicator& predicate_func) const = 0;
 
-    virtual void bind_cpus(const CpuUtil::CpuIds& cpuids) = 0;
+    virtual void bind_cpus(const CpuUtil::CpuIds& cpuids, const std::vector<CpuUtil::CpuIds>& borrowed_cpuids) = 0;
 
 protected:
     std::string _name;
@@ -90,7 +90,7 @@ public:
 
     void report_epoch(ExecEnv* exec_env, QueryContext* query_ctx, std::vector<FragmentContext*> fragment_ctxs) override;
 
-    void bind_cpus(const CpuUtil::CpuIds& cpuids) override;
+    void bind_cpus(const CpuUtil::CpuIds& cpuids, const std::vector<CpuUtil::CpuIds>& borrowed_cpuids) override;
 
 private:
     using Base = FactoryMethod<DriverExecutor, GlobalDriverExecutor>;

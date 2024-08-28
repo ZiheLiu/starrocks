@@ -22,7 +22,23 @@
 
 namespace starrocks::workgroup {
 
-/// All the methods need to be protected by the `_parent->_mutex` outside by callers.
+/// Manage all PipelineExecutors and CPU resource allocation.
+///
+/// There are two types of PipelineExecutors:
+/// - dedicated_executors: PipelineExecutors dedicated to a workgroup (workgroup with dedicated_cpu_cores > 0).
+/// - common_executors: PipelineExecutors shared by other workgroups (workgroup with dedicated_cpu_cores <= 0).
+/// PipelineExecutors owner:
+/// - dedicated_executors: owned by workgroup.
+/// - common_executors: owned by WorkGroupManager.
+/// The timing of creating and starting PipelineExecutors:
+/// - dedicated_executors: when creating or updating workgroup.
+/// - common_executors: when starting BE process.
+/// The timing of stopping PipelineExecutors:
+/// - dedicated_executors: when workgroup destructs.
+/// - common_executors: when closing BE process.
+///
+/// ExecutorsManager is owned by WorkGroupManager.
+/// All the methods need to be protected by the `WorkGroupManager::_mutex` outside by callers.
 class ExecutorsManager {
 public:
     ExecutorsManager(WorkGroupManager* parent, PipelineExecutorsConfig conf);
@@ -35,21 +51,35 @@ public:
 
     void assign_cpuids_to_workgroup(WorkGroup* wg);
     void reclaim_cpuids_from_worgroup(WorkGroup* wg);
-    CpuUtil::CpuIds get_cpuids_of_workgroup(WorkGroup* wg) const;
+    const CpuUtil::CpuIds& get_cpuids_of_workgroup(WorkGroup* wg) const;
 
     PipelineExecutors* create_and_assign_executors(WorkGroup* wg) const;
 
     void change_num_connector_scan_threads(uint32_t num_connector_scan_threads);
+    void change_enable_resource_group_bind_cpus(bool val);
     void change_enable_resource_group_cpu_borrowing(bool val);
 
     using ExecutorsConsumer = std::function<void(PipelineExecutors&)>;
     void for_each_executors(const ExecutorsConsumer& consumer) const;
 
+    bool should_yield(const WorkGroup* wg) const;
+
 private:
+    static constexpr WorkGroup* COMMON_WORKGROUP = nullptr;
+
     WorkGroupManager* const _parent;
     PipelineExecutorsConfig _conf;
-    std::unordered_map<CpuUtil::CpuId, WorkGroup*> _cpuid_to_wg;
+    std::unordered_map<WorkGroup*, CpuUtil::CpuIds> _wg_to_cpuids;
     std::unique_ptr<PipelineExecutors> _common_executors;
+
+    struct CpuOwnerContext {
+        std::shared_ptr<WorkGroup> wg;
+        std::atomic<WorkGroup*> raw_wg;
+
+        void set_wg(WorkGroup* new_wg);
+        std::shared_ptr<WorkGroup> get_wg() const;
+    };
+    std::unordered_map<CpuUtil::CpuId, CpuOwnerContext> _cpu_owners;
 };
 
 } // namespace starrocks::workgroup

@@ -39,7 +39,7 @@ public:
 
     void force_submit(ScanTask task);
 
-    void bind_cpus(const CpuUtil::CpuIds& cpuids);
+    void bind_cpus(const CpuUtil::CpuIds& cpuids, const std::vector<CpuUtil::CpuIds>& borrowed_cpuids);
 
 private:
     void worker_thread();

@@ -96,6 +96,11 @@ ThreadPoolBuilder& ThreadPoolBuilder::set_cpuids(const CpuUtil::CpuIds& cpuids) 
     return *this;
 }
 
+ThreadPoolBuilder& ThreadPoolBuilder::set_borrowed_cpuids(const std::vector<CpuUtil::CpuIds>& borrowed_cpuids) {
+    _borrowed_cpuids = borrowed_cpuids;
+    return *this;
+}
+
 Status ThreadPoolBuilder::build(std::unique_ptr<ThreadPool>* pool) const {
     pool->reset(new ThreadPool(*this));
     RETURN_IF_ERROR((*pool)->init());
@@ -256,7 +261,8 @@ ThreadPool::ThreadPool(const ThreadPoolBuilder& builder)
           _active_threads(0),
           _total_queued_tasks(0),
           _tokenless(new_token(ExecutionMode::CONCURRENT)),
-          _cpuids(builder._cpuids) {}
+          _cpuids(builder._cpuids),
+          _borrowed_cpuids(builder._borrowed_cpuids) {}
 
 ThreadPool::~ThreadPool() noexcept {
     // There should only be one live token: the one used in tokenless submission.
@@ -493,14 +499,31 @@ Status ThreadPool::update_max_threads(int max_threads) {
     return Status::OK();
 }
 
-void ThreadPool::bind_cpus(const CpuUtil::CpuIds& cpuids) {
+static void _bind_cpus_inlock(Thread* thread, const size_t thread_index, const CpuUtil::CpuIds& cpuids,
+                              const std::vector<CpuUtil::CpuIds>& borrowed_cpuids) {
+    if (borrowed_cpuids.empty() || thread_index < cpuids.size()) {
+        CpuUtil::bind_cpus(thread, cpuids);
+        return;
+    }
+
+    size_t num_threads = cpuids.size();
+    for (const auto& cur_borrowed_cpuids : borrowed_cpuids) {
+        if (thread_index < num_threads + cur_borrowed_cpuids.size()) {
+            CpuUtil::bind_cpus(thread, cur_borrowed_cpuids);
+            break;
+        }
+        num_threads += cur_borrowed_cpuids.size();
+    }
+}
+
+void ThreadPool::bind_cpus(const CpuUtil::CpuIds& cpuids, const std::vector<CpuUtil::CpuIds>& borrowed_cpuids) {
     std::lock_guard<std::mutex> lock(_lock);
     _cpuids = cpuids;
+    _borrowed_cpuids = borrowed_cpuids;
 
-    _binded_cpuids = true;
-    for (const auto* thread : _threads) {
-        _binded_cpuids = _binded_cpuids && !_cpuids.empty() &&
-                         CpuUtil::bind_cpus(thread->tid(), thread->pthread_id(), _cpuids).ok();
+    int i = 0;
+    for (auto* thread : _threads) {
+        _bind_cpus_inlock(thread, i++, cpuids, borrowed_cpuids);
     }
 }
 
@@ -518,8 +541,7 @@ void ThreadPool::dispatch_thread() {
     // Owned by this worker thread and added/removed from _idle_threads as needed.
     IdleThread me;
 
-    // TODO(lzh): merge _binded_cpuids for each thread.
-    _binded_cpuids = _binded_cpuids && !_cpuids.empty() && CpuUtil::bind_cpus(_cpuids).ok();
+    _bind_cpus_inlock(current_thread, _num_threads - 1, _cpuids, _borrowed_cpuids);
 
     while (true) {
         // Note: Status::Aborted() is used to indicate normal shutdown.

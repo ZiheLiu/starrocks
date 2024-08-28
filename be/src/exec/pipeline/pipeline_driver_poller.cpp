@@ -42,7 +42,7 @@ void PipelineDriverPoller::run_internal() {
 
     {
         std::lock_guard<std::mutex> lock(_global_mutex);
-        CpuUtil::bind_cpus(_cpud_ids);
+        CpuUtil::bind_cpus(Thread::current_thread(), _cpud_ids);
     }
 
     DriverList tmp_blocked_drivers;
@@ -262,7 +262,7 @@ void PipelineDriverPoller::for_each_driver(const ConstDriverConsumer& call) cons
 void PipelineDriverPoller::bind_cpus(const CpuUtil::CpuIds& cpuids) {
     std::lock_guard<std::mutex> lock(_global_mutex);
     _cpud_ids = cpuids;
-    CpuUtil::bind_cpus(_polling_thread->tid(), _polling_thread->pthread_id(), _cpud_ids);
+    CpuUtil::bind_cpus(_polling_thread.get(), _cpud_ids);
 }
 
 } // namespace starrocks::pipeline

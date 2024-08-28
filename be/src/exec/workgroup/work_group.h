@@ -293,9 +293,11 @@ public:
 
     void update_metrics();
 
+    bool should_yield(const WorkGroup* wg) const;
     PipelineExecutors* common_executors() const { return _executors_manager.common_executors(); }
     void for_each_executors(const ExecutorsManager::ExecutorsConsumer& consumer) const;
     void change_num_connector_scan_threads(uint32_t num_connector_scan_threads);
+    void change_enable_resource_group_bind_cpus(bool val);
     void change_enable_resource_group_cpu_borrowing(bool val);
 
 private:

@@ -215,8 +215,15 @@ Status UpdateConfigAction::update_config(const std::string& name, const std::str
         _config_callback.emplace("pipeline_connector_scan_thread_num_per_cpu", [&]() {
             LOG(INFO) << "set pipeline_connector_scan_thread_num_per_cpu:"
                       << config::pipeline_connector_scan_thread_num_per_cpu;
-            ExecEnv::GetInstance()->workgroup_manager()->change_num_connector_scan_threads(
-                    config::pipeline_connector_scan_thread_num_per_cpu);
+            if (config::pipeline_connector_scan_thread_num_per_cpu > 0) {
+                ExecEnv::GetInstance()->workgroup_manager()->change_num_connector_scan_threads(
+                        config::pipeline_connector_scan_thread_num_per_cpu * CpuInfo::num_cores());
+            }
+        });
+        _config_callback.emplace("enable_resource_group_bind_cpus", [&]() {
+            LOG(INFO) << "set enable_resource_group_bind_cpus:" << config::enable_resource_group_bind_cpus;
+            ExecEnv::GetInstance()->workgroup_manager()->change_enable_resource_group_bind_cpus(
+                    config::enable_resource_group_bind_cpus);
         });
         _config_callback.emplace("enable_resource_group_cpu_borrowing", [&]() {
             LOG(INFO) << "set enable_resource_group_cpu_borrowing:" << config::enable_resource_group_cpu_borrowing;
