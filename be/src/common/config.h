@@ -1276,6 +1276,9 @@ CONF_mInt32(default_mv_resource_group_cpu_limit, "1");
 CONF_mInt32(default_mv_resource_group_concurrency_limit, "0");
 CONF_mDouble(default_mv_resource_group_spill_mem_limit_threshold, "0.8");
 
+CONF_Bool(enable_resource_group_bind_cpus, "true");
+CONF_mBool(enable_resource_group_cpu_borrowing, "true");
+
 // Max size of key columns size of primary key table, default value is 128 bytes
 CONF_mInt32(primary_key_limit_size, "128");
 
