@@ -19,7 +19,7 @@ insert overwrite iceberg_sql_test_${uuid0}.iceberg_db_${uuid0}.ice_tbl_${uuid0} 
 [UC]function: num_cores=get_backend_cpu_cores()
 
 
-select count(1) = ${num_cores}*8 from information_schema.be_threads where name = 'pip_exec_com' and be_id = (select be_id from information_schema.be_threads where name = 'pip_exec_com' limit 1);
+select count(1) = ${num_cores}*8 from information_schema.be_threads where name = 'pip_con_scan_com' and be_id = (select be_id from information_schema.be_threads where name = 'pip_con_scan_com' limit 1);
 
 -- Shrink threads.
 update information_schema.be_configs set value = "2" where name= "pipeline_connector_scan_thread_num_per_cpu";
@@ -66,7 +66,7 @@ from (
 )t;
     
     
-select count(1) = ${num_cores}*2 from information_schema.be_threads where name = 'pip_exec_com' and be_id = (select be_id from information_schema.be_threads where name = 'pip_exec_com' limit 1);
+select count(1) = ${num_cores}*2 from information_schema.be_threads where name = 'pip_con_scan_com' and be_id = (select be_id from information_schema.be_threads where name = 'pip_con_scan_com' limit 1);
 
 
 -- Expand threads.
@@ -112,7 +112,7 @@ from (
     select * from iceberg_sql_test_${uuid0}.iceberg_db_${uuid0}.ice_tbl_${uuid0}
 )t;
 
-select count(1) = ${num_cores}*8 from information_schema.be_threads where name = 'pip_exec_com' and be_id = (select be_id from information_schema.be_threads where name = 'pip_exec_com' limit 1);
+select count(1) = ${num_cores}*8 from information_schema.be_threads where name = 'pip_con_scan_com' and be_id = (select be_id from information_schema.be_threads where name = 'pip_con_scan_com' limit 1);
 
 drop table iceberg_sql_test_${uuid0}.iceberg_db_${uuid0}.ice_tbl_${uuid0} force;
 drop database iceberg_sql_test_${uuid0}.iceberg_db_${uuid0};
