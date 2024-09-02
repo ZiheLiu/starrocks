@@ -1476,7 +1476,8 @@ public class ResourceGroupStmtTest {
                     "   'mem_limit' = '20%'," +
                     "   'dedicated_cpu_cores' = '32'" +
                     ");";
-            Assert.assertThrows("dedicated_cpu_cores should range from 0 to 31",
+            Assert.assertThrows(
+                    "dedicated_cpu_cores cannot exceed the minimum number of CPU cores available on the backends minus one [31]",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1600,7 +1601,8 @@ public class ResourceGroupStmtTest {
                     "   'cpu_weight' = '0'," +
                     "   'dedicated_cpu_cores' = '32'" +
                     ")";
-            Assert.assertThrows("dedicated_cpu_cores should range from 0 to 31",
+            Assert.assertThrows(
+                    "dedicated_cpu_cores cannot exceed the minimum number of CPU cores available on the backends minus one [31]",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1670,7 +1672,6 @@ public class ResourceGroupStmtTest {
         }
     }
 
-
     @Test
     public void testValidateSumDedicatedCpuCores() throws Exception {
         {
@@ -1697,7 +1698,8 @@ public class ResourceGroupStmtTest {
                     "   'dedicated_cpu_cores' = '17'" +
                     ")";
             Assert.assertThrows(
-                    "the sum of dedicated_cpu_cores of all the resource groups cannot exceed 31",
+                    "the sum of dedicated_cpu_cores across all resource groups cannot exceed the minimum number of CPU cores " +
+                            "available on the backends minus one [31]",
                     DdlException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1721,7 +1723,8 @@ public class ResourceGroupStmtTest {
                     "   'dedicated_cpu_cores' = '3'" +
                     ");";
             Assert.assertThrows(
-                    "the sum of dedicated_cpu_cores of all the resource groups cannot exceed 31",
+                    "the sum of dedicated_cpu_cores across all resource groups cannot exceed the minimum number of CPU cores " +
+                            "available on the backends minus one [31]",
                     DdlException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
