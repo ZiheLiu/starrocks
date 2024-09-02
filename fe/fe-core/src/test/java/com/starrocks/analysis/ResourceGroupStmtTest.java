@@ -1410,7 +1410,7 @@ public class ResourceGroupStmtTest {
                 "TO (user='rg2_user')\n" +
                 "WITH (" +
                 "   'mem_limit' = '20%'," +
-                "   'dedicated_cpu_cores' = '16'" +
+                "   'exclusive_cpu_cores' = '16'" +
                 ");");
         starRocksAssert.executeResourceGroupDdlSql("CREATE RESOURCE GROUP rt_rg1\n" +
                 "TO (user='rt_rg1_user')\n" +
@@ -1438,9 +1438,9 @@ public class ResourceGroupStmtTest {
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
                     "   'cpu_weight' = '17'," +
-                    "   'dedicated_cpu_cores' = '17'" +
+                    "   'exclusive_cpu_cores' = '17'" +
                     ");";
-            Assert.assertThrows("property 'cpu_weight' and 'dedicated_cpu_cores' cannot be present and positive at the same time",
+            Assert.assertThrows("property 'cpu_weight' and 'exclusive_cpu_cores' cannot be present and positive at the same time",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1451,9 +1451,9 @@ public class ResourceGroupStmtTest {
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
                     "   'cpu_weight' = '0'," +
-                    "   'dedicated_cpu_cores' = '0'" +
+                    "   'exclusive_cpu_cores' = '0'" +
                     ");";
-            Assert.assertThrows("property 'cpu_weight' or 'dedicated_cpu_cores' must be positive",
+            Assert.assertThrows("property 'cpu_weight' or 'exclusive_cpu_cores' must be positive",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1464,7 +1464,7 @@ public class ResourceGroupStmtTest {
                     "WITH (" +
                     "   'mem_limit' = '20%'" +
                     ");";
-            Assert.assertThrows("property 'cpu_weight' or 'dedicated_cpu_cores' must be positive",
+            Assert.assertThrows("property 'cpu_weight' or 'exclusive_cpu_cores' must be positive",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1474,10 +1474,10 @@ public class ResourceGroupStmtTest {
                     "TO (user='rg1_user')\n" +
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
-                    "   'dedicated_cpu_cores' = '32'" +
+                    "   'exclusive_cpu_cores' = '32'" +
                     ");";
             Assert.assertThrows(
-                    "dedicated_cpu_cores cannot exceed the minimum number of CPU cores available on the backends minus one [31]",
+                    "exclusive_cpu_cores cannot exceed the minimum number of CPU cores available on the backends minus one [31]",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1488,7 +1488,7 @@ public class ResourceGroupStmtTest {
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
                     "   'cpu_weight' = '17'," +
-                    "   'dedicated_cpu_cores' = '0'" +
+                    "   'exclusive_cpu_cores' = '0'" +
                     ");";
             starRocksAssert.executeResourceGroupDdlSql(sql);
             List<List<String>> rows = starRocksAssert.executeResourceGroupShowSql("show resource groups all");
@@ -1515,7 +1515,7 @@ public class ResourceGroupStmtTest {
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
                     "   'cpu_weight' = '0'," +
-                    "   'dedicated_cpu_cores' = '17'" +
+                    "   'exclusive_cpu_cores' = '17'" +
                     ");";
             starRocksAssert.executeResourceGroupDdlSql(sql);
             List<List<String>> rows = starRocksAssert.executeResourceGroupShowSql("show resource groups all");
@@ -1528,7 +1528,7 @@ public class ResourceGroupStmtTest {
                     "TO (user='rg1_user')\n" +
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
-                    "   'dedicated_cpu_cores' = '17'" +
+                    "   'exclusive_cpu_cores' = '17'" +
                     ");";
             starRocksAssert.executeResourceGroupDdlSql(sql);
             List<List<String>> rows = starRocksAssert.executeResourceGroupShowSql("show resource groups all");
@@ -1555,9 +1555,9 @@ public class ResourceGroupStmtTest {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
                     "   'cpu_weight' = '16'," +
-                    "   'dedicated_cpu_cores' = '15'" +
+                    "   'exclusive_cpu_cores' = '15'" +
                     ")";
-            Assert.assertThrows("property 'cpu_weight' and 'dedicated_cpu_cores' cannot be present and positive at the same time",
+            Assert.assertThrows("property 'cpu_weight' and 'exclusive_cpu_cores' cannot be present and positive at the same time",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1565,9 +1565,9 @@ public class ResourceGroupStmtTest {
         {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
-                    "   'dedicated_cpu_cores' = '15'" +
+                    "   'exclusive_cpu_cores' = '15'" +
                     ")";
-            Assert.assertThrows("property 'cpu_weight' and 'dedicated_cpu_cores' cannot be present and positive at the same time",
+            Assert.assertThrows("property 'cpu_weight' and 'exclusive_cpu_cores' cannot be present and positive at the same time",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1577,9 +1577,9 @@ public class ResourceGroupStmtTest {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
                     "   'cpu_weight' = '0'," +
-                    "   'dedicated_cpu_cores' = '0'" +
+                    "   'exclusive_cpu_cores' = '0'" +
                     ")";
-            Assert.assertThrows("property 'cpu_weight' or 'dedicated_cpu_cores' must be positive",
+            Assert.assertThrows("property 'cpu_weight' or 'exclusive_cpu_cores' must be positive",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1590,7 +1590,7 @@ public class ResourceGroupStmtTest {
                     "WITH (\n" +
                     "   'cpu_weight' = '0'" +
                     ")";
-            Assert.assertThrows("property 'cpu_weight' or 'dedicated_cpu_cores' must be positive",
+            Assert.assertThrows("property 'cpu_weight' or 'exclusive_cpu_cores' must be positive",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1599,10 +1599,10 @@ public class ResourceGroupStmtTest {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
                     "   'cpu_weight' = '0'," +
-                    "   'dedicated_cpu_cores' = '32'" +
+                    "   'exclusive_cpu_cores' = '32'" +
                     ")";
             Assert.assertThrows(
-                    "dedicated_cpu_cores cannot exceed the minimum number of CPU cores available on the backends minus one [31]",
+                    "exclusive_cpu_cores cannot exceed the minimum number of CPU cores available on the backends minus one [31]",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1611,7 +1611,7 @@ public class ResourceGroupStmtTest {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
                     "   'cpu_weight' = '0'," +
-                    "   'dedicated_cpu_cores' = '16'" +
+                    "   'exclusive_cpu_cores' = '16'" +
                     ")";
             starRocksAssert.executeResourceGroupDdlSql(sql);
             List<List<String>> rows = starRocksAssert.executeResourceGroupShowSql("show resource groups all");
@@ -1622,7 +1622,7 @@ public class ResourceGroupStmtTest {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
                     "   'cpu_weight' = '15'," +
-                    "   'dedicated_cpu_cores' = '0'" +
+                    "   'exclusive_cpu_cores' = '0'" +
                     ")";
             starRocksAssert.executeResourceGroupDdlSql(sql);
             List<List<String>> rows = starRocksAssert.executeResourceGroupShowSql("show resource groups all");
@@ -1633,17 +1633,17 @@ public class ResourceGroupStmtTest {
     }
 
     @Test
-    public void testValidateDedicatedCpuCoresWithShortQuery() throws Exception {
+    public void testValidateExclusiveCpuCoresWithShortQuery() throws Exception {
         {
             String sql = "CREATE RESOURCE GROUP rg1\n" +
                     "TO (user='rg1_user')\n" +
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
-                    "   'dedicated_cpu_cores' = '17'," +
+                    "   'exclusive_cpu_cores' = '17'," +
                     "   'type' = 'short_query'" +
                     ");";
             Assert.assertThrows(
-                    "'short_query' ResourceGroup cannot set 'dedicated_cpu_cores', since it use 'cpu_weight' as 'dedicated_cpu_cores'",
+                    "'short_query' ResourceGroup cannot set 'exclusive_cpu_cores', since it use 'cpu_weight' as 'exclusive_cpu_cores'",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
         }
@@ -1661,10 +1661,10 @@ public class ResourceGroupStmtTest {
 
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
-                    "   'dedicated_cpu_cores' = '16'" +
+                    "   'exclusive_cpu_cores' = '16'" +
                     ")";
             Assert.assertThrows(
-                    "'short_query' ResourceGroup cannot set 'dedicated_cpu_cores', since it use 'cpu_weight' as 'dedicated_cpu_cores'",
+                    "'short_query' ResourceGroup cannot set 'exclusive_cpu_cores', since it use 'cpu_weight' as 'exclusive_cpu_cores'",
                     SemanticException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
 
@@ -1673,19 +1673,19 @@ public class ResourceGroupStmtTest {
     }
 
     @Test
-    public void testValidateSumDedicatedCpuCores() throws Exception {
+    public void testValidateSumExclusiveCpuCores() throws Exception {
         {
             starRocksAssert.executeResourceGroupDdlSql("CREATE RESOURCE GROUP rg1\n" +
                     "TO (user='rg1_user')\n" +
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
-                    "   'dedicated_cpu_cores' = '16'" +
+                    "   'exclusive_cpu_cores' = '16'" +
                     ");");
             starRocksAssert.executeResourceGroupDdlSql("CREATE RESOURCE GROUP rg2\n" +
                     "TO (user='rg2_user')\n" +
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
-                    "   'dedicated_cpu_cores' = '15'" +
+                    "   'exclusive_cpu_cores' = '15'" +
                     ");");
             List<List<String>> rows = starRocksAssert.executeResourceGroupShowSql("show resource groups all");
             assertThat(rowsToString(rows)).isEqualTo("rg1|null|16|20.0%|0|0|0|null|100%|(weight=1.0, user=rg1_user)\n" +
@@ -1695,10 +1695,10 @@ public class ResourceGroupStmtTest {
         {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
-                    "   'dedicated_cpu_cores' = '17'" +
+                    "   'exclusive_cpu_cores' = '17'" +
                     ")";
             Assert.assertThrows(
-                    "the sum of dedicated_cpu_cores across all resource groups cannot exceed the minimum number of CPU cores " +
+                    "the sum of exclusive_cpu_cores across all resource groups cannot exceed the minimum number of CPU cores " +
                             "available on the backends minus one [31]",
                     DdlException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
@@ -1707,7 +1707,7 @@ public class ResourceGroupStmtTest {
         {
             String sql = "ALTER resource group rg1 \n" +
                     "WITH (\n" +
-                    "   'dedicated_cpu_cores' = '14'" +
+                    "   'exclusive_cpu_cores' = '14'" +
                     ")";
             starRocksAssert.executeResourceGroupDdlSql(sql);
             List<List<String>> rows = starRocksAssert.executeResourceGroupShowSql("show resource groups all");
@@ -1720,10 +1720,10 @@ public class ResourceGroupStmtTest {
                     "TO (user='rg1_user')\n" +
                     "WITH (" +
                     "   'mem_limit' = '20%'," +
-                    "   'dedicated_cpu_cores' = '3'" +
+                    "   'exclusive_cpu_cores' = '3'" +
                     ");";
             Assert.assertThrows(
-                    "the sum of dedicated_cpu_cores across all resource groups cannot exceed the minimum number of CPU cores " +
+                    "the sum of exclusive_cpu_cores across all resource groups cannot exceed the minimum number of CPU cores " +
                             "available on the backends minus one [31]",
                     DdlException.class,
                     () -> starRocksAssert.executeResourceGroupDdlSql(sql));
