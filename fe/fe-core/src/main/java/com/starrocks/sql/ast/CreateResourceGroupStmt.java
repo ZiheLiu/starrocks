@@ -90,6 +90,10 @@ public class CreateResourceGroupStmt extends DdlStmt {
             resourceGroup.setResourceGroupType(TWorkGroupType.WG_NORMAL);
         }
 
+        if (ResourceGroup.BUILTIN_WG_NAMES.contains(name)) {
+            throw new SemanticException(String.format("cannot create builtin resource group [%s]", name));
+        }
+
         if (resourceGroup.getResourceGroupType() == TWorkGroupType.WG_SHORT_QUERY &&
                 (resourceGroup.getExclusiveCpuCores() != null && resourceGroup.getExclusiveCpuCores() > 0)) {
             throw new SemanticException(SHORT_QUERY_SET_EXCLUSIVE_CPU_CORES_ERR_MSG);

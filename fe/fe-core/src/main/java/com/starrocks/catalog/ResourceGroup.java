@@ -15,6 +15,7 @@
 package com.starrocks.catalog;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.gson.annotations.SerializedName;
 import com.starrocks.qe.ShowResultSetMetaData;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -25,6 +26,7 @@ import java.text.DecimalFormat;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -57,6 +59,8 @@ public class ResourceGroup {
 
     public static final ResourceGroup DEFAULT_WG = new ResourceGroup();
     public static final ResourceGroup DEFAULT_MV_WG = new ResourceGroup();
+    public static final Set<String> BUILTIN_WG_NAMES =
+            ImmutableSet.of(DEFAULT_RESOURCE_GROUP_NAME, DEFAULT_MV_RESOURCE_GROUP_NAME);
 
     static {
         DEFAULT_WG.setId(DEFAULT_WG_ID);

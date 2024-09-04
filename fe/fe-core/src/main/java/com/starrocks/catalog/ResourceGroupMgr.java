@@ -56,7 +56,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.Iterator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -108,10 +108,10 @@ public class ResourceGroupMgr implements Writable {
         writeLock();
         try {
             ResourceGroup wg = stmt.getResourceGroup();
+            boolean needReplace = false;
             if (resourceGroupMap.containsKey(wg.getName())) {
-                // create resource_group or replace <name> ...
                 if (stmt.isReplaceIfExists()) {
-                    dropResourceGroupUnlocked(wg.getName());
+                    needReplace = true;
                 } else if (!stmt.isIfNotExists()) {
                     throw new DdlException(String.format("RESOURCE_GROUP(%s) already exists", wg.getName()));
                 } else {
@@ -142,6 +142,10 @@ public class ResourceGroupMgr implements Writable {
                         ResourceGroup.EXCLUSIVE_CPU_CORES, minCoreNum - 1));
             }
 
+            if (needReplace) {
+                dropResourceGroupUnlocked(wg.getName());
+            }
+
             wg.setId(GlobalStateMgr.getCurrentState().getNextId());
             wg.setVersion(wg.getId());
             for (ResourceGroupClassifier classifier : wg.getClassifiers()) {
@@ -165,11 +169,9 @@ public class ResourceGroupMgr implements Writable {
 
         List<List<String>> rows;
         if (stmt.getName() != null) {
-            rows = GlobalStateMgr.getCurrentState().getResourceGroupMgr().showOneResourceGroup(
-                    stmt.getName(), stmt.isVerbose());
+            rows = showOneResourceGroup(stmt.getName(), stmt.isVerbose());
         } else {
-            rows = GlobalStateMgr.getCurrentState().getResourceGroupMgr()
-                    .showAllResourceGroups(ConnectContext.get(), stmt.isVerbose(), stmt.isListAll());
+            rows = showAllResourceGroups(ConnectContext.get(), stmt.isVerbose(), stmt.isListAll());
         }
         return rows;
     }
@@ -340,6 +342,7 @@ public class ResourceGroupMgr implements Writable {
                     !(cmd instanceof AlterResourceGroupStmt.AlterProperties)) {
                 throw new DdlException("MV Resource Group not support classifiers.");
             }
+
             if (cmd instanceof AlterResourceGroupStmt.AddClassifiers) {
                 List<ResourceGroupClassifier> newAddedClassifiers = stmt.getNewAddedClassifiers();
                 for (ResourceGroupClassifier classifier : newAddedClassifiers) {
@@ -423,13 +426,8 @@ public class ResourceGroupMgr implements Writable {
                 TWorkGroupType workGroupType = changedProperties.getResourceGroupType();
                 Preconditions.checkState(workGroupType == null);
             } else if (cmd instanceof AlterResourceGroupStmt.DropClassifiers) {
-                Set<Long> classifierToDrop = stmt.getClassifiersToDrop().stream().collect(Collectors.toSet());
-                Iterator<ResourceGroupClassifier> classifierIterator = wg.getClassifiers().iterator();
-                while (classifierIterator.hasNext()) {
-                    if (classifierToDrop.contains(classifierIterator.next().getId())) {
-                        classifierIterator.remove();
-                    }
-                }
+                Set<Long> classifierToDrop = new HashSet<>(stmt.getClassifiersToDrop());
+                wg.getClassifiers().removeIf(classifier -> classifierToDrop.contains(classifier.getId()));
                 for (Long classifierId : classifierToDrop) {
                     classifierMap.remove(classifierId);
                 }
@@ -440,6 +438,7 @@ public class ResourceGroupMgr implements Writable {
                 }
                 classifierList.clear();
             }
+
             // only when changing properties, version is required to update. because changing classifiers needs not
             // propagate to BE.
             if (cmd instanceof AlterResourceGroupStmt.AlterProperties) {
@@ -632,6 +631,19 @@ public class ResourceGroupMgr implements Writable {
             }
         } finally {
             readUnlock();
+        }
+    }
+
+    public void createBuiltinResourceGroupsIfNotExist() {
+        writeLock();
+        try {
+            if (resourceGroupMap.containsKey(ResourceGroup.DEFAULT_WG.getName())) {
+                return;
+            }
+            addResourceGroupInternal(ResourceGroup.DEFAULT_WG);
+            addResourceGroupInternal(ResourceGroup.DEFAULT_MV_WG);
+        } finally {
+            writeUnlock();
         }
     }
 
