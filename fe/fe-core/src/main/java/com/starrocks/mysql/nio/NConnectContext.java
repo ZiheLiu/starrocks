@@ -60,6 +60,7 @@ public class NConnectContext extends ConnectContext {
         closed = true;
         mysqlChannel.close();
         returnRows = 0;
+        resourceGroupName = "";
     }
 
     public void startAcceptQuery(ConnectProcessor connectProcessor) {

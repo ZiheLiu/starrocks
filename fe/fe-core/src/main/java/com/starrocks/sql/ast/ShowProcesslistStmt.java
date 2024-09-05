@@ -36,6 +36,7 @@ public class ShowProcesslistStmt extends ShowStmt {
                     .addColumn(new Column("State", ScalarType.createVarchar(64)))
                     .addColumn(new Column("Info", ScalarType.createVarchar(32 * 1024)))
                     .addColumn(new Column("IsPending", ScalarType.createVarchar(16)))
+                    .addColumn(new Column("ResourceGroup", ScalarType.createVarchar(128)))
                     .build();
     private final boolean isShowFull;
     private final String forUser;

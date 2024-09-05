@@ -16,6 +16,7 @@ package com.starrocks.qe.scheduler.dag;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.analysis.DescriptorTable;
+import com.starrocks.catalog.ResourceGroup;
 import com.starrocks.catalog.ResourceGroupClassifier;
 import com.starrocks.common.util.CompressionUtils;
 import com.starrocks.common.util.DebugUtil;
@@ -529,12 +530,13 @@ public class JobSpec {
         }
 
         public Builder commonProperties(ConnectContext context) {
+            instance.connectContext = context;
+
             TWorkGroup newResourceGroup = prepareResourceGroup(
                     context, ResourceGroupClassifier.QueryType.fromTQueryType(instance.queryOptions.getQuery_type()));
             this.resourceGroup(newResourceGroup);
 
             this.enablePipeline(isEnablePipeline(context, instance.fragments));
-            instance.connectContext = context;
 
             instance.enableQueue = isEnableQueue(context);
             instance.needQueued = needCheckQueue();
@@ -597,6 +599,8 @@ public class JobSpec {
         }
 
         private Builder resourceGroup(TWorkGroup resourceGroup) {
+            instance.connectContext.setResourceGroupName(
+                    resourceGroup == null ? ResourceGroup.DEFAULT_RESOURCE_GROUP_NAME : resourceGroup.getName());
             instance.resourceGroup = resourceGroup;
             return this;
         }

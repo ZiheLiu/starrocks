@@ -226,6 +226,8 @@ public class ConnectContext {
     protected volatile boolean isPending = false;
     protected volatile boolean isForward = false;
 
+    protected String resourceGroupName = "";
+
     protected SSLContext sslContext;
 
     private ConnectContext parent;
@@ -651,6 +653,7 @@ public class ConnectContext {
         mysqlChannel.close();
         threadLocalInfo.remove();
         returnRows = 0;
+        resourceGroupName = "";
     }
 
     public boolean isKilled() {
@@ -976,6 +979,14 @@ public class ConnectContext {
         return isPending;
     }
 
+    public void setResourceGroupName(String resourceGroupName) {
+        this.resourceGroupName = resourceGroupName;
+    }
+
+    public String getResourceGroupName() {
+        return resourceGroupName;
+    }
+
     public void setIsForward(boolean forward) {
         isForward = forward;
     }
@@ -1224,6 +1235,7 @@ public class ConnectContext {
                 }
             }
             row.add(stmt);
+            // IsPending
             if (isForward) {
                 // if query is forward to leader, we can't know its accurate status in query queue,
                 // so isPending should not be displayed
@@ -1231,6 +1243,9 @@ public class ConnectContext {
             } else {
                 row.add(Boolean.toString(isPending));
             }
+            // ResourceGroup
+            row.add(resourceGroupName);
+
             return row;
         }
     }

@@ -126,11 +126,13 @@ public class JobSpecTest extends SchedulerTestBase {
         Assert.assertFalse(jobSpec.isEnableStreamPipeline());
         Assert.assertFalse(jobSpec.isBlockQuery());
         Assert.assertEquals(QUERY_RESOURCE_GROUP, jobSpec.getResourceGroup());
+        Assert.assertEquals(QUERY_RESOURCE_GROUP.getName(), connectContext.getResourceGroupName());
 
         coordinator = COORDINATOR_FACTORY.createInsertScheduler(
                 connectContext, fragments, scanNodes, descTable.toThrift());
         jobSpec = coordinator.getJobSpec();
         Assert.assertEquals(LOAD_RESOURCE_GROUP, jobSpec.getResourceGroup());
+        Assert.assertEquals(LOAD_RESOURCE_GROUP.getName(), connectContext.getResourceGroupName());
     }
 
     /**
