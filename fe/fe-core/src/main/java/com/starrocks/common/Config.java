@@ -3267,4 +3267,8 @@ public class Config extends ConfigBase {
     // whether to print sql before parser
     @ConfField(mutable = true)
     public static boolean enable_print_sql = false;
+
+    @ConfField
+    public static String arrow_flight_sql_ase_key = "";
+
 }
