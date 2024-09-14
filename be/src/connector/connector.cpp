@@ -22,6 +22,7 @@
 #include "connector/jdbc_connector.h"
 #include "connector/lake_connector.h"
 #include "connector/mysql_connector.h"
+#include "exprs/in_const_predicate.hpp"
 
 namespace starrocks::connector {
 
@@ -94,6 +95,18 @@ Status DataSource::parse_runtime_filters(RuntimeState* state) {
                                                             &min_max_predicate);
         if (min_max_predicate != nullptr) {
             ExprContext* ctx = state->obj_pool()->add(new ExprContext(min_max_predicate));
+            RETURN_IF_ERROR(ctx->prepare(state));
+            RETURN_IF_ERROR(ctx->open(state));
+            _conjunct_ctxs.insert(_conjunct_ctxs.begin(), ctx);
+        }
+
+        if (filter->in_values() != nullptr) {
+            VectorizedInConstPredicateBuilder builder(state, state->obj_pool(), probe->probe_expr_ctx()->root());
+            builder.set_eq_null(filter->is_in_null_safe());
+            builder.use_as_join_runtime_filter();
+            RETURN_IF_ERROR(builder.create());
+            builder.add_values(filter->in_values(), 0);
+            ExprContext* ctx = builder.get_in_const_predicate();
             RETURN_IF_ERROR(ctx->prepare(state));
             RETURN_IF_ERROR(ctx->open(state));
             _conjunct_ctxs.insert(_conjunct_ctxs.begin(), ctx);

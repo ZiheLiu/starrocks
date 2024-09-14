@@ -389,6 +389,8 @@ public:
 
     void set_eq_null(bool value) { _eq_null = value; }
 
+    bool is_eq_null() const { return _eq_null; }
+
     void set_array_size(int array_size) { _array_size = array_size; }
 
     bool is_use_array() const { return _array_size != 0; }
