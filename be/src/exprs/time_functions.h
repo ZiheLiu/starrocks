@@ -791,8 +791,21 @@ public:
     DEFINE_VECTORIZED_FN(make_date);
 
     /** Flags for calc_week() function.  */
+    // week_mode & WEEK_SUNDAY_FIRST:
+    // - 1 means Monday is the first day of a week,
+    // - 0 means Sunday is the first day of a week.
     constexpr static const unsigned int WEEK_MONDAY_FIRST = 1;
+    // week_mode & WEEK_YEAR:
+    // - 1 means the week number range of a year is [1, 53], and the week number of the days at the beginning of a year
+    //   (not belonging to the first week of this year) is the last week number of last year.
+    // - 0 means [0, 53], and the week number of the days at the beginning of a year
+    //   (not belonging to the first week of this year) is 0.
+    // For example, for '2000-01-01' (Saturday), if Sunday is the first day of a week,
+    // week('2000-01-01', 2) = 52, week('2000-01-01', 0) = 1.
     constexpr static const unsigned int WEEK_YEAR = 2;
+    // week_mode & WEEK_FIRST_WEEKDAY:
+    // - 0 means the first week of a year has at least 4 days in this year.
+    // - 1 means the first week of a year must have its Monday within that year.
     constexpr static const unsigned int WEEK_FIRST_WEEKDAY = 4;
 
     // It's really hard to define max unix timestamp because of timezone.
