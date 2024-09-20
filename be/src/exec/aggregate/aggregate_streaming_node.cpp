@@ -214,10 +214,21 @@ pipeline::OpFactories AggregateStreamingNode::decompose_to_pipeline(pipeline::Pi
 
     auto should_cache = context->should_interpolate_cache_operator(id(), ops_with_sink[0]);
     bool could_local_shuffle = !should_cache && !context->enable_group_execution();
-    if (could_local_shuffle && _tnode.agg_node.__isset.interpolate_passthrough &&
-        _tnode.agg_node.interpolate_passthrough && context->could_local_shuffle(ops_with_sink)) {
-        ops_with_sink = context->maybe_interpolate_local_passthrough_exchange(runtime_state(), id(), ops_with_sink,
-                                                                              degree_of_parallelism, true);
+
+    if (could_local_shuffle && context->could_local_shuffle(ops_with_sink)) {
+        if (config::insert_streaming_agg_local_shuffle) {
+            ops_with_sink =
+                    context->maybe_interpolate_local_shuffle_exchange(runtime_state(), id(), ops_with_sink, [this]() {
+                        std::vector<ExprContext*> group_by_expr_ctxs;
+                        WARN_IF_ERROR(Expr::create_expr_trees(_pool, _tnode.agg_node.grouping_exprs,
+                                                              &group_by_expr_ctxs, runtime_state(), true),
+                                      "create grouping expr failed");
+                        return group_by_expr_ctxs;
+                    });
+        } else if (_tnode.agg_node.__isset.interpolate_passthrough && _tnode.agg_node.interpolate_passthrough) {
+            ops_with_sink = context->maybe_interpolate_local_passthrough_exchange(runtime_state(), id(), ops_with_sink,
+                                                                                  degree_of_parallelism, true);
+        }
     }
 
     auto* upstream_source_op = context->source_operator(ops_with_sink);
