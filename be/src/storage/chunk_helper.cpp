@@ -17,7 +17,6 @@
 #include "column/array_column.h"
 #include "column/chunk.h"
 #include "column/column_helper.h"
-#include "column/column_pool.h"
 #include "column/json_column.h"
 #include "column/map_column.h"
 #include "column/schema.h"
