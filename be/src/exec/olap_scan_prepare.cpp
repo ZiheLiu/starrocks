@@ -351,13 +351,10 @@ static bool is_not_in(const auto* pred) {
     }
 };
 
-// clang-format off
 template <BoxedExprType E, CompoundNodeType Type>
 template <LogicalType SlotType, typename RangeValueType, bool Negative>
 requires(!lt_is_date<SlotType>) Status ChunkPredicateBuilder<E, Type>::normalize_in_or_equal_predicate(
         const SlotDescriptor& slot, ColumnValueRange<RangeValueType>* range) {
-    // clang-format on
-
     Status status;
 
     for (size_t i = 0; i < _exprs.size(); i++) {
@@ -415,13 +412,11 @@ requires(!lt_is_date<SlotType>) Status ChunkPredicateBuilder<E, Type>::normalize
     return Status::OK();
 }
 
-// clang-format off
 // explicit specialization for DATE.
 template <BoxedExprType E, CompoundNodeType Type>
 template <LogicalType SlotType, typename RangeValueType, bool Negative>
 requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E, Type>::normalize_in_or_equal_predicate(
         const SlotDescriptor& slot, ColumnValueRange<RangeValueType>* range) {
-    // clang-format on
     Status status;
 
     for (size_t i = 0; i < _exprs.size(); i++) {
