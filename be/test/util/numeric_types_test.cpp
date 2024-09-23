@@ -16,9 +16,11 @@
 
 #include <gtest/gtest.h>
 
+#include "column/datum.h"
+
 namespace starrocks {
 
-TEST(TestNumericTypes, test_check_signed_number_overflow) {
+TEST(TestNumericTypes, test_check_signed_number_overflow_floating_to_integral) {
     EXPECT_FALSE((check_signed_number_overflow<double, int64_t>(9223372036854775000.0)));
     EXPECT_TRUE((check_signed_number_overflow<double, int64_t>(9223372036854775807.0)));
     EXPECT_TRUE((check_signed_number_overflow<double, int64_t>(9223372036854775807.3)));
@@ -90,6 +92,168 @@ TEST(TestNumericTypes, test_check_signed_number_overflow) {
             EXPECT_TRUE((check_signed_number_overflow<float, int32_t>(d_value)));
         }
     }
+}
+
+// int8
+// int16
+// int32
+// int64
+// int128
+// float
+// double
+TEST(TestNumericTypes, test_check_signed_number_overflow_widen_conversion) {
+    // from int8_t
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int16_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int16_t>(std::numeric_limits<int8_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int32_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int32_t>(std::numeric_limits<int8_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int64_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int64_t>(std::numeric_limits<int8_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int128_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, int128_t>(std::numeric_limits<int8_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, float>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, float>(std::numeric_limits<int8_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, double>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int8_t, double>(std::numeric_limits<int8_t>::min())));
+
+    // from int16_t
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int32_t>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int32_t>(std::numeric_limits<int16_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int64_t>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int64_t>(std::numeric_limits<int16_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int128_t>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int128_t>(std::numeric_limits<int16_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, float>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, float>(std::numeric_limits<int16_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, double>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, double>(std::numeric_limits<int16_t>::min())));
+
+    // from int32_t
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int64_t>(std::numeric_limits<int32_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int64_t>(std::numeric_limits<int32_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int128_t>(std::numeric_limits<int32_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int128_t>(std::numeric_limits<int32_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, float>(std::numeric_limits<int32_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, float>(std::numeric_limits<int32_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, double>(std::numeric_limits<int32_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, double>(std::numeric_limits<int32_t>::min())));
+
+    // from int64_t
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int128_t>(std::numeric_limits<int64_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int128_t>(std::numeric_limits<int64_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, float>(std::numeric_limits<int64_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, float>(std::numeric_limits<int64_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, double>(std::numeric_limits<int64_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, double>(std::numeric_limits<int64_t>::min())));
+
+    // from int128_t
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, float>(std::numeric_limits<int128_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, float>(std::numeric_limits<int128_t>::min())));
+
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, double>(std::numeric_limits<int128_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, double>(std::numeric_limits<int128_t>::min())));
+
+    // from float
+    EXPECT_FALSE((check_signed_number_overflow<float, double>(std::numeric_limits<float>::lowest())));
+    EXPECT_FALSE((check_signed_number_overflow<float, double>(std::numeric_limits<float>::min())));
+}
+
+TEST(TestNumericTypes, test_check_signed_number_overflow_integral_narrow_conversion) {
+    // from int128_t
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int8_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int8_t>(std::numeric_limits<int8_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int8_t>(
+            static_cast<int128_t>(std::numeric_limits<int8_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int8_t>(
+            static_cast<int128_t>(std::numeric_limits<int8_t>::min()) - 1)));
+
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int16_t>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int16_t>(std::numeric_limits<int16_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int16_t>(
+            static_cast<int128_t>(std::numeric_limits<int16_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int16_t>(
+            static_cast<int128_t>(std::numeric_limits<int16_t>::min()) - 1)));
+
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int32_t>(std::numeric_limits<int32_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int32_t>(std::numeric_limits<int32_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int32_t>(
+            static_cast<int128_t>(std::numeric_limits<int32_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int32_t>(
+            static_cast<int128_t>(std::numeric_limits<int32_t>::min()) - 1)));
+
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int64_t>(std::numeric_limits<int64_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int128_t, int64_t>(std::numeric_limits<int64_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int64_t>(
+            static_cast<int128_t>(std::numeric_limits<int64_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int128_t, int64_t>(
+            static_cast<int128_t>(std::numeric_limits<int64_t>::min()) - 1)));
+
+    // from int64_t
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int8_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int8_t>(std::numeric_limits<int8_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int64_t, int8_t>(
+            static_cast<int64_t>(std::numeric_limits<int8_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int64_t, int8_t>(
+            static_cast<int64_t>(std::numeric_limits<int8_t>::min()) - 1)));
+
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int16_t>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int16_t>(std::numeric_limits<int16_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int64_t, int16_t>(
+            static_cast<int64_t>(std::numeric_limits<int16_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int64_t, int16_t>(
+            static_cast<int64_t>(std::numeric_limits<int16_t>::min()) - 1)));
+
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int32_t>(std::numeric_limits<int32_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int64_t, int32_t>(std::numeric_limits<int32_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int64_t, int32_t>(
+            static_cast<int64_t>(std::numeric_limits<int32_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int64_t, int32_t>(
+            static_cast<int64_t>(std::numeric_limits<int32_t>::min()) - 1)));
+
+    // from int32_t
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int8_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int8_t>(std::numeric_limits<int8_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int32_t, int8_t>(
+            static_cast<int32_t>(std::numeric_limits<int8_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int32_t, int8_t>(
+            static_cast<int32_t>(std::numeric_limits<int8_t>::min()) - 1)));
+
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int16_t>(std::numeric_limits<int16_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int32_t, int16_t>(std::numeric_limits<int16_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int32_t, int16_t>(
+            static_cast<int32_t>(std::numeric_limits<int16_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int32_t, int16_t>(
+            static_cast<int32_t>(std::numeric_limits<int16_t>::min()) - 1)));
+
+    // from int16_t
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int8_t>(std::numeric_limits<int8_t>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<int16_t, int8_t>(std::numeric_limits<int8_t>::min())));
+    EXPECT_TRUE((check_signed_number_overflow<int16_t, int8_t>(
+            static_cast<int16_t>(std::numeric_limits<int8_t>::max()) + 1)));
+    EXPECT_TRUE((check_signed_number_overflow<int16_t, int8_t>(
+            static_cast<int16_t>(std::numeric_limits<int8_t>::min()) - 1)));
+
+    // from double to float
+    EXPECT_FALSE((check_signed_number_overflow<double, float>(std::numeric_limits<float>::max())));
+    EXPECT_FALSE((check_signed_number_overflow<double, float>(std::numeric_limits<float>::lowest())));
+    EXPECT_TRUE(
+            (check_signed_number_overflow<double, float>(static_cast<double>(std::numeric_limits<float>::max()) * 2)));
+    EXPECT_TRUE((check_signed_number_overflow<double, float>(static_cast<double>(std::numeric_limits<float>::lowest()) *
+                                                             2)));
 }
 
 } // namespace starrocks
