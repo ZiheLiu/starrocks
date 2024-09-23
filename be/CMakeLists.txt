@@ -873,7 +873,6 @@ set(STARROCKS_DEPENDENCIES
     lz4
     libevent
     curl
-    ${Poco_LIBRARIES}
     libz
     libbz2
     gflags

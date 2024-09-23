@@ -25,14 +25,12 @@ namespace starrocks::io {
 class S3ZeroCopyIOStream : public Aws::IOStream {
 public:
     S3ZeroCopyIOStream(char* buf, size_t size)
-            : Aws::IOStream(new Aws::Utils::Stream::PreallocatedStreamBuf(reinterpret_cast<unsigned char*>(buf), size)),
-              _buf_size(size) {
+            : Aws::IOStream(
+                      new Aws::Utils::Stream::PreallocatedStreamBuf(reinterpret_cast<unsigned char*>(buf), size)) {
         DCHECK(rdbuf());
     }
 
     S3ZeroCopyIOStream(const char* buf, size_t size) : S3ZeroCopyIOStream(const_cast<char*>(buf), size) {}
-
-    size_t getSize() { return _buf_size; }
 
     S3ZeroCopyIOStream(const S3ZeroCopyIOStream&) = delete;
     void operator=(const S3ZeroCopyIOStream&) = delete;
@@ -43,9 +41,6 @@ public:
         // corresponding new in constructor
         delete rdbuf();
     }
-
-private:
-    size_t _buf_size = 0;
 };
 
 } // namespace starrocks::io
