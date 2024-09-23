@@ -31,7 +31,7 @@ static constexpr FromType floating_to_integral_upper_bound = static_cast<FromTyp
 /// If overflowed, return true; otherwise, return false.
 /// NOTE that `FromType` and `ToType` must be signed number types.
 template <typename FromType, typename ToType>
-bool check_number_overflow(FromType value) {
+bool check_signed_number_overflow(FromType value) {
     if constexpr (std::numeric_limits<ToType>::max() >= std::numeric_limits<FromType>::max()) { // Widening conversion
         return false;
     } else { // Narrowing conversion
