@@ -165,8 +165,6 @@ message JsonMetaPB {
     optional bool is_flat = 2;
 
     optional bool has_remain = 3;
-
-    optional bytes remain_filter = 4;
 }
 
 message ColumnMetaPB {

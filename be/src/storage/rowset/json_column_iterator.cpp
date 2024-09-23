@@ -493,7 +493,12 @@ Status JsonMergeIterator::init(const ColumnIteratorOptions& opts) {
         _src_column_modules.emplace_back(JsonColumn::create());
     }
 
-    opts.stats->merge_json_hits["MergeAllSubfield"] += 1;
+    for (auto& p : _src_paths) {
+        opts.stats->merge_json_hits[p] += 1;
+    }
+    if (has_remain) {
+        opts.stats->merge_json_hits["remain"] += 1;
+    }
     SCOPED_RAW_TIMER(&_opts.stats->json_init_ns);
     _merger = std::make_unique<JsonMerger>(_src_paths, _src_types, has_remain);
 
