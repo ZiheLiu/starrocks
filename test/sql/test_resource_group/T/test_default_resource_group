@@ -2,5 +2,5 @@
 
 [UC]function: num_cores=get_backend_cpu_cores()
 
-SHOW RESOURCE GROUPS ALL;
+SHOW RESOURCE GROUP default_wg;
 
