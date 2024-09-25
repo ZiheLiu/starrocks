@@ -1,0 +1,6 @@
+-- name: test_default_resource_group
+
+[UC]function: num_cores=get_backend_cpu_cores()
+
+SHOW RESOURCE GROUPS ALL;
+
