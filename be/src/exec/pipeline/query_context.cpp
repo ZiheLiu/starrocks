@@ -97,8 +97,10 @@ FragmentContextManager* QueryContext::fragment_mgr() {
 }
 
 void QueryContext::cancel(const Status& status) {
-    Status expect_status = Status::OK();
-    _final_status.compare_exchange_strong(expect_status, status);
+    Status* expect_status = nullptr;
+    if (_final_status.compare_exchange_strong(expect_status, &_final_status_payload)) {
+        _final_status_payload = status;
+    }
     _fragment_mgr->cancel(status);
 }
 
@@ -359,12 +361,12 @@ QueryContextManager::~QueryContextManager() {
 
 #define RETURN_ERROR_IF_CTX_CANCELLED(query_ctx) \
     if (query_ctx->is_cancelled()) {             \
-        return query_ctx->final_status();        \
+        return query_ctx->status();              \
     }                                            \
     query_ctx->increment_num_fragments();        \
     if (query_ctx->is_cancelled()) {             \
         query_ctx->rollback_inc_fragments();     \
-        return query_ctx->final_status();        \
+        return query_ctx->status();              \
     }
 
 StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& query_id) {

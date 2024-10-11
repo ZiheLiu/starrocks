@@ -86,8 +86,11 @@ public:
         return now > _query_deadline;
     }
 
-    Status final_status() const { return _final_status; }
-    bool is_cancelled() const { return !_final_status.load().ok(); }
+    Status status() const {
+        Status* final_status = _final_status.load();
+        return final_status == nullptr ? Status::OK() : *final_status;
+    }
+    bool is_cancelled() const { return !status().ok(); }
 
     bool is_dead() const {
         return _num_active_fragments == 0 && (_num_fragments == _total_fragments || is_cancelled());
@@ -318,7 +321,8 @@ private:
     std::once_flag _query_trace_init_flag;
     std::shared_ptr<starrocks::debug::QueryTrace> _query_trace;
     std::atomic_bool _is_prepared = false;
-    std::atomic<Status> _final_status = Status::OK();
+    Status _final_status_payload = Status::OK();
+    std::atomic<Status*> _final_status = nullptr;
 
     std::once_flag _init_query_once;
     int64_t _query_begin_time = 0;
