@@ -79,16 +79,19 @@ public:
     // now time point pass by deadline point.
     bool is_delivery_expired() const {
         auto now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
-        return now > _delivery_deadline || _is_cancelled;
+        return now > _delivery_deadline || is_cancelled();
     }
     bool is_query_expired() const {
         auto now = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
         return now > _query_deadline;
     }
 
-    bool is_cancelled() const { return _is_cancelled; }
+    Status final_status() const { return _final_status; }
+    bool is_cancelled() const { return !_final_status.load().ok(); }
 
-    bool is_dead() const { return _num_active_fragments == 0 && (_num_fragments == _total_fragments || _is_cancelled); }
+    bool is_dead() const {
+        return _num_active_fragments == 0 && (_num_fragments == _total_fragments || is_cancelled());
+    }
     // add expired seconds to deadline
     void extend_delivery_lifetime() {
         _delivery_deadline =
@@ -315,7 +318,7 @@ private:
     std::once_flag _query_trace_init_flag;
     std::shared_ptr<starrocks::debug::QueryTrace> _query_trace;
     std::atomic_bool _is_prepared = false;
-    std::atomic_bool _is_cancelled = false;
+    std::atomic<Status> _final_status = Status::OK();
 
     std::once_flag _init_query_once;
     int64_t _query_begin_time = 0;
@@ -375,7 +378,7 @@ public:
     QueryContextManager(size_t log2_num_slots);
     ~QueryContextManager();
     Status init();
-    QueryContext* get_or_register(const TUniqueId& query_id);
+    StatusOr<QueryContext*> get_or_register(const TUniqueId& query_id);
     QueryContextPtr get(const TUniqueId& query_id, bool need_prepared = false);
     size_t size();
     bool remove(const TUniqueId& query_id);
