@@ -169,6 +169,10 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             return false;
         }
 
+        if (sessionVariable.getCboPushDownAggregateMode() == 4) {
+            return true;
+        }
+
         ColumnRefSet outputColumns = optExpression.getOutputColumns();
 
         ColumnRefSet allGroupByColumns = new ColumnRefSet();
@@ -354,7 +358,8 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             return visit(optExpression, context);
         }
 
-        if (!context.pushPaths.isEmpty() && context.origAggregator != null) {
+        if (!context.pushPaths.isEmpty() && context.origAggregator != null &&
+                sessionVariable.getCboPushDownAggregateMode() == 4) {
             allRewriteContext0
                     .computeIfAbsent(context.origAggregator, k -> Maps.newHashMap())
                     .put(optExpression, context);

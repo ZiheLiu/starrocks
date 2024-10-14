@@ -759,18 +759,18 @@ public class Optimizer {
             pushDistinctFlag = rule.getRewriter().hasRewrite();
         }
 
-        if (context.getSessionVariable().getCboPushDownAggregateMode() != -1) {
-
-            ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.PARTITION_PRUNE);
-            ruleRewriteIterative(tree, rootTaskContext, new MergeTwoProjectRule());
-            ruleRewriteIterative(tree, rootTaskContext, new MergeProjectWithChildRule());
-            CTEUtils.collectForceCteStatisticsOutsideMemo(tree, context);
-            deriveLogicalProperty(tree);
-            tree = new ReorderJoinRule().rewrite2(tree, context);
-            tree = new SeparateProjectRule().rewrite(tree, rootTaskContext);
-
-            CTEUtils.collectForceCteStatisticsOutsideMemo(tree, context);
-            deriveLogicalProperty(tree);
+        final int pushDownAggMode = context.getSessionVariable().getCboPushDownAggregateMode();
+        if (pushDownAggMode != -1) {
+            if (pushDownAggMode == 4) {
+                ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.PARTITION_PRUNE);
+                ruleRewriteIterative(tree, rootTaskContext, new MergeTwoProjectRule());
+                ruleRewriteIterative(tree, rootTaskContext, new MergeProjectWithChildRule());
+                CTEUtils.collectForceCteStatisticsOutsideMemo(tree, context);
+                deriveLogicalProperty(tree);
+                tree = new ReorderJoinRule().rewrite2(tree, context);
+                tree = new SeparateProjectRule().rewrite(tree, rootTaskContext);
+                deriveLogicalProperty(tree);
+            }
             PushDownAggregateRule rule = new PushDownAggregateRule(rootTaskContext);
             rule.getRewriter().collectRewriteContext(tree);
             if (rule.getRewriter().isNeedRewrite()) {
