@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.optimizer.rule.tree.pdagg;
 
+import com.google.api.client.util.Sets;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -31,7 +31,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
-import com.starrocks.sql.optimizer.operator.logical.LogicalScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalTreeAnchorOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
@@ -83,7 +83,12 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
     private final ColumnRefFactory factory;
     private final SessionVariable sessionVariable;
 
+    private final Map<LogicalAggregationOperator, Map<OptExpression, AggregatePushDownContext>> allRewriteContext0 =
+            Maps.newHashMap();
+
     private final Map<LogicalAggregationOperator, List<AggregatePushDownContext>> allRewriteContext = Maps.newHashMap();
+
+    private final Set<OptExpression> pushDownOpts = Sets.newHashSet();
 
     public PushDownAggregateCollector(TaskContext taskContext) {
         this.taskContext = taskContext;
@@ -96,8 +101,108 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
         return allRewriteContext;
     }
 
+    public Set<OptExpression> getPushDownOpts() {
+        return pushDownOpts;
+    }
+
     public void collect(OptExpression root) {
-        process(root, new AggregatePushDownContext());
+        collect(root, new AggregatePushDownContext());
+    }
+
+    private void collect(OptExpression root, AggregatePushDownContext context) {
+        collectStatistics(root);
+        process(root, context);
+        selectPushDownPosition();
+    }
+
+    private void selectPushDownPosition() {
+        allRewriteContext0.forEach((origAggregator, optToContext) -> {
+            double minCost = Double.MAX_VALUE;
+            AggregatePushDownContext minContext = null;
+            OptExpression minOpt = null;
+            for (Map.Entry<OptExpression, AggregatePushDownContext> e : optToContext.entrySet()) {
+                OptExpression opt = e.getKey();
+                AggregatePushDownContext context = e.getValue();
+
+                if (!canPushDown(opt, context)) {
+                    continue;
+                }
+
+                Statistics statistics = opt.getStatistics();
+                ColumnRefSet allGroupByColumns = new ColumnRefSet();
+                context.groupBys.values().forEach(c -> allGroupByColumns.union(c.getUsedColumns()));
+
+                double cost = allGroupByColumns.getStream().map(factory::getColumnRef)
+                        .map(s -> ExpressionStatisticCalculator.calculate(s, statistics).getDistinctValuesCount())
+                        .reduce((a, b) -> a * b)
+                        .orElse(Double.MAX_VALUE);
+                if (cost < minCost) {
+                    minCost = cost;
+                    minContext = context;
+                    minOpt = opt;
+                }
+            }
+
+            if (minContext != null) {
+                pushDownOpts.add(minOpt);
+                List<AggregatePushDownContext> list =
+                        allRewriteContext.getOrDefault(minContext.origAggregator, Lists.newArrayList());
+                list.add(minContext);
+                allRewriteContext.put(minContext.origAggregator, list);
+            }
+        });
+    }
+
+    private boolean canPushDown(OptExpression optExpression, AggregatePushDownContext context) {
+
+        // least cross join/union/cte
+        if (context.isEmpty() || context.pushPaths.isEmpty()) {
+            return false;
+        }
+
+        if (context.aggregations.isEmpty() && context.groupBys.isEmpty()) {
+            return false;
+        }
+
+        // distinct function, not support function can't push down
+        if (context.aggregations.values().stream()
+                .anyMatch(v -> v.isDistinct() || !WHITE_FNS.contains(v.getFnName()))) {
+            return false;
+        }
+
+        ColumnRefSet outputColumns = optExpression.getOutputColumns();
+
+        ColumnRefSet allGroupByColumns = new ColumnRefSet();
+        context.groupBys.values().forEach(c -> allGroupByColumns.union(c.getUsedColumns()));
+
+        ColumnRefSet allAggregateColumns = new ColumnRefSet();
+        context.aggregations.values().forEach(c -> allAggregateColumns.union(c.getUsedColumns()));
+
+        Preconditions.checkState(outputColumns.containsAll(allGroupByColumns));
+        Preconditions.checkState(outputColumns.containsAll(allAggregateColumns));
+
+        ExpressionContext expressionContext = new ExpressionContext(optExpression);
+        StatisticsCalculator statisticsCalculator =
+                new StatisticsCalculator(expressionContext, factory, optimizerContext);
+        statisticsCalculator.estimatorStats();
+
+        if (!checkStatistics(context, allGroupByColumns, expressionContext.getStatistics())) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private void collectStatistics(OptExpression root) {
+        // Bottom-up to collect statistics.
+        root.getInputs().forEach(this::collectStatistics);
+
+        if (!(root.getOp() instanceof LogicalTreeAnchorOperator)) {
+            ExpressionContext expressionContext = new ExpressionContext(root);
+            StatisticsCalculator statisticsCalculator = new StatisticsCalculator(expressionContext, factory, optimizerContext);
+            statisticsCalculator.estimatorStats();
+            root.setStatistics(expressionContext.getStatistics());
+        }
     }
 
     @Override
@@ -250,6 +355,12 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             return visit(optExpression, context);
         }
 
+        if (!context.pushPaths.isEmpty() && context.origAggregator != null) {
+            allRewriteContext0
+                    .computeIfAbsent(context.origAggregator, k -> Maps.newHashMap())
+                    .put(optExpression, context);
+        }
+
         // split aggregate to left/right child
         AggregatePushDownContext leftContext = splitJoinAggregate(optExpression, context, 0);
         AggregatePushDownContext rightContext = splitJoinAggregate(optExpression, context, 1);
@@ -354,7 +465,9 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
 
             PushDownAggregateCollector collector = new PushDownAggregateCollector(this.taskContext);
             collectors.add(collector);
-            collector.process(optExpression.inputAt(i), childContext);
+            collector.collect(optExpression.inputAt(i), childContext);
+
+            pushDownOpts.addAll(collector.getPushDownOpts());
         }
 
         // collect push down aggregate context
@@ -419,46 +532,10 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
 
     @Override
     public Void visitLogicalTableScan(OptExpression optExpression, AggregatePushDownContext context) {
-        // least cross join/union/cte
-        if (context.isEmpty() || context.pushPaths.isEmpty()) {
-            return null;
+        if (context.origAggregator != null) {
+            allRewriteContext0.computeIfAbsent(context.origAggregator, k -> Maps.newHashMap())
+                    .put(optExpression, context);
         }
-
-        if (context.aggregations.isEmpty() && context.groupBys.isEmpty()) {
-            return null;
-        }
-
-        // distinct function, not support function can't push down
-        if (context.aggregations.values().stream()
-                .anyMatch(v -> v.isDistinct() || !WHITE_FNS.contains(v.getFnName()))) {
-            return null;
-        }
-
-        LogicalScanOperator scan = (LogicalScanOperator) optExpression.getOp();
-        ColumnRefSet scanOutput = new ColumnRefSet(scan.getOutputColumns());
-
-        ColumnRefSet allGroupByColumns = new ColumnRefSet();
-        context.groupBys.values().forEach(c -> allGroupByColumns.union(c.getUsedColumns()));
-
-        ColumnRefSet allAggregateColumns = new ColumnRefSet();
-        context.aggregations.values().forEach(c -> allAggregateColumns.union(c.getUsedColumns()));
-
-        Preconditions.checkState(scanOutput.containsAll(allGroupByColumns));
-        Preconditions.checkState(scanOutput.containsAll(allAggregateColumns));
-
-        ExpressionContext expressionContext = new ExpressionContext(optExpression);
-        StatisticsCalculator statisticsCalculator =
-                new StatisticsCalculator(expressionContext, factory, optimizerContext);
-        statisticsCalculator.estimatorStats();
-
-        if (!checkStatistics(context, allGroupByColumns, expressionContext.getStatistics())) {
-            return null;
-        }
-
-        List<AggregatePushDownContext> list =
-                allRewriteContext.getOrDefault(context.origAggregator, Lists.newArrayList());
-        list.add(context);
-        allRewriteContext.put(context.origAggregator, list);
         return null;
     }
 

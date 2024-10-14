@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.plan;
 
 import com.google.common.collect.Lists;
 import com.starrocks.common.DdlException;
 import com.starrocks.planner.TpchSQL;
 import com.starrocks.utframe.UtFrameUtils;
+import org.junit.Test;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.io.TempDir;
@@ -66,5 +66,29 @@ public class HiveTPCHPlanTest extends ConnectorPlanTestBase {
             cases.add(Arguments.of(entry.getKey(), entry.getValue(), "external/hive/tpch/" + entry.getKey()));
         }
         return cases.stream();
+    }
+
+    @Test
+    public void test() throws Exception {
+        connectContext.changeCatalogDb("hive0.tpch");
+        connectContext.getSessionVariable().setEnableUKFKOpt(true);
+        connectContext.getSessionVariable().setMockPK("hive0.tpch.customer.c_custkey");
+        connectContext.getSessionVariable().setMockFK("hive0.tpch.orders(o_custkey) REFERENCES hive0.tpch.customer(c_custkey)");
+
+        String plan = getFragmentPlan("select\n" +
+                "    sum(o_shippriority) as revenue,\n" +
+                "    c_custkey\n" +
+                "from\n" +
+                "    customer,\n" +
+                "    orders\n" +
+                " where \n" +
+                "  c_custkey = o_custkey\n" +
+                "group by\n" +
+                "    c_custkey, c_name\n" +
+                "order by\n" +
+                "    revenue desc,\n" +
+                "    c_custkey limit 10;\n" +
+                "\n");
+        System.out.println(plan);
     }
 }

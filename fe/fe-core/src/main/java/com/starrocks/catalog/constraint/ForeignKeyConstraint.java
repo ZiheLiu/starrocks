@@ -124,7 +124,7 @@ public class ForeignKeyConstraint extends Constraint {
         }
     }
 
-    private Table getChildTable() {
+    public Table getChildTable() {
         if (childTableInfo.isInternalCatalog()) {
             Table table = GlobalStateMgr.getCurrentState().getLocalMetastore()
                     .getTable(childTableInfo.getDbId(), childTableInfo.getTableId());

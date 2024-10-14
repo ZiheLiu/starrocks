@@ -16,7 +16,6 @@ package com.starrocks.sql.optimizer.rule.transformation;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.analysis.JoinOperator;
-import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.OptimizerContext;
@@ -47,11 +46,6 @@ public class PruneUKFKJoinRule extends TransformationRule {
         super(RuleType.TF_PRUNE_UKFK_JOIN, Pattern.create(OperatorType.LOGICAL_PROJECT)
                 .addChildren(Pattern.create(OperatorType.LOGICAL_JOIN, OperatorType.PATTERN_LEAF,
                         OperatorType.PATTERN_LEAF)));
-    }
-
-    @Override
-    public boolean check(OptExpression input, OptimizerContext context) {
-        return ConnectContext.get().getSessionVariable().isEnableUKFKOpt();
     }
 
     @Override

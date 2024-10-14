@@ -213,6 +213,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_UKFK_JOIN_REORDER = "enable_ukfk_join_reorder";
     public static final String MAX_UKFK_JOIN_REORDER_SCALE_RATIO = "max_ukfk_join_reorder_scale_ratio";
     public static final String MAX_UKFK_JOIN_REORDER_FK_ROWS = "max_ukfk_join_reorder_fk_rows";
+    public static final String MOCK_PK = "mock_pk";
+    public static final String MOCK_FK = "mock_fk";
 
     // if set to true, some of stmt will be forwarded to leader FE to get result
 
@@ -1218,6 +1220,12 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = ENABLE_TABLE_PRUNE_ON_UPDATE)
     private boolean enableTablePruneOnUpdate = false;
 
+    @VariableMgr.VarAttr(name = MOCK_PK)
+    private String mockPK = "";
+
+    @VariableMgr.VarAttr(name = MOCK_FK)
+    private String mockFK = "";
+
     @VarAttr(name = ENABLE_UKFK_OPT)
     private boolean enableUKFKOpt = false;
 
@@ -1559,7 +1567,6 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = ENABLE_PLAN_ADVISOR)
     private boolean enablePlanAdvisor = true;
-
 
     public int getCboPruneJsonSubfieldDepth() {
         return cboPruneJsonSubfieldDepth;
@@ -2815,6 +2822,22 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isEnableTablePruneOnUpdate() {
         return enableTablePruneOnUpdate;
+    }
+
+    public String getMockPK() {
+        return mockPK;
+    }
+
+    public void setMockPK(String mockPK) {
+        this.mockPK = mockPK;
+    }
+
+    public String getMockFK() {
+        return mockFK;
+    }
+
+    public void setMockFK(String mockFK) {
+        this.mockFK = mockFK;
     }
 
     public boolean isEnableUKFKOpt() {

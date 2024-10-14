@@ -157,6 +157,12 @@ public class ReorderJoinRule extends Rule {
             if (copyIntoMemo) {
                 context.getMemo().copyIn(innerJoinRoot.getGroupExpression().getGroup(), joinExpr);
             } else {
+                joinExpr.deriveLogicalPropertyItself();
+                ExpressionContext expressionContext = new ExpressionContext(joinExpr);
+                StatisticsCalculator statisticsCalculator =
+                        new StatisticsCalculator(expressionContext, context.getColumnRefFactory(), context);
+                statisticsCalculator.estimatorStats();
+                joinExpr.setStatistics(expressionContext.getStatistics());
                 return Optional.of(joinExpr);
             }
         }
@@ -200,6 +206,61 @@ public class ReorderJoinRule extends Rule {
                     } else {
                         return newChild.get();
                     }
+                }
+            }
+        }
+        return input;
+    }
+
+    public OptExpression rewrite2(OptExpression input, OptimizerContext context) {
+        List<Pair<OptExpression, Pair<OptExpression, Integer>>> innerJoinTreesAndParents = Lists.newArrayList();
+        extractRootInnerJoin(null, -1, input, innerJoinTreesAndParents, false);
+        if (!innerJoinTreesAndParents.isEmpty()) {
+            // In order to reorder the bottom join tree firstly
+            Collections.reverse(innerJoinTreesAndParents);
+            for (Pair<OptExpression, Pair<OptExpression, Integer>> innerJoinRoot : innerJoinTreesAndParents) {
+                OptExpression child = innerJoinRoot.first;
+                OptExpression parent = innerJoinRoot.second.first;
+                Integer childIdx = innerJoinRoot.second.second;
+
+                MultiJoinNode multiJoinNode = MultiJoinNode.toMultiJoinNode(child);
+                if (!multiJoinNode.checkDependsPredicate()) {
+                    continue;
+                }
+
+                Optional<OptExpression> newChild =
+                        enumerate(new JoinReorderLeftDeep(context), context, child, multiJoinNode, false);
+                if (newChild.isEmpty()) {
+                    continue;
+                }
+
+                if (multiJoinNode.getAtoms().size() <= context.getSessionVariable().getCboMaxReorderNodeUseDP()
+                        && context.getSessionVariable().isCboEnableDPJoinReorder()) {
+                    newChild = enumerate(new JoinReorderDP(context), context, newChild.get(), multiJoinNode, false);
+                    if (newChild.isEmpty()) {
+                        continue;
+                    }
+                }
+
+                if (context.getSessionVariable().isCboEnableGreedyJoinReorder()) {
+                    newChild = enumerate(new JoinReorderGreedy(context), context, newChild.get(), multiJoinNode, false);
+                    if (newChild.isEmpty()) {
+                        continue;
+                    }
+                }
+
+                int prevNumCrossJoins =
+                        Utils.countJoinNodeSize(child, Sets.newHashSet(JoinOperator.CROSS_JOIN));
+                int numCrossJoins =
+                        Utils.countJoinNodeSize(newChild.get(), Sets.newHashSet(JoinOperator.CROSS_JOIN));
+                // we adopt result of reorder only if the number of cross joins is reduced
+                if (numCrossJoins != 0 && prevNumCrossJoins <= numCrossJoins) {
+                    continue;
+                }
+                if (parent != null) {
+                    parent.setChild(childIdx, newChild.get());
+                } else {
+                    return newChild.get();
                 }
             }
         }

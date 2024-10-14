@@ -18,6 +18,8 @@ import com.starrocks.analysis.JoinOperator;
 import com.starrocks.catalog.BaseTableInfo;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
+import com.starrocks.catalog.Table;
+import com.starrocks.catalog.TableWithDB;
 import com.starrocks.catalog.constraint.ForeignKeyConstraint;
 import com.starrocks.catalog.constraint.UniqueConstraint;
 import com.starrocks.common.Pair;
@@ -26,7 +28,7 @@ import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.operator.Operator;
 import com.starrocks.sql.optimizer.operator.UKFKConstraints;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
-import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
@@ -65,6 +67,24 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
         return null;
     }
 
+    @Override
+    public Void visitLogicalAggregate(OptExpression optExpression, Void context) {
+        visitChildren(optExpression, context);
+        if (optExpression.getConstraints() != null) {
+            return null;
+        }
+
+        ColumnRefSet outputColumns = optExpression.getRowOutputInfo().getOutputColumnRefSet();
+        UKFKConstraints childConstraints = optExpression.inputAt(0).getConstraints();
+
+        UKFKConstraints constraints = new UKFKConstraints();
+        constraints.inheritForeignKey(childConstraints, outputColumns);
+        constraints.inheritRelaxedUniqueKey(childConstraints, outputColumns);
+
+        optExpression.setConstraints(constraints);
+        return null;
+    }
+
     private void visitChildren(OptExpression optExpression, Void context) {
         for (OptExpression child : optExpression.getInputs()) {
             child.getOp().accept(this, child, context);
@@ -89,21 +109,50 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
         if (optExpression.getConstraints() != null) {
             return null;
         }
-        if (!(optExpression.getOp() instanceof LogicalOlapScanOperator)) {
-            optExpression.setConstraints(new UKFKConstraints());
-            return null;
-        }
-        LogicalOlapScanOperator scanOperator = optExpression.getOp().cast();
+
+        LogicalScanOperator scanOperator = optExpression.getOp().cast();
+        Table table = scanOperator.getTable();
+        Map<String, ColumnRefOperator> columnNameToColRefMap = scanOperator.getColumnNameToColRefMap();
+
         ColumnRefSet usedColumns = new ColumnRefSet();
         if (scanOperator.getPredicate() != null) {
             usedColumns.union(scanOperator.getPredicate().getUsedColumns());
         }
-        OlapTable table = (OlapTable) scanOperator.getTable();
-        Map<String, ColumnRefOperator> columnNameToColRefMap = scanOperator.getColumnNameToColRefMap();
 
-        visitOlapTable(optExpression, table, columnNameToColRefMap, usedColumns);
+        List<UniqueConstraint> ukConstraints = table.getUniqueConstraints();
+        List<ForeignKeyConstraint> fkConstraints = table.getForeignKeyConstraints();
+        if (table instanceof TableWithDB) {
+            TableWithDB tableWithDB = (TableWithDB) table;
+            ukConstraints = getMockUniqueConstraints(tableWithDB);
+            fkConstraints = getMockForeignConstraints(table);
+        }
+
+        visitTable(optExpression, table, columnNameToColRefMap, usedColumns, ukConstraints, fkConstraints);
 
         return null;
+    }
+
+    private static List<UniqueConstraint> getMockUniqueConstraints(TableWithDB table) {
+        String mockPK = ConnectContext.get().getSessionVariable().getMockPK();
+        List<UniqueConstraint> ukConstraints = UniqueConstraint.parse(null, null, null, mockPK);
+        if (ukConstraints == null) {
+            return List.of();
+        }
+        return ukConstraints.stream().filter(uk -> uk.getCatalogName().equals(table.getCatalogName())
+                        && uk.getDbName().equals(table.getDbName())
+                        && uk.getTableName().equals(table.getName()))
+                .collect(Collectors.toList());
+    }
+
+    private static List<ForeignKeyConstraint> getMockForeignConstraints(Table table) {
+        String mockFK = ConnectContext.get().getSessionVariable().getMockFK();
+        List<ForeignKeyConstraint> fkConstraints = ForeignKeyConstraint.parse(mockFK);
+        if (fkConstraints == null) {
+            return List.of();
+        }
+        return fkConstraints.stream()
+                .filter(fk -> fk.getChildTable().equals(table))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -112,27 +161,32 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
         if (optExpression.getConstraints() != null) {
             return null;
         }
-        if (!(optExpression.getOp() instanceof PhysicalOlapScanOperator)) {
-            optExpression.setConstraints(new UKFKConstraints());
-            return null;
-        }
+
         PhysicalOlapScanOperator scanOperator = optExpression.getOp().cast();
         ColumnRefSet usedColumns = scanOperator.getUsedColumns();
         OlapTable table = (OlapTable) scanOperator.getTable();
         Map<String, ColumnRefOperator> columnNameToColRefMap = scanOperator.getColRefToColumnMetaMap().entrySet()
                 .stream().collect(Collectors.toMap(entry -> entry.getValue().getName(), Map.Entry::getKey));
 
-        visitOlapTable(optExpression, table, columnNameToColRefMap, usedColumns);
+        List<UniqueConstraint> ukConstraints = table.getUniqueConstraints();
+        List<ForeignKeyConstraint> fkConstraints = table.getForeignKeyConstraints();
+        if (table instanceof TableWithDB) {
+            TableWithDB tableWithDB = (TableWithDB) table;
+            ukConstraints = getMockUniqueConstraints(tableWithDB);
+            fkConstraints = getMockForeignConstraints(table);
+        }
+        visitTable(optExpression, table, columnNameToColRefMap, usedColumns, ukConstraints, fkConstraints);
 
         return null;
     }
 
-    private void visitOlapTable(OptExpression optExpression, OlapTable table,
-                                Map<String, ColumnRefOperator> columnNameToColRefMap, ColumnRefSet usedColumns) {
+    private void visitTable(OptExpression optExpression, Table table,
+                            Map<String, ColumnRefOperator> columnNameToColRefMap, ColumnRefSet usedColumns,
+                            List<UniqueConstraint> ukConstraints, List<ForeignKeyConstraint> fkConstraints) {
         ColumnRefSet outputColumns = optExpression.getRowOutputInfo().getOutputColumnRefSet();
         UKFKConstraints constraint = new UKFKConstraints();
-        if (table.hasUniqueConstraints()) {
-            List<UniqueConstraint> ukConstraints = table.getUniqueConstraints();
+
+        if (ukConstraints != null) {
             for (UniqueConstraint ukConstraint : ukConstraints) {
                 // For now, we only handle one column primary key or foreign key
                 if (ukConstraint.getUniqueColumnNames(table).size() == 1) {
@@ -181,10 +235,15 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
                 }
             }
         }
-        if (table.hasForeignKeyConstraints()) {
-            Column firstKeyColumn = table.getKeyColumns().get(0);
-            ColumnRefOperator firstKeyColumnRef = columnNameToColRefMap.get(firstKeyColumn.getName());
-            List<ForeignKeyConstraint> fkConstraints = table.getForeignKeyConstraints();
+
+        if (fkConstraints != null) {
+            ColumnRefOperator firstKeyColumnRef = null;
+            if (table instanceof OlapTable) {
+                OlapTable olapTable = (OlapTable) table;
+                Column firstKeyColumn = olapTable.getKeyColumns().get(0);
+                firstKeyColumnRef = columnNameToColRefMap.get(firstKeyColumn.getName());
+            }
+
             for (ForeignKeyConstraint fkConstraint : fkConstraints) {
                 if (fkConstraint.getColumnNameRefPairs(table).size() == 1) {
                     Pair<String, String> pair = fkConstraint.getColumnNameRefPairs(table).get(0);
@@ -276,6 +335,9 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
                 }
             }
         }
+
+        constraint.inheritRelaxedUniqueKey(leftConstraints, outputColumns);
+        constraint.inheritRelaxedUniqueKey(rightConstraints, outputColumns);
 
         // All foreign properties can be preserved
         constraint.inheritForeignKey(leftConstraints, outputColumns);

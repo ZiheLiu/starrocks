@@ -81,8 +81,12 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
     private void assertPlans(String query, boolean equals, String... patterns) throws Exception {
         connectContext.getSessionVariable().setEnableUKFKOpt(false);
         String planDisabled = getFragmentPlan(query);
+        System.out.println(planDisabled);
+        System.out.println("======================");
         connectContext.getSessionVariable().setEnableUKFKOpt(true);
         String planEnabled = getFragmentPlan(query);
+        System.out.println(planEnabled);
+        System.out.println("======================");
         if (equals) {
             Assert.assertEquals(planDisabled, planEnabled);
         } else {
@@ -97,8 +101,23 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
     @Test
     public void canPrune() throws Exception {
         {
-            String sql = "select t_fk.*, t_fk.v2 * 3 +5, t_uk.v1 * 5 from t_fk, t_uk where t_uk.v1 = t_fk.v1";
+            String sql = "select t_uk.v1, sum(t_fk.v2) from t_fk, t_uk " +
+                    "where t_uk.v1 = t_fk.v1 group by t_uk.v1, substr(t_uk.v2, 1, 30)";
             String plan = getFragmentPlan(sql);
+            System.out.println(plan);
+            assertNotContains(plan, "HASH JOIN");
+            assertContains(plan, "v1 IS NOT NULL");
+        }
+        {
+            String sql = "select t_uk.v1, sum(t_uk.v2) from t_uk group by t_uk.v1, t_uk.v2";
+            String plan = getFragmentPlan(sql);
+            System.out.println(plan);
+            assertNotContains(plan, "HASH JOIN");
+        }
+        {
+            String sql = "select t_uk.v1, sum(t_fk.v2) from t_fk, t_uk where t_uk.v1 = t_fk.v1 group by t_uk.v1, t_uk.v2";
+            String plan = getFragmentPlan(sql);
+            System.out.println(plan);
             assertNotContains(plan, "HASH JOIN");
             assertContains(plan, "v1 IS NOT NULL");
         }
@@ -270,6 +289,24 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
 
     @Test
     public void testQ23() throws Exception {
+        connectContext.getSessionVariable().setOptimizerExecuteTimeout(300000000);
+        connectContext.getSessionVariable().setEnableUKFKOpt(true);
+        connectContext.getSessionVariable().setCboPushDownAggregateMode(1);
+
+        String sql = "select max(csales) tpcds_cmax\n" +
+                "from (\n" +
+                "      select c_customer_sk, sum(ss_quantity * ss_sales_price) csales\n" +
+                "      from store_sales\n" +
+                "         , customer\n" +
+                "         , date_dim\n" +
+                "      where ss_customer_sk = c_customer_sk\n" +
+                "      and ss_sold_date_sk = d_date_sk\n" +
+                "      and d_year in (2000, 2000 + 1, 2000 + 2, 2000 + 3)\n" +
+                "      group by c_customer_sk\n" +
+                ") t1;";
+        String plan = getFragmentPlan(sql);
+        System.out.println(plan);
+
         assertPlans(Q23_1, false, "[0-9]+: ss_customer_sk = [0-9]+: c_customer_sk");
         assertPlans(Q23_2, false, "[0-9]+: ss_customer_sk = [0-9]+: c_customer_sk");
     }

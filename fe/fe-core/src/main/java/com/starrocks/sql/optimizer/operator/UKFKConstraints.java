@@ -25,10 +25,13 @@ import com.starrocks.sql.plan.ScalarOperatorToExpr;
 import org.apache.hadoop.shaded.com.google.common.collect.Maps;
 
 import java.util.Map;
+import java.util.stream.Stream;
 
 public class UKFKConstraints {
     // ColumnRefOperator::id -> UniqueConstraint
     private final Map<Integer, UniqueConstraintWrapper> uniqueKeys = Maps.newHashMap();
+    // ColumnRefOperator::id -> UniqueConstraint
+    private final Map<Integer, UniqueConstraintWrapper> relaxedUniqueKeys = Maps.newHashMap();
     // The unique key of the data table needs to be collected when eliminating aggregation
     private Map<Integer, UniqueConstraintWrapper> tableUniqueKeys = Maps.newHashMap();
     // ColumnRefOperator::id -> ForeignKeyConstraint
@@ -37,6 +40,7 @@ public class UKFKConstraints {
 
     public void addUniqueKey(int id, UniqueConstraintWrapper uniqueKey) {
         uniqueKeys.put(id, uniqueKey);
+        relaxedUniqueKeys.put(id, uniqueKey);
     }
 
     public void addTableUniqueKey(int id, UniqueConstraintWrapper uniqueKey) {
@@ -63,12 +67,15 @@ public class UKFKConstraints {
         return foreignKeys.get(id);
     }
 
+    public UniqueConstraintWrapper getRelaxedUniqueConstraint(Integer id) {
+        return relaxedUniqueKeys.get(id);
+    }
+
     public JoinProperty getJoinProperty() {
         return joinProperty;
     }
 
-    public void setJoinProperty(
-            JoinProperty joinProperty) {
+    public void setJoinProperty(JoinProperty joinProperty) {
         this.joinProperty = joinProperty;
     }
 
@@ -77,9 +84,8 @@ public class UKFKConstraints {
         from.uniqueKeys.entrySet().stream()
                 .filter(entry -> toOutputColumns.contains(entry.getKey()))
                 .forEach(entry -> clone.uniqueKeys.put(entry.getKey(), entry.getValue()));
-        from.foreignKeys.entrySet().stream()
-                .filter(entry -> toOutputColumns.contains(entry.getKey()))
-                .forEach(entry -> clone.foreignKeys.put(entry.getKey(), entry.getValue()));
+        clone.inheritForeignKey(from, toOutputColumns);
+        clone.inheritRelaxedUniqueKey(from, toOutputColumns);
         if (!(from.getTableUniqueKeys().isEmpty()) &&
                 toOutputColumns.containsAll(Lists.newArrayList((from.getTableUniqueKeys().keySet())))) {
             clone.setTableUniqueKeys(from.getTableUniqueKeys());
@@ -92,6 +98,12 @@ public class UKFKConstraints {
         other.foreignKeys.entrySet().stream()
                 .filter(entry -> outputColumns.contains(entry.getKey()))
                 .forEach(entry -> foreignKeys.put(entry.getKey(), entry.getValue()));
+    }
+
+    public void inheritRelaxedUniqueKey(UKFKConstraints other, ColumnRefSet outputColumns) {
+        Stream.concat(other.uniqueKeys.entrySet().stream(), other.relaxedUniqueKeys.entrySet().stream())
+                .filter(entry -> outputColumns.contains(entry.getKey()))
+                .forEach(entry -> relaxedUniqueKeys.put(entry.getKey(), entry.getValue()));
     }
 
     public static final class UniqueConstraintWrapper {

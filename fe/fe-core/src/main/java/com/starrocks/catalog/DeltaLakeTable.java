@@ -38,7 +38,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-public class DeltaLakeTable extends Table {
+public class DeltaLakeTable extends Table implements TableWithDB {
     private String catalogName;
     private String dbName;
     private String tableName;
@@ -95,6 +95,7 @@ public class DeltaLakeTable extends Table {
         return catalogName;
     }
 
+    @Override
     public String getDbName() {
         return dbName;
     }

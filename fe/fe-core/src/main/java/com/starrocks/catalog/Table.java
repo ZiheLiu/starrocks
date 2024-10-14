@@ -260,6 +260,7 @@ public class Table extends MetaObject implements Writable, GsonPostProcessable, 
         return InternalCatalog.DEFAULT_INTERNAL_CATALOG_NAME;
     }
 
+    @Override
     public String getName() {
         return name;
     }

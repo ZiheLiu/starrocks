@@ -64,7 +64,7 @@ import static com.starrocks.server.CatalogMgr.ResourceMappingCatalog.getResource
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT;
 import static org.apache.iceberg.TableProperties.DEFAULT_FILE_FORMAT_DEFAULT;
 
-public class IcebergTable extends Table {
+public class IcebergTable extends Table implements TableWithDB {
     private static final Logger LOG = LogManager.getLogger(IcebergTable.class);
 
     private static final String PARQUET_FORMAT = "parquet";
@@ -106,6 +106,11 @@ public class IcebergTable extends Table {
     @Override
     public String getCatalogName() {
         return catalogName == null ? getResourceMappingCatalogName(resourceName, "iceberg") : catalogName;
+    }
+
+    @Override
+    public String getDbName() {
+        return remoteDbName;
     }
 
     public String getResourceName() {

@@ -34,4 +34,8 @@ public interface JoinReorderFactory {
     static JoinReorderFactory createJoinReorderCardinalityPreserving() {
         return JoinReorderCardinalityPreserving::new;
     }
+
+    static JoinReorderFactory createJoinReorderGreedy() {
+        return JoinReorderGreedy::new;
+    }
 }

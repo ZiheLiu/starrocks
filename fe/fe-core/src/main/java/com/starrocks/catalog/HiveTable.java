@@ -77,7 +77,7 @@ import java.util.stream.Collectors;
 import static com.starrocks.server.CatalogMgr.ResourceMappingCatalog.getResourceMappingCatalogName;
 import static com.starrocks.server.CatalogMgr.ResourceMappingCatalog.isResourceMappingCatalog;
 
-public class HiveTable extends Table implements HiveMetaStoreTable {
+public class HiveTable extends Table implements HiveMetaStoreTable, TableWithDB {
     public enum HiveTableType {
         VIRTUAL_VIEW,
         EXTERNAL_TABLE,
