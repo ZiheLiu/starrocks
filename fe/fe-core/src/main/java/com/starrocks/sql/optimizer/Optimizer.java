@@ -771,6 +771,7 @@ public class Optimizer {
                 tree = new SeparateProjectRule().rewrite(tree, rootTaskContext);
                 deriveLogicalProperty(tree);
             }
+            rootTaskContext.setRequiredColumns(requiredColumns.clone());
             CTEUtils.collectForceCteStatisticsOutsideMemo(tree, context);
             CTEUtils.calculateStatistics0(tree, context);
             PushDownAggregateRule rule = new PushDownAggregateRule(rootTaskContext);
