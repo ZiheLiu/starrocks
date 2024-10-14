@@ -127,9 +127,17 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
                     continue;
                 }
 
-                Statistics statistics = opt.getStatistics();
                 ColumnRefSet allGroupByColumns = new ColumnRefSet();
                 context.groupBys.values().forEach(c -> allGroupByColumns.union(c.getUsedColumns()));
+
+                if (sessionVariable.getCboPushDownAggregateMode() != 4) {
+                    ExpressionContext expressionContext = new ExpressionContext(opt);
+                    StatisticsCalculator statisticsCalculator =
+                            new StatisticsCalculator(expressionContext, factory, optimizerContext);
+                    statisticsCalculator.estimatorStats();
+                    opt.setStatistics(expressionContext.getStatistics());
+                }
+                Statistics statistics = opt.getStatistics();
 
                 double cost = allGroupByColumns.getStream().map(factory::getColumnRef)
                         .map(s -> ExpressionStatisticCalculator.calculate(s, statistics).getDistinctValuesCount())
