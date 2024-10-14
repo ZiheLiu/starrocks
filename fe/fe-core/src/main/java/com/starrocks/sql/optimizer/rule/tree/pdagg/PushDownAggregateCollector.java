@@ -110,7 +110,6 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
     }
 
     private void collect(OptExpression root, AggregatePushDownContext context) {
-        collectStatistics(root);
         process(root, context);
         selectPushDownPosition();
     }

@@ -768,8 +768,9 @@ public class Optimizer {
             deriveLogicalProperty(tree);
             tree = new ReorderJoinRule().rewrite2(tree, context);
             tree = new SeparateProjectRule().rewrite(tree, rootTaskContext);
-            deriveLogicalProperty(tree);
 
+            CTEUtils.collectForceCteStatisticsOutsideMemo(tree, context);
+            deriveLogicalProperty(tree);
             PushDownAggregateRule rule = new PushDownAggregateRule(rootTaskContext);
             rule.getRewriter().collectRewriteContext(tree);
             if (rule.getRewriter().isNeedRewrite()) {
