@@ -32,7 +32,7 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
         prepareForeignKeys();
 
         connectContext.getSessionVariable().setEnableUKFKOpt(true);
-        connectContext.getSessionVariable().setCboPushDownAggregateMode(1);
+        connectContext.getSessionVariable().setCboPushDownAggregateMode(4);
         connectContext.getSessionVariable().setCboCteReuse(true);
         connectContext.getSessionVariable().setCboCTERuseRatio(0);
 
@@ -296,7 +296,7 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
     public void testQ23() throws Exception {
         connectContext.getSessionVariable().setOptimizerExecuteTimeout(300000000);
         connectContext.getSessionVariable().setEnableUKFKOpt(true);
-        connectContext.getSessionVariable().setCboPushDownAggregateMode(1);
+        connectContext.getSessionVariable().setCboPushDownAggregateMode(4);
 
         String sql = "select max(csales) tpcds_cmax\n" +
                 "from (\n" +

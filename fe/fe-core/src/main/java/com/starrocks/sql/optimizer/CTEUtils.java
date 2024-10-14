@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.optimizer;
 
 import com.google.common.base.Preconditions;
@@ -104,6 +103,19 @@ public class CTEUtils {
             context.getCteContext().addCTEStatistics(produce.getCteId(), root.getStatistics());
         }
     }
+
+    public static void calculateStatistics0(OptExpression root, OptimizerContext context) {
+        OperatorType opType = root.getOp().getOpType();
+
+        for (OptExpression input : root.getInputs()) {
+            calculateStatistics0(input, context);
+        }
+
+        if (!OperatorType.LOGICAL.equals(opType)) {
+            calculateStatisticsSelf(root, context);
+        }
+    }
+
     private static void calculateStatistics(OptExpression expr, OptimizerContext context) {
         // don't ask cte consume children
         if (expr.getOp().getOpType() != OperatorType.LOGICAL_CTE_CONSUME) {
@@ -111,6 +123,12 @@ public class CTEUtils {
                 calculateStatistics(child, context);
             }
         }
+
+        calculateStatisticsSelf(expr, context);
+    }
+
+    private static void calculateStatisticsSelf(OptExpression expr, OptimizerContext context) {
+        System.out.println(expr.toString());
 
         ExpressionContext expressionContext = new ExpressionContext(expr);
         StatisticsCalculator statisticsCalculator = new StatisticsCalculator(
@@ -127,4 +145,5 @@ public class CTEUtils {
             expr.setStatistics(expressionContext.getStatistics());
         }
     }
+
 }

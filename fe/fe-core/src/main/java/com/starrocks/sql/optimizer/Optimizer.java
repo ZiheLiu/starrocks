@@ -726,7 +726,7 @@ public class Optimizer {
                 }
             }
             OptimizerTraceUtil.logMVRewriteRule("VIEW_BASED_MV_REWRITE", "original view scans size: {}, " +
-                            "left view scans size: {}", origQueryViewScanOperators.size(), leftViewScanOperators.size());
+                    "left view scans size: {}", origQueryViewScanOperators.size(), leftViewScanOperators.size());
         } catch (Exception e) {
             OptimizerTraceUtil.logMVRewriteRule("VIEW_BASED_MV_REWRITE",
                     "single table view based mv rule rewrite failed.", e);
@@ -771,6 +771,8 @@ public class Optimizer {
                 tree = new SeparateProjectRule().rewrite(tree, rootTaskContext);
                 deriveLogicalProperty(tree);
             }
+            CTEUtils.collectForceCteStatisticsOutsideMemo(tree, context);
+            CTEUtils.calculateStatistics0(tree, context);
             PushDownAggregateRule rule = new PushDownAggregateRule(rootTaskContext);
             rule.getRewriter().collectRewriteContext(tree);
             if (rule.getRewriter().isNeedRewrite()) {

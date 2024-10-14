@@ -2497,7 +2497,7 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
          * }
          */
 
-        String sql = "select /*+SET_VAR(cbo_push_down_aggregate_mode=0)*/ sum(v3)\n" +
+        String sql = "select /*+SET_VAR(cbo_push_down_aggregate_mode=4)*/ sum(v3)\n" +
                 "from \n" +
                 "    t0 \n" +
                 "    join t2 on t0.v2 = t2.v7\n" +
