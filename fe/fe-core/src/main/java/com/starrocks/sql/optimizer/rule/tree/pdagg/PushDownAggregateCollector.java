@@ -177,7 +177,7 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             return false;
         }
 
-//        if (sessionVariable.getCboPushDownAggregateMode() == 4) {
+        //        if (sessionVariable.getCboPushDownAggregateMode() == 4) {
         //            return true;
         //        }
 
