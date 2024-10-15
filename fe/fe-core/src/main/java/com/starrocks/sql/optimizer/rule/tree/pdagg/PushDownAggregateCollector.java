@@ -177,9 +177,9 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             return false;
         }
 
-        if (sessionVariable.getCboPushDownAggregateMode() == 4) {
-            return true;
-        }
+//        if (sessionVariable.getCboPushDownAggregateMode() == 4) {
+        //            return true;
+        //        }
 
         ColumnRefSet outputColumns = optExpression.getOutputColumns();
 
