@@ -607,7 +607,8 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             } else if (lower.size() <= 3 && lowerCartesian < lowerUpper) {
                 return true;
             } else {
-                return sessionVariable.getCboPushDownAggregateMode() >= PUSH_DOWN_MEDIUM_CARDINALITY_AGG;
+                return sessionVariable.getCboPushDownAggregateMode() >= PUSH_DOWN_MEDIUM_CARDINALITY_AGG &&
+                        sessionVariable.getCboPushDownAggregateMode() != 4;
             }
         }
 
@@ -621,12 +622,14 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
 
         // 3. high cardinality < 2 and lower cardinality < 2
         if (high.size() == 1 && lower.size() <= 2) {
-            return sessionVariable.getCboPushDownAggregateMode() >= PUSH_DOWN_HIGH_CARDINALITY_AGG;
+            return sessionVariable.getCboPushDownAggregateMode() >= PUSH_DOWN_HIGH_CARDINALITY_AGG &&
+                    sessionVariable.getCboPushDownAggregateMode() != 4;
         }
 
         // 4. medium cardinality <= 2
         if (lower.size() <= 2) {
-            if (sessionVariable.getCboPushDownAggregateMode() >= PUSH_DOWN_MEDIUM_CARDINALITY_AGG) {
+            if (sessionVariable.getCboPushDownAggregateMode() >= PUSH_DOWN_MEDIUM_CARDINALITY_AGG &&
+                    sessionVariable.getCboPushDownAggregateMode() != 4) {
                 return true;
             }
             return statistics.getOutputRowCount() >=
