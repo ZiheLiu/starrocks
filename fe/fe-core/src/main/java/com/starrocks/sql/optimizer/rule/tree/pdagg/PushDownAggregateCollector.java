@@ -612,6 +612,10 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             }
         }
 
+        if (high.size() + medium.size() == 1 && statistics.getOutputRowCount() / lowerCartesian >= 10000) {
+            return true;
+        }
+
         // 2. forbidden rules
         // 2.1 high cardinality >= 2
         // 2.2 medium cardinality > 2
