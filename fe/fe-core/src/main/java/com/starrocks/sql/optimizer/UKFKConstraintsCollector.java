@@ -27,6 +27,7 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.operator.Operator;
 import com.starrocks.sql.optimizer.operator.UKFKConstraints;
+import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalJoinOperator;
@@ -39,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * UKFKConstraintsCollector is used to collect unique key and foreign key constraints in bottom-up mode.
@@ -74,12 +76,19 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
             return null;
         }
 
+        LogicalAggregationOperator aggOp = optExpression.getOp().cast();
+
         ColumnRefSet outputColumns = optExpression.getRowOutputInfo().getOutputColumnRefSet();
         UKFKConstraints childConstraints = optExpression.inputAt(0).getConstraints();
 
         UKFKConstraints constraints = new UKFKConstraints();
         constraints.inheritForeignKey(childConstraints, outputColumns);
         constraints.inheritRelaxedUniqueKey(childConstraints, outputColumns);
+
+        ColumnRefSet outputGroupBys = new ColumnRefSet();
+        aggOp.getGroupingKeys().stream().filter(outputColumns::contains).forEach(outputGroupBys::union);
+        constraints.addTableUniqueKey(
+                new UKFKConstraints.UniqueConstraintWrapper(null, new ColumnRefSet(), false, outputGroupBys));
 
         optExpression.setConstraints(constraints);
         return null;
@@ -203,19 +212,21 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
                         constraint.addUniqueKey(columnRefOperator.getId(),
                                 new UKFKConstraints.UniqueConstraintWrapper(ukConstraint,
                                         nonUkColumnRefs, usedColumns.isEmpty()));
-                        constraint.addTableUniqueKey(columnRefOperator.getId(),
-                                new UKFKConstraints.UniqueConstraintWrapper(ukConstraint,
-                                        nonUkColumnRefs, usedColumns.isEmpty()));
+                        ColumnRefSet ukColumnRefs = new ColumnRefSet(columnRefOperator.getId());
+                        constraint.addTableUniqueKey(new UKFKConstraints.UniqueConstraintWrapper(ukConstraint,
+                                nonUkColumnRefs, usedColumns.isEmpty(), ukColumnRefs));
                     }
                 } else {
                     List<String> ukColNames = ukConstraint.getUniqueColumnNames(table);
                     boolean containsAllUk = true;
+                    ColumnRefSet ukColumnRefs = new ColumnRefSet();
                     for (String colName : ukColNames) {
                         ColumnRefOperator columnRefOperator = columnNameToColRefMap.get(colName);
                         if (columnRefOperator == null || !outputColumns.contains(columnRefOperator)) {
                             containsAllUk = false;
                             break;
                         }
+                        ukColumnRefs.union(columnRefOperator.getId());
                     }
 
                     if (containsAllUk) {
@@ -225,12 +236,8 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
                                 .filter(name -> !ukColNames.contains(name))
                                 .map(columnNameToColRefMap::get)
                                 .collect(Collectors.toList()));
-                        for (String colName : ukColNames) {
-                            ColumnRefOperator columnRefOperator = columnNameToColRefMap.get(colName);
-                            constraint.addTableUniqueKey(columnRefOperator.getId(),
-                                    new UKFKConstraints.UniqueConstraintWrapper(ukConstraint,
-                                            nonUkColumnRefs, usedColumns.isEmpty()));
-                        }
+                        constraint.addTableUniqueKey(new UKFKConstraints.UniqueConstraintWrapper(ukConstraint,
+                                nonUkColumnRefs, usedColumns.isEmpty(), ukColumnRefs));
                     }
                 }
             }
@@ -318,11 +325,11 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
 
         UKFKConstraints leftConstraints = leftChild.getConstraints();
         UKFKConstraints rightConstraints = rightChild.getConstraints();
+
         UKFKConstraints.JoinProperty property =
                 extractUKFKJoinOnPredicate(eqOnPredicates, leftConstraints, rightConstraints);
 
-        ColumnRefSet outputColumns = operator.getRowOutputInfo(Lists.newArrayList(leftChild, rightChild))
-                .getOutputColumnRefSet();
+        ColumnRefSet outputColumns = operator.getRowOutputInfo(Lists.newArrayList(leftChild, rightChild)).getOutputColumnRefSet();
 
         if (property != null) {
             constraint.setJoinProperty(property);
@@ -333,6 +340,32 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
                 if (outputColumns.contains(property.ukColumnRef)) {
                     constraint.addUniqueKey(property.ukColumnRef.getId(), property.ukConstraint);
                 }
+            }
+
+            List<UKFKConstraints.UniqueConstraintWrapper> fkChildTableUniqueKeys =
+                    property.isLeftUK ? rightConstraints.getTableUniqueKeys() : leftConstraints.getTableUniqueKeys();
+            List<UKFKConstraints.UniqueConstraintWrapper> ukChildTableUniqueKeys =
+                    property.isLeftUK ? leftConstraints.getTableUniqueKeys() : rightConstraints.getTableUniqueKeys();
+            ColumnRefSet fkColumnRef = new ColumnRefSet(property.fkColumnRef.getId());
+            for (UKFKConstraints.UniqueConstraintWrapper fkTableUniqueKey : fkChildTableUniqueKeys) {
+                if (!fkTableUniqueKey.ukColumnRefs.containsAll(fkColumnRef)) {
+                    continue;
+                }
+
+                ColumnRefSet newScopedColumnRefs = fkTableUniqueKey.ukColumnRefs.clone();
+                newScopedColumnRefs.except(fkColumnRef);
+
+                Stream.concat(ukChildTableUniqueKeys.stream(), fkChildTableUniqueKeys.stream())
+                        .filter(uk -> outputColumns.containsAll(uk.ukColumnRefs) &&
+                                outputColumns.containsAll(uk.scopedColumnRefs))
+                        .forEach(uk -> {
+                            ColumnRefSet columnRefs = uk.ukColumnRefs.clone();
+                            columnRefs.except(newScopedColumnRefs);
+                            ColumnRefSet scopedColumnRefs = uk.scopedColumnRefs.clone();
+                            scopedColumnRefs.union(newScopedColumnRefs);
+                            constraint.addTableUniqueKey(new UKFKConstraints.UniqueConstraintWrapper(null,
+                                    uk.nonUKColumnRefs, false, columnRefs, scopedColumnRefs));
+                        });
             }
         }
 

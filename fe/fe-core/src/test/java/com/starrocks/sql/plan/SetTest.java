@@ -771,5 +771,17 @@ public class SetTest extends PlanTestBase {
                 "HAVING SUM(varchar_value) > 0 and id + 2 > 5;";
         plan = getFragmentPlan(sql);
         assertContains(plan, "CAST(5: varchar_value AS DOUBLE) > 0.0, 1: id > 3");
+
+        sql = "SELECT \n" +
+                "    id, \n" +
+                "    SUM(big_value) AS sum_big_value\n" +
+                "FROM \n" +
+                "    test_agg_group_single_unique_key\n" +
+                "GROUP BY \n" +
+                "    id\n" +
+                "ORDER BY \n" +
+                "    id;";
+        plan = getFragmentPlan(sql);
+        System.out.println(plan);
     }
 }

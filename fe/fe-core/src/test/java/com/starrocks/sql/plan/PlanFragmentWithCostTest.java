@@ -2442,7 +2442,7 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
         OlapTable t2 = (OlapTable) globalStateMgr.getLocalMetastore().getDb("test").getTable("t2");
 
         setTableStatistics(t0, 1000000000L);
-        setTableStatistics(t1, 10000L);
+        setTableStatistics(t1, 1000L);
         setTableStatistics(t2, 100000L);
 
         StatisticStorage ss = globalStateMgr.getCurrentState().getStatisticStorage();
@@ -2497,11 +2497,16 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
          * }
          */
 
+        starRocksAssert.alterTableProperties("alter table t2 set (\"unique_constraints\" = \"v7;v9\");");
+        starRocksAssert.alterTableProperties("alter table t1 set (\"unique_constraints\" = \"v4\");");
+        starRocksAssert.alterTableProperties(
+                "ALTER TABLE t0 SET(\"foreign_key_constraints\" = \"(v2) REFERENCES t2(v7);(v1) REFERENCES t1(v4);\");");
+
         String sql = "select /*+SET_VAR(cbo_push_down_aggregate_mode=4)*/ sum(v3)\n" +
                 "from \n" +
                 "    t0 \n" +
-                "    join t2 on t0.v2 = t2.v7\n" +
                 "    join t1 on t0.v1 = t1.v4\n" +
+                "    join [broadcast] t2 on t0.v2 = t2.v7\n" +
                 "group by t2.v9, t1.v5";
         //        String sql = "select /*+SET_VAR(cbo_push_down_aggregate_mode=1)*/ sum(v3)\n" +
         //                "from \n" +

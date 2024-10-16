@@ -13,7 +13,7 @@
 // limitations under the License.
 package com.starrocks.sql.optimizer.operator;
 
-import com.google.common.collect.Lists;
+import com.google.api.client.util.Lists;
 import com.starrocks.analysis.Expr;
 import com.starrocks.catalog.constraint.ForeignKeyConstraint;
 import com.starrocks.catalog.constraint.UniqueConstraint;
@@ -24,6 +24,7 @@ import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.ScalarOperatorToExpr;
 import org.apache.hadoop.shaded.com.google.common.collect.Maps;
 
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -33,7 +34,7 @@ public class UKFKConstraints {
     // ColumnRefOperator::id -> UniqueConstraint
     private final Map<Integer, UniqueConstraintWrapper> relaxedUniqueKeys = Maps.newHashMap();
     // The unique key of the data table needs to be collected when eliminating aggregation
-    private Map<Integer, UniqueConstraintWrapper> tableUniqueKeys = Maps.newHashMap();
+    private final List<UniqueConstraintWrapper> tableUniqueKeys = Lists.newArrayList();
     // ColumnRefOperator::id -> ForeignKeyConstraint
     private final Map<Integer, ForeignKeyConstraintWrapper> foreignKeys = Maps.newHashMap();
     private JoinProperty joinProperty;
@@ -43,8 +44,8 @@ public class UKFKConstraints {
         relaxedUniqueKeys.put(id, uniqueKey);
     }
 
-    public void addTableUniqueKey(int id, UniqueConstraintWrapper uniqueKey) {
-        tableUniqueKeys.put(id, uniqueKey);
+    public void addTableUniqueKey(UniqueConstraintWrapper uniqueKey) {
+        tableUniqueKeys.add(uniqueKey);
     }
 
     public void addForeignKey(int id, ForeignKeyConstraintWrapper foreignKey) {
@@ -55,11 +56,7 @@ public class UKFKConstraints {
         return uniqueKeys.get(id);
     }
 
-    public void setTableUniqueKeys(Map<Integer, UniqueConstraintWrapper> tableUniqueKeys) {
-        this.tableUniqueKeys = tableUniqueKeys;
-    }
-
-    public Map<Integer, UniqueConstraintWrapper> getTableUniqueKeys() {
+    public List<UniqueConstraintWrapper> getTableUniqueKeys() {
         return tableUniqueKeys;
     }
 
@@ -86,10 +83,10 @@ public class UKFKConstraints {
                 .forEach(entry -> clone.uniqueKeys.put(entry.getKey(), entry.getValue()));
         clone.inheritForeignKey(from, toOutputColumns);
         clone.inheritRelaxedUniqueKey(from, toOutputColumns);
-        if (!(from.getTableUniqueKeys().isEmpty()) &&
-                toOutputColumns.containsAll(Lists.newArrayList((from.getTableUniqueKeys().keySet())))) {
-            clone.setTableUniqueKeys(from.getTableUniqueKeys());
-        }
+
+        from.getTableUniqueKeys().stream()
+                .filter(entry -> toOutputColumns.containsAll(entry.ukColumnRefs))
+                .forEach(clone::addTableUniqueKey);
 
         return clone;
     }
@@ -111,11 +108,34 @@ public class UKFKConstraints {
         public final ColumnRefSet nonUKColumnRefs;
         public final boolean isIntact;
 
+        public final ColumnRefSet ukColumnRefs;
+        public final ColumnRefSet scopedColumnRefs;
+
         public UniqueConstraintWrapper(UniqueConstraint constraint,
                                        ColumnRefSet nonUKColumnRefs, boolean isIntact) {
             this.constraint = constraint;
             this.nonUKColumnRefs = nonUKColumnRefs;
             this.isIntact = isIntact;
+            this.ukColumnRefs = new ColumnRefSet();
+            this.scopedColumnRefs = new ColumnRefSet();
+        }
+
+        public UniqueConstraintWrapper(UniqueConstraint constraint, ColumnRefSet nonUKColumnRefs, boolean isIntact,
+                                       ColumnRefSet ukColumnRefs) {
+            this.constraint = constraint;
+            this.nonUKColumnRefs = nonUKColumnRefs;
+            this.isIntact = isIntact;
+            this.ukColumnRefs = ukColumnRefs;
+            this.scopedColumnRefs = new ColumnRefSet();
+        }
+
+        public UniqueConstraintWrapper(UniqueConstraint constraint, ColumnRefSet nonUKColumnRefs, boolean isIntact,
+                                       ColumnRefSet ukColumnRefs, ColumnRefSet scopedColumnRefs) {
+            this.constraint = constraint;
+            this.nonUKColumnRefs = nonUKColumnRefs;
+            this.isIntact = isIntact;
+            this.ukColumnRefs = ukColumnRefs;
+            this.scopedColumnRefs = scopedColumnRefs;
         }
     }
 

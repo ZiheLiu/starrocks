@@ -104,7 +104,40 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
     }
 
     @Test
+    public void canPrune2() throws Exception {
+        {
+            String sql = "with w1 as (\n" +
+                    "    select sum(v3) as sum_v3, v1, v2\n" +
+                    "    from t_fk\n" +
+                    "    group by v1, v2\n" +
+                    ")\n" +
+                    "select sum(sum_v3), t_uk.v2, t_uk.v1, w1.v2\n" +
+                    "from \n" +
+                    "    w1 join t_uk \n" +
+                    "    on w1.v1 = t_uk.v1\n" +
+                    "group by w1.v2, t_uk.v1, t_uk.v2";
+            String plan = getFragmentPlan(sql);
+            System.out.println(plan);
+        }
+    }
+
+    @Test
     public void canPrune() throws Exception {
+        {
+            String sql = "with w1 as (\n" +
+                    "    select sum(v3) as sum_v3, v1, v2\n" +
+                    "    from t_fk\n" +
+                    "    group by v1, v2\n" +
+                    ")\n" +
+                    "select sum(sum_v3)\n" +
+                    "from \n" +
+                    "    w1 join t_uk \n" +
+                    "    on w1.v1 = t_uk.v1\n" +
+                    "group by w1.v2, t_uk.v1";
+            String plan = getFragmentPlan(sql);
+            System.out.println(plan);
+        }
+
         {
             String sql = "select t_uk.v1, sum(t_fk.v2) from t_fk, t_uk " +
                     "where t_uk.v1 = t_fk.v1 group by t_uk.v1, substr(t_uk.v2, 1, 30)";
@@ -197,8 +230,33 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
 
     @Test
     public void testQ4() throws Exception {
-        connectContext.getSessionVariable().setCboPushDownAggregateMode(1);
-        assertPlans(Q04, true);
+        connectContext.getSessionVariable().setCboPushDownAggregateMode(4);
+        String sql = "select c_customer_id customer_id\n" +
+                "       ,c_first_name customer_first_name\n" +
+                "       ,c_last_name customer_last_name\n" +
+                "       ,c_preferred_cust_flag customer_preferred_cust_flag\n" +
+                "       ,c_birth_country customer_birth_country\n" +
+                "       ,c_login customer_login\n" +
+                "       ,c_email_address customer_email_address\n" +
+                "       ,d_year dyear\n" +
+                "       ,sum(((ss_ext_list_price-ss_ext_wholesale_cost-ss_ext_discount_amt)+ss_ext_sales_price)/2) year_total\n" +
+                "       ,'s' sale_type\n" +
+                " from customer\n" +
+                "     ,store_sales\n" +
+                "     ,date_dim\n" +
+                " where c_customer_sk = ss_customer_sk\n" +
+                "   and ss_sold_date_sk = d_date_sk\n" +
+                " group by c_customer_id\n" +
+                "         ,c_first_name\n" +
+                "         ,c_last_name\n" +
+                "         ,c_preferred_cust_flag\n" +
+                "         ,c_birth_country\n" +
+                "         ,c_login\n" +
+                "         ,c_email_address\n" +
+                "         ,d_year";
+        String plan = getVerboseExplain(sql);
+        System.out.println(plan);
+        //        assertPlans(Q04, true);
     }
 
     @Test

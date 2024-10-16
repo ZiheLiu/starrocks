@@ -784,6 +784,7 @@ public class Optimizer {
             deriveLogicalProperty(tree);
             rootTaskContext.setRequiredColumns(requiredColumns.clone());
             ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.PRUNE_COLUMNS);
+            ruleRewriteOnlyOnce(tree, rootTaskContext, EliminateAggRule.getInstance());
         }
 
         return tree;

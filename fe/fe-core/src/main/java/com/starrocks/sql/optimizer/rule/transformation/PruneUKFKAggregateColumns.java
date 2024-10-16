@@ -32,7 +32,6 @@ import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -62,11 +61,15 @@ public class PruneUKFKAggregateColumns extends TransformationRule {
 
         // Retrieve the set of non-UK columns from the table that contains the UK column used in the GROUP BY clause.
         ColumnRefSet nonUKColumnRefs = new ColumnRefSet();
-        groupBys.stream()
-                .map(groupBy -> constraints.getRelaxedUniqueConstraint(groupBy.getId()))
-                .filter(Objects::nonNull)
-                .forEach(constraint -> nonUKColumnRefs.union(constraint.nonUKColumnRefs));
-        if (nonUKColumnRefs.isEmpty()) {
+        Set<ColumnRefOperator> ukGroupBys = Sets.newHashSet();
+        for (ColumnRefOperator groupBy : groupBys) {
+            UKFKConstraints.UniqueConstraintWrapper constraint = constraints.getRelaxedUniqueConstraint(groupBy.getId());
+            if (constraint != null) {
+                nonUKColumnRefs.union(constraint.nonUKColumnRefs);
+                ukGroupBys.add(groupBy);
+            }
+        }
+        if (ukGroupBys.isEmpty()) {
             return Lists.newArrayList();
         }
 
@@ -88,6 +91,7 @@ public class PruneUKFKAggregateColumns extends TransformationRule {
                 }
             }
         }
+        ukGroupBys.stream().skip(1).forEach(removedGroupBys::add);
         if (removedGroupBys.isEmpty()) {
             return Lists.newArrayList();
         }
