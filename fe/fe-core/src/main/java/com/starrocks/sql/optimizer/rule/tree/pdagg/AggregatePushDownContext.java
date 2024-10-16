@@ -42,6 +42,8 @@ public class AggregatePushDownContext {
     // those two operators are not the same so record it to be used later.
     public final Map<ColumnRefOperator, CallOperator> aggColRefToPushDownAggMap = Maps.newHashMap();
 
+    public boolean canPushDownHere = true;
+
     public boolean hasWindow = false;
 
     // record push down path

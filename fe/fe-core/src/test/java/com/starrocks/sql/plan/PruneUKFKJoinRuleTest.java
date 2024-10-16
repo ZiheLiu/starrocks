@@ -197,6 +197,7 @@ public class PruneUKFKJoinRuleTest extends TPCDSPlanTestBase {
 
     @Test
     public void testQ4() throws Exception {
+        connectContext.getSessionVariable().setCboPushDownAggregateMode(1);
         assertPlans(Q04, true);
     }
 

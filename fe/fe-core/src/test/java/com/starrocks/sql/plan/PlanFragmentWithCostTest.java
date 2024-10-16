@@ -2442,7 +2442,7 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
         OlapTable t2 = (OlapTable) globalStateMgr.getLocalMetastore().getDb("test").getTable("t2");
 
         setTableStatistics(t0, 1000000000L);
-        setTableStatistics(t1, 1000L);
+        setTableStatistics(t1, 10000L);
         setTableStatistics(t2, 100000L);
 
         StatisticStorage ss = globalStateMgr.getCurrentState().getStatisticStorage();

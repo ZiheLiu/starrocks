@@ -367,15 +367,18 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
         }
 
         if (!context.pushPaths.isEmpty() && context.origAggregator != null &&
-                sessionVariable.getCboPushDownAggregateMode() == 4) {
+                sessionVariable.getCboPushDownAggregateMode() == 4 && context.canPushDownHere) {
             allRewriteContext0
                     .computeIfAbsent(context.origAggregator, k -> Maps.newHashMap())
                     .put(optExpression, context);
         }
 
         // split aggregate to left/right child
-        AggregatePushDownContext leftContext = splitJoinAggregate(optExpression, context, 0);
-        AggregatePushDownContext rightContext = splitJoinAggregate(optExpression, context, 1);
+        double buildRows = optExpression.getInputs().get(1).getStatistics().getOutputRowCount();
+        AggregatePushDownContext leftContext =
+                splitJoinAggregate(optExpression, context, 0,
+                        buildRows > sessionVariable.getBroadcastRowCountLimit() || buildRows > 4096);
+        AggregatePushDownContext rightContext = splitJoinAggregate(optExpression, context, 1, true);
         process(optExpression.inputAt(0), leftContext);
         process(optExpression.inputAt(1), rightContext);
         return null;
@@ -401,7 +404,7 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
      *   1        1               1        1
      */
     private AggregatePushDownContext splitJoinAggregate(OptExpression optExpression, AggregatePushDownContext context,
-                                                        int child) {
+                                                        int child, boolean canPushDownHere) {
         LogicalJoinOperator join = (LogicalJoinOperator) optExpression.getOp();
         ColumnRefSet childOutput = optExpression.getChildOutputColumns(child);
 
@@ -442,6 +445,7 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
                     .forEach(v -> childContext.groupBys.put(v, v));
         }
 
+        childContext.canPushDownHere = canPushDownHere;
         childContext.origAggregator = context.origAggregator;
         childContext.pushPaths.addAll(context.pushPaths);
         childContext.pushPaths.add(child);
@@ -544,7 +548,7 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
 
     @Override
     public Void visitLogicalTableScan(OptExpression optExpression, AggregatePushDownContext context) {
-        if (context.origAggregator != null) {
+        if (context.origAggregator != null && context.canPushDownHere) {
             allRewriteContext0.computeIfAbsent(context.origAggregator, k -> Maps.newHashMap())
                     .put(optExpression, context);
         }
