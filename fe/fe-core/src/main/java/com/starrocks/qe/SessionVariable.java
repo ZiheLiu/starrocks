@@ -1477,6 +1477,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
             show = CBO_PUSH_DOWN_AGGREGATE_MODE, flag = VariableMgr.INVISIBLE)
     private int cboPushDownAggregateMode = -1;
 
+    @VarAttr(name = "cbo_push_down_aggregate_reorder", flag = VariableMgr.INVISIBLE)
+    private boolean cboPushDownAggregateReorder = true;
+
     // auto, global, local
     @VarAttr(name = CBO_PUSH_DOWN_AGGREGATE, flag = VariableMgr.INVISIBLE)
     private String cboPushDownAggregate = "global";
@@ -3420,6 +3423,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setCboCTERuseRatio(double cboCTERuseRatio) {
         this.cboCTERuseRatio = cboCTERuseRatio;
+    }
+
+    public boolean isCboPushDownAggregateReorder() {
+        return cboPushDownAggregateReorder;
     }
 
     public int getCboPushDownAggregateMode() {

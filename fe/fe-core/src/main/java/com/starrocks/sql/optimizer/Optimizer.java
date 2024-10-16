@@ -761,7 +761,7 @@ public class Optimizer {
 
         final int pushDownAggMode = context.getSessionVariable().getCboPushDownAggregateMode();
         if (pushDownAggMode != -1) {
-            if (pushDownAggMode == 4) {
+            if (context.getSessionVariable().isCboPushDownAggregateReorder()) {
                 ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.PARTITION_PRUNE);
                 ruleRewriteIterative(tree, rootTaskContext, new MergeTwoProjectRule());
                 ruleRewriteIterative(tree, rootTaskContext, new MergeProjectWithChildRule());
