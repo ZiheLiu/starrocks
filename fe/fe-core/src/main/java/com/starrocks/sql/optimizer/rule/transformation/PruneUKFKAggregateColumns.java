@@ -61,15 +61,20 @@ public class PruneUKFKAggregateColumns extends TransformationRule {
 
         // Retrieve the set of non-UK columns from the table that contains the UK column used in the GROUP BY clause.
         ColumnRefSet nonUKColumnRefs = new ColumnRefSet();
-        Set<ColumnRefOperator> ukGroupBys = Sets.newHashSet();
+        Set<ColumnRefOperator> usedUkGroupBys = Sets.newHashSet();
+        Set<ColumnRefOperator> uselessUkGroupBys = Sets.newHashSet();
         for (ColumnRefOperator groupBy : groupBys) {
             UKFKConstraints.UniqueConstraintWrapper constraint = constraints.getRelaxedUniqueConstraint(groupBy.getId());
             if (constraint != null) {
                 nonUKColumnRefs.union(constraint.nonUKColumnRefs);
-                ukGroupBys.add(groupBy);
+                if (requiredOutputColumns.contains(groupBy)) {
+                    usedUkGroupBys.add(groupBy);
+                } else {
+                    uselessUkGroupBys.add(groupBy);
+                }
             }
         }
-        if (ukGroupBys.isEmpty()) {
+        if (usedUkGroupBys.isEmpty() && uselessUkGroupBys.isEmpty()) {
             return Lists.newArrayList();
         }
 
@@ -91,7 +96,11 @@ public class PruneUKFKAggregateColumns extends TransformationRule {
                 }
             }
         }
-        ukGroupBys.stream().skip(1).forEach(removedGroupBys::add);
+        if (usedUkGroupBys.isEmpty()) {
+            uselessUkGroupBys.stream().skip(1).forEach(removedGroupBys::add);
+        } else {
+            removedGroupBys.addAll(uselessUkGroupBys);
+        }
         if (removedGroupBys.isEmpty()) {
             return Lists.newArrayList();
         }
