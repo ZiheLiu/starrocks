@@ -2445,6 +2445,8 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
         setTableStatistics(t1, 1000L);
         setTableStatistics(t2, 100000L);
 
+        connectContext.getSessionVariable().setEnableUKFKOpt(true);
+
         StatisticStorage ss = globalStateMgr.getCurrentState().getStatisticStorage();
         new Expectations(ss) {
             {

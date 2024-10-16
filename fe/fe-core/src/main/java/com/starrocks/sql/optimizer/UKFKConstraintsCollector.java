@@ -61,8 +61,8 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
 
     @Override
     public Void visit(OptExpression optExpression, Void context) {
-        visitChildren(optExpression, context);
-        if (optExpression.getConstraints() != null) {
+        boolean childConstraintsChanged = visitChildren(optExpression, context);
+        if (!childConstraintsChanged && optExpression.getConstraints() != null) {
             return null;
         }
         optExpression.setConstraints(new UKFKConstraints());
@@ -71,8 +71,8 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
 
     @Override
     public Void visitLogicalAggregate(OptExpression optExpression, Void context) {
-        visitChildren(optExpression, context);
-        if (optExpression.getConstraints() != null) {
+        boolean childConstraintsChanged = visitChildren(optExpression, context);
+        if (!childConstraintsChanged && optExpression.getConstraints() != null) {
             return null;
         }
 
@@ -94,15 +94,19 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
         return null;
     }
 
-    private void visitChildren(OptExpression optExpression, Void context) {
+    private boolean visitChildren(OptExpression optExpression, Void context) {
+        boolean childConstraintsChanged = false;
         for (OptExpression child : optExpression.getInputs()) {
+            UKFKConstraints prevConstraints = child.getConstraints();
             child.getOp().accept(this, child, context);
+            childConstraintsChanged |= !Objects.equals(prevConstraints, child.getConstraints());
         }
+        return childConstraintsChanged;
     }
 
     private void inheritFromSingleChild(OptExpression optExpression, Void context) {
-        visitChildren(optExpression, context);
-        if (optExpression.getConstraints() != null) {
+        boolean childConstraintsChanged = visitChildren(optExpression, context);
+        if (!childConstraintsChanged && optExpression.getConstraints() != null) {
             return;
         }
         UKFKConstraints childConstraints = optExpression.inputAt(0).getConstraints();
@@ -114,8 +118,8 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
 
     @Override
     public Void visitLogicalTableScan(OptExpression optExpression, Void context) {
-        visitChildren(optExpression, context);
-        if (optExpression.getConstraints() != null) {
+        boolean childConstraintsChanged = visitChildren(optExpression, context);
+        if (!childConstraintsChanged && optExpression.getConstraints() != null) {
             return null;
         }
 
@@ -166,8 +170,8 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
 
     @Override
     public Void visitPhysicalOlapScan(OptExpression optExpression, Void context) {
-        visitChildren(optExpression, context);
-        if (optExpression.getConstraints() != null) {
+        boolean childConstraintsChanged = visitChildren(optExpression, context);
+        if (!childConstraintsChanged && optExpression.getConstraints() != null) {
             return null;
         }
 
@@ -301,9 +305,8 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
 
     private void visitJoinOperator(OptExpression optExpression, Void context, JoinOperator joinType,
                                    ScalarOperator onPredicates) {
-        visitChildren(optExpression, context);
-
-        if (optExpression.getConstraints() != null) {
+        boolean childConstraintsChanged = visitChildren(optExpression, context);
+        if (!childConstraintsChanged && optExpression.getConstraints() != null) {
             return;
         }
 
