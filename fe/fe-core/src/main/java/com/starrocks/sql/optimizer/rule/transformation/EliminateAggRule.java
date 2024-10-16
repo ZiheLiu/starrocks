@@ -91,14 +91,14 @@ public class EliminateAggRule extends TransformationRule {
         OptExpression childOpt = input.inputAt(0);
         List<ColumnRefOperator> groupBys = aggOp.getGroupingKeys();
 
-        for (Map.Entry<ColumnRefOperator, CallOperator> entry : aggOp.getAggregations().entrySet()) {
-            if (entry.getValue().isDistinct()) {
-                return false;
-            }
-            String fnName = entry.getValue().getFnName();
-            if (!SUPPORTED_AGG_FUNCTIONS.contains(fnName)) {
-                return false;
-            }
+        if (groupBys.isEmpty()) {
+            return false;
+        }
+
+        boolean supportedAllAggFunctions = aggOp.getAggregations().values().stream()
+                .allMatch(call -> !call.isDistinct() && SUPPORTED_AGG_FUNCTIONS.contains(call.getFnName()));
+        if (!supportedAllAggFunctions) {
+            return false;
         }
 
         UKFKConstraintsCollector collector = new UKFKConstraintsCollector();
