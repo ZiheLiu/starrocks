@@ -109,7 +109,6 @@ public class UKFKConstraints {
         public final boolean isIntact;
 
         public final ColumnRefSet ukColumnRefs;
-        public final ColumnRefSet scopedColumnRefs;
 
         public UniqueConstraintWrapper(UniqueConstraint constraint,
                                        ColumnRefSet nonUKColumnRefs, boolean isIntact) {
@@ -117,7 +116,6 @@ public class UKFKConstraints {
             this.nonUKColumnRefs = nonUKColumnRefs;
             this.isIntact = isIntact;
             this.ukColumnRefs = new ColumnRefSet();
-            this.scopedColumnRefs = new ColumnRefSet();
         }
 
         public UniqueConstraintWrapper(UniqueConstraint constraint, ColumnRefSet nonUKColumnRefs, boolean isIntact,
@@ -126,16 +124,6 @@ public class UKFKConstraints {
             this.nonUKColumnRefs = nonUKColumnRefs;
             this.isIntact = isIntact;
             this.ukColumnRefs = ukColumnRefs;
-            this.scopedColumnRefs = new ColumnRefSet();
-        }
-
-        public UniqueConstraintWrapper(UniqueConstraint constraint, ColumnRefSet nonUKColumnRefs, boolean isIntact,
-                                       ColumnRefSet ukColumnRefs, ColumnRefSet scopedColumnRefs) {
-            this.constraint = constraint;
-            this.nonUKColumnRefs = nonUKColumnRefs;
-            this.isIntact = isIntact;
-            this.ukColumnRefs = ukColumnRefs;
-            this.scopedColumnRefs = scopedColumnRefs;
         }
     }
 

@@ -111,8 +111,7 @@ public class EliminateAggRule extends TransformationRule {
 
         ColumnRefSet groupByIds = new ColumnRefSet();
         groupBys.stream().map(ColumnRefOperator::getId).forEach(groupByIds::union);
-        return uniqueKeys.stream().anyMatch(constraint ->
-                groupByIds.containsAll(constraint.ukColumnRefs) && groupByIds.containsAll(constraint.scopedColumnRefs));
+        return uniqueKeys.stream().anyMatch(constraint -> groupByIds.containsAll(constraint.ukColumnRefs));
     }
 
     @Override

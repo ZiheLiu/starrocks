@@ -85,10 +85,11 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
         constraints.inheritForeignKey(childConstraints, outputColumns);
         constraints.inheritRelaxedUniqueKey(childConstraints, outputColumns);
 
-        ColumnRefSet outputGroupBys = new ColumnRefSet();
-        aggOp.getGroupingKeys().stream().filter(outputColumns::contains).forEach(outputGroupBys::union);
-        constraints.addTableUniqueKey(
-                new UKFKConstraints.UniqueConstraintWrapper(null, new ColumnRefSet(), false, outputGroupBys));
+        ColumnRefSet groupByColumnRefs = new ColumnRefSet(aggOp.getGroupingKeys());
+        if (!groupByColumnRefs.isEmpty() && outputColumns.containsAll(groupByColumnRefs)) {
+            constraints.addTableUniqueKey(
+                    new UKFKConstraints.UniqueConstraintWrapper(null, new ColumnRefSet(), false, groupByColumnRefs));
+        }
 
         optExpression.setConstraints(constraints);
         return null;
@@ -359,15 +360,12 @@ public class UKFKConstraintsCollector extends OptExpressionVisitor<Void, Void> {
                 newScopedColumnRefs.except(fkColumnRef);
 
                 Stream.concat(ukChildTableUniqueKeys.stream(), fkChildTableUniqueKeys.stream())
-                        .filter(uk -> outputColumns.containsAll(uk.ukColumnRefs) &&
-                                outputColumns.containsAll(uk.scopedColumnRefs))
+                        .filter(uk -> outputColumns.containsAll(uk.ukColumnRefs))
                         .forEach(uk -> {
                             ColumnRefSet columnRefs = uk.ukColumnRefs.clone();
-                            columnRefs.except(newScopedColumnRefs);
-                            ColumnRefSet scopedColumnRefs = uk.scopedColumnRefs.clone();
-                            scopedColumnRefs.union(newScopedColumnRefs);
+                            columnRefs.union(newScopedColumnRefs);
                             constraint.addTableUniqueKey(new UKFKConstraints.UniqueConstraintWrapper(null,
-                                    uk.nonUKColumnRefs, false, columnRefs, scopedColumnRefs));
+                                    uk.nonUKColumnRefs, false, columnRefs));
                         });
             }
         }
