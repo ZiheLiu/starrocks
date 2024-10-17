@@ -770,9 +770,9 @@ public class Optimizer {
                 tree = new ReorderJoinRule().rewrite(tree, JoinReorderFactory.createJoinReorderAdaptive(), context);
                 tree = new SeparateProjectRule().rewrite(tree, rootTaskContext);
                 deriveLogicalProperty(tree);
-                Utils.calculateStatistics(tree, context);
             }
 
+            Utils.calculateStatistics(tree, context);
             PushDownAggregateRule rule = new PushDownAggregateRule(rootTaskContext);
             rule.getRewriter().collectRewriteContext(tree);
             if (rule.getRewriter().isNeedRewrite()) {

@@ -499,13 +499,6 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             }
         }
 
-        // 1.5 Extremely low cardinality for lower with at most one medium or high.
-        double lowerCartesianLowerBound =
-                statistics.getOutputRowCount() / StatisticsEstimateCoefficient.LOWER_AGGREGATE_EFFECT_COEFFICIENT;
-        if (high.size() + medium.size() == 1 && lower.size() <= 2 && lowerCartesian <= lowerCartesianLowerBound) {
-            return true;
-        }
-
         // 2. forbidden rules
         // 2.1 target is the immediate child of a small broadcast join and the cardinality of the aggregation is not lower.
         if (pushDownMode == PUSH_DOWN_AGG_AUTO && context.immediateChildOfSmallBroadcastJoin) {
@@ -519,12 +512,19 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             return false;
         }
 
-        // 3. high cardinality < 2 and lower cardinality < 2
+        // 3. Extremely low cardinality for lower with at most one medium or high.
+        double lowerCartesianLowerBound =
+                statistics.getOutputRowCount() / StatisticsEstimateCoefficient.LOWER_AGGREGATE_EFFECT_COEFFICIENT;
+        if (high.size() + medium.size() == 1 && lower.size() <= 2 && lowerCartesian <= lowerCartesianLowerBound) {
+            return true;
+        }
+
+        // 4. high cardinality < 2 and lower cardinality < 2
         if (high.size() == 1 && lower.size() <= 2) {
             return pushDownMode >= PUSH_DOWN_HIGH_CARDINALITY_AGG;
         }
 
-        // 4. medium cardinality <= 2
+        // 5. medium cardinality <= 2
         if (lower.size() <= 2) {
             if (pushDownMode >= PUSH_DOWN_MEDIUM_CARDINALITY_AGG) {
                 return true;
