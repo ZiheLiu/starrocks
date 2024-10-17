@@ -616,7 +616,7 @@ class PushDownAggregateCollector extends OptExpressionVisitor<Void, AggregatePus
             }
         }
 
-        if (high.size() + medium.size() == 1 && statistics.getOutputRowCount() / lowerCartesian >= 10000) {
+        if (high.size() + medium.size() == 1 && lower.size() <= 2 && statistics.getOutputRowCount() / lowerCartesian >= 10000) {
             return true;
         }
 
