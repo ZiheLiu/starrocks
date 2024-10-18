@@ -17,6 +17,7 @@ package com.starrocks.sql.optimizer.rule.tree.pdagg;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
@@ -41,6 +42,11 @@ public class AggregatePushDownContext {
     // Query's aggregate call operator to push down aggregate call operator mapping,
     // those two operators are not the same so record it to be used later.
     public final Map<ColumnRefOperator, CallOperator> aggColRefToPushDownAggMap = Maps.newHashMap();
+
+    // Aggregator will be pushed down to the position above targetPosition.
+    public OptExpression targetPosition = null;
+    // Whether targetPosition is an immediate left child of a small broadcast join.
+    public boolean immediateChildOfSmallBroadcastJoin = false;
 
     public boolean hasWindow = false;
 
@@ -86,5 +92,9 @@ public class AggregatePushDownContext {
 
     public boolean isRewrittenByEquivalent(CallOperator aggCall) {
         return aggToFinalAggMap.containsKey(aggCall);
+    }
+
+    public OptExpression getTargetPosition() {
+        return targetPosition;
     }
 }

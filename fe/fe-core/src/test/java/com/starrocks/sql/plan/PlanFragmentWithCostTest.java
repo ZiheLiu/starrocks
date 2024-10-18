@@ -1428,21 +1428,21 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
                 " from lineorder_flat_for_mv group by LO_ORDERDATE, LO_ORDERKEY";
         String plan3 = getFragmentPlan(sql3);
         assertContains(plan3, "  0:OlapScanNode\n" +
-                        "     TABLE: lineorder_flat_for_mv\n" +
-                        "     PREAGGREGATION: OFF. Reason: None aggregate function\n" +
-                        "     partitions=7/7\n" +
-                        "     rollup: agg_mv\n" +
-                        "     tabletRatio=1050/1050");
+                "     TABLE: lineorder_flat_for_mv\n" +
+                "     PREAGGREGATION: OFF. Reason: None aggregate function\n" +
+                "     partitions=7/7\n" +
+                "     rollup: agg_mv\n" +
+                "     tabletRatio=1050/1050");
 
         String sql4 = "select LO_ORDERDATE, LO_ORDERKEY, sum(LO_REVENUE) + 1, count(C_NAME) * 3" +
                 " from lineorder_flat_for_mv group by LO_ORDERDATE, LO_ORDERKEY";
         String plan4 = getFragmentPlan(sql4);
         assertContains(plan4, "0:OlapScanNode\n" +
-                        "     TABLE: lineorder_flat_for_mv\n" +
-                        "     PREAGGREGATION: OFF. Reason: None aggregate function\n" +
-                        "     partitions=7/7\n" +
-                        "     rollup: agg_mv\n" +
-                        "     tabletRatio=1050/1050");
+                "     TABLE: lineorder_flat_for_mv\n" +
+                "     PREAGGREGATION: OFF. Reason: None aggregate function\n" +
+                "     partitions=7/7\n" +
+                "     rollup: agg_mv\n" +
+                "     tabletRatio=1050/1050");
     }
 
     @Test
@@ -2370,7 +2370,7 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
                 mockedStatisticStorage.getColumnStatistics((Table) any,
                         Lists.newArrayList("t1a", (String) any, (String) any, (String) any));
                 result = Lists.newArrayList(new ColumnStatistic(NEGATIVE_INFINITY, POSITIVE_INFINITY,
-                        0.0, 10, 3),
+                                0.0, 10, 3),
                         new ColumnStatistic(NEGATIVE_INFINITY, POSITIVE_INFINITY,
                                 0.0, 10, 3, null,
                                 ColumnStatistic.StatisticType.UNKNOWN),
@@ -2431,5 +2431,91 @@ public class PlanFragmentWithCostTest extends PlanTestBase {
         plan = getCostExplain(sql);
         assertContains(plan, "province-->[-Infinity, Infinity, 0.0, 1.0, 2.0]");
         assertContains(plan, "dt-->[-Infinity, Infinity, 0.0, 1.0, 2.0]");
+    }
+
+    @Test
+    public void testTemp() throws Exception {
+
+        GlobalStateMgr globalStateMgr = connectContext.getGlobalStateMgr();
+        OlapTable t0 = (OlapTable) globalStateMgr.getLocalMetastore().getDb("test").getTable("t0");
+        OlapTable t1 = (OlapTable) globalStateMgr.getLocalMetastore().getDb("test").getTable("t1");
+        OlapTable t2 = (OlapTable) globalStateMgr.getLocalMetastore().getDb("test").getTable("t2");
+
+        setTableStatistics(t0, 1000000000L);
+        setTableStatistics(t1, 1000L);
+        setTableStatistics(t2, 100000L);
+
+        connectContext.getSessionVariable().setEnableUKFKOpt(true);
+
+        StatisticStorage ss = globalStateMgr.getCurrentState().getStatisticStorage();
+        new Expectations(ss) {
+            {
+                ss.getColumnStatistic(t0, "v1");
+                result = new ColumnStatistic(1, 2, 0, 4, 2);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t0, "v2");
+                result = new ColumnStatistic(1, 4000000, 0, 4, 40000);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t0, "v3");
+                result = new ColumnStatistic(1, 2000000, 0, 4, 2000000);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t1, "v4");
+                result = new ColumnStatistic(1, 2, 0, 4, 100000);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t1, "v5");
+                result = new ColumnStatistic(1, 100000, 0, 4, 30);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t1, "v6");
+                result = new ColumnStatistic(1, 200000, 0, 4, 200000);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t2, "v7");
+                result = new ColumnStatistic(1, 2, 0, 4, 3);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t2, "v8");
+                result = new ColumnStatistic(1, 100000, 0, 4, 100000);
+                minTimes = 0;
+
+                ss.getColumnStatistic(t2, "v9");
+                result = new ColumnStatistic(1, 200000, 0, 4, 200000);
+                minTimes = 0;
+            }
+        };
+
+        /*
+         * {@code
+         *                                     sum (v3) group by(v5,v9)
+         *                                           join(v2=v7)
+         *                           agg group by(v2, v5)   t2(v7,v9)
+         *               join(v1=v4)
+         *
+         *      t0(v1,v2,v3)   t1(v4,v5)
+         * }
+         */
+
+        starRocksAssert.alterTableProperties("alter table t2 set (\"unique_constraints\" = \"v7;v9\");");
+        starRocksAssert.alterTableProperties("alter table t1 set (\"unique_constraints\" = \"v4\");");
+        starRocksAssert.alterTableProperties(
+                "ALTER TABLE t0 SET(\"foreign_key_constraints\" = \"(v2) REFERENCES t2(v7);(v1) REFERENCES t1(v4);\");");
+
+        String sql = "select /*+SET_VAR(cbo_push_down_aggregate_mode=4)*/ sum(v3)\n" +
+                "from \n" +
+                "    t0 \n" +
+                "    join t1 on t0.v1 = t1.v4\n" +
+                "    join [broadcast] t2 on t0.v2 = t2.v7\n" +
+                "group by t2.v9, t1.v5";
+        //        String sql = "select /*+SET_VAR(cbo_push_down_aggregate_mode=1)*/ sum(v3)\n" +
+        //                "from \n" +
+        //                "    t0 \n" +
+        //                "    join t1 on t0.v1 = t1.v4\n" +
+        //                "group by v4";
+        String plan = getCostExplain(sql);
+        System.out.println(plan);
     }
 }
