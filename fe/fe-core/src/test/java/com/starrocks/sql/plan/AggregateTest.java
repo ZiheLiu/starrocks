@@ -2983,4 +2983,11 @@ public class AggregateTest extends PlanTestBase {
                 "  |  group by: 2: v2, 3: v3\n" +
                 "  |  having: 2: v2 + 2 + 5: sum > 0");
     }
+
+    @Test
+    public void testTemp() throws Exception {
+        String sql = "select sum(v2), v1 from t0 join t1 on v1=v4 and v2=v5 group by v1";
+        String plan = getFragmentPlan(sql);
+        System.out.println(plan);
+    }
 }

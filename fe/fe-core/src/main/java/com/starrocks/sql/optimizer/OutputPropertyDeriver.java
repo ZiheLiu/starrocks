@@ -22,6 +22,7 @@ import com.starrocks.catalog.ColocateTableIndex;
 import com.starrocks.catalog.system.SystemTable;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.optimizer.base.CTEProperty;
+import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.base.DistributionCol;
 import com.starrocks.sql.optimizer.base.DistributionProperty;
@@ -86,13 +87,15 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
     private final PhysicalPropertySet requirements;
     // children output property
     private final List<PhysicalPropertySet> childrenOutputProperties;
+    private final ColumnRefFactory columnRefFactory;
 
     public OutputPropertyDeriver(GroupExpression groupExpression, PhysicalPropertySet requirements,
-                                 List<PhysicalPropertySet> childrenOutputProperties) {
+                                 List<PhysicalPropertySet> childrenOutputProperties, ColumnRefFactory columnRefFactory) {
         this.groupExpression = groupExpression;
         this.requirements = requirements;
         // children best group expression
         this.childrenOutputProperties = childrenOutputProperties;
+        this.columnRefFactory = columnRefFactory;
     }
 
     public PhysicalPropertySet getOutputProperty() {
@@ -134,7 +137,6 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
 
         EquivalentDescriptor leftDesc = leftScanDistributionSpec.getEquivDesc();
         EquivalentDescriptor rightDesc = rightScanDistributionSpec.getEquivDesc();
-
 
         ColocateTableIndex colocateIndex = GlobalStateMgr.getCurrentState().getColocateTableIndex();
         long leftTableId = leftDesc.getTableId();
@@ -264,6 +266,7 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
 
             } else if ((leftDistributionDesc.isShuffle() || leftDistributionDesc.isShuffleEnforce()) &&
                     (rightDistributionDesc.isShuffle()) || rightDistributionDesc.isShuffleEnforce()) {
+                // TODO(lzh)
                 // shuffle join
                 PhysicalPropertySet outputProperty = computeShuffleJoinOutputProperty(node.getJoinType(),
                         leftDistributionDesc.getDistributionCols(), rightDistributionDesc.getDistributionCols());
@@ -294,7 +297,7 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
 
         // Get required properties for children.
         List<PhysicalPropertySet> requiredProperties =
-                computeShuffleJoinRequiredProperties(requirements, leftShuffleColumns, rightShuffleColumns);
+                computeShuffleJoinRequiredProperties(requirements, leftShuffleColumns, rightShuffleColumns, columnRefFactory);
         checkState(requiredProperties.size() == 2);
 
         List<DistributionCol> dominatedOutputColumns;
@@ -310,6 +313,19 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
             dominatedOutputColumns = ((HashDistributionSpec) requiredProperties.get(0).getDistributionProperty().getSpec())
                     .getShuffleColumns();
         }
+
+        //        DistributionSpec requiredSpec = requirements.getDistributionProperty().getSpec();
+        //        if (requiredSpec instanceof HashDistributionSpec) {
+        //            HashDistributionSpec requiredHashSpec = (HashDistributionSpec) requiredSpec;
+        //            List<DistributionCol> requiredColumns = requiredHashSpec.getShuffleColumns();
+        //            List<DistributionCol> overlapColumns = requiredColumns.stream()
+        //                    .filter(dominatedOutputColumns::contains)
+        //                    .collect(Collectors.toList());
+        //            if (!overlapColumns.isEmpty()) {
+        //                dominatedOutputColumns = overlapColumns;
+        //            }
+        //        }
+
         HashDistributionSpec outputShuffleDistribution = DistributionSpec.createHashDistributionSpec(
                 new HashDistributionDesc(dominatedOutputColumns, SHUFFLE_JOIN));
 
@@ -515,7 +531,6 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
     public PhysicalPropertySet visitPhysicalValues(PhysicalValuesOperator node, ExpressionContext context) {
         return createGatherPropertySet();
     }
-
 
     private void updatePropertyWithProjection(Projection projection, PhysicalPropertySet oldProperty) {
         if (projection == null) {

@@ -157,7 +157,8 @@ public class RequiredPropertyDeriver extends PropertyDeriverBase<Void, Expressio
             return null;
         }
 
-        requiredProperties.add(computeShuffleJoinRequiredProperties(requirementsFromParent, leftCols, rightCols));
+        requiredProperties.add(
+                computeShuffleJoinRequiredProperties(requirementsFromParent, leftCols, rightCols, columnRefFactory));
 
         return null;
     }
@@ -201,7 +202,7 @@ public class RequiredPropertyDeriver extends PropertyDeriverBase<Void, Expressio
         // 2 For shuffle join
         List<PhysicalPropertySet> physicalPropertySets =
                 computeShuffleJoinRequiredProperties(requirementsFromParent, leftOnPredicateColumns,
-                        rightOnPredicateColumns);
+                        rightOnPredicateColumns, columnRefFactory);
         physicalPropertySets.get(0).setSortProperty(leftSortProperty);
         physicalPropertySets.get(1).setSortProperty(rightSortProperty);
         requiredProperties.add(physicalPropertySets);

@@ -214,7 +214,8 @@ public class EnforceAndCostTask extends OptimizerTask implements Cloneable {
 
                 // compute the output property
                 OutputPropertyDeriver outputPropertyDeriver = new OutputPropertyDeriver(groupExpression,
-                        context.getRequiredProperty(), childrenOutputProperties);
+                        context.getRequiredProperty(), childrenOutputProperties,
+                        context.getOptimizerContext().getColumnRefFactory());
                 PhysicalPropertySet outputProperty = outputPropertyDeriver.getOutputProperty();
                 recordCostsAndEnforce(outputProperty, childrenRequiredProperties);
             }

@@ -320,7 +320,7 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
         // Get required properties for children.
         List<PhysicalPropertySet> requiredProperties =
                 computeShuffleJoinRequiredProperties(requirements, leftOnPredicateColumns,
-                        rightOnPredicateColumns);
+                        rightOnPredicateColumns, null);
         checkState(requiredProperties.size() == 2);
         List<DistributionCol> leftShuffleColumns =
                 ((HashDistributionSpec) requiredProperties.get(0).getDistributionProperty().getSpec())

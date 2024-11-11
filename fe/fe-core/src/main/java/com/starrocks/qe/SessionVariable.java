@@ -1487,6 +1487,12 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VarAttr(name = CBO_PRUNE_SHUFFLE_COLUMN_RATE, flag = VariableMgr.INVISIBLE)
     private double cboPruneShuffleColumnRate = 0.1;
 
+    @VarAttr(name = "exclude_shuffle_column_names", flag = VariableMgr.INVISIBLE)
+    private String excludeShuffleColumnNames = "";
+
+    @VarAttr(name = "include_shuffle_column_names", flag = VariableMgr.INVISIBLE)
+    private String includeShuffleColumnNames = "";
+
     // 0: auto, 1: force push down, -1: don't push down, 2: push down medium, 3: push down high
     @VarAttr(name = "cboPushDownAggregateMode_v1", alias = CBO_PUSH_DOWN_AGGREGATE_MODE,
             show = CBO_PUSH_DOWN_AGGREGATE_MODE, flag = VariableMgr.INVISIBLE)
@@ -2452,6 +2458,22 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setCboPruneShuffleColumnRate(double cboPruneShuffleColumnRate) {
         this.cboPruneShuffleColumnRate = cboPruneShuffleColumnRate;
+    }
+
+    public String getExcludeShuffleColumnNames() {
+        return excludeShuffleColumnNames;
+    }
+
+    public void setExcludeShuffleColumnNames(String excludeShuffleColumnNames) {
+        this.excludeShuffleColumnNames = excludeShuffleColumnNames;
+    }
+
+    public String getIncludeShuffleColumnNames() {
+        return includeShuffleColumnNames;
+    }
+
+    public void setIncludeShuffleColumnNames(String includeShuffleColumnNames) {
+        this.includeShuffleColumnNames = includeShuffleColumnNames;
     }
 
     public boolean isEnableShowAllVariables() {

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.optimizer.rule.tree;
 
 import com.google.common.base.Preconditions;
@@ -35,7 +34,9 @@ import com.starrocks.sql.optimizer.statistics.Statistics;
 import com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient;
 import com.starrocks.sql.optimizer.task.TaskContext;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /*
@@ -133,20 +134,31 @@ public class PruneShuffleColumnRule implements TreeRewriteRule {
             int maxColumnIndex = -1;
             double maxRatio = -1;
 
+            Set<String> excludeShuffleColumnNames = Arrays.stream(sessionVariable.getExcludeShuffleColumnNames().split(","))
+                    .map(String::trim).collect(Collectors.toSet());
+            Set<String> includeShuffleColumnNames = Arrays.stream(sessionVariable.getIncludeShuffleColumnNames().split(","))
+                    .map(String::trim).collect(Collectors.toSet());
+
             for (int i = 0; i < columnSize; i++) {
                 for (int j = 0; j < descs.size(); j++) {
                     ColumnRefOperator ref = factory.getColumnRef(descs.get(j).getDistributionCols().get(i).getColId());
                     ColumnStatistic cs = childContext.statistics.get(j).getColumnStatistic(ref);
 
-                    if (cs.isUnknown()) {
+                    boolean isInclude = includeShuffleColumnNames.contains(ref.getName());
+
+                    if (!isInclude && cs.isUnknown()) {
                         continue;
                     }
 
                     double ratio =
                             cs.getDistinctValuesCount() / childContext.statistics.get(j).getOutputRowCount();
-                    if ((cs.getDistinctValuesCount() <
-                            StatisticsEstimateCoefficient.DEFAULT_PRUNE_SHUFFLE_COLUMN_ROWS_LIMIT) ||
-                            (ratio < sessionVariable.getCboPruneShuffleColumnRate())) {
+                    if (!isInclude && (
+                            (cs.getDistinctValuesCount() < StatisticsEstimateCoefficient.DEFAULT_PRUNE_SHUFFLE_COLUMN_ROWS_LIMIT)
+                                    || (ratio < sessionVariable.getCboPruneShuffleColumnRate()))) {
+                        continue;
+                    }
+
+                    if (excludeShuffleColumnNames.contains(ref.getName())) {
                         continue;
                     }
 

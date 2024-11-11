@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.optimizer;
 
 import com.google.common.collect.Lists;
+import com.starrocks.qe.ConnectContext;
+import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.base.DistributionCol;
 import com.starrocks.sql.optimizer.base.DistributionProperty;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
@@ -26,8 +27,10 @@ import com.starrocks.sql.optimizer.operator.Operator;
 import com.starrocks.sql.optimizer.operator.OperatorVisitor;
 import org.apache.commons.collections4.CollectionUtils;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_JOIN;
@@ -36,17 +39,16 @@ public abstract class PropertyDeriverBase<R, C> extends OperatorVisitor<R, C> {
 
     public abstract R visitOperator(Operator node, C context);
 
-
     // Compute the required properties of shuffle join for children, adjust shuffle columns orders for
     // respect the required properties from parent.
     protected static List<PhysicalPropertySet> computeShuffleJoinRequiredProperties(
             PhysicalPropertySet requiredFromParent, List<DistributionCol> leftShuffleColumns,
-            List<DistributionCol> rightShuffleColumns) {
+            List<DistributionCol> rightShuffleColumns, ColumnRefFactory columnRefFactory) {
         Optional<HashDistributionDesc> requiredShuffleDescOptional =
                 getShuffleJoinHashDistributionDesc(requiredFromParent);
         if (!requiredShuffleDescOptional.isPresent()) {
             // required property is not SHUFFLE_JOIN
-            return createShuffleJoinRequiredProperties(leftShuffleColumns, rightShuffleColumns);
+            return createShuffleJoinRequiredProperties(leftShuffleColumns, rightShuffleColumns, columnRefFactory);
         } else {
             // required property type is SHUFFLE_JOIN, adjust the required property shuffle columns based on the column
             // order required by parent
@@ -63,13 +65,12 @@ public abstract class PropertyDeriverBase<R, C> extends OperatorVisitor<R, C> {
                     requiredLeft.add(leftShuffleColumns.get(idx));
                     requiredRight.add(rightShuffleColumns.get(idx));
                 }
-                return createShuffleJoinRequiredProperties(requiredLeft, requiredRight);
+                return createShuffleJoinRequiredProperties(requiredLeft, requiredRight, columnRefFactory);
             } else {
-                return createShuffleJoinRequiredProperties(leftShuffleColumns, rightShuffleColumns);
+                return createShuffleJoinRequiredProperties(leftShuffleColumns, rightShuffleColumns, columnRefFactory);
             }
         }
     }
-
 
     protected static Optional<HashDistributionDesc> getShuffleJoinHashDistributionDesc(
             PhysicalPropertySet requiredPropertySet) {
@@ -87,7 +88,21 @@ public abstract class PropertyDeriverBase<R, C> extends OperatorVisitor<R, C> {
     }
 
     private static List<PhysicalPropertySet> createShuffleJoinRequiredProperties(List<DistributionCol> leftColumns,
-                                                                                 List<DistributionCol> rightColumns) {
+                                                                                 List<DistributionCol> rightColumns,
+                                                                                 ColumnRefFactory columnRefFactory) {
+
+        Set<String> excludeShuffleColumnNames =
+                Arrays.stream(ConnectContext.get().getSessionVariable().getExcludeShuffleColumnNames().split(","))
+                        .map(String::trim).collect(Collectors.toSet());
+        leftColumns = leftColumns.stream()
+                .filter(col -> columnRefFactory == null ||
+                        !excludeShuffleColumnNames.contains(columnRefFactory.getColumnRef(col.getColId()).getName()))
+                .collect(Collectors.toList());
+        rightColumns = rightColumns.stream()
+                .filter(col -> columnRefFactory == null ||
+                        !excludeShuffleColumnNames.contains(columnRefFactory.getColumnRef(col.getColId()).getName()))
+                .collect(Collectors.toList());
+
         HashDistributionSpec leftDistribution = DistributionSpec.createHashDistributionSpec(
                 new HashDistributionDesc(leftColumns, SHUFFLE_JOIN));
         HashDistributionSpec rightDistribution = DistributionSpec.createHashDistributionSpec(
