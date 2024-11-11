@@ -342,7 +342,7 @@ public class AggregatePushDownWithCostTest extends PlanWithCostTestBase {
         connectContext.getSessionVariable().setExcludeShuffleColumnNames("v2,v5");
         connectContext.getSessionVariable().setIncludeShuffleColumnNames("v1,v4");
         connectContext.getSessionVariable().setOptimizerExecuteTimeout(3000000);
-        String sql = "select sum(v2), v1 from t0 join [shuffle]  t1 on v1=v4 and v2=v5 group by v1, v3";
+        String sql = "select sum(v2), v1 from t0 join [shuffle]  t1 on v1=v4 and v2=v5 join [broadcast] t2 on v3=v9  group by v1, v3";
         String plan = getFragmentPlan(sql);
         System.out.println(plan);
     }

@@ -291,9 +291,9 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
                                                                  List<DistributionCol> leftShuffleColumns,
                                                                  List<DistributionCol> rightShuffleColumns) {
         Optional<HashDistributionDesc> requiredShuffleDesc = getRequiredShuffleDesc();
-        if (!requiredShuffleDesc.isPresent()) {
-            return PhysicalPropertySet.EMPTY;
-        }
+        //        if (!requiredShuffleDesc.isPresent()) {
+        //            return PhysicalPropertySet.EMPTY;
+        //        }
 
         // Get required properties for children.
         List<PhysicalPropertySet> requiredProperties =
