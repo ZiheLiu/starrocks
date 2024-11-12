@@ -591,7 +591,11 @@ struct AggHashMapWithSerializedKey : public AggHashMapWithKey<HashMap, AggHashMa
     using Iterator = typename HashMap::iterator;
     using ResultVector = Buffer<Slice>;
 
-    std::vector<KeyType> cache;
+    struct CacheEntry {
+        KeyType key;
+        size_t hashval;
+    };
+    std::vector<CacheEntry> caches;
 
     template <class... Args>
     AggHashMapWithSerializedKey(int chunk_size, Args&&... args)
@@ -738,19 +742,22 @@ struct AggHashMapWithSerializedKey : public AggHashMapWithKey<HashMap, AggHashMa
                                                              MemPool* pool, Func&& allocate_func,
                                                              Buffer<AggDataPtr>* agg_states, Filter* not_founds,
                                                              size_t max_serialize_each_row) {
-        cache.reserve(chunk_size);
+        caches.resize(chunk_size);
         for (size_t i = 0; i < chunk_size; ++i) {
-            cache[i] = KeyType(Slice(buffer + i * max_one_row_size, slice_sizes[i]));
+            caches[i].key = KeyType(Slice(buffer + i * max_one_row_size, slice_sizes[i]));
+        }
+        for (size_t i = 0; i < chunk_size; ++i) {
+            caches[i].hashval = this->hash_map.hash_function()(caches[i].key);
         }
 
         for (size_t i = 0; i < chunk_size; ++i) {
             if (i + AGG_HASH_MAP_DEFAULT_PREFETCH_DIST < chunk_size) {
-                this->hash_map.prefetch_hash(cache[i + AGG_HASH_MAP_DEFAULT_PREFETCH_DIST].hash);
+                this->hash_map.prefetch_hash(caches[i + AGG_HASH_MAP_DEFAULT_PREFETCH_DIST].hashval);
             }
 
-            const auto& key = cache[i];
+            const auto& key = caches[i].key;
             if constexpr (allocate_and_compute_state) {
-                auto iter = this->hash_map.lazy_emplace_with_hash(key, key.hash, [&](const auto& ctor) {
+                auto iter = this->hash_map.lazy_emplace_with_hash(key, caches[i].hashval, [&](const auto& ctor) {
                     if constexpr (compute_not_founds) {
                         DCHECK(not_founds);
                         (*not_founds)[i] = 1;
@@ -765,7 +772,7 @@ struct AggHashMapWithSerializedKey : public AggHashMapWithKey<HashMap, AggHashMa
                 (*agg_states)[i] = iter->second;
             } else if constexpr (compute_not_founds) {
                 DCHECK(not_founds);
-                if (auto iter = this->hash_map.find(key, key.hash); iter != this->hash_map.end()) {
+                if (auto iter = this->hash_map.find(key, caches[i].hashval); iter != this->hash_map.end()) {
                     (*agg_states)[i] = iter->second;
                 } else {
                     (*not_founds)[i] = 1;
