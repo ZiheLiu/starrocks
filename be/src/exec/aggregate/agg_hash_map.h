@@ -591,6 +591,8 @@ struct AggHashMapWithSerializedKey : public AggHashMapWithKey<HashMap, AggHashMa
     using Iterator = typename HashMap::iterator;
     using ResultVector = Buffer<Slice>;
 
+    std::vector<KeyType> cache;
+
     template <class... Args>
     AggHashMapWithSerializedKey(int chunk_size, Args&&... args)
             : Base(chunk_size, std::forward<Args>(args)...),
@@ -687,6 +689,23 @@ struct AggHashMapWithSerializedKey : public AggHashMapWithKey<HashMap, AggHashMa
             key_column->serialize_batch(buffer, slice_sizes, chunk_size, max_one_row_size);
         }
 
+        if (this->hash_map.bucket_count() < prefetch_threhold) {
+            this->template compute_agg_states_by_cols_non_prefetch<Func, allocate_and_compute_state,
+                                                                   compute_not_founds>(
+                    chunk_size, key_columns, pool, std::move(allocate_func), agg_states, not_founds,
+                    max_serialize_each_row);
+        } else {
+            this->template compute_agg_states_by_cols_prefetch<Func, allocate_and_compute_state, compute_not_founds>(
+                    chunk_size, key_columns, pool, std::move(allocate_func), agg_states, not_founds,
+                    max_serialize_each_row);
+        }
+    }
+
+    template <typename Func, bool allocate_and_compute_state, bool compute_not_founds>
+    ALWAYS_NOINLINE void compute_agg_states_by_cols_non_prefetch(size_t chunk_size, const Columns& key_columns,
+                                                                 MemPool* pool, Func&& allocate_func,
+                                                                 Buffer<AggDataPtr>* agg_states, Filter* not_founds,
+                                                                 size_t max_serialize_each_row) {
         for (size_t i = 0; i < chunk_size; ++i) {
             Slice key = {buffer + i * max_one_row_size, slice_sizes[i]};
             if constexpr (allocate_and_compute_state) {
@@ -706,6 +725,47 @@ struct AggHashMapWithSerializedKey : public AggHashMapWithKey<HashMap, AggHashMa
             } else if constexpr (compute_not_founds) {
                 DCHECK(not_founds);
                 if (auto iter = this->hash_map.find(key); iter != this->hash_map.end()) {
+                    (*agg_states)[i] = iter->second;
+                } else {
+                    (*not_founds)[i] = 1;
+                }
+            }
+        }
+    }
+
+    template <typename Func, bool allocate_and_compute_state, bool compute_not_founds>
+    ALWAYS_NOINLINE void compute_agg_states_by_cols_prefetch(size_t chunk_size, const Columns& key_columns,
+                                                             MemPool* pool, Func&& allocate_func,
+                                                             Buffer<AggDataPtr>* agg_states, Filter* not_founds,
+                                                             size_t max_serialize_each_row) {
+        cache.reserve(chunk_size);
+        for (size_t i = 0; i < chunk_size; ++i) {
+            cache[i] = KeyType(Slice(buffer + i * max_one_row_size, slice_sizes[i]));
+        }
+
+        for (size_t i = 0; i < chunk_size; ++i) {
+            if (i + AGG_HASH_MAP_DEFAULT_PREFETCH_DIST < chunk_size) {
+                this->hash_map.prefetch_hash(cache[i + AGG_HASH_MAP_DEFAULT_PREFETCH_DIST].hash);
+            }
+
+            const auto& key = cache[i];
+            if constexpr (allocate_and_compute_state) {
+                auto iter = this->hash_map.lazy_emplace_with_hash(key, key.hash, [&](const auto& ctor) {
+                    if constexpr (compute_not_founds) {
+                        DCHECK(not_founds);
+                        (*not_founds)[i] = 1;
+                    }
+                    // we must persist the slice before insert
+                    uint8_t* pos = pool->allocate_with_reserve(key.size, SLICE_MEMEQUAL_OVERFLOW_PADDING);
+                    strings::memcpy_inlined(pos, key.data, key.size);
+                    Slice pk{pos, key.size};
+                    AggDataPtr pv = allocate_func(pk);
+                    ctor(pk, pv);
+                });
+                (*agg_states)[i] = iter->second;
+            } else if constexpr (compute_not_founds) {
+                DCHECK(not_founds);
+                if (auto iter = this->hash_map.find(key, key.hash); iter != this->hash_map.end()) {
                     (*agg_states)[i] = iter->second;
                 } else {
                     (*not_founds)[i] = 1;
