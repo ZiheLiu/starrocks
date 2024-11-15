@@ -26,32 +26,33 @@ import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.service.ExecuteEnv;
 import com.starrocks.sql.ast.UserIdentity;
+import org.jetbrains.annotations.NotNull;
 
 import java.util.concurrent.TimeUnit;
 
 public class ArrowFlightSqlTokenManager implements AutoCloseable {
 
-    private LoadingCache<String, ArrowFlightSqlTokenInfo> tokenCache;
+    private final LoadingCache<String, ArrowFlightSqlTokenInfo> tokenCache;
 
     public ArrowFlightSqlTokenManager() {
-        this.tokenCache =
-                CacheBuilder.newBuilder()
-                        .maximumSize(Config.arrow_token_cache_size)
-                        .expireAfterWrite(Config.arrow_token_cache_expire, TimeUnit.MINUTES)
-                        .removalListener((RemovalNotification<String, ArrowFlightSqlTokenInfo> notification) -> {
-                            ConnectContext context =
-                                    ExecuteEnv.getInstance().getScheduler()
-                                            .getArrowFlightSqlConnectContext(notification.getKey());
-                            if (context != null) {
-                                ExecuteEnv.getInstance().getScheduler().unregisterConnection(context);
-                            }
-                        })
-                        .build(new CacheLoader<String, ArrowFlightSqlTokenInfo>() {
-                            @Override
-                            public ArrowFlightSqlTokenInfo load(String key) throws Exception {
-                                return new ArrowFlightSqlTokenInfo();
-                            }
-                        });
+        this.tokenCache = CacheBuilder.newBuilder()
+                .maximumSize(Config.arrow_token_cache_size)
+                .expireAfterWrite(Config.arrow_token_cache_expire, TimeUnit.MINUTES)
+                .removalListener((RemovalNotification<String, ArrowFlightSqlTokenInfo> notification) -> {
+                    ConnectContext context =
+                            ExecuteEnv.getInstance().getScheduler()
+                                    .getArrowFlightSqlConnectContext(notification.getKey());
+                    if (context != null) {
+                        ExecuteEnv.getInstance().getScheduler().unregisterConnection(context);
+                    }
+                })
+                .build(new CacheLoader<>() {
+                    @NotNull
+                    @Override
+                    public ArrowFlightSqlTokenInfo load(@NotNull String key) {
+                        return new ArrowFlightSqlTokenInfo();
+                    }
+                });
     }
 
     public String createToken(UserIdentity currentUser) throws Exception {
