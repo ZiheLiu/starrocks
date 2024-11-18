@@ -1298,4 +1298,8 @@ public class ConnectContext {
             return row;
         }
     }
+
+    public boolean isArrowFlightSQL() {
+        return false;
+    }
 }

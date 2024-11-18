@@ -15,9 +15,8 @@
 package com.starrocks.service.arrow.flight.sql;
 
 import com.starrocks.service.FrontendOptions;
-import com.starrocks.service.arrow.flight.sql.auth.ArrowFlightSqlAuthenticator;
+import com.starrocks.service.arrow.flight.sql.auth2.ArrowFlightSqlAuthenticator;
 import com.starrocks.service.arrow.flight.sql.session.ArrowFlightSqlSessionManager;
-import com.starrocks.service.arrow.flight.sql.session.ArrowFlightSqlTokenManager;
 import org.apache.arrow.flight.FlightServer;
 import org.apache.arrow.flight.Location;
 import org.apache.arrow.memory.BufferAllocator;
@@ -31,26 +30,24 @@ public class ArrowFlightSqlService {
 
     private static final Logger LOG = LogManager.getLogger(ArrowFlightSqlService.class);
 
-    private final FlightServer flightServer;
-
     protected volatile boolean running;
+
+    private final Location location;
+    private final Location feEndpoint;
+    private final FlightServer flightServer;
 
     public ArrowFlightSqlService(int port) {
         BufferAllocator allocator = new RootAllocator();
-        Location location = Location.forGrpcInsecure("0.0.0.0", port);
+        this.location = Location.forGrpcInsecure("0.0.0.0", port);
+        this.feEndpoint = Location.forGrpcInsecure(FrontendOptions.getLocalHostAddress(), port);
 
-        ArrowFlightSqlTokenManager arrowFlightSqlTokenManager = new ArrowFlightSqlTokenManager();
-        ArrowFlightSqlSessionManager arrowFlightSqlSessionManager =
-                new ArrowFlightSqlSessionManager(arrowFlightSqlTokenManager);
+        ArrowFlightSqlSessionManager sessionManager = new ArrowFlightSqlSessionManager();
 
-        ArrowFlightSqlServiceImpl producer =
-                new ArrowFlightSqlServiceImpl(arrowFlightSqlSessionManager,
-                        Location.forGrpcInsecure(FrontendOptions.getLocalHostAddress(), port));
-        ArrowFlightSqlAuthenticator arrowFlightSqlAuthenticator =
-                new ArrowFlightSqlAuthenticator(arrowFlightSqlTokenManager);
+        ArrowFlightSqlServiceImpl producer = new ArrowFlightSqlServiceImpl(sessionManager, feEndpoint);
+        ArrowFlightSqlAuthenticator authenticator = new ArrowFlightSqlAuthenticator(sessionManager);
 
-        flightServer = FlightServer.builder(allocator, location, producer)
-                .headerAuthenticator(arrowFlightSqlAuthenticator)
+        this.flightServer = FlightServer.builder(allocator, location, producer)
+                .headerAuthenticator(authenticator)
                 .build();
     }
 
@@ -58,14 +55,14 @@ public class ArrowFlightSqlService {
         try {
             flightServer.start();
             running = true;
-            LOG.info("Arrow Flight SQL server start.");
+            LOG.info("[ARROW] Arrow Flight SQL server start [location={}] [feEndpoint={}].", location, feEndpoint);
             flightServer.awaitTermination();
         } catch (InterruptedException e) {
-            LOG.error("Arrow Flight SQL server was interrupted", e);
+            LOG.error("[ARROW] Arrow Flight SQL server was interrupted", e);
             Thread.currentThread().interrupt();
             System.exit(-1);
         } catch (Exception e) {
-            LOG.error("Arrow Flight SQL server start failed");
+            LOG.error("[ARROW] Arrow Flight SQL server start failed");
             System.exit(-1);
         }
     }
@@ -74,14 +71,14 @@ public class ArrowFlightSqlService {
         if (running) {
             running = false;
             try {
-                LOG.info("Stopping Arrow Flight SQL server .");
+                LOG.info("[ARROW] Stopping Arrow Flight SQL server .");
                 flightServer.shutdown();
                 flightServer.awaitTermination(1, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
-                LOG.warn("Interrupted while stopping Arrow Flight SQL server", e);
+                LOG.warn("[ARROW] Interrupted while stopping Arrow Flight SQL server", e);
                 Thread.currentThread().interrupt();
             } catch (Exception e) {
-                LOG.warn("Error while stopping Arrow Flight SQL server", e);
+                LOG.warn("[ARROW] Error while stopping Arrow Flight SQL server", e);
             }
         }
     }

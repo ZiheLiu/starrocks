@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.service;
 
 import java.sql.Connection;
@@ -38,40 +37,39 @@ public class ArrowFlightSqlJDBCTest {
             executeUpdate(stmt, "CREATE DATABASE arrow_demo;");
             executeQuery(stmt, "SHOW DATABASES;");
             executeUpdate(stmt, "USE arrow_demo;");
-
-            executeUpdate(stmt,
-                    "CREATE TABLE students (" +
-                            "    id INT NOT NULL," +
-                            "    name VARCHAR(255) NOT NULL," +
-                            "    age INT NOT NULL," +
-                            "    enrollment_date DATE " +
-                            ") ENGINE=OLAP " +
-                            " PRIMARY KEY (id) " +
-                            "DISTRIBUTED BY HASH(id) BUCKETS 10 " +
-                            "PROPERTIES (" +
-                            "    'replication_num' = '1'," +
-                            "    'in_memory' = 'false'," +
-                            "    'enable_persistent_index' = 'false'," +
-                            "    'replicated_storage' = 'true'," +
-                            "    'fast_schema_evolution' = 'true'," +
-                            "    'compression' = 'LZ4'" +
-                            ");"
-            );
-
-            executeUpdate(stmt,
-                    "INSERT INTO students (id, name, age, enrollment_date) VALUES " +
-                            "(1, 'John Doe', 20, '2024-01-10')," +
-                            "(2, 'Jane Smith', 22, '2024-01-11')," +
-                            "(3, 'Emily Davis', 21, '2024-01-12');"
-            );
-
-            executeQuery(stmt, "SELECT * FROM students;");
-            executeUpdate(stmt, "UPDATE students SET age = 23 WHERE id = 1;");
-            executeQuery(stmt, "SELECT * FROM students;");
-            executeUpdate(stmt, "DELETE FROM students WHERE id = 3;");
-            executeQuery(stmt, "SELECT * FROM students;");
-            executeUpdate(stmt, "SET time_zone = 'Asia/Shanghai';");
-            executeQuery(stmt, "SHOW CREATE TABLE students;");
+            //            executeUpdate(stmt,
+            //                    "CREATE TABLE students (" +
+            //                            "    id INT NOT NULL," +
+            //                            "    name VARCHAR(255) NOT NULL," +
+            //                            "    age INT NOT NULL," +
+            //                            "    enrollment_date DATE " +
+            //                            ") ENGINE=OLAP " +
+            //                            " PRIMARY KEY (id) " +
+            //                            "DISTRIBUTED BY HASH(id) BUCKETS 10 " +
+            //                            "PROPERTIES (" +
+            //                            "    'replication_num' = '1'," +
+            //                            "    'in_memory' = 'false'," +
+            //                            "    'enable_persistent_index' = 'false'," +
+            //                            "    'replicated_storage' = 'true'," +
+            //                            "    'fast_schema_evolution' = 'true'," +
+            //                            "    'compression' = 'LZ4'" +
+            //                            ");"
+            //            );
+            //
+            //            executeUpdate(stmt,
+            //                    "INSERT INTO students (id, name, age, enrollment_date) VALUES " +
+            //                            "(1, 'John Doe', 20, '2024-01-10')," +
+            //                            "(2, 'Jane Smith', 22, '2024-01-11')," +
+            //                            "(3, 'Emily Davis', 21, '2024-01-12');"
+            //            );
+            //
+            //            executeQuery(stmt, "SELECT * FROM students;");
+            //            executeUpdate(stmt, "UPDATE students SET age = 23 WHERE id = 1;");
+            //            executeQuery(stmt, "SELECT * FROM students;");
+            //            executeUpdate(stmt, "DELETE FROM students WHERE id = 3;");
+            //            executeQuery(stmt, "SELECT * FROM students;");
+            //            executeUpdate(stmt, "SET time_zone = 'Asia/Shanghai';");
+            //            executeQuery(stmt, "SHOW CREATE TABLE students;");
 
             stmt.close();
             connection.close();

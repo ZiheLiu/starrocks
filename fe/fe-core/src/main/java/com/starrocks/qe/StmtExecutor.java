@@ -648,7 +648,9 @@ public class StmtExecutor {
                         handleQueryStmt(retryContext.getExecPlan());
                         break;
                     } catch (Exception e) {
-                        if (i == retryTime - 1) {
+                        // TODO: For Arrow Flight SQL, FE doesn't known whether the client has already pull data from BE,
+                        // so FE cannot decide whether it is able to retry.
+                        if (i == retryTime - 1 || context.isArrowFlightSQL()) {
                             throw e;
                         }
                         ExecuteExceptionHandler.handle(e, retryContext);
@@ -673,10 +675,7 @@ public class StmtExecutor {
                             ProfileManager.getInstance().removeProfile(queryId);
                         }
 
-                        if (context instanceof ArrowFlightSqlConnectContext) {
-                            isAsync = true;
-                            tryProcessProfileAsync(execPlan, i);
-                        } else if (context.isProfileEnabled()) {
+                        if (context.isProfileEnabled()) {
                             isAsync = tryProcessProfileAsync(execPlan, i);
                         }
 
@@ -699,11 +698,8 @@ public class StmtExecutor {
                         }
 
                         if (isAsync) {
-                            int timeout = context.getSessionVariable().getQueryTimeoutS();
-                            QeProcessorImpl.INSTANCE
-                                    .monitorQuery(context.getExecutionId(),
-                                            System.currentTimeMillis() + timeout * 1000L +
-                                                    context.getSessionVariable().getProfileTimeout() * 1000L);
+                            QeProcessorImpl.INSTANCE.monitorQuery(context.getExecutionId(),
+                                    System.currentTimeMillis() + context.getSessionVariable().getProfileTimeout() * 1000L);
                         } else {
                             QeProcessorImpl.INSTANCE.unregisterQuery(context.getExecutionId());
                         }
@@ -1268,12 +1264,10 @@ public class StmtExecutor {
         RowBatch batch = null;
         if (context instanceof HttpConnectContext) {
             batch = httpResultSender.sendQueryResult(coord, execPlan, parsedStmt.getOrigStmt().getOrigStmt());
-        } else if (context instanceof ArrowFlightSqlConnectContext) {
+        } else if (context.isArrowFlightSQL()) {
             ArrowFlightSqlConnectContext ctx = (ArrowFlightSqlConnectContext) context;
-            ctx.setReturnFromFE(false);
-            ctx.setExecPlan(execPlan);
-            ctx.setCoordinator(coord);
-            ctx.getState().setEof();
+            ctx.setReturnResultFromFE(false);
+            ctx.setDeploymentFinished(coord);
         } else {
             boolean needSendResult = !isPlanAdvisorAnalyze && !isExplainAnalyze
                     && !context.getSessionVariable().isEnableExecutionOnly();
@@ -1320,7 +1314,12 @@ public class StmtExecutor {
                 sendFields(colNames, outputExprs);
             }
         }
-        
+
+        if (context.isArrowFlightSQL()) {
+            coord.join(context.getSessionVariable().getQueryTimeoutS());
+        }
+
+        // TODO: support statistics for Arrow Flight SQL.
         if (batch != null) {
             statisticsForAuditLog = batch.getQueryStatistics();
             if (!isOutfileQuery) {
@@ -1826,8 +1825,9 @@ public class StmtExecutor {
         }
 
         // Send result set for Arrow Flight SQL.
-        if (context instanceof ArrowFlightSqlConnectContext) {
-            ((ArrowFlightSqlConnectContext) context).addShowResult(resultSet);
+        if (context.isArrowFlightSQL()) {
+            ArrowFlightSqlConnectContext ctx = (ArrowFlightSqlConnectContext) context;
+            ctx.addShowResult(DebugUtil.printId(ctx.getExecutionId()), resultSet);
             context.getState().setEof();
             return;
         }
