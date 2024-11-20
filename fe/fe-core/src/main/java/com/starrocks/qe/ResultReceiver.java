@@ -161,12 +161,4 @@ public class ResultReceiver {
     public void cancel() {
         isCancel = true;
     }
-
-    public TNetworkAddress getAddress() {
-        return address;
-    }
-
-    public Long getBackendId() {
-        return backendId;
-    }
 }

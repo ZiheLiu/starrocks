@@ -43,7 +43,6 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.FrontendOptions;
-import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
 import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.Authorizer;
@@ -97,10 +96,7 @@ public class StatementPlanner {
     public static ExecPlan plan(StatementBase stmt, ConnectContext session) {
         if (session instanceof HttpConnectContext) {
             return plan(stmt, session, TResultSinkType.HTTP_PROTOCAL);
-        } else if (session instanceof ArrowFlightSqlConnectContext) {
-            return plan(stmt, session, TResultSinkType.ARROW_FLIGHT_PROTOCAL);
         }
-
         return plan(stmt, session, TResultSinkType.MYSQL_PROTOCAL);
     }
 
