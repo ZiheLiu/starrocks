@@ -451,7 +451,7 @@ public:
                 auto& opt_param = opt_params[i];
                 DCHECK(opt_param.has_value());
                 auto& param = opt_param.value();
-                auto status = is_build_in_filter
+                auto status = desc->runtime_filter()->is_in_filter()
                                       ? RuntimeFilterHelper::fill_runtime_in_filter(param, desc->build_expr_type(),
                                                                                     desc->runtime_filter(),
                                                                                     kHashJoinKeyColumnOffset)
