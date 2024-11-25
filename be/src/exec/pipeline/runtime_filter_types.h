@@ -385,7 +385,8 @@ public:
             row_count += count;
         }
 
-        const bool is_build_in_filter = _distribution_mode == TJoinDistributionMode::type::BROADCAST &&
+        const bool is_build_in_filter = config::enable_global_runtime_in_filter &&
+                                        _distribution_mode == TJoinDistributionMode::type::BROADCAST &&
                                         row_count <= config::max_pushdown_conditions_per_column;
 
         for (auto& desc : _bloom_filter_descriptors) {
