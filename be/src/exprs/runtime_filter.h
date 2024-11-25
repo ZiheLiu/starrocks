@@ -29,6 +29,8 @@
 #include "exprs/runtime_filter_layout.h"
 #include "gen_cpp/PlanNodes_types.h"
 #include "gen_cpp/Types_types.h"
+#include "in_const_predicate.hpp"
+#include "storage/in_predicate_utils.h"
 #include "types/logical_type.h"
 
 namespace starrocks {
@@ -39,6 +41,8 @@ inline const constexpr uint8_t RF_VERSION = 0x2;
 inline const constexpr uint8_t RF_VERSION_V2 = 0x3;
 static_assert(sizeof(RF_VERSION_V2) == sizeof(RF_VERSION));
 inline const constexpr int32_t RF_VERSION_SZ = sizeof(RF_VERSION_V2);
+
+class ColumnPredicate;
 
 // compatible code from 2.5 to 3.0
 // TODO: remove it
@@ -302,6 +306,8 @@ public:
 
     virtual void init(size_t hash_table_size) = 0;
 
+    virtual bool is_in_filter() const { return false; }
+
     class RunningContext {
     public:
         Filter selection;
@@ -317,6 +323,7 @@ public:
 
     size_t size() const { return _size; }
     bool always_true() const { return _always_true; }
+    void set_always_true() const { _always_true = true; }
     size_t num_hash_partitions() const { return _hash_partition_bf.size(); }
 
     bool has_null() const { return _has_null; }
@@ -325,16 +332,16 @@ public:
 
     void set_join_mode(int8_t join_mode) { _join_mode = join_mode; }
 
-    void clear_bf();
+    virtual void clear_bf();
 
-    bool can_use_bf() const {
+    virtual bool can_use_bf() const {
         if (_hash_partition_bf.empty()) {
             return _bf.can_use();
         }
         return _hash_partition_bf[0].can_use();
     }
 
-    size_t bf_alloc_size() const {
+    virtual size_t bf_alloc_size() const {
         if (_hash_partition_bf.empty()) {
             return _bf.get_alloc_size();
         }
@@ -389,7 +396,7 @@ protected:
     int8_t _join_mode = 0;
     SimdBlockFilter _bf;
     std::vector<SimdBlockFilter> _hash_partition_bf;
-    bool _always_true = false;
+    mutable bool _always_true = false;
     size_t _rf_version = 0;
     // local colocate filters is local filter we don't have to serialize them
     std::vector<JoinRuntimeFilter*> _group_colocate_filters;
@@ -943,6 +950,55 @@ private:
     bool _has_min_max = true;
     bool _left_close_interval = true;
     bool _right_close_interval = true;
+};
+
+template <LogicalType Type>
+class RuntimeInFilter final : public JoinRuntimeFilter {
+public:
+    using CppType = RunTimeCppType<Type>;
+    using ColumnType = RunTimeColumnType<Type>;
+    using ContainerType = RunTimeProxyContainerType<Type>;
+    using SetType = ItemHashSet<CppType>;
+
+    RuntimeInFilter();
+    ~RuntimeInFilter() override;
+
+    void init(size_t hash_table_size) override { _size = hash_table_size; }
+    void compute_partition_index(const RuntimeFilterLayout& layout, const std::vector<Column*>& columns,
+                                 RunningContext* ctx) const override {}
+    void intersect(const JoinRuntimeFilter* rf) override {}
+
+    void clear_bf() override;
+    bool can_use_bf() const override;
+    size_t bf_alloc_size() const override;
+
+    size_t max_serialized_size() const override;
+    size_t serialize(int serialize_version, uint8_t* data) const override;
+    size_t deserialize(int serialize_version, const uint8_t* data) override;
+
+    void evaluate(Column* input_column, RunningContext* ctx) const override;
+    std::string debug_string() const override;
+
+    bool check_equal(const JoinRuntimeFilter& rf) const override;
+    JoinRuntimeFilter* create_empty(ObjectPool* pool) override;
+
+    bool is_in_filter() const override { return true; }
+
+    Status insert(bool is_null_safe, const ColumnPtr& in_values, size_t in_values_offset);
+
+    const ColumnPtr& in_values() const { return _in_values; }
+
+private:
+    static constexpr size_t DUMMY_TUPPLE_ID = 0;
+    static constexpr size_t DUMMY_SLOT_ID = 0;
+
+    template <bool null_is_true>
+    void _evaluate_in_filter(Column* input_column, RunningContext* ctx) const;
+
+    mutable ObjectPool _pool;
+
+    ColumnPtr _in_values = nullptr;
+    SetType _in_values_set;
 };
 
 } // namespace starrocks

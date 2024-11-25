@@ -44,27 +44,40 @@ struct FilterBuilder {
     }
 };
 
-JoinRuntimeFilter* RuntimeFilterHelper::create_join_runtime_filter(ObjectPool* pool, LogicalType type) {
-    JoinRuntimeFilter* filter = type_dispatch_filter(type, (JoinRuntimeFilter*)nullptr, FilterBuilder());
-    if (pool != nullptr && filter != nullptr) {
-        return pool->add(filter);
+JoinRuntimeFilter* RuntimeFilterHelper::create_join_runtime_filter(ObjectPool* pool, LogicalType type,
+                                                                   bool is_in_filter) {
+    if (is_in_filter) {
+        return create_runtime_in_filter(pool, type);
     } else {
-        return filter;
+        return create_runtime_bloom_filter(pool, type);
     }
 }
 
 size_t RuntimeFilterHelper::max_runtime_filter_serialized_size(const JoinRuntimeFilter* rf) {
-    size_t size = RF_VERSION_SZ;
+    size_t size = RF_VERSION_SZ + sizeof(bool); // is_in_filter
     size += rf->max_serialized_size();
     return size;
 }
 
 size_t RuntimeFilterHelper::serialize_runtime_filter(int rf_version, const JoinRuntimeFilter* rf, uint8_t* data) {
     size_t offset = 0;
+
+    // 1. version
     // put version at the head.
     memcpy(data + offset, &rf_version, RF_VERSION_SZ);
     offset += RF_VERSION_SZ;
+    // LOG(WARNING) << "[RF] serialize helper [rf_version=" << rf_version << "] [offset=" << offset << "]";
+
+    // 2. is_in_filter
+    const bool is_in_filter = rf->is_in_filter();
+    memcpy(data + offset, &is_in_filter, sizeof(is_in_filter));
+    offset += sizeof(is_in_filter);
+    // LOG(WARNING) << "[RF] serialize helper [is_in_filter=" << is_in_filter << "] [offset=" << offset << "]";
+
+    // 3. RF
     offset += rf->serialize(rf_version, data + offset);
+    // LOG(WARNING) << "[RF] serialize helper [RF] [offset=" << offset << "]";
+
     return offset;
 }
 
@@ -82,15 +95,23 @@ int RuntimeFilterHelper::deserialize_runtime_filter(ObjectPool* pool, JoinRuntim
 
     size_t offset = 0;
 
+    // 1. Version.
     // read version first.
     uint8_t version = 0;
-    memcpy(&version, data, sizeof(version));
+    memcpy(&version, data + offset, sizeof(version));
     offset += sizeof(version);
     if (version != RF_VERSION && version != RF_VERSION_V2) {
         // version mismatch and skip this chunk.
         LOG(WARNING) << "unrecognized version:" << version;
         return 0;
     }
+    // LOG(WARNING) << "[RF] deserialize helper [version=" << version << "] [offset=" << offset << "]";
+
+    // 2. is_in_filter
+    bool is_in_filter = false;
+    memcpy(&is_in_filter, data + offset, sizeof(is_in_filter));
+    offset += sizeof(is_in_filter);
+    // LOG(WARNING) << "[RF] deserialize helper [is_in_filter=" << is_in_filter << "] [offset=" << offset << "]";
 
     // peek logical type.
     LogicalType ltype = TYPE_UNKNOWN;
@@ -103,19 +124,37 @@ int RuntimeFilterHelper::deserialize_runtime_filter(ObjectPool* pool, JoinRuntim
         memcpy(&type, data + offset, sizeof(type));
         ltype = thrift_to_type(type);
     }
-    JoinRuntimeFilter* filter = create_join_runtime_filter(pool, ltype);
+    // LOG(WARNING) << "[RF] deserialize helper [ltype=" << ltype << "] [offset=" << offset << "]";
+
+    JoinRuntimeFilter* filter = create_join_runtime_filter(pool, ltype, is_in_filter);
     DCHECK(filter != nullptr);
     if (filter != nullptr) {
         offset += filter->deserialize(version, data + offset);
         DCHECK(offset == size);
         *rf = filter;
+        // LOG(WARNING) << "[RF] deserialize helper [RF] [offset=" << offset << "]";
     }
     return version;
 }
 
 JoinRuntimeFilter* RuntimeFilterHelper::create_runtime_bloom_filter(ObjectPool* pool, LogicalType type) {
-    JoinRuntimeFilter* filter = create_join_runtime_filter(pool, type);
-    return filter;
+    JoinRuntimeFilter* filter = type_dispatch_filter(type, (JoinRuntimeFilter*)nullptr, FilterBuilder());
+    if (pool != nullptr && filter != nullptr) {
+        return pool->add(filter);
+    } else {
+        return filter;
+    }
+}
+
+JoinRuntimeFilter* RuntimeFilterHelper::create_runtime_in_filter(ObjectPool* pool, LogicalType type) {
+    JoinRuntimeFilter* filter = type_dispatch_filter(
+            type, static_cast<JoinRuntimeFilter*>(nullptr),
+            []<LogicalType ltype>() -> JoinRuntimeFilter* { return new RuntimeInFilter<ltype>(); });
+    if (pool != nullptr && filter != nullptr) {
+        return pool->add(filter);
+    } else {
+        return filter;
+    }
 }
 
 struct FilterIniter {
@@ -163,10 +202,25 @@ Status RuntimeFilterHelper::fill_runtime_bloom_filter(const std::vector<ColumnPt
     return Status::OK();
 }
 
-Status RuntimeFilterHelper::fill_runtime_bloom_filter(const starrocks::pipeline::RuntimeBloomFilterBuildParam& param,
+Status RuntimeFilterHelper::fill_runtime_bloom_filter(const pipeline::RuntimeBloomFilterBuildParam& param,
                                                       LogicalType type, JoinRuntimeFilter* filter,
                                                       size_t column_offset) {
     return fill_runtime_bloom_filter(param.columns, type, filter, column_offset, param.eq_null);
+}
+
+Status RuntimeFilterHelper::fill_runtime_in_filter(const ColumnPtr& column, LogicalType type, JoinRuntimeFilter* filter,
+                                                   size_t column_offset, bool eq_null) {
+    return type_dispatch_filter(type, Status::OK(), [&]<LogicalType Type> {
+        auto* in_filter = down_cast<RuntimeInFilter<Type>*>(filter);
+        return in_filter->insert(eq_null, column, column_offset);
+    });
+}
+Status RuntimeFilterHelper::fill_runtime_in_filter(const pipeline::RuntimeBloomFilterBuildParam& param,
+                                                   LogicalType type, JoinRuntimeFilter* filter, size_t column_offset) {
+    for (const auto& column : param.columns) {
+        RETURN_IF_ERROR(fill_runtime_in_filter(column, type, filter, column_offset, param.eq_null));
+    }
+    return Status::OK();
 }
 
 StatusOr<ExprContext*> RuntimeFilterHelper::rewrite_runtime_filter_in_cross_join_node(ObjectPool* pool,
@@ -215,6 +269,9 @@ struct FilterZoneMapWithMinMaxOp {
 
 bool RuntimeFilterHelper::filter_zonemap_with_min_max(LogicalType type, const JoinRuntimeFilter* filter,
                                                       const Column* min_column, const Column* max_column) {
+    if (filter->is_in_filter()) {
+        return false;
+    }
     return type_dispatch_filter(type, false, FilterZoneMapWithMinMaxOp(), filter, min_column, max_column);
 }
 

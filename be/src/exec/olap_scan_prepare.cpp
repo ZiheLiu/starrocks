@@ -605,6 +605,23 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
 
         if (rf->has_null()) continue;
 
+        if (rf->is_in_filter()) {
+            const auto* in_filter = down_cast<const RuntimeInFilter<SlotType>*>(rf);
+            const auto& in_values = in_filter->in_values();
+
+            std::set<RangeValueType> values;
+            const auto& data = GetContainer<SlotType>::get_data(ColumnHelper::get_data_column(in_values.get()));
+            for (int i = 0; i < in_values->size(); i++) {
+                values.insert(static_cast<RangeValueType>(data[i]));
+            }
+
+            if (auto status = range->add_fixed_values(FILTER_IN, values); status.ok()) {
+                rf->set_always_true();
+            }
+
+            continue;
+        }
+
         // If this column doesn't have other filter, we use join runtime filter
         // to fast comput row range in storage engine
         if (range->is_init_state()) {

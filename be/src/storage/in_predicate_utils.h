@@ -131,6 +131,17 @@ inline Converter<typename CppTypeTraits<field_type>::CppType> strings_to_set(con
 }
 
 template <LogicalType field_type>
+inline Converter<typename CppTypeTraits<field_type>::CppType> vector_to_set(
+        const std::span<const typename CppTypeTraits<field_type>::CppType>& values) {
+    using CppType = typename CppTypeTraits<field_type>::CppType;
+    Converter<CppType> result;
+    for (const auto& value : values) {
+        result.push_back(value);
+    }
+    return result;
+}
+
+template <LogicalType field_type>
 inline Converter<typename CppTypeTraits<field_type>::CppType> strings_to_decimal_set(
         int scale, const std::vector<std::string>& strings) {
     using CppType = typename CppTypeTraits<field_type>::CppType;

@@ -500,7 +500,7 @@ pipeline::OpFactories HashJoinNode::_decompose_to_pipeline(pipeline::PipelineBui
     }
 
     std::unique_ptr<PartialRuntimeFilterMerger> partial_rf_merger = std::make_unique<PartialRuntimeFilterMerger>(
-            pool, runtime_join_filter_pushdown_limit, global_runtime_filter_build_max_size);
+            pool, runtime_join_filter_pushdown_limit, global_runtime_filter_build_max_size, _distribution_mode);
 
     auto build_op = std::make_shared<HashJoinBuilderFactory>(context->next_operator_id(), id(), hash_joiner_factory,
                                                              std::move(partial_rf_merger), _distribution_mode,

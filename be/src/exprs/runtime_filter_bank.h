@@ -55,16 +55,21 @@ public:
     static size_t serialize_runtime_filter(RuntimeState* state, const JoinRuntimeFilter* rf, uint8_t* data);
     static size_t serialize_runtime_filter(int serialize_version, const JoinRuntimeFilter* rf, uint8_t* data);
     static int deserialize_runtime_filter(ObjectPool* pool, JoinRuntimeFilter** rf, const uint8_t* data, size_t size);
-    static JoinRuntimeFilter* create_join_runtime_filter(ObjectPool* pool, LogicalType type);
+    static JoinRuntimeFilter* create_join_runtime_filter(ObjectPool* pool, LogicalType type, bool is_in_filter);
 
     // ====================================
     static JoinRuntimeFilter* create_runtime_bloom_filter(ObjectPool* pool, LogicalType type);
+    static JoinRuntimeFilter* create_runtime_in_filter(ObjectPool* pool, LogicalType type);
     static Status fill_runtime_bloom_filter(const ColumnPtr& column, LogicalType type, JoinRuntimeFilter* filter,
                                             size_t column_offset, bool eq_null);
     static Status fill_runtime_bloom_filter(const std::vector<ColumnPtr>& column, LogicalType type,
                                             JoinRuntimeFilter* filter, size_t column_offset, bool eq_null);
-    static Status fill_runtime_bloom_filter(const starrocks::pipeline::RuntimeBloomFilterBuildParam& param,
-                                            LogicalType type, JoinRuntimeFilter* filter, size_t column_offset);
+    static Status fill_runtime_bloom_filter(const pipeline::RuntimeBloomFilterBuildParam& param, LogicalType type,
+                                            JoinRuntimeFilter* filter, size_t column_offset);
+    static Status fill_runtime_in_filter(const ColumnPtr& column, LogicalType type, JoinRuntimeFilter* filter,
+                                         size_t column_offset, bool eq_null);
+    static Status fill_runtime_in_filter(const pipeline::RuntimeBloomFilterBuildParam& param, LogicalType type,
+                                         JoinRuntimeFilter* filter, size_t column_offset);
     static StatusOr<ExprContext*> rewrite_runtime_filter_in_cross_join_node(ObjectPool* pool, ExprContext* conjunct,
                                                                             Chunk* chunk);
 

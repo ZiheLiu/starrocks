@@ -259,8 +259,12 @@ private:
 // not take effects on operators in front of LocalExchangeSourceOperators before they are merged into a total one.
 class PartialRuntimeFilterMerger {
 public:
-    PartialRuntimeFilterMerger(ObjectPool* pool, size_t local_rf_limit, size_t global_rf_limit)
-            : _pool(pool), _local_rf_limit(local_rf_limit), _global_rf_limit(global_rf_limit) {}
+    PartialRuntimeFilterMerger(ObjectPool* pool, size_t local_rf_limit, size_t global_rf_limit,
+                               TJoinDistributionMode::type distribution_mode)
+            : _pool(pool),
+              _local_rf_limit(local_rf_limit),
+              _global_rf_limit(global_rf_limit),
+              _distribution_mode(distribution_mode) {}
 
     void incr_builder() {
         _ht_row_counts.emplace_back(0);
@@ -381,14 +385,20 @@ public:
             row_count += count;
         }
 
+        const bool is_build_in_filter = _distribution_mode == TJoinDistributionMode::type::BROADCAST &&
+                                        row_count <= config::max_pushdown_conditions_per_column;
+
         for (auto& desc : _bloom_filter_descriptors) {
             desc->set_is_pipeline(true);
             // skip if it does not have consumer.
             if (!desc->has_consumer()) continue;
             // skip if ht.size() > limit, and it's only for local.
             if (!desc->has_remote_targets() && row_count > _local_rf_limit) continue;
-            LogicalType build_type = desc->build_expr_type();
-            JoinRuntimeFilter* filter = RuntimeFilterHelper::create_runtime_bloom_filter(_pool, build_type);
+
+            const LogicalType build_type = desc->build_expr_type();
+            JoinRuntimeFilter* filter = is_build_in_filter
+                                                ? RuntimeFilterHelper::create_runtime_in_filter(_pool, build_type)
+                                                : RuntimeFilterHelper::create_runtime_bloom_filter(_pool, build_type);
             if (filter == nullptr) continue;
 
             if (desc->has_remote_targets() && row_count > _global_rf_limit) {
@@ -424,23 +434,29 @@ public:
                            [&num_bloom_filters](auto& opt_params) { return opt_params.size() == num_bloom_filters; }));
 
         for (auto i = 0; i < num_bloom_filters; ++i) {
-            auto& desc = _bloom_filter_descriptors[i];
+            const auto& desc = _bloom_filter_descriptors[i];
             if (desc->runtime_filter() == nullptr) {
                 continue;
             }
-            auto can_merge =
-                    std::all_of(_partial_bloom_filter_build_params.begin(), _partial_bloom_filter_build_params.end(),
-                                [i](auto& opt_params) { return opt_params[i].has_value(); });
+
+            const auto can_merge = std::ranges::all_of(_partial_bloom_filter_build_params,
+                                                       [i](auto& opt_params) { return opt_params[i].has_value(); });
             if (!can_merge) {
                 desc->set_runtime_filter(nullptr);
                 continue;
             }
+
             for (auto& opt_params : _partial_bloom_filter_build_params) {
                 auto& opt_param = opt_params[i];
                 DCHECK(opt_param.has_value());
                 auto& param = opt_param.value();
-                auto status = RuntimeFilterHelper::fill_runtime_bloom_filter(
-                        param, desc->build_expr_type(), desc->runtime_filter(), kHashJoinKeyColumnOffset);
+                auto status = is_build_in_filter
+                                      ? RuntimeFilterHelper::fill_runtime_in_filter(param, desc->build_expr_type(),
+                                                                                    desc->runtime_filter(),
+                                                                                    kHashJoinKeyColumnOffset)
+                                      : RuntimeFilterHelper::fill_runtime_bloom_filter(param, desc->build_expr_type(),
+                                                                                       desc->runtime_filter(),
+                                                                                       kHashJoinKeyColumnOffset);
                 if (!status.ok()) {
                     desc->set_runtime_filter(nullptr);
                     break;
@@ -551,6 +567,8 @@ private:
     std::vector<RuntimeInFilters> _partial_in_filters;
     std::vector<OptRuntimeBloomFilterBuildParams> _partial_bloom_filter_build_params;
     RuntimeBloomFilters _bloom_filter_descriptors;
+
+    const TJoinDistributionMode::type _distribution_mode;
 };
 
 } // namespace starrocks::pipeline

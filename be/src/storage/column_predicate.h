@@ -243,6 +243,10 @@ ColumnPredicate* new_column_ge_predicate(const TypeInfoPtr& type, ColumnId id, c
 ColumnPredicate* new_column_cmp_predicate(PredicateType predicate, const TypeInfoPtr& type, ColumnId id,
                                           const Slice& operand);
 
+template <LogicalType Type>
+ColumnPredicate* new_column_in_predicate_raw(const TypeInfoPtr& type, ColumnId id,
+                                             const std::span<const typename CppTypeTraits<Type>::CppType>& values);
+
 ColumnPredicate* new_column_in_predicate(const TypeInfoPtr& type, ColumnId id,
                                          const std::vector<std::string>& operands);
 

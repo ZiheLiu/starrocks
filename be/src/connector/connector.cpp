@@ -86,14 +86,33 @@ Status DataSource::parse_runtime_filters(RuntimeState* state) {
         DCHECK(runtime_bloom_filter_eval_context.driver_sequence != -1);
         const JoinRuntimeFilter* filter = probe->runtime_filter(runtime_bloom_filter_eval_context.driver_sequence);
         if (filter == nullptr) continue;
+
         SlotId slot_id;
         if (!probe->is_probe_slot_ref(&slot_id)) continue;
-        LogicalType slot_type = probe->probe_expr_type();
-        Expr* min_max_predicate = nullptr;
-        RuntimeFilterHelper::create_min_max_value_predicate(state->obj_pool(), slot_id, slot_type, filter,
-                                                            &min_max_predicate);
-        if (min_max_predicate != nullptr) {
-            ExprContext* ctx = state->obj_pool()->add(new ExprContext(min_max_predicate));
+
+        const LogicalType slot_type = probe->probe_expr_type();
+        ExprContext* ctx = nullptr;
+        if (filter->is_in_filter()) {
+            RETURN_IF_ERROR(type_dispatch_filter(slot_type, Status::OK(), [&]<LogicalType Type> {
+                auto* in_filter = down_cast<const RuntimeInFilter<Type>*>(filter);
+                VectorizedInConstPredicateBuilder builder(state, state->obj_pool(), probe->probe_expr_ctx()->root());
+                builder.set_eq_null(in_filter->has_null());
+                builder.use_as_join_runtime_filter();
+                RETURN_IF_ERROR(builder.create());
+                builder.add_values(in_filter->in_values(), 0);
+                ctx = builder.get_in_const_predicate();
+                return Status::OK();
+            }));
+        } else {
+            Expr* min_max_predicate = nullptr;
+            RuntimeFilterHelper::create_min_max_value_predicate(state->obj_pool(), slot_id, slot_type, filter,
+                                                                &min_max_predicate);
+            if (min_max_predicate != nullptr) {
+                ctx = state->obj_pool()->add(new ExprContext(min_max_predicate));
+            }
+        }
+
+        if (ctx != nullptr) {
             RETURN_IF_ERROR(ctx->prepare(state));
             RETURN_IF_ERROR(ctx->open(state));
             _conjunct_ctxs.insert(_conjunct_ctxs.begin(), ctx);

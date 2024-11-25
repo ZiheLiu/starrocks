@@ -1128,6 +1128,9 @@ Status OrcChunkReader::_add_conjunct(const Expr* conjunct,
 bool OrcChunkReader::_add_runtime_filter(const uint64_t column_id, const SlotDescriptor* slot,
                                          const JoinRuntimeFilter* rf,
                                          std::unique_ptr<orc::SearchArgumentBuilder>& builder) {
+    if (rf->is_in_filter()) {
+        return false;
+    }
     LogicalType ltype = slot->type().type;
     auto type_it = _supported_logical_types.find(ltype);
     if (type_it == _supported_logical_types.end()) return false;

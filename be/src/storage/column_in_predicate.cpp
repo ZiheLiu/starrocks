@@ -590,6 +590,29 @@ ColumnPredicate* new_column_in_predicate(const TypeInfoPtr& type_info, ColumnId 
     }
 }
 
+template <LogicalType Type, template <typename, size_t...> typename Set, size_t... Args>
+static ColumnPredicate* new_column_in_predicate_generic_raw(
+        const TypeInfoPtr& type_info, ColumnId id,
+        const std::span<const typename CppTypeTraits<Type>::CppType>& values) {
+    using SetType = Set<typename CppTypeTraits<Type>::CppType, (Args)...>;
+    SetType value_set = predicate_internal::vector_to_set<Type>(values);
+    return new ColumnInPredicate<Type, SetType>(type_info, id, std::move(values));
+}
+
+template <LogicalType Type>
+ColumnPredicate* new_column_in_predicate_raw(const TypeInfoPtr& type, ColumnId id,
+                                             const std::span<const typename CppTypeTraits<Type>::CppType>& values) {
+    if (values.size() > 3 || values.empty()) {
+        return new_column_in_predicate_generic_raw<Type, ItemHashSet>(type, id, values);
+    } else if (values.size() == 3) {
+        return new_column_in_predicate_generic_raw<Type, ArraySet, 3>(type, id, values);
+    } else if (values.size() == 2) {
+        return new_column_in_predicate_generic_raw<Type, ArraySet, 2>(type, id, values);
+    } else {
+        return new_column_in_predicate_generic_raw<Type, ArraySet, 1>(type, id, values);
+    }
+}
+
 ColumnPredicate* new_dictionary_code_in_predicate(const TypeInfoPtr& type, ColumnId id,
                                                   const std::vector<int32_t>& operands, size_t size) {
     DCHECK(is_integer_type(type->type()));
