@@ -397,7 +397,7 @@ public:
             if (!desc->has_remote_targets() && row_count > _local_rf_limit) continue;
 
             const LogicalType build_type = desc->build_expr_type();
-            JoinRuntimeFilter* filter = is_build_in_filter
+            JoinRuntimeFilter* filter = is_build_in_filter && desc->has_remote_targets()
                                                 ? RuntimeFilterHelper::create_runtime_in_filter(_pool, build_type)
                                                 : RuntimeFilterHelper::create_runtime_bloom_filter(_pool, build_type);
             if (filter == nullptr) continue;
