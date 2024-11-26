@@ -179,7 +179,7 @@ public:
     }
 
     template <bool use_array>
-    ColumnPtr eval_on_chunk_both_column_and_set_not_has_null(const ColumnPtr& lhs, uint8_t* filter) {
+    ALWAYS_INLINE ColumnPtr eval_on_chunk_both_column_and_set_not_has_null(const ColumnPtr& lhs, uint8_t* filter) {
         DCHECK(!_null_in_set);
         auto size = lhs->size();
 
@@ -226,7 +226,7 @@ public:
     // null_in_set: true means null is a value of _hash_set.
     // equal_null: true means that 'null' in column and 'null' in set is equal.
     template <bool null_in_set, bool equal_null, bool use_array>
-    ColumnPtr eval_on_chunk(const ColumnPtr& lhs, uint8_t* filter) {
+    ALWAYS_INLINE ColumnPtr eval_on_chunk(const ColumnPtr& lhs, uint8_t* filter) {
         ColumnViewer<Type> viewer(lhs);
         size_t size = viewer.size();
         ColumnBuilder<TYPE_BOOLEAN> builder(size);
