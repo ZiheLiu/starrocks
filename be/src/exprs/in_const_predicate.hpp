@@ -288,39 +288,61 @@ public:
     }
 
     StatusOr<ColumnPtr> evaluate_with_filter(ExprContext* context, Chunk* ptr, uint8_t* filter) override {
+        const bool reselect = _is_join_runtime_filter && (++_evaluate_times) % 32 == 0;
+        if (!reselect && !_used) {
+            if (filter == nullptr) {
+                return RunTimeColumnType<TYPE_BOOLEAN>::create(ptr->num_rows(), true);
+            } else {
+                auto res = RunTimeColumnType<TYPE_BOOLEAN>::create(ptr->num_rows());
+                uint8_t* res_data = res->get_data().data();
+                memcpy(res_data, filter, ptr->num_rows());
+                return res;
+            }
+        }
+
         ASSIGN_OR_RETURN(ColumnPtr lhs, _children[0]->evaluate_checked(context, ptr));
         if (!_eq_null && ColumnHelper::count_nulls(lhs) == lhs->size()) {
             return ColumnHelper::create_const_null_column(lhs->size());
         }
-        bool use_array = is_use_array();
+        const bool use_array = is_use_array();
 
+        ColumnPtr res_col;
         if (_null_in_set) {
             if (_eq_null) {
                 if (!use_array) {
-                    return this->template eval_on_chunk<true, true, false>(lhs, filter);
+                    res_col = this->template eval_on_chunk<true, true, false>(lhs, filter);
                 } else {
-                    return this->template eval_on_chunk<true, true, true>(lhs, filter);
+                    res_col = this->template eval_on_chunk<true, true, true>(lhs, filter);
                 }
             } else {
                 if (!use_array) {
-                    return this->template eval_on_chunk<true, false, false>(lhs, filter);
+                    res_col = this->template eval_on_chunk<true, false, false>(lhs, filter);
                 } else {
-                    return this->template eval_on_chunk<true, false, true>(lhs, filter);
+                    res_col = this->template eval_on_chunk<true, false, true>(lhs, filter);
                 }
             }
         } else if (lhs->is_nullable()) {
             if (!use_array) {
-                return this->template eval_on_chunk<false, false, false>(lhs, filter);
+                res_col = this->template eval_on_chunk<false, false, false>(lhs, filter);
             } else {
-                return this->template eval_on_chunk<false, false, true>(lhs, filter);
+                res_col = this->template eval_on_chunk<false, false, true>(lhs, filter);
             }
         } else {
             if (!use_array) {
-                return eval_on_chunk_both_column_and_set_not_has_null<false>(lhs, filter);
+                res_col = eval_on_chunk_both_column_and_set_not_has_null<false>(lhs, filter);
             } else {
-                return eval_on_chunk_both_column_and_set_not_has_null<true>(lhs, filter);
+                res_col = eval_on_chunk_both_column_and_set_not_has_null<true>(lhs, filter);
             }
         }
+
+        if (reselect) {
+            const auto& res_data = GetContainer<TYPE_BOOLEAN>::get_data(res_col);
+            const size_t true_count = SIMD::count_nonzero(res_data.data(), res_data.size());
+            const size_t num_rows = filter == nullptr ? ptr->num_rows() : SIMD::count_nonzero(filter, res_data.size());
+            _used = true_count * 2 <= num_rows;
+        }
+
+        return res_col;
     }
 
     StatusOr<ColumnPtr> evaluate_checked(ExprContext* context, Chunk* ptr) override {
@@ -421,6 +443,9 @@ private:
     in_const_pred_detail::LHashSetType<Type> _hash_set;
     // Ensure the string memory don't early free
     std::vector<ColumnPtr> _string_values;
+
+    std::atomic<size_t> _evaluate_times{0};
+    std::atomic<bool> _used{true};
 };
 
 class VectorizedInConstPredicateGeneric final : public Predicate {
@@ -455,6 +480,7 @@ public:
 
     StatusOr<ColumnPtr> evaluate_checked(ExprContext* context, Chunk* ptr) override {
         DCHECK_EQ(_const_input.size(), _children.size());
+
         auto child_size = _children.size();
         Columns input_data(child_size);
         std::vector<NullColumnPtr> input_null(child_size);
