@@ -288,7 +288,7 @@ public:
     }
 
     StatusOr<ColumnPtr> evaluate_with_filter(ExprContext* context, Chunk* ptr, uint8_t* filter) override {
-        const bool reselect = _is_join_runtime_filter && (++_evaluate_times) % 32 == 0;
+        const bool reselect = _is_join_runtime_filter && (_evaluate_times++) % 32 == 0;
         if (!reselect && !_used) {
             if (filter == nullptr) {
                 return RunTimeColumnType<TYPE_BOOLEAN>::create(ptr->num_rows(), true);
