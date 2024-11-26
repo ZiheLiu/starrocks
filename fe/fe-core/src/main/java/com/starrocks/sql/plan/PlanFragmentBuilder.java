@@ -1430,7 +1430,6 @@ public class PlanFragmentBuilder {
             return buildIcebergScanNode(optExpression, context);
         }
 
-
         public PlanFragment buildIcebergScanNode(OptExpression expression, ExecPlan context) {
             PhysicalScanOperator node = expression.getOp().cast();
             Table referenceTable = node.getTable();
@@ -2881,10 +2880,30 @@ public class PlanFragmentBuilder {
             currentExecGroup.add(joinNode);
 
             if (shouldBuildGlobalRuntimeFilter()) {
-                joinNode.buildRuntimeFilters(runtimeFilterIdIdGenerator, context.getDescTbl(), execGroups);
+                if (!isUkFkJoin(optExpr)) {
+                    joinNode.buildRuntimeFilters(runtimeFilterIdIdGenerator, context.getDescTbl(), execGroups);
+                }
             }
 
             return buildJoinFragment(context, leftFragment, rightFragment, distributionMode, joinNode);
+        }
+
+        private static boolean isUkFkJoin(OptExpression optExpr) {
+            UKFKConstraints constraints = optExpr.getConstraints();
+            if (constraints == null) {
+                return false;
+            }
+
+            UKFKConstraints.JoinProperty property = constraints.getJoinProperty();
+            if (property == null) {
+                return false;
+            }
+
+            PhysicalJoinOperator node = (PhysicalJoinOperator) optExpr.getOp();
+            JoinOperator joinType = node.getJoinType();
+            return joinType.isInnerJoin() ||
+                    ((joinType.isLeftOuterJoin() || joinType.isLeftSemiJoin()) && !property.isLeftUK) ||
+                    ((joinType.isRightOuterJoin() || joinType.isRightSemiJoin()) && property.isLeftUK);
         }
 
         private boolean isExchangeWithDistributionType(PlanNode node, DistributionSpec.DistributionType expectedType) {
