@@ -339,7 +339,7 @@ public:
             const auto& res_data = GetContainer<TYPE_BOOLEAN>::get_data(res_col);
             const size_t true_count = SIMD::count_nonzero(res_data.data(), res_data.size());
             const size_t num_rows = filter == nullptr ? ptr->num_rows() : SIMD::count_nonzero(filter, res_data.size());
-            _used = true_count * 2 <= num_rows;
+            _used = true_count < num_rows;
         }
 
         return res_col;
