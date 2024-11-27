@@ -479,7 +479,8 @@ public class RuntimeFilterDescription {
         layout.setFilter_id(filterId);
         layout.setLocal_layout(computeLocalLayout());
         layout.setGlobal_layout(computeGlobalLayout());
-        layout.setPipeline_level_multi_partitioned(sessionVariable.isEnablePipelineLevelMultiPartitionedRf());
+        layout.setPipeline_level_multi_partitioned(
+                joinMode != BROADCAST && sessionVariable.isEnablePipelineLevelMultiPartitionedRf());
         layout.setNum_instances(numInstances);
         layout.setNum_drivers_per_instance(numDriversPerInstance);
         if (bucketSeqToInstance != null && !bucketSeqToInstance.isEmpty()) {
