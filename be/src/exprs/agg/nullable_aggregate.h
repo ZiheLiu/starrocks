@@ -398,7 +398,7 @@ public:
 #elif defined(__ARM_NEON) && defined(__aarch64__)
             constexpr int batch_nums = 128 / (8 * sizeof(uint8_t));
             while (offset + batch_nums < chunk_size) {
-                const int8x16_t v_null_data = vld1q_u8(f_data + offset);
+                const uint8x16_t v_null_data = vld1q_u8(f_data + offset);
                 // v_null_data[i] = v_null_data[i] == 0 ? 0xFF : 0x00
                 const uint8x16_t v_notnull_data = vceqq_u8(v_null_data, vdupq_n_u8(0));
                 uint64_t notnull_nibble_mask = SIMD::get_nibble_mask(v_notnull_data);
