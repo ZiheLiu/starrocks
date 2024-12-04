@@ -82,24 +82,36 @@ public:
     LevelDecoder& def_level_decoder() { return _def_level_decoder; }
     LevelDecoder& rep_level_decoder() { return _rep_level_decoder; }
 
-    Status decode_values(size_t n, const uint16_t* is_nulls, ColumnContentType content_type, Column* dst) {
+    Status decode_values(size_t n, const vector<uint8_t>& is_nulls, ColumnContentType content_type, Column* dst) {
         SCOPED_RAW_TIMER(&_opts.stats->value_decode_ns);
         if (_current_row_group_no_null || _current_page_no_null) {
             return _cur_decoder->next_batch(n, content_type, dst);
         }
         size_t idx = 0;
         while (idx < n) {
-            bool is_null = is_nulls[idx++];
-            size_t run = 1;
-            while (idx < n && is_nulls[idx] == is_null) {
-                idx++;
-                run++;
-            }
-            if (is_null) {
+            if (is_nulls[idx]) {
+                const size_t non_null_idx = SIMD::find_zero(is_nulls, idx, n - idx);
+                const size_t run = non_null_idx - idx;
+                idx = non_null_idx;
                 dst->append_nulls(run);
             } else {
+                const size_t null_idx = SIMD::find_nonzero(is_nulls, idx, n - idx);
+                const size_t run = null_idx - idx;
+                idx = null_idx;
                 RETURN_IF_ERROR(_cur_decoder->next_batch(run, content_type, dst));
             }
+
+            // bool is_null = is_nulls[idx++];
+            // size_t run = 1;
+            // while (idx < n && is_nulls[idx] == is_null) {
+            //     idx++;
+            //     run++;
+            // }
+            // if (is_null) {
+            //     dst->append_nulls(run);
+            // } else {
+            //     RETURN_IF_ERROR(_cur_decoder->next_batch(run, content_type, dst));
+            // }
         }
         return Status::OK();
     }

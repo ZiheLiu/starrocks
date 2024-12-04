@@ -93,7 +93,7 @@ private:
     size_t _not_null_to_skip = 0;
 
     // Use uint16_t instead of uint8_t to make it auto simd by compiler.
-    std::vector<uint16_t> _is_nulls;
+    std::vector<uint8_t> _is_nulls;
 
     // default is false, but if there is page index, it's true.
     // so that we don't need check next page to know the last record in current page is finished.
@@ -151,7 +151,7 @@ private:
     bool _need_parse_levels = false;
 
     // Use uint16_t instead of uint8_t to make it auto simd by compiler.
-    std::vector<uint16_t> _is_nulls;
+    std::vector<uint8_t> _is_nulls;
 };
 
 class RequiredStoredColumnReader : public StoredColumnReaderImpl {
@@ -219,9 +219,9 @@ void RepeatedStoredColumnReader::_delimit_rows(const level_t* rep_levels, size_t
         _meet_first_record = false;
         DCHECK_EQ(0, rep_levels[levels_pos]);
     } // else {
-      //  means  rows_read < *num_rows, levels_pos >= _levels_decoded,
-      //  so we need to decode more levels to obtain a complete line or
-      //  we have read all the records in this column chunk.
+    //  means  rows_read < *num_rows, levels_pos >= _levels_decoded,
+    //  so we need to decode more levels to obtain a complete line or
+    //  we have read all the records in this column chunk.
     // }
 
     VLOG_FILE << "rows_reader=" << rows_read << ", level_parsed=" << levels_pos;
@@ -441,10 +441,12 @@ Status OptionalStoredColumnReader::_read_values_on_levels(size_t num_values,
         DCHECK_EQ(num_values, level_parsed);
         _is_nulls.resize(num_values);
         // decode def levels
+        const int16_t max_def_level = _field->max_def_level();
+        auto* is_nulls_data = _is_nulls.data();
         for (size_t i = 0; i < num_values; ++i) {
-            _is_nulls[i] = def_levels[i] < _field->max_def_level();
+            is_nulls_data[i] = def_levels[i] < max_def_level;
         }
-        return _reader->decode_values(num_values, &_is_nulls[0], content_type, dst);
+        return _reader->decode_values(num_values, _is_nulls, content_type, dst);
     }
 }
 
@@ -454,19 +456,22 @@ Status RepeatedStoredColumnReader::_read_values_on_levels(size_t num_values,
     _is_nulls.resize(num_values);
     int null_pos = 0;
     level_t* def_levels = _reader->def_level_decoder().get_forward_levels(num_values);
+    const int16_t max_def_level = _field->max_def_level();
+    const int16_t immediate_repeated_ancestor_def_level = _field->level_info.immediate_repeated_ancestor_def_level;
+    auto* is_nulls_data = _is_nulls.data();
     for (int i = 0; i < num_values; ++i) {
         level_t def_level = def_levels[i];
-        _is_nulls[null_pos] = (def_level < _field->max_def_level());
+        is_nulls_data[null_pos] = (def_level < max_def_level);
         // if current def level < ancestor def level, the ancestor will be not defined too, so that we don't
         // need to add null value to this column. Otherwise, we need to add null value to this column.
-        null_pos += (def_level >= _field->level_info.immediate_repeated_ancestor_def_level);
+        null_pos += (def_level >= immediate_repeated_ancestor_def_level);
     }
     if (append_default) {
         _collect_not_null_values(num_values, num_values != _num_values_left_in_cur_page);
         dst->append_default(null_pos);
         return Status::OK();
     } else {
-        return _reader->decode_values(null_pos, &_is_nulls[0], content_type, dst);
+        return _reader->decode_values(null_pos, _is_nulls, content_type, dst);
     }
 }
 
