@@ -61,6 +61,8 @@ public:
     virtual Status read_buffer(const std::string& key, size_t off, size_t size, IOBuffer* buffer,
                                ReadCacheOptions* options) = 0;
 
+    virtual Status read_buffer(const std::string& key, IOBuffer* buffer, ReadCacheOptions* options) = 0;
+
     virtual Status read_object(const std::string& key, DataCacheHandle* handle, ReadCacheOptions* options) = 0;
 
     virtual bool exist(const std::string& key) const = 0;

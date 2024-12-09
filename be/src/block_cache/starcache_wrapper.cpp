@@ -34,6 +34,7 @@ Status StarCacheWrapper::init(const CacheOptions& options) {
     opt.enable_disk_checksum = options.enable_checksum;
     opt.max_concurrent_writes = options.max_concurrent_inserts;
     opt.enable_os_page_cache = !options.enable_direct_io;
+    opt.evict_touch_disk_probalility = 0;
     opt.scheduler_thread_ratio_per_cpu = options.scheduler_threads_per_cpu;
     opt.max_flying_memory_mb = options.max_flying_memory_mb;
     _cache_adaptor.reset(starcache::create_default_adaptor(options.skip_read_factor));
@@ -53,6 +54,9 @@ Status StarCacheWrapper::write_buffer(const std::string& key, const IOBuffer& bu
     opts.priority = options->priority;
     opts.ttl_seconds = options->ttl_seconds;
     opts.overwrite = options->overwrite;
+    // Temporarily write all data directly to disk
+    // opts.mode = to_write_mode(options->mode);
+    opts.mode = starcache::WriteOptions::WriteMode::WRITE_THROUGH;
     opts.async = options->async;
     opts.keep_alive = options->allow_zero_copy;
     opts.callback = options->callback;
@@ -84,6 +88,7 @@ Status StarCacheWrapper::write_object(const std::string& key, const void* ptr, s
     starcache::WriteOptions opts;
     opts.ttl_seconds = options->ttl_seconds;
     opts.overwrite = options->overwrite;
+    opts.write_probability = options->write_probability;
     opts.evict_probability = options->evict_probability;
     Status st;
     {
@@ -102,10 +107,29 @@ Status StarCacheWrapper::read_buffer(const std::string& key, size_t off, size_t 
         return to_status(_cache->read(key, off, size, &buffer->raw_buf(), nullptr));
     }
     starcache::ReadOptions opts;
+    // Temporarily read all data directly from disk
+    // opts.mode = to_read_mode(options->mode);
+    opts.mode = starcache::ReadOptions::ReadMode::READ_THROUGH;
     opts.use_adaptor = options->use_adaptor;
     opts.mode = _enable_tiered_cache ? starcache::ReadOptions::ReadMode::READ_BACK
                                      : starcache::ReadOptions::ReadMode::READ_THROUGH;
     auto st = to_status(_cache->read(key, off, size, &buffer->raw_buf(), &opts));
+    if (st.ok()) {
+        options->stats.read_mem_bytes = opts.stats.read_mem_bytes;
+        options->stats.read_disk_bytes = opts.stats.read_disk_bytes;
+    }
+    return st;
+}
+
+Status StarCacheWrapper::read_buffer(const std::string& key, IOBuffer* buffer, ReadCacheOptions* options) {
+    if (!options) {
+        return to_status(_cache->get(key, &buffer->raw_buf(), nullptr));
+    }
+    starcache::ReadOptions opts;
+    // Temporarily read all data directly from disk
+    // opts.mode = to_read_mode(options->mode);
+    opts.mode = starcache::ReadOptions::ReadMode::READ_THROUGH;
+    auto st = to_status(_cache->get(key, &buffer->raw_buf(), &opts));
     if (st.ok()) {
         options->stats.read_mem_bytes = opts.stats.read_mem_bytes;
         options->stats.read_disk_bytes = opts.stats.read_disk_bytes;

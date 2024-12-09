@@ -130,6 +130,8 @@ private:
     BlockCache* _cache = nullptr;
     FileMetaDataPtr _file_metadata = nullptr;
 
+    WriteCacheOptions _write_options;
+
     // not exist column conjuncts eval false, file can be skipped
     bool _is_file_filtered = false;
     HdfsScannerContext* _scanner_ctx = nullptr;

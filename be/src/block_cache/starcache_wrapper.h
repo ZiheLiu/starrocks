@@ -56,6 +56,8 @@ public:
 
     DataCacheEngineType engine_type() override { return DataCacheEngineType::STARCACHE; }
 
+    Status read_buffer(const std::string& key, IOBuffer* buffer, ReadCacheOptions* options) override;
+
 private:
     std::unique_ptr<starcache::StarCache> _cache;
     std::unique_ptr<starcache::TimeBasedCacheAdaptor> _cache_adaptor;
