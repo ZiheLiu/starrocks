@@ -24,6 +24,7 @@
 #include "common/object_pool.h"
 #include "exec/hash_joiner.h"
 #include "exec/join_hash_map.h"
+#include "exec/pipeline/adaptive/utils.h"
 #include "exprs/agg/distinct.h"
 #include "exprs/expr_context.h"
 #include "gutil/casts.h"
@@ -443,6 +444,7 @@ private:
 
     void _init_partition_nums(const HashTableParam& param);
     Status _convert_to_single_partition();
+    Status _shrink_partition(size_t new_partition_num);
     Status _append_chunk_to_partitions(const ChunkPtr& chunk);
 
 private:
@@ -635,6 +637,16 @@ Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition() {
     return Status::OK();
 }
 
+Status AdaptivePartitionHashJoinBuilder::_shrink_partition(size_t new_partition_num) {
+    DCHECK_LT(new_partition_num, _partition_num);
+    for (size_t i = new_partition_num; i < _partition_num; ++i) {
+        _builders[i % new_partition_num]->hash_table().merge_ht(_builders[i]->hash_table());
+    }
+    _builders.resize(new_partition_num);
+    _partition_num = new_partition_num;
+    return Status::OK();
+}
+
 Status AdaptivePartitionHashJoinBuilder::_append_chunk_to_partitions(const ChunkPtr& chunk) {
     const std::vector<ExprContext*>& build_partition_keys = _hash_joiner.build_expr_ctxs();
 
@@ -720,11 +732,31 @@ ChunkPtr AdaptivePartitionHashJoinBuilder::convert_to_spill_schema(const ChunkPt
     return _builders[0]->convert_to_spill_schema(chunk);
 }
 
+/**
+ * Compute the maximal power-of-two number which is less than or equal to the given number.
+ */
+int compute_min_ge_power2(int num) {
+    num -= 1;
+    num |= (num >> 1);
+    num |= (num >> 2);
+    num |= (num >> 4);
+    num |= (num >> 8);
+    num |= (num >> 16);
+    return num < 0 ? 1 : num + 1;
+}
+
 Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
     DCHECK_EQ(_partition_num, _builders.size());
 
-    if (_partition_num > 1 && hash_table_row_count() < _partition_join_min_rows) {
-        RETURN_IF_ERROR(_convert_to_single_partition());
+    if (_partition_num > 1) {
+        if (hash_table_row_count() < _partition_join_min_rows) {
+            RETURN_IF_ERROR(_convert_to_single_partition());
+        } else {
+            const size_t new_partition_num = compute_min_ge_power2(hash_table_row_count() / _partition_join_min_rows);
+            if (new_partition_num < _partition_num) {
+                RETURN_IF_ERROR(_shrink_partition(new_partition_num));
+            }
+        }
     }
 
     for (auto& builder : _builders) {
