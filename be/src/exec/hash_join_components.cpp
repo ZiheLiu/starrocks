@@ -754,7 +754,8 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
         if (hash_table_row_count() < _partition_join_min_rows) {
             RETURN_IF_ERROR(_convert_to_single_partition());
         } else {
-            const size_t new_partition_num = compute_min_ge_power2(hash_table_row_count() / _partition_join_min_rows);
+            const size_t new_partition_num =
+                    pipeline::compute_max_le_power2(hash_table_row_count() / _partition_join_min_rows);
             if (new_partition_num < _partition_num) {
                 RETURN_IF_ERROR(_shrink_partition(new_partition_num));
             }
