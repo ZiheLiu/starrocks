@@ -634,6 +634,7 @@ Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition() {
     }
     _builders.resize(1);
     _partition_num = 1;
+    COUNTER_SET(_hash_joiner.build_metrics().partition_nums, (int64_t)_partition_num);
     return Status::OK();
 }
 
@@ -644,6 +645,7 @@ Status AdaptivePartitionHashJoinBuilder::_shrink_partition(size_t new_partition_
     }
     _builders.resize(new_partition_num);
     _partition_num = new_partition_num;
+    COUNTER_SET(_hash_joiner.build_metrics().partition_nums, (int64_t)_partition_num);
     return Status::OK();
 }
 
