@@ -242,8 +242,8 @@ Status PartitionedHashJoinProberImpl::push_probe_chunk(RuntimeState* state, Chun
     }
 
     for (int32_t i = chunk->num_rows() - 1; i >= 0; --i) {
-        selection[channel_row_idx_start_points[partitions[i]] - 1] = i;
-        channel_row_idx_start_points[partitions[i]]--;
+        const int32_t pos = --channel_row_idx_start_points[partitions[i]];
+        selection[pos] = i;
     }
     _partition_input_channels.resize(num_partitions, PartitionChunkChannel(&_mem_tracker));
 
@@ -258,11 +258,18 @@ Status PartitionedHashJoinProberImpl::push_probe_chunk(RuntimeState* state, Chun
             _partition_input_channels[i].push(chunk->clone_empty());
         }
 
-        if (_partition_input_channels[i].back()->num_rows() + size <= 4096) {
-            _partition_input_channels[i].back()->append_selective(*chunk, selection.data(), from, size);
-        } else {
+        const size_t cur_num_rows = _partition_input_channels[i].back()->num_rows();
+        if (cur_num_rows >= 4096) {
             _partition_input_channels[i].push(chunk->clone_empty());
             _partition_input_channels[i].back()->append_selective(*chunk, selection.data(), from, size);
+        } else {
+            const size_t part1_size = std::min<size_t>(size, 4096 - cur_num_rows);
+            _partition_input_channels[i].back()->append_selective(*chunk, selection.data(), from, part1_size);
+            if (part1_size < size) {
+                _partition_input_channels[i].push(chunk->clone_empty());
+                _partition_input_channels[i].back()->append_selective(*chunk, selection.data(), from + part1_size,
+                                                                      size - part1_size);
+            }
         }
 
         if (_partition_input_channels[i].is_full()) {
@@ -754,8 +761,7 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
         if (hash_table_row_count() < _partition_join_min_rows) {
             RETURN_IF_ERROR(_convert_to_single_partition());
         } else {
-            const size_t new_partition_num =
-                    pipeline::compute_max_le_power2(hash_table_row_count() / _partition_join_min_rows);
+            const size_t new_partition_num = compute_min_ge_power2(hash_table_row_count() / _partition_join_min_rows);
             if (new_partition_num < _partition_num) {
                 RETURN_IF_ERROR(_shrink_partition(new_partition_num));
             }
