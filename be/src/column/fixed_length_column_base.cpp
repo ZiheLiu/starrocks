@@ -42,9 +42,9 @@ void FixedLengthColumnBase<T>::append(const Column& src, size_t offset, size_t c
 template <typename T>
 void FixedLengthColumnBase<T>::append_selective(const Column& src, const uint32_t* indexes, uint32_t from,
                                                 uint32_t size) {
+    const size_t orig_size = _data.size();
+    raw::stl_vector_resize_uninitialized(&_data, orig_size + size);
     const T* src_data = reinterpret_cast<const T*>(src.raw_data());
-    size_t orig_size = _data.size();
-    _data.resize(orig_size + size);
     for (size_t i = 0; i < size; ++i) {
         _data[orig_size + i] = src_data[indexes[from + i]];
     }
@@ -54,7 +54,7 @@ template <typename T>
 void FixedLengthColumnBase<T>::append_value_multiple_times(const Column& src, uint32_t index, uint32_t size) {
     const T* src_data = reinterpret_cast<const T*>(src.raw_data());
     size_t orig_size = _data.size();
-    _data.resize(orig_size + size);
+    raw::stl_vector_resize_uninitialized(&_data, orig_size + size);
     for (size_t i = 0; i < size; ++i) {
         _data[orig_size + i] = src_data[index];
     }
