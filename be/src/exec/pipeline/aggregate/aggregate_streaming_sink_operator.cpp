@@ -213,8 +213,8 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
         size_t hit_count = SIMD::count_zero(_aggregator->streaming_selection());
         if (_auto_context.adjust_count < continuous_limit &&
             ((_auto_context.is_high_reduction(hit_count, chunk_size) && allocated_bytes < AggrAutoContext::MaxHtSize) ||
-             _aggregator->num_input_rows() - _aggregator->num_rows_returned() >=
-                     2 * _aggregator->hash_map_variant().size())) {
+             _aggregator->should_expand_preagg_hash_tables(_aggregator->num_input_rows(), 0, allocated_bytes,
+                                                           _aggregator->hash_map_variant().size()))) {
             RETURN_IF_ERROR(_push_chunk_by_force_preaggregation(chunk, chunk_size));
 
             _auto_context.preagg_count++;
@@ -307,9 +307,8 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
         const auto limit = _auto_state == AggrAutoState::FORCE_PREAGG ? AggrAutoContext::ForcePreaggLimit
                                                                       : AggrAutoContext::PreaggLimit;
         if (_auto_context.preagg_count > limit) {
-            const int64_t agg_num_rows = _aggregator->num_input_rows() - _aggregator->num_rows_returned();
-            const int64_t ht_size = _aggregator->hash_map_variant().size();
-            const bool ht_high_reduce = agg_num_rows >= 2 * ht_size;
+            const bool ht_high_reduce = _aggregator->should_expand_preagg_hash_tables(
+                    _aggregator->num_input_rows(), 0, allocated_bytes, _aggregator->hash_map_variant().size());
             if (ht_high_reduce) {
                 _auto_state = AggrAutoState::PREAGG;
                 _auto_context.preagg_count = 0;
