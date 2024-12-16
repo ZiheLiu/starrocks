@@ -211,29 +211,10 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
         }
 
         size_t hit_count = SIMD::count_zero(_aggregator->streaming_selection());
-        if (_auto_context.adjust_count < continuous_limit && _auto_context.is_low_reduction(hit_count, chunk_size)) {
-            RETURN_IF_ERROR(_push_chunk_by_force_streaming(chunk));
-            _auto_context.pass_through_count++;
-            _auto_context.preagg_count = 0;
-            _auto_context.selective_preagg_count = 0;
-            if (_auto_context.pass_through_count == AggrAutoContext::StableLimit) {
-                _auto_state = AggrAutoState::PASS_THROUGH;
-                VLOG_ROW << "auto agg [ADJUST]: continuous " << AggrAutoContext::StableLimit << " low reduction "
-                         << hit_count * 1.0 / chunk_size << " "
-                         << _auto_context.get_auto_state_string(AggrAutoState::ADJUST) << " -> "
-                         << _auto_context.get_auto_state_string(_auto_state)
-                         << " [reduction=" << hit_count * 1.0 / chunk_size << "] "
-                         << "[hit_count=" << hit_count << "] "
-                         << "[num_rows=" << chunk_size << "] "
-                         << " [allocated_bytes=" << allocated_bytes << "] "
-                         << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
-                         << "] "
-                         << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
-            }
-
-        } else if (_auto_context.adjust_count < continuous_limit &&
-                   _auto_context.is_high_reduction(hit_count, chunk_size) &&
-                   allocated_bytes < AggrAutoContext::MaxHtSize) {
+        if (_auto_context.adjust_count < continuous_limit &&
+            ((_auto_context.is_high_reduction(hit_count, chunk_size) && allocated_bytes < AggrAutoContext::MaxHtSize) ||
+             _aggregator->num_input_rows() - _aggregator->num_rows_returned() >=
+                     2 * _aggregator->hash_map_variant().size())) {
             RETURN_IF_ERROR(_push_chunk_by_force_preaggregation(chunk, chunk_size));
 
             _auto_context.preagg_count++;
@@ -253,8 +234,28 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
                          << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
                          << "] "
                          << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
-                ;
             }
+        } else if (_auto_context.adjust_count < continuous_limit &&
+                   _auto_context.is_low_reduction(hit_count, chunk_size)) {
+            RETURN_IF_ERROR(_push_chunk_by_force_streaming(chunk));
+            _auto_context.pass_through_count++;
+            _auto_context.preagg_count = 0;
+            _auto_context.selective_preagg_count = 0;
+            if (_auto_context.pass_through_count == AggrAutoContext::StableLimit) {
+                _auto_state = AggrAutoState::PASS_THROUGH;
+                VLOG_ROW << "auto agg [ADJUST]: continuous " << AggrAutoContext::StableLimit << " low reduction "
+                         << hit_count * 1.0 / chunk_size << " "
+                         << _auto_context.get_auto_state_string(AggrAutoState::ADJUST) << " -> "
+                         << _auto_context.get_auto_state_string(_auto_state)
+                         << " [reduction=" << hit_count * 1.0 / chunk_size << "] "
+                         << "[hit_count=" << hit_count << "] "
+                         << "[num_rows=" << chunk_size << "] "
+                         << " [allocated_bytes=" << allocated_bytes << "] "
+                         << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                         << "] "
+                         << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
+            }
+
         } else {
             RETURN_IF_ERROR(_push_chunk_by_selective_preaggregation(chunk, chunk_size, false));
             _auto_context.selective_preagg_count++;
@@ -311,6 +312,7 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             const bool ht_high_reduce = agg_num_rows >= 2 * ht_size;
             if (ht_high_reduce) {
                 _auto_state = AggrAutoState::PREAGG;
+                _auto_context.preagg_count = 0;
             } else {
                 auto current_state = _auto_context.get_auto_state_string(_auto_state);
                 _auto_state = AggrAutoState::ADJUST;
