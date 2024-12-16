@@ -194,8 +194,13 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
         } else {
             _auto_state = AggrAutoState::ADJUST;
             _auto_context.adjust_count = 0;
-            VLOG_ROW << "auto agg: " << _auto_context.get_auto_state_string(AggrAutoState::INIT_PREAGG) << " "
-                     << _auto_context.init_preagg_count << " -> " << _auto_context.get_auto_state_string(_auto_state);
+            VLOG_ROW << "auto agg [INIT_PREAGG]: " << _auto_context.get_auto_state_string(AggrAutoState::INIT_PREAGG)
+                     << " " << _auto_context.init_preagg_count << " -> "
+                     << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
+                     << "] "
+                     << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                     << "] "
+                     << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
         }
     }
     case AggrAutoState::ADJUST: {
@@ -213,10 +218,17 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_context.selective_preagg_count = 0;
             if (_auto_context.pass_through_count == AggrAutoContext::StableLimit) {
                 _auto_state = AggrAutoState::PASS_THROUGH;
-                VLOG_ROW << "auto agg: continuous " << AggrAutoContext::StableLimit << " low reduction "
+                VLOG_ROW << "auto agg [ADJUST]: continuous " << AggrAutoContext::StableLimit << " low reduction "
                          << hit_count * 1.0 / chunk_size << " "
                          << _auto_context.get_auto_state_string(AggrAutoState::ADJUST) << " -> "
-                         << _auto_context.get_auto_state_string(_auto_state);
+                         << _auto_context.get_auto_state_string(_auto_state)
+                         << " [reduction=" << hit_count * 1.0 / chunk_size << "] "
+                         << "[hit_count=" << hit_count << "] "
+                         << "[num_rows=" << chunk_size << "] "
+                         << " [allocated_bytes=" << allocated_bytes << "] "
+                         << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                         << "] "
+                         << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
             }
 
         } else if (_auto_context.adjust_count < continuous_limit &&
@@ -230,10 +242,18 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             if (_auto_context.preagg_count == AggrAutoContext::StableLimit) {
                 _auto_state = AggrAutoState::PREAGG;
                 _auto_context.preagg_count = 0;
-                VLOG_ROW << "auto agg: continuous " << AggrAutoContext::StableLimit << " high reduction "
+                VLOG_ROW << "auto agg [ADJUST]: continuous " << AggrAutoContext::StableLimit << " high reduction "
                          << hit_count * 1.0 / chunk_size << " "
                          << _auto_context.get_auto_state_string(AggrAutoState::ADJUST) << " -> "
-                         << _auto_context.get_auto_state_string(_auto_state);
+                         << _auto_context.get_auto_state_string(_auto_state)
+                         << " [reduction=" << hit_count * 1.0 / chunk_size << "] "
+                         << "[hit_count=" << hit_count << "] "
+                         << "[num_rows=" << chunk_size << "] "
+                         << " [allocated_bytes=" << allocated_bytes << "] "
+                         << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                         << "] "
+                         << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
+                ;
             }
         } else {
             RETURN_IF_ERROR(_push_chunk_by_selective_preaggregation(chunk, chunk_size, false));
@@ -242,9 +262,17 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_context.preagg_count = 0;
             if (_auto_context.selective_preagg_count == AggrAutoContext::StableLimit) {
                 _auto_state = AggrAutoState::SELECTIVE_PREAGG;
-                VLOG_ROW << "auto agg: continuous " << AggrAutoContext::StableLimit << " "
-                         << _auto_context.get_auto_state_string(AggrAutoState::ADJUST)
-                         << _auto_context.get_auto_state_string(_auto_state);
+                VLOG_ROW << "auto agg [ADJUST]: continuous " << AggrAutoContext::StableLimit << " "
+                         << _auto_context.get_auto_state_string(AggrAutoState::ADJUST) << " -> "
+                         << _auto_context.get_auto_state_string(_auto_state)
+                         << "[reduction=" << hit_count * 1.0 / chunk_size << "] "
+                         << "[hit_count=" << hit_count << "] "
+                         << "[num_rows=" << chunk_size << "] "
+                         << " [allocated_bytes=" << allocated_bytes << "] "
+                         << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                         << "] "
+                         << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
+                ;
             }
         }
         break;
@@ -259,9 +287,14 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_context.preagg_count = 0;
             _auto_context.adjust_count = 0;
 
-            VLOG_ROW << "auto agg: continuous " << continuous_limit << " "
+            VLOG_ROW << "auto agg [PASS_THROUGH]: continuous " << continuous_limit << " "
                      << _auto_context.get_auto_state_string(AggrAutoState::PASS_THROUGH) << " -> "
-                     << _auto_context.get_auto_state_string(_auto_state);
+                     << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
+                     << "] "
+                     << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                     << "] "
+                     << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
+            ;
             _auto_context.update_continuous_limit();
         }
         break;
@@ -277,8 +310,13 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_state = AggrAutoState::ADJUST;
             _auto_context.preagg_count = 0;
             _auto_context.adjust_count = 0;
-            VLOG_ROW << "auto agg: continuous " << AggrAutoContext::PreaggLimit << " " << current_state << " -> "
-                     << _auto_context.get_auto_state_string(_auto_state);
+            VLOG_ROW << "auto agg [PREAGG]: continuous " << AggrAutoContext::PreaggLimit << " " << current_state
+                     << " -> " << _auto_context.get_auto_state_string(_auto_state)
+                     << " [allocated_bytes=" << allocated_bytes << "] "
+                     << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                     << "] "
+                     << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
+            ;
         }
         break;
     }
@@ -289,9 +327,14 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_state = AggrAutoState::ADJUST;
             _auto_context.selective_preagg_count = 0;
             _auto_context.adjust_count = 0;
-            VLOG_ROW << "auto agg: continuous " << continuous_limit << " "
+            VLOG_ROW << "auto agg [SELECTIVE_PREAGG]: continuous " << continuous_limit << " "
                      << _auto_context.get_auto_state_string(AggrAutoState::SELECTIVE_PREAGG) << " -> "
-                     << _auto_context.get_auto_state_string(_auto_state);
+                     << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
+                     << "] "
+                     << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                     << "] "
+                     << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
+            ;
             _auto_context.update_continuous_limit();
         }
         break;
