@@ -194,10 +194,10 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
         } else {
             _auto_state = AggrAutoState::ADJUST;
             _auto_context.adjust_count = 0;
-            VLOG_ROW << "auto agg [INIT_PREAGG]: " << _auto_context.get_auto_state_string(AggrAutoState::INIT_PREAGG)
-                     << " " << _auto_context.init_preagg_count << " -> "
-                     << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
-                     << "] "
+            VLOG_ROW << "auto agg " << _id
+                     << " [INIT_PREAGG]: " << _auto_context.get_auto_state_string(AggrAutoState::INIT_PREAGG) << " "
+                     << _auto_context.init_preagg_count << " -> " << _auto_context.get_auto_state_string(_auto_state)
+                     << " [allocated_bytes=" << allocated_bytes << "] "
                      << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
                      << "] "
                      << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
@@ -243,8 +243,8 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_context.selective_preagg_count = 0;
             if (_auto_context.pass_through_count == AggrAutoContext::StableLimit) {
                 _auto_state = AggrAutoState::PASS_THROUGH;
-                VLOG_ROW << "auto agg [ADJUST]: continuous " << AggrAutoContext::StableLimit << " low reduction "
-                         << hit_count * 1.0 / chunk_size << " "
+                VLOG_ROW << "auto agg " << _id << " [ADJUST]: continuous " << AggrAutoContext::StableLimit
+                         << " low reduction " << hit_count * 1.0 / chunk_size << " "
                          << _auto_context.get_auto_state_string(AggrAutoState::ADJUST) << " -> "
                          << _auto_context.get_auto_state_string(_auto_state)
                          << " [reduction=" << hit_count * 1.0 / chunk_size << "] "
@@ -263,7 +263,7 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_context.preagg_count = 0;
             if (_auto_context.selective_preagg_count == AggrAutoContext::StableLimit) {
                 _auto_state = AggrAutoState::SELECTIVE_PREAGG;
-                VLOG_ROW << "auto agg [ADJUST]: continuous " << AggrAutoContext::StableLimit << " "
+                VLOG_ROW << "auto agg " << _id << " [ADJUST]: continuous " << AggrAutoContext::StableLimit << " "
                          << _auto_context.get_auto_state_string(AggrAutoState::ADJUST) << " -> "
                          << _auto_context.get_auto_state_string(_auto_state)
                          << "[reduction=" << hit_count * 1.0 / chunk_size << "] "
@@ -288,7 +288,7 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_context.preagg_count = 0;
             _auto_context.adjust_count = 0;
 
-            VLOG_ROW << "auto agg [PASS_THROUGH]: continuous " << continuous_limit << " "
+            VLOG_ROW << "auto agg " << _id << " [PASS_THROUGH]: continuous " << continuous_limit << " "
                      << _auto_context.get_auto_state_string(AggrAutoState::PASS_THROUGH) << " -> "
                      << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
                      << "] "
@@ -318,7 +318,7 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
                 _auto_state = AggrAutoState::ADJUST;
                 _auto_context.preagg_count = 0;
                 _auto_context.adjust_count = 0;
-                VLOG_ROW << "auto agg [PREAGG]: continuous " << limit << " " << current_state << " -> "
+                VLOG_ROW << "auto agg " << _id << " [PREAGG]: continuous " << limit << " " << current_state << " -> "
                          << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
                          << "] "
                          << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
@@ -335,7 +335,7 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
             _auto_state = AggrAutoState::ADJUST;
             _auto_context.selective_preagg_count = 0;
             _auto_context.adjust_count = 0;
-            VLOG_ROW << "auto agg [SELECTIVE_PREAGG]: continuous " << continuous_limit << " "
+            VLOG_ROW << "auto agg " << _id << " [SELECTIVE_PREAGG]: continuous " << continuous_limit << " "
                      << _auto_context.get_auto_state_string(AggrAutoState::SELECTIVE_PREAGG) << " -> "
                      << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
                      << "] "
