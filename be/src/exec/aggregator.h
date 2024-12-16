@@ -197,8 +197,8 @@ struct StreamingHtMinReductionEntry {
 
 static const StreamingHtMinReductionEntry STREAMING_HT_MIN_REDUCTION[] = {
         {0, 0.0},
-        {256 * 1024, 1.1},
-        {2 * 1024 * 1024, 2.0},
+        {1 * 1024 * 1024, 1.1},
+        {32 * 1024 * 1024, 2.0},
 };
 
 static const int STREAMING_HT_MIN_REDUCTION_SIZE =
