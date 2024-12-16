@@ -303,20 +303,26 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
     case AggrAutoState::PREAGG: {
         RETURN_IF_ERROR(_push_chunk_by_force_preaggregation(chunk, chunk_size));
         _auto_context.preagg_count++;
-        auto limit = _auto_state == AggrAutoState::FORCE_PREAGG ? AggrAutoContext::ForcePreaggLimit
-                                                                : AggrAutoContext::PreaggLimit;
+        const auto limit = _auto_state == AggrAutoState::FORCE_PREAGG ? AggrAutoContext::ForcePreaggLimit
+                                                                      : AggrAutoContext::PreaggLimit;
         if (_auto_context.preagg_count > limit) {
-            auto current_state = _auto_context.get_auto_state_string(_auto_state);
-            _auto_state = AggrAutoState::ADJUST;
-            _auto_context.preagg_count = 0;
-            _auto_context.adjust_count = 0;
-            VLOG_ROW << "auto agg [PREAGG]: continuous " << AggrAutoContext::PreaggLimit << " " << current_state
-                     << " -> " << _auto_context.get_auto_state_string(_auto_state)
-                     << " [allocated_bytes=" << allocated_bytes << "] "
-                     << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
-                     << "] "
-                     << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
-            ;
+            const int64_t agg_num_rows = _aggregator->num_input_rows() - _aggregator->num_rows_returned();
+            const int64_t ht_size = _aggregator->hash_map_variant().size();
+            const bool ht_high_reduce = agg_num_rows >= 2 * ht_size;
+            if (ht_high_reduce) {
+                _auto_state = AggrAutoState::PREAGG;
+            } else {
+                auto current_state = _auto_context.get_auto_state_string(_auto_state);
+                _auto_state = AggrAutoState::ADJUST;
+                _auto_context.preagg_count = 0;
+                _auto_context.adjust_count = 0;
+                VLOG_ROW << "auto agg [PREAGG]: continuous " << limit << " " << current_state << " -> "
+                         << _auto_context.get_auto_state_string(_auto_state) << " [allocated_bytes=" << allocated_bytes
+                         << "] "
+                         << "[rows=" << _aggregator->num_input_rows() - chunk_size - _aggregator->num_rows_returned()
+                         << "] "
+                         << "[ht_size=" << _aggregator->hash_map_variant().size() << "]";
+            }
         }
         break;
     }
