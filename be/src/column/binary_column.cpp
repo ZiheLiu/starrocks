@@ -75,24 +75,32 @@ void BinaryColumnBase<T>::append_selective(const Column& src, const uint32_t* in
     const auto& src_offsets = src_column.get_offset();
     const auto& src_bytes = src_column.get_bytes();
 
-    size_t cur_row_count = _offsets.size() - 1;
+    const size_t cur_row_count = _offsets.size() - 1;
     size_t cur_byte_size = _bytes.size();
 
     _offsets.resize(cur_row_count + size + 1);
     for (size_t i = 0; i < size; i++) {
         uint32_t row_idx = indexes[from + i];
         T str_size = src_offsets[row_idx + 1] - src_offsets[row_idx];
-        _offsets[cur_row_count + i + 1] = _offsets[cur_row_count + i] + str_size;
         cur_byte_size += str_size;
+        _offsets[cur_row_count + i + 1] = cur_byte_size;
     }
     _bytes.resize(cur_byte_size);
 
     auto* dest_bytes = _bytes.data();
-    for (size_t i = 0; i < size; i++) {
-        uint32_t row_idx = indexes[from + i];
-        T str_size = src_offsets[row_idx + 1] - src_offsets[row_idx];
-        strings::memcpy_inlined(dest_bytes + _offsets[cur_row_count + i], src_bytes.data() + src_offsets[row_idx],
+    for (size_t i = 0; i < size;) {
+        size_t j;
+        // See whether j+1 is continuous
+        for (j = i; j + 1 < size && indexes[from + j] + 1 == indexes[from + j + 1]; j++) {
+        }
+        const uint32_t row_idx_begin = indexes[from + i];
+        const uint32_t row_idx_end = indexes[from + j];
+
+        const T str_size = src_offsets[row_idx_end + 1] - src_offsets[row_idx_begin];
+        strings::memcpy_inlined(dest_bytes + _offsets[cur_row_count + i], src_bytes.data() + src_offsets[row_idx_begin],
                                 str_size);
+
+        i = j + 1;
     }
 
     _slices_cache = false;
