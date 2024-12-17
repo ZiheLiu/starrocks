@@ -467,6 +467,7 @@ Status DataStreamRecvr::PipelineSenderQueue::get_chunk(Chunk** chunk, const int3
             COUNTER_UPDATE(metrics.closure_block_timer, MonotonicNanos() - item.queue_enter_time);
             closure->Run();
             chunk_queue_state.blocked_closure_num--;
+            _num_blocked_closures--;
         }
     });
 
@@ -515,6 +516,7 @@ bool DataStreamRecvr::PipelineSenderQueue::try_get_chunk(Chunk** chunk) {
         COUNTER_UPDATE(metrics.closure_block_timer, MonotonicNanos() - item.queue_enter_time);
         closure->Run();
         chunk_queue_state.blocked_closure_num--;
+        _num_blocked_closures--;
     }
     _total_chunks--;
     _recvr->_num_buffered_bytes -= item.chunk_bytes;
@@ -572,6 +574,7 @@ void DataStreamRecvr::PipelineSenderQueue::clean_buffer_queues() {
                     COUNTER_UPDATE(metrics.closure_block_timer, MonotonicNanos() - item.queue_enter_time);
                     item.closure->Run();
                     chunk_queue_state.blocked_closure_num--;
+                    _num_blocked_closures--;
                 }
                 --_total_chunks;
                 _recvr->_num_buffered_bytes -= item.chunk_bytes;
@@ -773,6 +776,7 @@ Status DataStreamRecvr::PipelineSenderQueue::add_chunks(const PTransmitChunkPara
                 auto* closure = item.closure;
                 _chunk_queues[0].enqueue(*_producer_token, std::move(item));
                 _chunk_queue_states[0].blocked_closure_num += closure != nullptr;
+                _num_blocked_closures += closure != nullptr;
                 _total_chunks++;
                 _recvr->_num_buffered_bytes += chunk_bytes;
                 COUNTER_ADD(metrics.peak_buffer_mem_bytes, chunk_bytes);
@@ -811,6 +815,7 @@ Status DataStreamRecvr::PipelineSenderQueue::add_chunks(const PTransmitChunkPara
             auto* closure = chunk.closure;
             _chunk_queues[index].enqueue(std::move(chunk));
             _chunk_queue_states[index].blocked_closure_num += closure != nullptr;
+            _num_blocked_closures += closure != nullptr;
             _total_chunks++;
             // Double check here for short circuit compatibility without introducing a critical section
             if (_chunk_queue_states[index].is_short_circuited.load(std::memory_order_relaxed)) {
@@ -844,6 +849,7 @@ void DataStreamRecvr::PipelineSenderQueue::short_circuit(const int32_t driver_se
                     COUNTER_UPDATE(metrics.closure_block_timer, MonotonicNanos() - item.queue_enter_time);
                     item.closure->Run();
                     chunk_queue_state.blocked_closure_num--;
+                    _num_blocked_closures--;
                 }
                 --_total_chunks;
                 _recvr->_num_buffered_bytes -= item.chunk_bytes;
@@ -890,7 +896,7 @@ bool DataStreamRecvr::PipelineSenderQueue::has_output(const int32_t driver_seque
         return chunk_num > 0;
     }
     // 5. if this queue has blocked closures, return true to release the closure ASAP to trigger the next transmit requests
-    return chunk_queue_state.blocked_closure_num > 0;
+    return chunk_queue_state.blocked_closure_num > 0 && _num_blocked_closures >= _num_remaining_senders;
 }
 
 bool DataStreamRecvr::PipelineSenderQueue::is_finished() const {

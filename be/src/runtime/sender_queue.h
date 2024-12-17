@@ -230,6 +230,7 @@ private:
 
     std::atomic<bool> _is_cancelled{false};
     std::atomic<int> _num_remaining_senders;
+    std::atomic<int> _num_blocked_closures{0};
 
     typedef SpinLock Mutex;
     Mutex _lock;
