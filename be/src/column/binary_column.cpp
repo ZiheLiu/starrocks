@@ -592,6 +592,15 @@ void BinaryColumnBase<T>::deserialize_and_append_batch(Buffer<Slice>& srcs, size
 }
 
 template <typename T>
+void BinaryColumnBase<T>::deserialize_and_append_batch_nullable(Buffer<Slice>& srcs, size_t chunk_size,
+                                                                Buffer<uint8_t>& is_nulls, bool& has_null) override {
+    const uint32_t string_size = *((bool*)srcs[0].data) ? 4 : *((uint32_t*)(srcs[0].data + sizeof(bool)));
+    _bytes.reserve(chunk_size * string_size * 2);
+    ColumnFactory<Column, BinaryColumnBase<T>>::deserialize_and_append_batch_nullable(srcs, chunk_size, is_nulls,
+                                                                                      has_null);
+}
+
+template <typename T>
 void BinaryColumnBase<T>::fnv_hash(uint32_t* hashes, uint32_t from, uint32_t to) const {
     for (uint32_t i = from; i < to; ++i) {
         hashes[i] = HashUtil::fnv_hash(_bytes.data() + _offsets[i],

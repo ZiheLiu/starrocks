@@ -17,6 +17,7 @@
 #include <fmt/format.h>
 
 #include "common/statusor.h"
+#include "util/slice.h"
 
 namespace starrocks {
 
@@ -38,6 +39,24 @@ void Column::serialize_batch_with_null_masks(uint8_t* dst, Buffer<uint32_t>& sli
             if (!null_masks[i]) {
                 sizes[i] += serialize(i, dst + i * max_one_row_size + sizes[i]);
             }
+        }
+    }
+}
+
+void Column::deserialize_and_append_batch_nullable(Buffer<Slice>& srcs, size_t chunk_size, Buffer<uint8_t>& is_nulls,
+                                                   bool& has_null) {
+    is_nulls.reserve(is_nulls.size() + chunk_size);
+    for (size_t i = 0; i < chunk_size; ++i) {
+        bool null;
+        memcpy(&null, srcs[i].data, sizeof(bool));
+        srcs[i].data += sizeof(bool);
+        is_nulls.emplace_back(null);
+
+        if (null == 0) {
+            srcs[i].data = (char*)deserialize_and_append((uint8_t*)srcs[i].data);
+        } else {
+            has_null = true;
+            append_default();
         }
     }
 }
