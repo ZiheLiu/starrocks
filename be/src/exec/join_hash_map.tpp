@@ -292,6 +292,17 @@ void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashT
     for (size_t i = 0; i < probe_row_count; i++) {
         probe_state->next[i] = table_items.first[probe_state->buckets[i]];
     }
+
+    if (table_items.used_buckets == table_items.row_count) {
+        probe_state->no_conflicts = true;
+    } else {
+        bool no_conflicts = true;
+        for (size_t i = 0; i < probe_row_count; i++) {
+            no_conflicts &= table_items.next[probe_state->next[i]] == 0;
+        }
+        probe_state->no_conflicts = no_conflicts;
+    }
+
     probe_state->consider_probe_time_locality();
     probe_state->null_array = nullptr;
 }
@@ -1031,28 +1042,16 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
 
     [[maybe_unused]] size_t probe_cont = 0;
 
-    size_t probe_row_count = _probe_state->probe_row_count;
-    for (; i < probe_row_count; i++) {
-        if constexpr (first_probe) {
-            _probe_state->probe_match_filter[i] = 0;
-        }
-        size_t build_index = _probe_state->next[i];
-        if (build_index != 0) {
-            if (_table_items->used_buckets == _table_items->row_count) {
-                if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
-                    _probe_state->probe_index[match_count] = i;
-                    _probe_state->build_index[match_count] = build_index;
-                    match_count++;
+    const size_t probe_row_count = _probe_state->probe_row_count;
 
-                    if constexpr (first_probe) {
-                        _probe_state->cur_row_match_count++;
-                        _probe_state->probe_match_filter[i] = 1;
-                    }
-                    RETURN_IF_CHUNK_FULL()
-                }
-                probe_cont++;
-            } else {
-                do {
+    auto process = [&]<bool no_conflicts> {
+        for (; i < probe_row_count; i++) {
+            if constexpr (first_probe) {
+                _probe_state->probe_match_filter[i] = 0;
+            }
+            size_t build_index = _probe_state->next[i];
+            if (build_index != 0) {
+                if constexpr (no_conflicts) {
                     if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
                         _probe_state->probe_index[match_count] = i;
                         _probe_state->build_index[match_count] = build_index;
@@ -1065,29 +1064,50 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
                         RETURN_IF_CHUNK_FULL()
                     }
                     probe_cont++;
-                    auto next_index = _table_items->next[build_index];
-                    build_index = next_index;
-                } while (build_index != 0);
+                } else {
+                    do {
+                        if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                            _probe_state->probe_index[match_count] = i;
+                            _probe_state->build_index[match_count] = build_index;
+                            match_count++;
+
+                            if constexpr (first_probe) {
+                                _probe_state->cur_row_match_count++;
+                                _probe_state->probe_match_filter[i] = 1;
+                            }
+                            RETURN_IF_CHUNK_FULL()
+                        }
+                        probe_cont++;
+                        auto next_index = _table_items->next[build_index];
+                        build_index = next_index;
+                    } while (build_index != 0);
+                }
+
+                if constexpr (first_probe) {
+                    if (_probe_state->cur_row_match_count > 1) {
+                        one_to_many = true;
+                    }
+                }
             }
 
             if constexpr (first_probe) {
-                if (_probe_state->cur_row_match_count > 1) {
-                    one_to_many = true;
-                }
+                _probe_state->cur_row_match_count = 0;
             }
         }
 
+        // COUNTER_UPDATE(_probe_state->probe_counter, probe_cont);
+
         if constexpr (first_probe) {
-            _probe_state->cur_row_match_count = 0;
+            CHECK_MATCH()
         }
-    }
+        PROBE_OVER()
+    };
 
-    // COUNTER_UPDATE(_probe_state->probe_counter, probe_cont);
-
-    if constexpr (first_probe) {
-        CHECK_MATCH()
+    if (_probe_state->no_conflicts) {
+        process.template operator()<true>();
+    } else {
+        process.template operator()<false>();
     }
-    PROBE_OVER()
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
@@ -1194,48 +1214,73 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
         }
     }
 
-    size_t probe_row_count = _probe_state->probe_row_count;
-    for (; i < probe_row_count; i++) {
-        size_t build_index = _probe_state->next[i];
-        if (build_index == 0) {
-            _probe_state->probe_index[match_count] = i;
-            _probe_state->build_index[match_count] = 0;
-            match_count++;
-
-            RETURN_IF_CHUNK_FULL()
-        } else {
-            while (build_index != 0) {
-                if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
-                    _probe_state->probe_index[match_count] = i;
-                    _probe_state->build_index[match_count] = build_index;
-                    match_count++;
-                    _probe_state->cur_row_match_count++;
-
-                    RETURN_IF_CHUNK_FULL()
-                }
-                build_index = _table_items->next[build_index];
-            }
-            if (_probe_state->cur_row_match_count <= 0) {
-                // one key of left table match none key of right table
+    const size_t probe_row_count = _probe_state->probe_row_count;
+    auto process = [&]<bool no_conflicts> {
+        for (; i < probe_row_count; i++) {
+            size_t build_index = _probe_state->next[i];
+            if (build_index == 0) {
                 _probe_state->probe_index[match_count] = i;
                 _probe_state->build_index[match_count] = 0;
                 match_count++;
 
                 RETURN_IF_CHUNK_FULL()
-            } else if (_probe_state->cur_row_match_count > 1) {
-                // one key of left table match multi key of right table
-                if constexpr (first_probe) {
-                    one_to_many = true;
+            } else {
+                if constexpr (no_conflicts) {
+                    if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                        _probe_state->probe_index[match_count] = i;
+                        _probe_state->build_index[match_count] = build_index;
+                        match_count++;
+                        _probe_state->cur_row_match_count++;
+
+                        RETURN_IF_CHUNK_FULL()
+                    } else {
+                        // one key of left table match none key of right table
+                        _probe_state->probe_index[match_count] = i;
+                        _probe_state->build_index[match_count] = 0;
+                        match_count++;
+                    }
+                } else {
+                    while (build_index != 0) {
+                        if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                            _probe_state->probe_index[match_count] = i;
+                            _probe_state->build_index[match_count] = build_index;
+                            match_count++;
+                            _probe_state->cur_row_match_count++;
+
+                            RETURN_IF_CHUNK_FULL()
+                        }
+                        build_index = _table_items->next[build_index];
+                    }
+
+                    if (_probe_state->cur_row_match_count <= 0) {
+                        // one key of left table match none key of right table
+                        _probe_state->probe_index[match_count] = i;
+                        _probe_state->build_index[match_count] = 0;
+                        match_count++;
+
+                        RETURN_IF_CHUNK_FULL()
+                    } else if (_probe_state->cur_row_match_count > 1) {
+                        // one key of left table match multi key of right table
+                        if constexpr (first_probe) {
+                            one_to_many = true;
+                        }
+                    }
                 }
             }
+            _probe_state->cur_row_match_count = 0;
         }
-        _probe_state->cur_row_match_count = 0;
-    }
 
-    if constexpr (first_probe) {
-        CHECK_ALL_MATCH()
+        if constexpr (first_probe) {
+            CHECK_ALL_MATCH()
+        }
+        PROBE_OVER()
+    };
+
+    if (_probe_state->no_conflicts) {
+        process.template operator()<true>();
+    } else {
+        process.template operator()<false>();
     }
-    PROBE_OVER()
 }
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 HashTableProbeState::ProbeCoroutine JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(

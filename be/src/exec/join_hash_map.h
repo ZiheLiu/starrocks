@@ -187,6 +187,7 @@ struct HashTableProbeState {
     JoinMatchFlag match_flag = JoinMatchFlag::NORMAL; // all match one
 
     bool has_remain = false;
+    bool no_conflicts = false;
     // When one-to-many, one probe may not be able to probe all the data,
     // cur_probe_index records the position of the last probe
     uint32_t cur_probe_index = 0;
