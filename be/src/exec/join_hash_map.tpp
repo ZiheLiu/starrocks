@@ -1081,11 +1081,11 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
                         auto next_index = _table_items->next[build_index];
                         build_index = next_index;
                     } while (build_index != 0);
-                }
 
-                if constexpr (first_probe) {
-                    if (_probe_state->cur_row_match_count > 1) {
-                        one_to_many = true;
+                    if constexpr (first_probe) {
+                        if (_probe_state->cur_row_match_count > 1) {
+                            one_to_many = true;
+                        }
                     }
                 }
             }
@@ -1238,6 +1238,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
                         _probe_state->probe_index[match_count] = i;
                         _probe_state->build_index[match_count] = 0;
                         match_count++;
+
+                        RETURN_IF_CHUNK_FULL()
                     }
                 } else {
                     while (build_index != 0) {
