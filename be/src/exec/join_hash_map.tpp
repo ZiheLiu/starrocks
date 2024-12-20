@@ -1090,7 +1090,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
                     probe_cont += kBatchNums;
                 } else {
                     // Make each nibble only keep the highest bit 1, that is 0b1111 -> 0b1000.
-                    nibble_mask &= 0x8000'0x8000'0x8000'0x8000;
+                    is_not_emptys_mask &= 0x8000'0x8000'0x8000'0x8000;
                     for (; is_not_emptys_mask > 0; is_not_emptys_mask &= is_not_emptys_mask - 1) {
                         uint32_t index = __builtin_ctzll(is_not_emptys_mask) / 16;
 
