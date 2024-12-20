@@ -1034,7 +1034,7 @@ inline uint64_t get_nibble_mask(uint32x4_t values) {
     // vshrn_n_u16(values, 4) operates on each 16 bits. It right shifts 4 bits and then keeps the low 8 bits.
     // Therefore, 2 bytes of value can be compressed into 1 byte.
     // For example, 0x00'00 -> 0x00, 0xff'00 -> 0xf0, 0x00'ff -> 0x0f, 0xff'ff -> 0xff,
-    return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u64(vreinterpretq_u64_u32(values), 16)), 0);
+    return vget_lane_u64(vreinterpret_u64_u32(vshrn_n_u64(vreinterpretq_u64_u32(values), 16)), 0);
 }
 #endif
 
@@ -1090,7 +1090,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
                     probe_cont += kBatchNums;
                 } else {
                     // Make each nibble only keep the highest bit 1, that is 0b1111 -> 0b1000.
-                    is_not_emptys_mask &= 0x8000'0x8000'0x8000'0x8000ull;
+                    is_not_emptys_mask &= 0x8000'8000'8000'8000ull;
                     for (; is_not_emptys_mask > 0; is_not_emptys_mask &= is_not_emptys_mask - 1) {
                         uint32_t index = __builtin_ctzll(is_not_emptys_mask) / 16;
 
