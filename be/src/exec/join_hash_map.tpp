@@ -358,6 +358,20 @@ void FixedSizeJoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_ite
     } else {
         _probe_column(table_items, probe_state, data_columns);
     }
+
+    if (table_items.used_buckets == table_items.row_count) {
+        probe_state->no_conflicts = true;
+    } else {
+        bool no_conflicts = true;
+        for (size_t i = 0; i <  probe_state->probe_row_count; i++) {
+            no_conflicts &= table_items.next[probe_state->next[i]] == 0;
+        }
+        probe_state->no_conflicts = no_conflicts;
+        if (no_conflicts) {
+            COUNTER_UPDATE(probe_state->no_conflict_times, 1);
+        }
+    }
+
     probe_state->consider_probe_time_locality();
 }
 
