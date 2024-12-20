@@ -145,6 +145,7 @@ struct HashJoinProbeMetrics {
     RuntimeProfile::Counter* where_conjunct_evaluate_timer = nullptr;
     RuntimeProfile::Counter* output_build_column_timer = nullptr;
     RuntimeProfile::Counter* probe_counter = nullptr;
+    RuntimeProfile::Counter* no_conflict_times = nullptr;
     RuntimeProfile::Counter* partition_probe_overhead = nullptr;
 
     void prepare(RuntimeProfile* runtime_profile);

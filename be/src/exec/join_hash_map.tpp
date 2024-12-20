@@ -21,6 +21,11 @@
 #include "join_hash_map.h"
 #endif
 
+#if defined(__ARM_NEON) && defined(__aarch64__)
+#include <arm_acle.h>
+#include <arm_neon.h>
+#endif
+
 namespace starrocks {
 template <LogicalType LT>
 void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table_items) {
@@ -301,6 +306,9 @@ void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashT
             no_conflicts &= table_items.next[probe_state->next[i]] == 0;
         }
         probe_state->no_conflicts = no_conflicts;
+        if (no_conflicts) {
+            COUNTER_UPDATE(probe_state->no_conflict_times, 1);
+        }
     }
 
     probe_state->consider_probe_time_locality();
@@ -1021,6 +1029,15 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_coroutine(RuntimeState* state
     }
 }
 
+#if defined(__ARM_NEON) && defined(__aarch64__)
+inline uint64_t get_nibble_mask(uint32x4_t values) {
+    // vshrn_n_u16(values, 4) operates on each 16 bits. It right shifts 4 bits and then keeps the low 8 bits.
+    // Therefore, 2 bytes of value can be compressed into 1 byte.
+    // For example, 0x00'00 -> 0x00, 0xff'00 -> 0xf0, 0x00'ff -> 0x0f, 0xff'ff -> 0xff,
+    return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u64(vreinterpretq_u64_u32(values), 16)), 0);
+}
+#endif
+
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
@@ -1045,6 +1062,65 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
     const size_t probe_row_count = _probe_state->probe_row_count;
 
     auto process = [&]<bool no_conflicts> {
+        if constexpr (no_conflicts) {
+#if defined(__ARM_NEON) && defined(__aarch64__)
+            const uint32_t* next_data = _table_items->next.data();
+            constexpr size_t kBatchNums = 128 / (8 * sizeof(uint32_t));
+            while (i + kBatchNums < probe_row_count && match_count + kBatchNums < state->chunk_size()) {
+                const auto next_i = i + kBatchNums;
+                // is_not_emptys[i] = next_data[i] != 0 ? 0xFF : 0x00
+                const uint32x4_t is_not_emptys = vmvnq_u32(vceqzq_u32(vld1q_u32(next_data + i)));
+                uint64_t is_not_emptys_mask = get_nibble_mask(is_not_emptys);
+                if (is_not_emptys_mask == 0) {
+                    // Do nothing.
+                } else if (is_not_emptys_mask == 0xffff'ffff'ffff'ffffull) {
+                    for (int j = i; j < next_i; j++) {
+                        const size_t build_index = next_data[j];
+                        if (ProbeFunc().equal(build_data[build_index], probe_data[j])) {
+                            _probe_state->probe_index[match_count] = j;
+                            _probe_state->build_index[match_count] = build_index;
+                            match_count++;
+
+                            if constexpr (first_probe) {
+                                _probe_state->cur_row_match_count++;
+                                _probe_state->probe_match_filter[j] = 1;
+                            }
+                        }
+                    }
+                    probe_cont += kBatchNums;
+                } else {
+                    // Make each nibble only keep the highest bit 1, that is 0b1111 -> 0b1000.
+                    nibble_mask &= 0x8000'0x8000'0x8000'0x8000;
+                    for (; is_not_emptys_mask > 0; is_not_emptys_mask &= is_not_emptys_mask - 1) {
+                        uint32_t index = __builtin_ctzll(is_not_emptys_mask) / 16;
+
+                        const size_t build_index = next_data[index];
+                        if (ProbeFunc().equal(build_data[build_index], probe_data[index])) {
+                            _probe_state->probe_index[match_count] = index;
+                            _probe_state->build_index[match_count] = build_index;
+                            match_count++;
+
+                            if constexpr (first_probe) {
+                                _probe_state->cur_row_match_count++;
+                                _probe_state->probe_match_filter[index] = 1;
+                            }
+                        }
+
+                        probe_cont++;
+                    }
+                }
+
+                if constexpr (first_probe) {
+                    for (int j = i; j < next_i; j++) {
+                        _probe_state->probe_match_filter[j] = 0;
+                    }
+                }
+
+                i = next_i;
+            }
+#endif
+        }
+
         for (; i < probe_row_count; i++) {
             if constexpr (first_probe) {
                 _probe_state->probe_match_filter[i] = 0;

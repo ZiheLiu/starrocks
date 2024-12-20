@@ -200,6 +200,7 @@ struct HashTableProbeState {
     RuntimeProfile::Counter* output_probe_column_timer = nullptr;
     RuntimeProfile::Counter* output_build_column_timer = nullptr;
     RuntimeProfile::Counter* probe_counter = nullptr;
+    RuntimeProfile::Counter* no_conflict_times = nullptr;
 
     HashTableProbeState()
             : build_index_column(UInt32Column::create()),
@@ -294,6 +295,7 @@ struct HashTableParam {
     RuntimeProfile::Counter* output_build_column_timer = nullptr;
     RuntimeProfile::Counter* output_probe_column_timer = nullptr;
     RuntimeProfile::Counter* probe_counter = nullptr;
+    RuntimeProfile::Counter* no_conflict_times = nullptr;
     bool mor_reader_mode = false;
 };
 
@@ -822,7 +824,8 @@ public:
     // and the different probe state from this.
     JoinHashTable clone_readable_table();
     void set_probe_profile(RuntimeProfile::Counter* search_ht_timer, RuntimeProfile::Counter* output_probe_column_timer,
-                           RuntimeProfile::Counter* output_build_column_timer, RuntimeProfile::Counter* probe_counter);
+                           RuntimeProfile::Counter* output_build_column_timer, RuntimeProfile::Counter* probe_counter,
+                           RuntimeProfile::Counter* set_probe_profile);
 
     void create(const HashTableParam& param);
     void close();
