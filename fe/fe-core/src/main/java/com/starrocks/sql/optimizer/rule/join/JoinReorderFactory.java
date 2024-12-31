@@ -49,7 +49,7 @@ public interface JoinReorderFactory {
                 algorithms.add(new JoinReorderDP(context));
             }
 
-//            if (sv.isCboEnableGreedyJoinReorder()) {
+            //            if (sv.isCboEnableGreedyJoinReorder()) {
             //                algorithms.add(new JoinReorderGreedy(context));
             //            }
 
