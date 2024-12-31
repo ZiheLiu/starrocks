@@ -19,6 +19,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.analysis.JoinOperator;
 import com.starrocks.catalog.Type;
+import com.starrocks.common.profile.Tracers;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.optimizer.ExpressionContext;
@@ -267,10 +268,12 @@ public abstract class JoinOrder {
     }
 
     protected void calculateStatistics(OptExpression expr) {
+        Tracers.count(Tracers.Module.OPTIMIZER, "calculateStatistics0", 1);
         // Avoid repeated calculate
         if (expr.getStatistics() != null) {
             return;
         }
+        Tracers.count(Tracers.Module.OPTIMIZER, "calculateStatistics1", 2);
 
         for (OptExpression child : expr.getInputs()) {
             calculateStatistics(child);
