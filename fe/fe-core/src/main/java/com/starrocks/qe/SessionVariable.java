@@ -255,7 +255,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String ENABLE_PIPELINE_ENGINE = "enable_pipeline_engine";
 
-    public static final String MAX_BUCKETS_PER_BE_TO_USE_BALANCER_ASSIGNMENT = "max_buckets_per_be_to_use_balancer_assignment";
+    public static final String MAX_BUCKETS_PER_BE_TO_USE_BALANCER_ASSIGNMENT =
+            "max_buckets_per_be_to_use_balancer_assignment";
 
     public static final String ENABLE_MV_PLANNER = "enable_mv_planner";
     public static final String ENABLE_INCREMENTAL_REFRESH_MV = "enable_incremental_mv";
@@ -543,7 +544,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
             "enable_materialized_view_transparent_union_rewrite";
     public static final String ENABLE_MATERIALIZED_VIEW_REWRITE_PARTITION_COMPENSATE =
             "enable_materialized_view_rewrite_partition_compensate";
-    public static final String ENABLE_MATERIALIZED_VIEW_AGG_PUSHDOWN_REWRITE = "enable_materialized_view_agg_pushdown_rewrite";
+    public static final String ENABLE_MATERIALIZED_VIEW_AGG_PUSHDOWN_REWRITE =
+            "enable_materialized_view_agg_pushdown_rewrite";
     public static final String ENABLE_MATERIALIZED_VIEW_TIMESERIES_AGG_PUSHDOWN_REWRITE =
             "enable_materialized_view_timeseries_agg_pushdown_rewrite";
 
@@ -747,7 +749,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public static final String COUNT_DISTINCT_IMPLEMENTATION = "count_distinct_implementation";
 
-    public static final String ENABLE_COUNT_DISTINCT_REWRITE_BY_HLL_BITMAP = "enable_count_distinct_rewrite_by_hll_bitmap";
+    public static final String ENABLE_COUNT_DISTINCT_REWRITE_BY_HLL_BITMAP =
+            "enable_count_distinct_rewrite_by_hll_bitmap";
 
     // 0 means disable interleaving, positive value sets the group size, but adaptively enable interleaving,
     // negative value means force interleaving under the group size of abs(interleaving_group_size)
@@ -1334,11 +1337,17 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = CBO_ENABLE_DP_JOIN_REORDER, flag = VariableMgr.INVISIBLE)
     private boolean cboEnableDPJoinReorder = true;
 
+    @VariableMgr.VarAttr(name = "cbo_enable_dp_join_reorder2", flag = VariableMgr.INVISIBLE)
+    private boolean cboEnableDPJoinReorder2 = true;
+
     @VariableMgr.VarAttr(name = CBO_MAX_REORDER_NODE_USE_DP)
     private long cboMaxReorderNodeUseDP = 10;
 
     @VariableMgr.VarAttr(name = CBO_ENABLE_GREEDY_JOIN_REORDER, flag = VariableMgr.INVISIBLE)
     private boolean cboEnableGreedyJoinReorder = true;
+
+    @VariableMgr.VarAttr(name = "cbo_enable_greedy_join_reorder2", flag = VariableMgr.INVISIBLE)
+    private boolean cboEnableGreedyJoinReorder2 = true;
 
     @VariableMgr.VarAttr(name = CBO_DEBUG_ALIVE_BACKEND_NUMBER, flag = VariableMgr.INVISIBLE)
     private int cboDebugAliveBackendNumber = 0;
@@ -2339,7 +2348,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enableReadIcebergEqDeleteWithPartitionEvolution;
     }
 
-    public void setEnableReadIcebergEqDeleteWithPartitionEvolution(boolean enableReadIcebergEqDeleteWithPartitionEvolution) {
+    public void setEnableReadIcebergEqDeleteWithPartitionEvolution(
+            boolean enableReadIcebergEqDeleteWithPartitionEvolution) {
         this.enableReadIcebergEqDeleteWithPartitionEvolution = enableReadIcebergEqDeleteWithPartitionEvolution;
     }
 
@@ -2637,8 +2647,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
                 Enums.getIfPresent(SessionVariableConstants.ComputationFragmentSchedulingPolicy.class,
                         StringUtils.upperCase(computationFragmentSchedulingPolicy)).orNull();
         if (result == null) {
-            String legalValues = Joiner.on(" | ").join(SessionVariableConstants.ComputationFragmentSchedulingPolicy.values());
-            throw new IllegalArgumentException("Legal values of computation_fragment_scheduling_policy are " + legalValues);
+            String legalValues =
+                    Joiner.on(" | ").join(SessionVariableConstants.ComputationFragmentSchedulingPolicy.values());
+            throw new IllegalArgumentException(
+                    "Legal values of computation_fragment_scheduling_policy are " + legalValues);
         }
         this.computationFragmentSchedulingPolicy = StringUtils.upperCase(computationFragmentSchedulingPolicy);
     }
@@ -3113,6 +3125,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         this.enableFilterUnusedColumnsInScanStage = true;
     }
 
+    public boolean isCboEnableDPJoinReorder2() {
+        return cboEnableDPJoinReorder2;
+    }
+
     public boolean isCboEnableDPJoinReorder() {
         return cboEnableDPJoinReorder;
     }
@@ -3131,6 +3147,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean isCboEnableGreedyJoinReorder() {
         return cboEnableGreedyJoinReorder;
+    }
+
+    public boolean isCboEnableGreedyJoinReorder2() {
+        return cboEnableGreedyJoinReorder2;
     }
 
     public void disableGreedyJoinReorder() {
@@ -3807,7 +3827,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enableMaterializedViewRewritePartitionCompensate;
     }
 
-    public void setEnableMaterializedViewRewritePartitionCompensate(boolean enableMaterializedViewRewritePartitionCompensate) {
+    public void setEnableMaterializedViewRewritePartitionCompensate(
+            boolean enableMaterializedViewRewritePartitionCompensate) {
         this.enableMaterializedViewRewritePartitionCompensate = enableMaterializedViewRewritePartitionCompensate;
     }
 
@@ -3815,7 +3836,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         return enableMaterializedViewTransparentUnionRewrite;
     }
 
-    public void setEnableMaterializedViewTransparentUnionRewrite(boolean enableMaterializedViewTransparentUnionRewrite) {
+    public void setEnableMaterializedViewTransparentUnionRewrite(
+            boolean enableMaterializedViewTransparentUnionRewrite) {
         this.enableMaterializedViewTransparentUnionRewrite = enableMaterializedViewTransparentUnionRewrite;
     }
 
