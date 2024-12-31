@@ -49,9 +49,9 @@ public interface JoinReorderFactory {
                 algorithms.add(new JoinReorderDP(context));
             }
 
-            if (sv.isCboEnableGreedyJoinReorder()) {
-                algorithms.add(new JoinReorderGreedy(context));
-            }
+//            if (sv.isCboEnableGreedyJoinReorder()) {
+            //                algorithms.add(new JoinReorderGreedy(context));
+            //            }
 
             return algorithms;
         };
