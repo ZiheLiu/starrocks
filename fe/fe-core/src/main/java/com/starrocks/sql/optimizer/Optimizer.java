@@ -791,9 +791,11 @@ public class Optimizer {
 
     private OptExpression pushDownAggregation(OptExpression tree, TaskContext rootTaskContext,
                                               ColumnRefSet requiredColumns) {
+        SessionVariable sv = context.getSessionVariable();
+
         boolean pushDistinctFlag = false;
         boolean pushAggFlag = false;
-        if (context.getSessionVariable().isCboPushDownDistinctBelowWindow()) {
+        if (sv.isCboPushDownDistinctBelowWindow()) {
             // TODO(by satanson): in future, PushDownDistinctAggregateRule and PushDownAggregateRule should be
             //  fused one rule to tackle with all scenarios of agg push-down.
             PushDownDistinctAggregateRule rule = new PushDownDistinctAggregateRule(rootTaskContext);
@@ -801,8 +803,8 @@ public class Optimizer {
             pushDistinctFlag = rule.getRewriter().hasRewrite();
         }
 
-        if (context.getSessionVariable().getCboPushDownAggregateMode() != -1) {
-            if (context.getSessionVariable().isCboPushDownAggregateOnBroadcastJoin()) {
+        if (sv.getCboPushDownAggregateMode() != -1) {
+            if (sv.isCboPushDownAggregateOnBroadcastJoin()) {
                 // Reorder joins before applying PushDownAggregateRule to better decide where to push down aggregator.
                 // For example, do not push down a not very efficient aggregator below a very small broadcast join.
                 ruleRewriteOnlyOnce(tree, rootTaskContext, RuleSetType.PARTITION_PRUNE);
@@ -810,7 +812,14 @@ public class Optimizer {
                 ruleRewriteIterative(tree, rootTaskContext, new MergeProjectWithChildRule());
                 CTEUtils.collectForceCteStatisticsOutsideMemo(tree, context);
                 deriveLogicalProperty(tree);
-                tree = new ReorderJoinRule().rewrite(tree, JoinReorderFactory.createJoinReorderAdaptive(), context);
+
+                int innerCrossJoinNode = Utils.countJoinNodeSize(tree, JoinOperator.innerCrossJoinSet());
+                if (innerCrossJoinNode < sv.getCboMaxReorderNodeUseExhaustive() &&
+                        innerCrossJoinNode > sv.getCboMaxReorderNodeUseExhaustive()) {
+                    tree = new ReorderJoinRule().rewrite(tree, JoinReorderFactory.createJoinReorderAdaptive(), context);
+                } else {
+                    tree = new ReorderJoinRule().rewrite(tree, JoinReorderFactory.createJoinReorderLeftDeep(), context);
+                }
                 tree = new SeparateProjectRule().rewrite(tree, rootTaskContext);
                 deriveLogicalProperty(tree);
                 Utils.calculateStatistics(tree, context);

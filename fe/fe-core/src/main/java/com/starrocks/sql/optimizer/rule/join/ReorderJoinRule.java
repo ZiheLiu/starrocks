@@ -191,7 +191,7 @@ public class ReorderJoinRule extends Rule {
                     continue;
                 }
 
-                List<JoinOrder> orderAlgorithms = joinReorderFactory.create(context, multiJoinNode);
+                List<JoinOrder> orderAlgorithms = joinReorderFactory.create(context, innerJoinRoot.first, multiJoinNode);
                 Optional<OptExpression> newChild = Optional.empty();
                 for (JoinOrder orderAlgorithm : orderAlgorithms) {
                     newChild = enumerate(orderAlgorithm, context, child, multiJoinNode, false);

@@ -77,6 +77,14 @@ public class TPCDSPushAggTest extends TPCDS1TTestBase {
     }
 
     @Test
+    public void testQuery67() throws Exception {
+        connectContext.getSessionVariable().setCboPushDownAggregateMode(0);
+        String sql = getTPCDS("Q67");
+        String plan = getCostExplain(sql);
+        System.out.println(plan);
+    }
+
+    @Test
     public void testQuery58() throws Exception {
         connectContext.getSessionVariable().setCboPushDownAggregateMode(1);
         String sql = getTPCDS("Q58");

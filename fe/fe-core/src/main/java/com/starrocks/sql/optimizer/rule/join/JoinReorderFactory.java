@@ -14,8 +14,11 @@
 package com.starrocks.sql.optimizer.rule.join;
 
 import com.google.api.client.util.Lists;
+import com.starrocks.common.FeConstants;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
+import com.starrocks.sql.optimizer.Utils;
 
 import java.util.List;
 
@@ -27,22 +30,29 @@ import java.util.List;
 // 2. factory for creating JoinReorderCardinalityPreserving, which used by table pruning
 //    feature.
 public interface JoinReorderFactory {
-    List<JoinOrder> create(OptimizerContext context, MultiJoinNode multiJoinNode);
+    List<JoinOrder> create(OptimizerContext context, OptExpression innerJoinRoot, MultiJoinNode multiJoinNode);
 
     // used by AutoMV to eliminate cross join.
     static JoinReorderFactory createJoinReorderDummyStatisticsFactory() {
-        return (context, multiJoinNode) -> List.of(new JoinReorderDummyStatistics(context));
+        return (context, innerJoinRoot, multiJoinNode) -> List.of(new JoinReorderDummyStatistics(context));
     }
 
     // used by table pruning feature.
     static JoinReorderFactory createJoinReorderCardinalityPreserving() {
-        return (context, multiJoinNode) -> List.of(new JoinReorderCardinalityPreserving(context));
+        return (context, innerJoinRoot, multiJoinNode) -> List.of(new JoinReorderCardinalityPreserving(context));
     }
 
     static JoinReorderFactory createJoinReorderAdaptive() {
-        return (context, multiJoinNode) -> {
+        return (context, innerJoinRoot, multiJoinNode) -> {
             List<JoinOrder> algorithms = Lists.newArrayList();
             algorithms.add(new JoinReorderLeftDeep(context));
+
+            // If there is no statistical information, the DP and greedy reorder algorithm are disabled,
+            // and the query plan degenerates to the left deep tree
+            if (Utils.hasUnknownColumnsStats(innerJoinRoot) &&
+                    (!FeConstants.runningUnitTest || FeConstants.isReplayFromQueryDump)) {
+                return algorithms;
+            }
 
             SessionVariable sv = context.getSessionVariable();
             if (multiJoinNode.getAtoms().size() <= sv.getCboMaxReorderNodeUseDP() && sv.isCboEnableDPJoinReorder2()) {
@@ -55,5 +65,9 @@ public interface JoinReorderFactory {
 
             return algorithms;
         };
+    }
+
+    static JoinReorderFactory createJoinReorderLeftDeep() {
+        return (context, innerJoinRoot, multiJoinNode) -> List.of(new JoinReorderLeftDeep(context));
     }
 }
