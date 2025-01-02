@@ -253,7 +253,8 @@ public class ReorderJoinRule extends Rule {
                     enumerate(new JoinReorderDP(context), context, innerJoinRoot, multiJoinNode, true);
                 }
 
-                if (context.getSessionVariable().isCboEnableGreedyJoinReorder()) {
+                if (context.getSessionVariable().isCboEnableGreedyJoinReorder() &&
+                        multiJoinNode.getAtoms().size() <= context.getSessionVariable().getCboMaxReorderNodeUseGreedy()) {
                     enumerate(new JoinReorderGreedy(context), context, innerJoinRoot, multiJoinNode, true);
                 }
             }

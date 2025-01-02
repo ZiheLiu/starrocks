@@ -59,7 +59,8 @@ public interface JoinReorderFactory {
                 algorithms.add(new JoinReorderDP(context));
             }
 
-            if (sv.isCboEnableGreedyJoinReorder2()) {
+            if (sv.isCboEnableGreedyJoinReorder2() &&
+                    multiJoinNode.getAtoms().size() <= context.getSessionVariable().getCboMaxReorderNodeUseGreedy()) {
                 algorithms.add(new JoinReorderGreedy(context));
             }
 
