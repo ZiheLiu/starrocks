@@ -44,8 +44,8 @@ import com.starrocks.sql.optimizer.statistics.StatisticsCalculator;
 import com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.roaringbitmap.RoaringBitmap;
 
-import java.util.BitSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,6 +55,7 @@ import java.util.Optional;
 public abstract class JoinOrder {
 
     private static final Logger LOGGER = LogManager.getLogger(JoinOrder.class);
+
     /**
      * Like {@link OptExpression} or {@link com.starrocks.sql.optimizer.GroupExpression} ,
      * Description of an expression in the join order environment
@@ -109,11 +110,11 @@ public abstract class JoinOrder {
      * Like {@link Group}, the atoms bitset could identify one group
      */
     static class GroupInfo {
-        public GroupInfo(BitSet atoms) {
+        public GroupInfo(RoaringBitmap atoms) {
             this.atoms = atoms;
         }
 
-        final BitSet atoms;
+        final RoaringBitmap atoms;
         ExpressionInfo bestExprInfo = null;
         double lowestExprCost = Double.MAX_VALUE;
 
@@ -160,7 +161,7 @@ public abstract class JoinOrder {
      * The vertexes are A and B
      */
     static class Edge {
-        final BitSet vertexes = new BitSet();
+        final RoaringBitmap vertexes = new RoaringBitmap();
         final ScalarOperator predicate;
 
         public Edge(ScalarOperator predicate) {
@@ -175,7 +176,7 @@ public abstract class JoinOrder {
     protected final OptimizerContext context;
     protected int atomSize;
     protected final List<JoinLevel> joinLevels = Lists.newArrayList();
-    protected final Map<BitSet, GroupInfo> bitSetToGroupInfo = Maps.newHashMap();
+    protected final Map<RoaringBitmap, GroupInfo> bitSetToGroupInfo = Maps.newHashMap();
 
     protected int edgeSize;
     protected final List<Edge> edges = Lists.newArrayList();
@@ -214,8 +215,8 @@ public abstract class JoinOrder {
         // 4.init join group info
         JoinLevel atomLevel = joinLevels.get(1);
         for (int i = 0; i < atomSize; ++i) {
-            BitSet atomBit = new BitSet();
-            atomBit.set(i);
+            RoaringBitmap atomBit = new RoaringBitmap();
+            atomBit.add(i);
             ExpressionInfo atomExprInfo = new ExpressionInfo(atoms.get(i));
             computeCost(atomExprInfo);
 
@@ -256,7 +257,7 @@ public abstract class JoinOrder {
                 OptExpression atom = vertexes.get(j);
                 ColumnRefSet outputColumns = atom.getOutputColumns();
                 if (predicateColumn.isIntersect(outputColumns)) {
-                    edges.get(i).vertexes.set(j);
+                    edges.get(i).vertexes.add(j);
                 }
             }
         }
@@ -488,16 +489,15 @@ public abstract class JoinOrder {
         exprInfo.expr.deriveLogicalPropertyItself();
     }
 
-    private List<ScalarOperator> buildInnerJoinPredicate(BitSet left, BitSet right) {
+    private List<ScalarOperator> buildInnerJoinPredicate(RoaringBitmap left, RoaringBitmap right) {
         List<ScalarOperator> onPredicates = Lists.newArrayList();
-        BitSet joinBitSet = new BitSet();
+        RoaringBitmap joinBitSet = new RoaringBitmap();
         joinBitSet.or(left);
         joinBitSet.or(right);
         for (int i = 0; i < edgeSize; ++i) {
             Edge edge = edges.get(i);
-            if (contains(joinBitSet, edge.vertexes) &&
-                    left.intersects(edge.vertexes) &&
-                    right.intersects(edge.vertexes)) {
+            if (contains(joinBitSet, edge.vertexes) && RoaringBitmap.intersects(left, edge.vertexes) &&
+                    RoaringBitmap.intersects(right, edge.vertexes)) {
                 onPredicates.add(edge.predicate);
             }
         }
@@ -505,9 +505,9 @@ public abstract class JoinOrder {
     }
 
     public boolean canBuildInnerJoinPredicate(GroupInfo leftGroup, GroupInfo rightGroup) {
-        BitSet left = leftGroup.atoms;
-        BitSet right = rightGroup.atoms;
-        BitSet joinBitSet = new BitSet();
+        RoaringBitmap left = leftGroup.atoms;
+        RoaringBitmap right = rightGroup.atoms;
+        RoaringBitmap joinBitSet = new RoaringBitmap();
         joinBitSet.or(left);
         joinBitSet.or(right);
 
@@ -516,17 +516,16 @@ public abstract class JoinOrder {
             if (!Utils.isEqualBinaryPredicate(edge.predicate)) {
                 continue;
             }
-            if (contains(joinBitSet, edge.vertexes) &&
-                    left.intersects(edge.vertexes) &&
-                    right.intersects(edge.vertexes)) {
+            if (contains(joinBitSet, edge.vertexes) && RoaringBitmap.intersects(left, edge.vertexes) &&
+                    RoaringBitmap.intersects(right, edge.vertexes)) {
                 return true;
             }
         }
         return false;
     }
 
-    private boolean contains(BitSet left, BitSet right) {
-        return right.stream().allMatch(left::get);
+    private boolean contains(RoaringBitmap left, RoaringBitmap right) {
+        return left.contains(right);
     }
 
     private boolean existsEqOnPredicate(OptExpression optExpression) {

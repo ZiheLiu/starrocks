@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.optimizer.rule.join;
 
 import com.google.common.base.Preconditions;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.logical.LogicalScanOperator;
+import org.roaringbitmap.RoaringBitmap;
 
-import java.util.BitSet;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -96,7 +95,7 @@ public class JoinReorderLeftDeep extends JoinOrder {
             calculateStatistics(joinExpr.get().expr);
             computeCost(joinExpr.get());
 
-            BitSet joinBitSet = new BitSet();
+            RoaringBitmap joinBitSet = new RoaringBitmap();
             joinBitSet.or(leftGroup.atoms);
             joinBitSet.or(rightGroup.atoms);
 

@@ -28,9 +28,9 @@ import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.transformation.pruner.CPBiRel;
+import org.roaringbitmap.RoaringBitmap;
 
 import java.util.ArrayList;
-import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -264,7 +264,7 @@ public class JoinReorderCardinalityPreserving extends JoinOrder {
 
             joinExpr.get().expr.deriveLogicalPropertyItself();
 
-            BitSet joinBitSet = new BitSet();
+            RoaringBitmap joinBitSet = new RoaringBitmap();
             joinBitSet.or(leftGroup.atoms);
             joinBitSet.or(rightGroup.atoms);
 

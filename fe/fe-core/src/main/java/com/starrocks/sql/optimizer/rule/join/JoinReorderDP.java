@@ -18,6 +18,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
+import org.roaringbitmap.RoaringBitmap;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -89,7 +90,7 @@ public class JoinReorderDP extends JoinOrder {
                 }
 
                 Optional<ExpressionInfo> joinExpr = buildJoinExpr(leftGroup, rightGroup);
-                if (!joinExpr.isPresent())  {
+                if (!joinExpr.isPresent()) {
                     continue;
                 }
 
@@ -100,7 +101,7 @@ public class JoinReorderDP extends JoinOrder {
             }
             ExpressionInfo minCostPlan = resultComparator.min(results);
 
-            BitSet atoms = new BitSet();
+            RoaringBitmap atoms = new RoaringBitmap();
             atoms.or(minCostPlan.leftChildExpr.atoms);
             atoms.or(minCostPlan.rightChildExpr.atoms);
             GroupInfo g = new GroupInfo(atoms);

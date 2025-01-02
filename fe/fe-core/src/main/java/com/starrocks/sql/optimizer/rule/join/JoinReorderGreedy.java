@@ -20,8 +20,8 @@ import com.google.common.collect.MinMaxPriorityQueue;
 import com.google.common.collect.Sets;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
+import org.roaringbitmap.RoaringBitmap;
 
-import java.util.BitSet;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
@@ -87,12 +87,12 @@ public class JoinReorderGreedy extends JoinOrder {
         }
         List<GroupInfo> bestLeftGroups = getBestGroupList(leftGroupInfos, curLevel);
         for (GroupInfo leftGroup : bestLeftGroups) {
-            BitSet leftBitset = leftGroup.atoms;
+            RoaringBitmap leftBitset = leftGroup.atoms;
             double bestCost = Double.MAX_VALUE;
 
             for (GroupInfo rightGroup : rightGroupInfos) {
-                BitSet rightBitset = rightGroup.atoms;
-                if (leftBitset.intersects(rightBitset)) {
+                RoaringBitmap rightBitset = rightGroup.atoms;
+                if (RoaringBitmap.intersects(leftBitset, rightBitset)) {
                     continue;
                 }
 
@@ -103,7 +103,7 @@ public class JoinReorderGreedy extends JoinOrder {
                 joinExpr.get().expr.deriveLogicalPropertyItself();
                 calculateStatistics(joinExpr.get().expr);
 
-                BitSet joinBitSet = new BitSet();
+                RoaringBitmap joinBitSet = new RoaringBitmap();
                 joinBitSet.or(leftBitset);
                 joinBitSet.or(rightBitset);
 
@@ -124,12 +124,13 @@ public class JoinReorderGreedy extends JoinOrder {
         } else {
             Set<GroupInfo> bestGroupInfos = Sets.newHashSet();
             // Get join level 1 used atoms
-            List<BitSet> levelOneGroups = Lists.newArrayList();
+            List<RoaringBitmap> levelOneGroups = Lists.newArrayList();
             getGroupForLevel(1).forEach(groupInfo -> levelOneGroups.add(groupInfo.atoms));
             // For each atom, choose at least one group info to return.
-            for (BitSet levelOneGroup : levelOneGroups) {
+            for (RoaringBitmap levelOneGroup : levelOneGroups) {
                 List<GroupInfo> candidateGroups = groupInfos.stream().filter(
-                                groupInfo -> groupInfo.atoms.intersects(levelOneGroup) && !bestGroupInfos.contains(groupInfo)).
+                                groupInfo -> RoaringBitmap.intersects(groupInfo.atoms, levelOneGroup) &&
+                                        !bestGroupInfos.contains(groupInfo)).
                         collect(Collectors.toList());
                 // Get best group info from candidate group info
                 if (!candidateGroups.isEmpty()) {
@@ -152,7 +153,7 @@ public class JoinReorderGreedy extends JoinOrder {
         return bestExpr;
     }
 
-    protected GroupInfo getOrCreateGroupInfo(JoinLevel joinLevel, BitSet atoms,
+    protected GroupInfo getOrCreateGroupInfo(JoinLevel joinLevel, RoaringBitmap atoms,
                                              ExpressionInfo exprInfo) {
         GroupInfo groupInfo;
         if (bitSetToGroupInfo.containsKey(atoms)) {
@@ -176,7 +177,7 @@ public class JoinReorderGreedy extends JoinOrder {
         double cost = expr.cost;
 
         // For top group, we keep multi best join expressions
-        if (groupInfo.atoms.cardinality() == atomSize) {
+        if (groupInfo.atoms.getCardinality() == atomSize) {
             // avoid repeated put, check object is enough
             if (!topKExpr.contains(expr)) {
                 topKExpr.offer(expr);
