@@ -1344,7 +1344,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = CBO_MAX_REORDER_NODE_USE_DP)
     private long cboMaxReorderNodeUseDP = 10;
 
-    @VariableMgr.VarAttr(name = CBO_ENABLE_GREEDY_JOIN_REORDER)
+    @VariableMgr.VarAttr(name = CBO_MAX_REORDER_NODE_USE_GREEDY)
     private long cboMaxReorderNodeUseGreedy = 18;
 
     @VariableMgr.VarAttr(name = CBO_ENABLE_GREEDY_JOIN_REORDER, flag = VariableMgr.INVISIBLE)
