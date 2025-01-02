@@ -768,7 +768,7 @@ public class Optimizer {
                 }
             }
             OptimizerTraceUtil.logMVRewriteRule("VIEW_BASED_MV_REWRITE", "original view scans size: {}, " +
-                            "left view scans size: {}", origQueryViewScanOperators.size(), leftViewScanOperators.size());
+                    "left view scans size: {}", origQueryViewScanOperators.size(), leftViewScanOperators.size());
         } catch (Exception e) {
             OptimizerTraceUtil.logMVRewriteRule("VIEW_BASED_MV_REWRITE",
                     "single table view based mv rule rewrite failed.", e);
@@ -814,7 +814,7 @@ public class Optimizer {
                 deriveLogicalProperty(tree);
 
                 int innerCrossJoinNode = Utils.countJoinNodeSize(tree, JoinOperator.innerCrossJoinSet());
-                if (innerCrossJoinNode < sv.getCboMaxReorderNodeUseExhaustive() &&
+                if (innerCrossJoinNode < sv.getCboMaxReorderNode() &&
                         innerCrossJoinNode > sv.getCboMaxReorderNodeUseExhaustive()) {
                     tree = new ReorderJoinRule().rewrite(tree, JoinReorderFactory.createJoinReorderAdaptive(), context);
                 } else {
