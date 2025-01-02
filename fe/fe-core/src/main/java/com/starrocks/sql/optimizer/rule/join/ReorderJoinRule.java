@@ -198,6 +198,10 @@ public class ReorderJoinRule extends Rule {
                     if (newChild.isEmpty()) {
                         break;
                     }
+                    if (Utils.hasUnknownColumnsStats(innerJoinRoot.first) &&
+                            (!FeConstants.runningUnitTest || FeConstants.isReplayFromQueryDump)) {
+                        break;
+                    }
                 }
 
                 if (newChild.isPresent()) {
