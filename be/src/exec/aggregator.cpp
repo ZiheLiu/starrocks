@@ -213,6 +213,28 @@ Aggregator::Aggregator(AggregatorParamsPtr params) : _params(std::move(params)) 
     _allocator = std::make_unique<CountingAllocatorWithHook>();
 }
 
+const std::array<StreamingHtMinReductionEntry, 3>& Aggregator::get_streaming_ht_min_reduction() {
+    static const std::array<StreamingHtMinReductionEntry, 3> STREAMING_HT_MIN_REDUCTION = [] {
+        static constexpr int DEFAULT_L2_CACHE_SIZE = 1 * 1024 * 1024;
+        static constexpr int DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
+        const auto& cache_sizes = CpuInfo::get_cache_sizes();
+        int L2_cache_size = cache_sizes[CpuInfo::L2_CACHE];
+        int L3_cache_size = cache_sizes[CpuInfo::L3_CACHE];
+        L2_cache_size = L2_cache_size ? L2_cache_size : DEFAULT_L2_CACHE_SIZE;
+        L3_cache_size = L3_cache_size ? L3_cache_size : DEFAULT_L3_CACHE_SIZE;
+
+        return std::array<StreamingHtMinReductionEntry, 3>{{
+                // Expand up to L2 cache always.
+                {0, 0.0},
+                // Expand into L3 cache if we look like we're getting some reduction.
+                {L2_cache_size, 1.1},
+                // Expand into main memory if we're getting a significant reduction.
+                {L3_cache_size, 2.0},
+        }};
+    }();
+    return STREAMING_HT_MIN_REDUCTION;
+}
+
 Status Aggregator::open(RuntimeState* state) {
     if (_is_opened) {
         return Status::OK();
@@ -751,8 +773,8 @@ bool Aggregator::should_expand_preagg_hash_tables(size_t prev_row_returned, size
 
     // Find the appropriate reduction factor in our table for the current hash table sizes.
     int cache_level = 0;
-    while (cache_level + 1 < STREAMING_HT_MIN_REDUCTION_SIZE &&
-           ht_mem >= STREAMING_HT_MIN_REDUCTION[cache_level + 1].min_ht_mem) {
+    while (cache_level + 1 < get_streaming_ht_min_reduction().size() &&
+           ht_mem >= get_streaming_ht_min_reduction()[cache_level + 1].min_ht_mem) {
         cache_level++;
     }
 
@@ -772,7 +794,7 @@ bool Aggregator::should_expand_preagg_hash_tables(size_t prev_row_returned, size
     // set, N is the number of input rows, excluding passed-through rows, and n is the
     // number of rows inserted or merged into the hash tables. This is a very rough
     // approximation but is good enough to be useful.
-    double min_reduction = STREAMING_HT_MIN_REDUCTION[cache_level].streaming_ht_min_reduction;
+    double min_reduction = get_streaming_ht_min_reduction()[cache_level].streaming_ht_min_reduction;
     return current_reduction > min_reduction;
 }
 

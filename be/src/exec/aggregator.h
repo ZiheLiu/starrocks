@@ -196,15 +196,6 @@ struct StreamingHtMinReductionEntry {
     double streaming_ht_min_reduction;
 };
 
-static const StreamingHtMinReductionEntry STREAMING_HT_MIN_REDUCTION[] = {
-        {0, 0.0},
-        {256 * 1024, 1.1},
-        {2 * 1024 * 1024, 2.0},
-};
-
-static const int STREAMING_HT_MIN_REDUCTION_SIZE =
-        sizeof(STREAMING_HT_MIN_REDUCTION) / sizeof(STREAMING_HT_MIN_REDUCTION[0]);
-
 struct LimitedMemAggState {
     size_t limited_memory_size{};
     bool has_limited(const Aggregator& aggregator) const;
@@ -412,6 +403,8 @@ public:
     }
     auto defer_notify_source() { return _pip_observable.defer_notify_source(); }
     auto defer_notify_sink() { return _pip_observable.defer_notify_sink(); }
+
+    static const std::array<StreamingHtMinReductionEntry, 3>& get_streaming_ht_min_reduction();
 
 protected:
     AggregatorParamsPtr _params;
