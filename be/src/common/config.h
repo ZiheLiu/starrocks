@@ -135,8 +135,8 @@ CONF_mInt32(upload_buffer_size, "4194304");
 // The buffer size to download.
 CONF_mInt32(download_buffer_size, "4194304");
 
-CONF_Int32(l2_cache_size, "1048576");
-CONF_Int32(l3_cache_size, "33554432");
+CONF_mInt32(l2_cache_size, "1048576");
+CONF_mInt32(l3_cache_size, "33554432");
 CONF_mBool(enable_auto_agg_v2, "true");
 
 // The count of thread to make snapshot.

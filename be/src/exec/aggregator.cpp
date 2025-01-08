@@ -209,22 +209,21 @@ void AggregatorParams::init() {
 #define ALIGN_TO(size, align) ((size + align - 1) / align * align)
 #define PAD(size, align) (align - (size % align)) % align;
 
-Aggregator::Aggregator(AggregatorParamsPtr params) : _params(std::move(params)) {
+Aggregator::Aggregator(AggregatorParamsPtr params)
+        : _streaming_ht_min_reduction({
+                  // Expand up to L2 cache always.
+                  {0, 0.0},
+                  // Expand into L3 cache if we look like we're getting some reduction.
+                  {config::l2_cache_size, 1.1},
+                  // Expand into main memory if we're getting a significant reduction.
+                  {config::l3_cache_size, 2.0},
+          }),
+          _params(std::move(params)) {
     _allocator = std::make_unique<CountingAllocatorWithHook>();
 }
 
-const std::array<StreamingHtMinReductionEntry, 3>& Aggregator::get_streaming_ht_min_reduction() {
-    static const std::array<StreamingHtMinReductionEntry, 3> STREAMING_HT_MIN_REDUCTION = [] {
-        return std::array<StreamingHtMinReductionEntry, 3>{{
-                // Expand up to L2 cache always.
-                {0, 0.0},
-                // Expand into L3 cache if we look like we're getting some reduction.
-                {config::l2_cache_size, 1.1},
-                // Expand into main memory if we're getting a significant reduction.
-                {config::l3_cache_size, 2.0},
-        }};
-    }();
-    return STREAMING_HT_MIN_REDUCTION;
+const std::array<StreamingHtMinReductionEntry, 3>& Aggregator::get_streaming_ht_min_reduction() const {
+    return _streaming_ht_min_reduction;
 }
 
 Status Aggregator::open(RuntimeState* state) {
