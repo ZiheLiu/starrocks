@@ -231,7 +231,7 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
         size_t hit_count = SIMD::count_zero(_aggregator->streaming_selection());
         if (_auto_context.adjust_count < continuous_limit &&
             ((_auto_context.is_high_reduction(hit_count, chunk_size) && allocated_bytes < AggrAutoContext::MaxHtSize) ||
-             should_expend_preagg_ht_before_agg())) {
+             (config::enable_auto_agg_v2 && should_expend_preagg_ht_before_agg()))) {
             RETURN_IF_ERROR(_push_chunk_by_force_preaggregation(chunk, chunk_size));
 
             _auto_context.preagg_count++;
@@ -321,7 +321,7 @@ Status AggregateStreamingSinkOperator::_push_chunk_by_auto(const ChunkPtr& chunk
         const auto limit = _auto_state == AggrAutoState::FORCE_PREAGG ? AggrAutoContext::ForcePreaggLimit
                                                                       : AggrAutoContext::PreaggLimit;
         if (_auto_context.preagg_count > limit) {
-            if (should_expend_preagg_ht_after_agg()) {
+            if (config::enable_auto_agg_v2 && should_expend_preagg_ht_after_agg()) {
                 _auto_state = AggrAutoState::PREAGG;
                 _auto_context.preagg_count = 0;
             } else {
