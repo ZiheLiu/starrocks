@@ -217,12 +217,13 @@ Aggregator::Aggregator(AggregatorParamsPtr params)
                   {config::l2_cache_size, 1.1},
                   // Expand into main memory if we're getting a significant reduction.
                   {config::l3_cache_size, 2.0},
+                  {config::l4_cache_size, 10.0},
           }),
           _params(std::move(params)) {
     _allocator = std::make_unique<CountingAllocatorWithHook>();
 }
 
-const std::array<StreamingHtMinReductionEntry, 3>& Aggregator::get_streaming_ht_min_reduction() const {
+const std::array<StreamingHtMinReductionEntry, 4>& Aggregator::get_streaming_ht_min_reduction() const {
     return _streaming_ht_min_reduction;
 }
 

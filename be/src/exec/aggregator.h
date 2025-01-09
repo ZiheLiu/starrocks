@@ -404,10 +404,10 @@ public:
     auto defer_notify_source() { return _pip_observable.defer_notify_source(); }
     auto defer_notify_sink() { return _pip_observable.defer_notify_sink(); }
 
-    const std::array<StreamingHtMinReductionEntry, 3>& get_streaming_ht_min_reduction() const;
+    const std::array<StreamingHtMinReductionEntry, 4>& get_streaming_ht_min_reduction() const;
 
 protected:
-    const std::array<StreamingHtMinReductionEntry, 3> _streaming_ht_min_reduction;
+    const std::array<StreamingHtMinReductionEntry, 4> _streaming_ht_min_reduction;
 
     AggregatorParamsPtr _params;
 
