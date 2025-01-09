@@ -217,7 +217,7 @@ Aggregator::Aggregator(AggregatorParamsPtr params)
                   {config::l2_cache_size, 1.1},
                   // Expand into main memory if we're getting a significant reduction.
                   {config::l3_cache_size, 2.0},
-                  {config::l4_cache_size, 10.0},
+                  {config::l4_cache_size, config::l4_cache_reduction},
           }),
           _params(std::move(params)) {
     _allocator = std::make_unique<CountingAllocatorWithHook>();
