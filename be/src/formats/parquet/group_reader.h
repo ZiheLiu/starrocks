@@ -36,6 +36,7 @@
 #include "runtime/descriptors.h"
 #include "runtime/runtime_state.h"
 #include "storage/range.h"
+#include "storage/runtime_filter_predicate.h"
 
 namespace starrocks {
 class RandomAccessFile;
@@ -100,6 +101,7 @@ struct GroupReaderParam {
     // used for pageIndex
     std::vector<ExprContext*> min_max_conjunct_ctxs;
     const PredicateTree* predicate_tree = nullptr;
+    mutable RuntimeFilterPredicates runtime_filter_preds;
 
     // partition column
     const std::vector<HdfsScannerContext::ColumnInfo>* partition_columns = nullptr;

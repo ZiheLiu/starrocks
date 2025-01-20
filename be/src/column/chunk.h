@@ -336,7 +336,7 @@ inline const ColumnPtr& Chunk::get_column_by_slot_id(SlotId slot_id) const {
 }
 
 inline ColumnPtr& Chunk::get_column_by_slot_id(SlotId slot_id) {
-    DCHECK(is_slot_exist(slot_id)) << slot_id;
+    DCHECK(is_slot_exist(slot_id)) << "slot id not found " << slot_id;
     if (UNLIKELY(!_slot_id_to_index.contains(slot_id))) {
         throw std::runtime_error(fmt::format("slot_id {} not found", slot_id));
     }

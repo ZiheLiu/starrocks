@@ -193,6 +193,11 @@ Status HdfsScanner::_build_scanner_context() {
             opts.obj_pool->add(new ConnectorPredicateParser(&_scanner_params.tuple_desc->decoded_slots()));
     ASSIGN_OR_RETURN(ctx.predicate_tree,
                      ctx.conjuncts_manager->get_predicate_tree(predicate_parser, ctx.predicate_free_pool));
+    if (opts.runtime_state->enable_join_runtime_filter_pushdown()) {
+        // @TODO we should remove partition column rf
+        ASSIGN_OR_RETURN(ctx.runtime_filter_preds, ctx.conjuncts_manager->get_runtime_filter_predicates(
+                                                           _runtime_state->obj_pool(), predicate_parser));
+    }
     ctx.rf_scan_range_pruner = opts.obj_pool->add(
             new RuntimeScanRangePruner(predicate_parser, ctx.conjuncts_manager->unarrived_runtime_filters()));
 

@@ -215,6 +215,7 @@ Status HiveDataSource::_init_conjunct_ctxs(RuntimeState* state) {
         RETURN_IF_ERROR(
                 Expr::create_expr_trees(&_pool, hdfs_scan_node.partition_conjuncts, &_partition_conjunct_ctxs, state));
         _has_partition_conjuncts = true;
+        // @TODO collect partition conjunct slots
     }
 
     if (hdfs_scan_node.__isset.case_sensitive) {
