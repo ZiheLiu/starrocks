@@ -225,13 +225,13 @@ public:
 
     uint32_t max_one_element_serialize_size() const override;
 
-    ALWAYS_INLINE uint32_t serialize(size_t idx, uint8_t* pos) override {
+    uint32_t serialize(size_t idx, uint8_t* pos) override {
         // max size of one string is 2^32, so use uint32_t not T
         auto binary_size = static_cast<uint32_t>(_offsets[idx + 1] - _offsets[idx]);
         T offset = _offsets[idx];
 
-        strings::memcpy_inlined(pos, &binary_size, sizeof(uint32_t));
-        strings::memcpy_inlined(pos + sizeof(uint32_t), &_bytes[offset], binary_size);
+        memcpy(pos, &binary_size, sizeof(uint32_t));
+        memcpy(pos + sizeof(uint32_t), &_bytes[offset], binary_size);
 
         return sizeof(uint32_t) + binary_size;
     }
