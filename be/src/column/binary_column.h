@@ -19,6 +19,7 @@
 #include "column/datum.h"
 #include "column/vectorized_fwd.h"
 #include "common/statusor.h"
+#include "gutil/strings/fastmem.h"
 #include "util/slice.h"
 
 namespace starrocks {
@@ -231,9 +232,15 @@ public:
     void serialize_batch(uint8_t* dst, Buffer<uint32_t>& slice_sizes, size_t chunk_size,
                          uint32_t max_one_row_size) override;
 
+    void serialize_batch_with_null_masks(uint8_t* dst, Buffer<uint32_t>& slice_sizes, size_t chunk_size,
+                                         uint32_t max_one_row_size, uint8_t* null_masks, bool has_null) override;
+
     const uint8_t* deserialize_and_append(const uint8_t* pos) override;
 
     void deserialize_and_append_batch(Buffer<Slice>& srcs, size_t chunk_size) override;
+
+    void deserialize_and_append_batch_nullable(Buffer<Slice>& srcs, size_t chunk_size, Buffer<uint8_t>& is_nulls,
+                                               bool& has_null) override;
 
     uint32_t serialize_size(size_t idx) const override {
         // max size of one string is 2^32, so use sizeof(uint32_t) not sizeof(T)
