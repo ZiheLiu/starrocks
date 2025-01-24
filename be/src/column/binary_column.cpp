@@ -537,8 +537,8 @@ uint32_t BinaryColumnBase<T>::serialize(size_t idx, uint8_t* pos) {
     auto binary_size = static_cast<uint32_t>(_offsets[idx + 1] - _offsets[idx]);
     T offset = _offsets[idx];
 
-    strings::memcpy_inlined(pos, &binary_size, sizeof(uint32_t));
-    strings::memcpy_inlined(pos + sizeof(uint32_t), &_bytes[offset], binary_size);
+    memcpy(pos, &binary_size, sizeof(uint32_t));
+    memcpy(pos + sizeof(uint32_t), &_bytes[offset], binary_size);
 
     return sizeof(uint32_t) + binary_size;
 }
