@@ -557,14 +557,57 @@ void BinaryColumnBase<T>::serialize_batch(uint8_t* dst, Buffer<uint32_t>& slice_
     uint32_t* sizes = slice_sizes.data();
     for (size_t i = 0; i < chunk_size; ++i) {
         // max size of one string is 2^32, so use uint32_t not T
-        auto binary_size = static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
+        const auto offset = _offsets[i];
+        const auto binary_size = static_cast<uint32_t>(_offsets[i + 1] - offset);
         auto* cur_dst = dst + i * max_one_row_size + slice_sizes[i];
         strings::memcpy_inlined(cur_dst, &binary_size, sizeof(uint32_t));
-        strings::memcpy_inlined(cur_dst + sizeof(uint32_t), &_bytes[_offsets[i]], binary_size);
+        strings::memcpy_inlined(cur_dst + sizeof(uint32_t), &_bytes[offset], binary_size);
     }
 
     for (size_t i = 0; i < chunk_size; ++i) {
         sizes[i] += sizeof(uint32_t) + static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
+    }
+}
+
+// The serialization format is as follows,
+// - If null_masks[i] is true, the format is <true>(1B)
+// - Otherwise, the format is <false>(1B) + <binary_size>(4B) + <string_data>(binary_size)
+template <typename T>
+void BinaryColumnBase<T>::serialize_batch_with_null_masks(uint8_t* dst, Buffer<uint32_t>& slice_sizes,
+                                                          size_t chunk_size, uint32_t max_one_row_size,
+                                                          uint8_t* null_masks, bool has_null) {
+    uint32_t* sizes = slice_sizes.data();
+
+    if (!has_null) {
+        for (size_t i = 0; i < chunk_size; ++i) {
+            const auto offset = _offsets[i];
+            const auto binary_size = static_cast<uint32_t>(_offsets[i + 1] - offset);
+            auto* cur_dst = dst + i * max_one_row_size + sizes[i];
+            strings::memcpy_inlined(cur_dst, &has_null, sizeof(bool));
+            strings::memcpy_inlined(cur_dst + sizeof(bool), &binary_size, sizeof(uint32_t));
+            strings::memcpy_inlined(cur_dst + sizeof(bool) + sizeof(uint32_t), &_bytes[offset], binary_size);
+        }
+
+        for (size_t i = 0; i < chunk_size; ++i) {
+            sizes[i] += sizeof(bool) + sizeof(uint32_t) + static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
+        }
+    } else {
+        for (size_t i = 0; i < chunk_size; ++i) {
+            auto* cur_dst = dst + i * max_one_row_size + sizes[i];
+            strings::memcpy_inlined(cur_dst, null_masks + i, sizeof(bool));
+
+            if (!null_masks[i]) {
+                const auto offset = _offsets[i];
+                const auto binary_size = static_cast<uint32_t>(_offsets[i + 1] - offset);
+                strings::memcpy_inlined(cur_dst + sizeof(bool), &binary_size, sizeof(uint32_t));
+                strings::memcpy_inlined(cur_dst + sizeof(bool) + sizeof(uint32_t), &_bytes[offset], binary_size);
+            }
+        }
+
+        for (size_t i = 0; i < chunk_size; ++i) {
+            sizes[i] += sizeof(bool) +
+                        (1 - null_masks[i]) * (sizeof(uint32_t) + static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]));
+        }
     }
 }
 
@@ -589,46 +632,6 @@ void BinaryColumnBase<T>::deserialize_and_append_batch(Buffer<Slice>& srcs, size
     _bytes.reserve(chunk_size * string_size * 2);
     for (size_t i = 0; i < chunk_size; ++i) {
         srcs[i].data = (char*)deserialize_and_append((uint8_t*)srcs[i].data);
-    }
-}
-
-// The serialization format is as follows,
-// - If null_masks[i] is true, the format is <true>(1B)
-// - Otherwise, the format is <false>(1B) + <binary_size>(4B) + <string_data>(binary_size)
-template <typename T>
-void BinaryColumnBase<T>::serialize_batch_with_null_masks(uint8_t* dst, Buffer<uint32_t>& slice_sizes,
-                                                          size_t chunk_size, uint32_t max_one_row_size,
-                                                          uint8_t* null_masks, bool has_null) {
-    uint32_t* sizes = slice_sizes.data();
-
-    if (!has_null) {
-        for (size_t i = 0; i < chunk_size; ++i) {
-            const auto binary_size = static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
-            auto* cur_dst = dst + i * max_one_row_size + sizes[i];
-            strings::memcpy_inlined(cur_dst, &has_null, sizeof(bool));
-            strings::memcpy_inlined(cur_dst + sizeof(bool), &binary_size, sizeof(uint32_t));
-            strings::memcpy_inlined(cur_dst + sizeof(bool) + sizeof(uint32_t), &_bytes[_offsets[i]], binary_size);
-        }
-
-        for (size_t i = 0; i < chunk_size; ++i) {
-            sizes[i] += sizeof(bool) + sizeof(uint32_t) + static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
-        }
-    } else {
-        for (size_t i = 0; i < chunk_size; ++i) {
-            auto* cur_dst = dst + i * max_one_row_size + sizes[i];
-            strings::memcpy_inlined(cur_dst, null_masks + i, sizeof(bool));
-
-            if (!null_masks[i]) {
-                const auto binary_size = static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
-                strings::memcpy_inlined(cur_dst + sizeof(bool), &binary_size, sizeof(uint32_t));
-                strings::memcpy_inlined(cur_dst + sizeof(bool) + sizeof(uint32_t), &_bytes[_offsets[i]], binary_size);
-            }
-        }
-
-        for (size_t i = 0; i < chunk_size; ++i) {
-            sizes[i] += sizeof(bool) +
-                        (1 - null_masks[i]) * (sizeof(uint32_t) + static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]));
-        }
     }
 }
 
