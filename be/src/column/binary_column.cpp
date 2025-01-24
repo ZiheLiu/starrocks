@@ -554,8 +554,17 @@ uint32_t BinaryColumnBase<T>::serialize_default(uint8_t* pos) {
 template <typename T>
 void BinaryColumnBase<T>::serialize_batch(uint8_t* dst, Buffer<uint32_t>& slice_sizes, size_t chunk_size,
                                           uint32_t max_one_row_size) {
+    uint32_t* sizes = slice_sizes.data();
     for (size_t i = 0; i < chunk_size; ++i) {
-        slice_sizes[i] += serialize(i, dst + i * max_one_row_size + slice_sizes[i]);
+        // max size of one string is 2^32, so use uint32_t not T
+        auto binary_size = static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
+        auto* cur_dst = dst + i * max_one_row_size + slice_sizes[i];
+        strings::memcpy_inlined(cur_dst, &binary_size, sizeof(uint32_t));
+        strings::memcpy_inlined(cur_dst + sizeof(uint32_t), &_bytes[_offsets[i]], binary_size);
+    }
+
+    for (size_t i = 0; i < chunk_size; ++i) {
+        sizes[i] += sizeof(uint32_t) + static_cast<uint32_t>(_offsets[i + 1] - _offsets[i]);
     }
 }
 
