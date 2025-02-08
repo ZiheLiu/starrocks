@@ -1288,7 +1288,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
     uint32_t match_count = 0;
     uint32_t i = 0;
 
-    uint32_t matched[W]{true, true, true, true};
+    uint32_t matched[W]{true, true, true, true, true, true, true, true};
     uint32_t is[W];
     uint32_t indexes[W];
     CppType probe_keys[W];
@@ -1400,7 +1400,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
         uint32_t i = 0;
 
         static constexpr uint32_t W = 8;
-        uint32_t matched[W]{true, true, true, true};
+        uint32_t matched[W]{true, true, true, true, true, true, true, true};
         uint32_t is[W];
         uint32_t indexes[W];
         CppType probe_keys[W];
