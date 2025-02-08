@@ -269,16 +269,17 @@ const Buffer<typename DirectMappingJoinProbeFunc<LT>::CppType>& DirectMappingJoi
 
 template <LogicalType LT>
 void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state) {
-    size_t probe_row_count = probe_state->probe_row_count;
-    auto& data = get_key_data(*probe_state);
+    const size_t probe_row_count = probe_state->probe_row_count;
+    const auto& data = get_key_data(*probe_state);
+
     JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
                                                  table_items.log_bucket_size, data, 0, data.size());
 
     if ((*probe_state->key_columns)[0]->is_nullable()) {
-        auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>((*probe_state->key_columns)[0]);
+        const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>((*probe_state->key_columns)[0]);
 
         if (nullable_column->has_null()) {
-            auto& null_array = nullable_column->null_column()->get_data();
+            const auto& null_array = nullable_column->null_column()->get_data();
             for (size_t i = 0; i < probe_row_count; i++) {
                 if (null_array[i] == 0) {
                     probe_state->next[i] = table_items.first[probe_state->buckets[i]];
@@ -1281,10 +1282,67 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    size_t match_count = 0;
-    size_t probe_row_count = _probe_state->probe_row_count;
-    for (size_t i = 0; i < probe_row_count; i++) {
-        size_t index = _probe_state->next[i];
+    const size_t probe_row_count = _probe_state->probe_row_count;
+    static constexpr uint32_t W = 8;
+
+    uint32_t match_count = 0;
+    uint32_t i = 0;
+
+    uint32_t matched[W]{true, true, true, true};
+    uint32_t is[W];
+    uint32_t indexes[W];
+    CppType probe_keys[W];
+    CppType build_keys[W];
+    while (i + W <= probe_row_count) {
+        for (uint32_t j = 0; j < W; j++) {
+            if (matched[j]) {
+                is[j] = i;
+                indexes[j] = _probe_state->next[i];
+                probe_keys[j] = probe_data[i];
+                i++;
+            } else {
+                indexes[j] = _table_items->next[indexes[j]];
+            }
+        }
+
+        for (uint32_t j = 0; j < W; j++) {
+            build_keys[j] = build_data[indexes[j]];
+        }
+
+        for (uint32_t j = 0; j < W; j++) {
+            matched[j] = indexes[j] & ProbeFunc().equal(build_keys[j], probe_keys[j]);
+        }
+
+        for (uint32_t j = 0; j < W; j++) {
+            if (matched[j]) {
+                _probe_state->probe_index[match_count] = is[j];
+                match_count++;
+            }
+        }
+
+        for (uint32_t j = 0; j < W; j++) {
+            matched[j] |= indexes[j] == 0;
+        }
+    }
+
+    for (uint32_t j = 0; j < W; j++) {
+        if (matched[j]) {
+            continue;
+        }
+
+        uint32_t index = indexes[j];
+        while (index != 0) {
+            if (ProbeFunc().equal(build_data[index], probe_data[is[j]])) {
+                _probe_state->probe_index[match_count] = is[j];
+                match_count++;
+                break;
+            }
+            index = _table_items->next[index];
+        }
+    }
+
+    for (; i < probe_row_count; i++) {
+        uint32_t index = _probe_state->next[i];
         if (index == 0) {
             continue;
         }
@@ -1307,9 +1365,9 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    size_t match_count = 0;
+    const size_t probe_row_count = _probe_state->probe_row_count;
+    uint32_t match_count = 0;
 
-    size_t probe_row_count = _probe_state->probe_row_count;
     DCHECK_LT(0, _table_items->row_count);
     if (_table_items->join_type == TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN && _probe_state->null_array != nullptr) {
         // process left anti join from not in
@@ -1339,7 +1397,72 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
             }
         }
     } else {
-        for (size_t i = 0; i < probe_row_count; i++) {
+        uint32_t i = 0;
+
+        static constexpr uint32_t W = 8;
+        uint32_t matched[W]{true, true, true, true};
+        uint32_t is[W];
+        uint32_t indexes[W];
+        CppType probe_keys[W];
+        CppType build_keys[W];
+        while (i + W <= probe_row_count) {
+            for (uint32_t j = 0; j < W; j++) {
+                if (matched[j]) {
+                    is[j] = i;
+                    indexes[j] = _probe_state->next[i];
+                    probe_keys[j] = probe_data[i];
+                    i++;
+                } else {
+                    indexes[j] = _table_items->next[indexes[j]];
+                }
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                build_keys[j] = build_data[indexes[j]];
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                matched[j] = indexes[j] & ProbeFunc().equal(build_keys[j], probe_keys[j]);
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                if (indexes[j] == 0) {
+                    _probe_state->probe_index[match_count] = is[j];
+                    match_count++;
+                }
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                matched[j] |= indexes[j] == 0;
+            }
+        }
+
+        for (uint32_t j = 0; j < W; j++) {
+            if (matched[j]) {
+                continue;
+            }
+
+            uint32_t index = indexes[j];
+            if (index == 0) {
+                _probe_state->probe_index[match_count] = is[j];
+                match_count++;
+                continue;
+            }
+            bool found = false;
+            while (index != 0) {
+                if (ProbeFunc().equal(build_data[index], probe_data[is[j]])) {
+                    found = true;
+                    break;
+                }
+                index = _table_items->next[index];
+            }
+            if (!found) {
+                _probe_state->probe_index[match_count] = is[j];
+                match_count++;
+            }
+        }
+
+        for (; i < probe_row_count; i++) {
             size_t index = _probe_state->next[i];
             if (index == 0) {
                 _probe_state->probe_index[match_count] = i;
