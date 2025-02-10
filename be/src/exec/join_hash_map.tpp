@@ -1521,7 +1521,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                     _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vis);
                     match_count += 8;
                 } else {
-                    if (match_count != 0) {
+                    if (match_mask != 0) {
                         __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
                                 _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
                         __m256i vshuffle_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
