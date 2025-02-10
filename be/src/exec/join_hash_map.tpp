@@ -1361,6 +1361,74 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
     PROBE_OVER()
 }
 
+// 8*256 = 2048 byte
+static constexpr uint8_t move_left_mask_perm[256][8] = {
+        {0, 1, 2, 3, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7}, {1, 0, 2, 3, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {2, 0, 1, 3, 4, 5, 6, 7}, {0, 2, 1, 3, 4, 5, 6, 7}, {1, 2, 0, 3, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {3, 0, 1, 2, 4, 5, 6, 7}, {0, 3, 1, 2, 4, 5, 6, 7}, {1, 3, 0, 2, 4, 5, 6, 7}, {0, 1, 3, 2, 4, 5, 6, 7},
+        {2, 3, 0, 1, 4, 5, 6, 7}, {0, 2, 3, 1, 4, 5, 6, 7}, {1, 2, 3, 0, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {4, 0, 1, 2, 3, 5, 6, 7}, {0, 4, 1, 2, 3, 5, 6, 7}, {1, 4, 0, 2, 3, 5, 6, 7}, {0, 1, 4, 2, 3, 5, 6, 7},
+        {2, 4, 0, 1, 3, 5, 6, 7}, {0, 2, 4, 1, 3, 5, 6, 7}, {1, 2, 4, 0, 3, 5, 6, 7}, {0, 1, 2, 4, 3, 5, 6, 7},
+        {3, 4, 0, 1, 2, 5, 6, 7}, {0, 3, 4, 1, 2, 5, 6, 7}, {1, 3, 4, 0, 2, 5, 6, 7}, {0, 1, 3, 4, 2, 5, 6, 7},
+        {2, 3, 4, 0, 1, 5, 6, 7}, {0, 2, 3, 4, 1, 5, 6, 7}, {1, 2, 3, 4, 0, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {5, 0, 1, 2, 3, 4, 6, 7}, {0, 5, 1, 2, 3, 4, 6, 7}, {1, 5, 0, 2, 3, 4, 6, 7}, {0, 1, 5, 2, 3, 4, 6, 7},
+        {2, 5, 0, 1, 3, 4, 6, 7}, {0, 2, 5, 1, 3, 4, 6, 7}, {1, 2, 5, 0, 3, 4, 6, 7}, {0, 1, 2, 5, 3, 4, 6, 7},
+        {3, 5, 0, 1, 2, 4, 6, 7}, {0, 3, 5, 1, 2, 4, 6, 7}, {1, 3, 5, 0, 2, 4, 6, 7}, {0, 1, 3, 5, 2, 4, 6, 7},
+        {2, 3, 5, 0, 1, 4, 6, 7}, {0, 2, 3, 5, 1, 4, 6, 7}, {1, 2, 3, 5, 0, 4, 6, 7}, {0, 1, 2, 3, 5, 4, 6, 7},
+        {4, 5, 0, 1, 2, 3, 6, 7}, {0, 4, 5, 1, 2, 3, 6, 7}, {1, 4, 5, 0, 2, 3, 6, 7}, {0, 1, 4, 5, 2, 3, 6, 7},
+        {2, 4, 5, 0, 1, 3, 6, 7}, {0, 2, 4, 5, 1, 3, 6, 7}, {1, 2, 4, 5, 0, 3, 6, 7}, {0, 1, 2, 4, 5, 3, 6, 7},
+        {3, 4, 5, 0, 1, 2, 6, 7}, {0, 3, 4, 5, 1, 2, 6, 7}, {1, 3, 4, 5, 0, 2, 6, 7}, {0, 1, 3, 4, 5, 2, 6, 7},
+        {2, 3, 4, 5, 0, 1, 6, 7}, {0, 2, 3, 4, 5, 1, 6, 7}, {1, 2, 3, 4, 5, 0, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {6, 0, 1, 2, 3, 4, 5, 7}, {0, 6, 1, 2, 3, 4, 5, 7}, {1, 6, 0, 2, 3, 4, 5, 7}, {0, 1, 6, 2, 3, 4, 5, 7},
+        {2, 6, 0, 1, 3, 4, 5, 7}, {0, 2, 6, 1, 3, 4, 5, 7}, {1, 2, 6, 0, 3, 4, 5, 7}, {0, 1, 2, 6, 3, 4, 5, 7},
+        {3, 6, 0, 1, 2, 4, 5, 7}, {0, 3, 6, 1, 2, 4, 5, 7}, {1, 3, 6, 0, 2, 4, 5, 7}, {0, 1, 3, 6, 2, 4, 5, 7},
+        {2, 3, 6, 0, 1, 4, 5, 7}, {0, 2, 3, 6, 1, 4, 5, 7}, {1, 2, 3, 6, 0, 4, 5, 7}, {0, 1, 2, 3, 6, 4, 5, 7},
+        {4, 6, 0, 1, 2, 3, 5, 7}, {0, 4, 6, 1, 2, 3, 5, 7}, {1, 4, 6, 0, 2, 3, 5, 7}, {0, 1, 4, 6, 2, 3, 5, 7},
+        {2, 4, 6, 0, 1, 3, 5, 7}, {0, 2, 4, 6, 1, 3, 5, 7}, {1, 2, 4, 6, 0, 3, 5, 7}, {0, 1, 2, 4, 6, 3, 5, 7},
+        {3, 4, 6, 0, 1, 2, 5, 7}, {0, 3, 4, 6, 1, 2, 5, 7}, {1, 3, 4, 6, 0, 2, 5, 7}, {0, 1, 3, 4, 6, 2, 5, 7},
+        {2, 3, 4, 6, 0, 1, 5, 7}, {0, 2, 3, 4, 6, 1, 5, 7}, {1, 2, 3, 4, 6, 0, 5, 7}, {0, 1, 2, 3, 4, 6, 5, 7},
+        {5, 6, 0, 1, 2, 3, 4, 7}, {0, 5, 6, 1, 2, 3, 4, 7}, {1, 5, 6, 0, 2, 3, 4, 7}, {0, 1, 5, 6, 2, 3, 4, 7},
+        {2, 5, 6, 0, 1, 3, 4, 7}, {0, 2, 5, 6, 1, 3, 4, 7}, {1, 2, 5, 6, 0, 3, 4, 7}, {0, 1, 2, 5, 6, 3, 4, 7},
+        {3, 5, 6, 0, 1, 2, 4, 7}, {0, 3, 5, 6, 1, 2, 4, 7}, {1, 3, 5, 6, 0, 2, 4, 7}, {0, 1, 3, 5, 6, 2, 4, 7},
+        {2, 3, 5, 6, 0, 1, 4, 7}, {0, 2, 3, 5, 6, 1, 4, 7}, {1, 2, 3, 5, 6, 0, 4, 7}, {0, 1, 2, 3, 5, 6, 4, 7},
+        {4, 5, 6, 0, 1, 2, 3, 7}, {0, 4, 5, 6, 1, 2, 3, 7}, {1, 4, 5, 6, 0, 2, 3, 7}, {0, 1, 4, 5, 6, 2, 3, 7},
+        {2, 4, 5, 6, 0, 1, 3, 7}, {0, 2, 4, 5, 6, 1, 3, 7}, {1, 2, 4, 5, 6, 0, 3, 7}, {0, 1, 2, 4, 5, 6, 3, 7},
+        {3, 4, 5, 6, 0, 1, 2, 7}, {0, 3, 4, 5, 6, 1, 2, 7}, {1, 3, 4, 5, 6, 0, 2, 7}, {0, 1, 3, 4, 5, 6, 2, 7},
+        {2, 3, 4, 5, 6, 0, 1, 7}, {0, 2, 3, 4, 5, 6, 1, 7}, {1, 2, 3, 4, 5, 6, 0, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {7, 0, 1, 2, 3, 4, 5, 6}, {0, 7, 1, 2, 3, 4, 5, 6}, {1, 7, 0, 2, 3, 4, 5, 6}, {0, 1, 7, 2, 3, 4, 5, 6},
+        {2, 7, 0, 1, 3, 4, 5, 6}, {0, 2, 7, 1, 3, 4, 5, 6}, {1, 2, 7, 0, 3, 4, 5, 6}, {0, 1, 2, 7, 3, 4, 5, 6},
+        {3, 7, 0, 1, 2, 4, 5, 6}, {0, 3, 7, 1, 2, 4, 5, 6}, {1, 3, 7, 0, 2, 4, 5, 6}, {0, 1, 3, 7, 2, 4, 5, 6},
+        {2, 3, 7, 0, 1, 4, 5, 6}, {0, 2, 3, 7, 1, 4, 5, 6}, {1, 2, 3, 7, 0, 4, 5, 6}, {0, 1, 2, 3, 7, 4, 5, 6},
+        {4, 7, 0, 1, 2, 3, 5, 6}, {0, 4, 7, 1, 2, 3, 5, 6}, {1, 4, 7, 0, 2, 3, 5, 6}, {0, 1, 4, 7, 2, 3, 5, 6},
+        {2, 4, 7, 0, 1, 3, 5, 6}, {0, 2, 4, 7, 1, 3, 5, 6}, {1, 2, 4, 7, 0, 3, 5, 6}, {0, 1, 2, 4, 7, 3, 5, 6},
+        {3, 4, 7, 0, 1, 2, 5, 6}, {0, 3, 4, 7, 1, 2, 5, 6}, {1, 3, 4, 7, 0, 2, 5, 6}, {0, 1, 3, 4, 7, 2, 5, 6},
+        {2, 3, 4, 7, 0, 1, 5, 6}, {0, 2, 3, 4, 7, 1, 5, 6}, {1, 2, 3, 4, 7, 0, 5, 6}, {0, 1, 2, 3, 4, 7, 5, 6},
+        {5, 7, 0, 1, 2, 3, 4, 6}, {0, 5, 7, 1, 2, 3, 4, 6}, {1, 5, 7, 0, 2, 3, 4, 6}, {0, 1, 5, 7, 2, 3, 4, 6},
+        {2, 5, 7, 0, 1, 3, 4, 6}, {0, 2, 5, 7, 1, 3, 4, 6}, {1, 2, 5, 7, 0, 3, 4, 6}, {0, 1, 2, 5, 7, 3, 4, 6},
+        {3, 5, 7, 0, 1, 2, 4, 6}, {0, 3, 5, 7, 1, 2, 4, 6}, {1, 3, 5, 7, 0, 2, 4, 6}, {0, 1, 3, 5, 7, 2, 4, 6},
+        {2, 3, 5, 7, 0, 1, 4, 6}, {0, 2, 3, 5, 7, 1, 4, 6}, {1, 2, 3, 5, 7, 0, 4, 6}, {0, 1, 2, 3, 5, 7, 4, 6},
+        {4, 5, 7, 0, 1, 2, 3, 6}, {0, 4, 5, 7, 1, 2, 3, 6}, {1, 4, 5, 7, 0, 2, 3, 6}, {0, 1, 4, 5, 7, 2, 3, 6},
+        {2, 4, 5, 7, 0, 1, 3, 6}, {0, 2, 4, 5, 7, 1, 3, 6}, {1, 2, 4, 5, 7, 0, 3, 6}, {0, 1, 2, 4, 5, 7, 3, 6},
+        {3, 4, 5, 7, 0, 1, 2, 6}, {0, 3, 4, 5, 7, 1, 2, 6}, {1, 3, 4, 5, 7, 0, 2, 6}, {0, 1, 3, 4, 5, 7, 2, 6},
+        {2, 3, 4, 5, 7, 0, 1, 6}, {0, 2, 3, 4, 5, 7, 1, 6}, {1, 2, 3, 4, 5, 7, 0, 6}, {0, 1, 2, 3, 4, 5, 7, 6},
+        {6, 7, 0, 1, 2, 3, 4, 5}, {0, 6, 7, 1, 2, 3, 4, 5}, {1, 6, 7, 0, 2, 3, 4, 5}, {0, 1, 6, 7, 2, 3, 4, 5},
+        {2, 6, 7, 0, 1, 3, 4, 5}, {0, 2, 6, 7, 1, 3, 4, 5}, {1, 2, 6, 7, 0, 3, 4, 5}, {0, 1, 2, 6, 7, 3, 4, 5},
+        {3, 6, 7, 0, 1, 2, 4, 5}, {0, 3, 6, 7, 1, 2, 4, 5}, {1, 3, 6, 7, 0, 2, 4, 5}, {0, 1, 3, 6, 7, 2, 4, 5},
+        {2, 3, 6, 7, 0, 1, 4, 5}, {0, 2, 3, 6, 7, 1, 4, 5}, {1, 2, 3, 6, 7, 0, 4, 5}, {0, 1, 2, 3, 6, 7, 4, 5},
+        {4, 6, 7, 0, 1, 2, 3, 5}, {0, 4, 6, 7, 1, 2, 3, 5}, {1, 4, 6, 7, 0, 2, 3, 5}, {0, 1, 4, 6, 7, 2, 3, 5},
+        {2, 4, 6, 7, 0, 1, 3, 5}, {0, 2, 4, 6, 7, 1, 3, 5}, {1, 2, 4, 6, 7, 0, 3, 5}, {0, 1, 2, 4, 6, 7, 3, 5},
+        {3, 4, 6, 7, 0, 1, 2, 5}, {0, 3, 4, 6, 7, 1, 2, 5}, {1, 3, 4, 6, 7, 0, 2, 5}, {0, 1, 3, 4, 6, 7, 2, 5},
+        {2, 3, 4, 6, 7, 0, 1, 5}, {0, 2, 3, 4, 6, 7, 1, 5}, {1, 2, 3, 4, 6, 7, 0, 5}, {0, 1, 2, 3, 4, 6, 7, 5},
+        {5, 6, 7, 0, 1, 2, 3, 4}, {0, 5, 6, 7, 1, 2, 3, 4}, {1, 5, 6, 7, 0, 2, 3, 4}, {0, 1, 5, 6, 7, 2, 3, 4},
+        {2, 5, 6, 7, 0, 1, 3, 4}, {0, 2, 5, 6, 7, 1, 3, 4}, {1, 2, 5, 6, 7, 0, 3, 4}, {0, 1, 2, 5, 6, 7, 3, 4},
+        {3, 5, 6, 7, 0, 1, 2, 4}, {0, 3, 5, 6, 7, 1, 2, 4}, {1, 3, 5, 6, 7, 0, 2, 4}, {0, 1, 3, 5, 6, 7, 2, 4},
+        {2, 3, 5, 6, 7, 0, 1, 4}, {0, 2, 3, 5, 6, 7, 1, 4}, {1, 2, 3, 5, 6, 7, 0, 4}, {0, 1, 2, 3, 5, 6, 7, 4},
+        {4, 5, 6, 7, 0, 1, 2, 3}, {0, 4, 5, 6, 7, 1, 2, 3}, {1, 4, 5, 6, 7, 0, 2, 3}, {0, 1, 4, 5, 6, 7, 2, 3},
+        {2, 4, 5, 6, 7, 0, 1, 3}, {0, 2, 4, 5, 6, 7, 1, 3}, {1, 2, 4, 5, 6, 7, 0, 3}, {0, 1, 2, 4, 5, 6, 7, 3},
+        {3, 4, 5, 6, 7, 0, 1, 2}, {0, 3, 4, 5, 6, 7, 1, 2}, {1, 3, 4, 5, 6, 7, 0, 2}, {0, 1, 3, 4, 5, 6, 7, 2},
+        {2, 3, 4, 5, 6, 7, 0, 1}, {0, 2, 3, 4, 5, 6, 7, 1}, {1, 2, 3, 4, 5, 6, 7, 0}, {0, 1, 2, 3, 4, 5, 6, 7},
+};
+
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(RuntimeState* state,
@@ -1400,68 +1468,98 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
     } else {
         uint32_t i = 0;
 
-        static constexpr uint32_t W = 8;
-        uint32_t matched[W]{true, true, true, true, true, true, true, true};
-        uint32_t is[W];
-        uint32_t indexes[W];
-        CppType probe_keys[W];
-        CppType build_keys[W];
-        while (i + W <= probe_row_count) {
-            for (uint32_t j = 0; j < W; j++) {
-                if (matched[j]) {
-                    is[j] = i;
-                    indexes[j] = _probe_state->next[i];
-                    probe_keys[j] = probe_data[i];
-                    i++;
+#ifdef __AVX2__&& defined(__POPCNT__)
+        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+            static constexpr uint32_t W = 8;
+            const auto* build_next_data = _table_items->next.data();
+            const auto* build_raw_data = build_data.data();
+
+            __m256i vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
+            __m256i vindexes = _mm256_set1_epi32(0x0);
+            __m256i vprobe_keys = _mm256_set1_epi32(0x0);
+            __m256i vis = _mm256_set1_epi32(0x0);
+            uint8_t match_mask = 255;
+            while (i + W <= probe_row_count) {
+                __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                        _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
+                __m256i vmatch2 = _mm256_permutevar8x32_epi32(vmatch, vmove_left_mask);
+
+                // selectively load probe_next
+                vindexes = _mm256_permutevar8x32_epi32(vindexes, vmove_left_mask);
+                vindexes = _mm256_i32gather_epi32(reinterpret_cast<const __m256i*>(build_next_data), vindexes, 4);
+                __m256i vnew_indexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
+                vindexes = _mm256_blendv_epi8(vindexes, vnew_indexes, vmatch2);
+
+                // selectively load probe_keys
+                vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
+                __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
+                vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch2);
+
+                // selectively load i
+                vis = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
+                __m256i vnew_is = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
+                vis = _mm256_blendv_epi8(vis, vnew_is, vmatch2);
+
+                i += __builtin_popcount(match_mask);
+
+                __m256i vempty = _mm256_cmpeq_epi32(vindexes, _mm256_setzero_si256());
+
+                // selectively store
+                match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vempty));
+                vmove_left_mask = _mm256_cvtepu8_epi32(
+                        _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
+                vnew_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vnew_is);
+                match_count += __builtin_popcount(match_mask);
+
+                // get new vmatch.
+                if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
+                    vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
                 } else {
-                    indexes[j] = _table_items->next[indexes[j]];
+                    __m256i vbuild_keys =
+                            _mm256_i32gather_epi32(reinterpret_cast<const __m256i*>(build_raw_data), vindexes, 4);
+                    // TODO(lzh): only support 4B key and value.
+                    vmatch = _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys);
+                    // vmatch = _mm256_and_si256(vmatch, _mm256_xor_si256(vempty, _mm256_set1_epi32(0xFFFF'FFFF)));
+                    vmatch = _mm256_or_si256(vmatch, vempty);
                 }
+
+                match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
             }
 
-            for (uint32_t j = 0; j < W; j++) {
-                build_keys[j] = build_data[indexes[j]];
-            }
+            if (__builtin_popcount(match_mask) < W) {
+                uint32_t is[W];
+                _mm256_store_si256(reinterpret_cast<__m256i*>(is), vis);
+                uint32_t indexes[W];
+                _mm256_store_si256(reinterpret_cast<__m256i*>(indexes), vindexes);
+                CppType probe_keys[W];
+                _mm256_store_si256(reinterpret_cast<__m256i*>(probe_keys), vprobe_keys);
 
-            for (uint32_t j = 0; j < W; j++) {
-                matched[j] = (indexes[j] != 0) & ProbeFunc().equal(build_keys[j], probe_keys[j]);
-            }
-
-            for (uint32_t j = 0; j < W; j++) {
-                if (indexes[j] == 0) {
-                    _probe_state->probe_index[match_count] = is[j];
-                    match_count++;
+                match_mask = ~match_mask;
+                for (; match_mask != 0; match_mask &= match_mask - 1) {
+                    const int j = __builtin_ctz(match_mask);
+                    uint32_t index = indexes[j];
+                    if (index == 0) {
+                        _probe_state->probe_index[match_count] = is[j];
+                        match_count++;
+                        continue;
+                    }
+                    bool found = false;
+                    while (index != 0) {
+                        if (ProbeFunc().equal(build_data[index], probe_keys[j])) {
+                            found = true;
+                            break;
+                        }
+                        index = _table_items->next[index];
+                    }
+                    if (!found) {
+                        _probe_state->probe_index[match_count] = is[j];
+                        match_count++;
+                    }
                 }
-            }
-
-            for (uint32_t j = 0; j < W; j++) {
-                matched[j] |= indexes[j] == 0;
             }
         }
-
-        for (uint32_t j = 0; j < W; j++) {
-            if (matched[j]) {
-                continue;
-            }
-
-            uint32_t index = indexes[j];
-            if (index == 0) {
-                _probe_state->probe_index[match_count] = is[j];
-                match_count++;
-                continue;
-            }
-            bool found = false;
-            while (index != 0) {
-                if (ProbeFunc().equal(build_data[index], probe_keys[j])) {
-                    found = true;
-                    break;
-                }
-                index = _table_items->next[index];
-            }
-            if (!found) {
-                _probe_state->probe_index[match_count] = is[j];
-                match_count++;
-            }
-        }
+#endif
 
         for (; i < probe_row_count; i++) {
             size_t index = _probe_state->next[i];
