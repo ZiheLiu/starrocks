@@ -1486,7 +1486,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
 
                 // selectively load probe_next
                 vindexes = _mm256_permutevar8x32_epi32(vindexes, vmove_left_mask);
-                vindexes = _mm256_i32gather_epi32(reinterpret_cast<const __m256i*>(build_next_data), vindexes, 4);
+                vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
                 __m256i vnew_indexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
                 vindexes = _mm256_blendv_epi8(vindexes, vnew_indexes, vmatch2);
 
@@ -1517,7 +1517,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                     vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
                 } else {
                     __m256i vbuild_keys =
-                            _mm256_i32gather_epi32(reinterpret_cast<const __m256i*>(build_raw_data), vindexes, 4);
+                            _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
                     // TODO(lzh): only support 4B key and value.
                     vmatch = _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys);
                     // vmatch = _mm256_and_si256(vmatch, _mm256_xor_si256(vempty, _mm256_set1_epi32(0xFFFF'FFFF)));
