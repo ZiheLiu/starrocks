@@ -1544,7 +1544,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                 }
             }
 
-            if (__builtin_popcount(match_mask) < W) {
+            if (match_mask != 255) {
                 uint32_t is[W];
                 _mm256_store_si256(reinterpret_cast<__m256i*>(is), vis);
                 uint32_t indexes[W];
