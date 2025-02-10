@@ -1485,6 +1485,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                     vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
                     vis = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
                     i += W;
+                } else if (match_mask == 0) {
+                    vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
                 } else {
                     __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
                             _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
@@ -1519,11 +1521,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                     _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vis);
                     match_count += 8;
                 } else {
-                    __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
-                            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
-                    __m256i vnew_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vnew_is);
-                    match_count += __builtin_popcount(match_mask);
+                    if (match_count != 0) {
+                        __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                                _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
+                        __m256i vshuffle_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
+                        _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]),
+                                            vshuffle_is);
+                        match_count += __builtin_popcount(match_mask);
+                    }
 
                     // get new vmatch.
                     if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
@@ -1532,8 +1537,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                     } else {
                         __m256i vbuild_keys =
                                 _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
-                        // TODO(lzh): only support 4B key and value.
-                        // vmatch = _mm256_and_si256(vmatch, _mm256_xor_si256(vempty, _mm256_set1_epi32(0xFFFF'FFFF)));
+                        // TODO(lzh): only support 4B key and value for now.
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     }
