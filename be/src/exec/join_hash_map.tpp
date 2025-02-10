@@ -1468,7 +1468,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
     } else {
         uint32_t i = 0;
 
-#ifdef __AVX2__&& defined(__POPCNT__)
+#if defined(__AVX2__) && defined(__POPCNT__)
         if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             static constexpr uint32_t W = 8;
             const auto* build_next_data = _table_items->next.data();
