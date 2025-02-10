@@ -1310,7 +1310,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
         }
 
         for (uint32_t j = 0; j < W; j++) {
-            matched[j] = indexes[j] & ProbeFunc().equal(build_keys[j], probe_keys[j]);
+            matched[j] = (indexes[j] != 0) & ProbeFunc().equal(build_keys[j], probe_keys[j]);
         }
 
         for (uint32_t j = 0; j < W; j++) {
@@ -1332,7 +1332,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
 
         uint32_t index = indexes[j];
         while (index != 0) {
-            if (ProbeFunc().equal(build_data[index], probe_data[is[j]])) {
+            if (ProbeFunc().equal(build_data[index], probe_keys[j])) {
                 _probe_state->probe_index[match_count] = is[j];
                 match_count++;
                 break;
