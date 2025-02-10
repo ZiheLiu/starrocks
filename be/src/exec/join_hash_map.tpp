@@ -1422,7 +1422,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
             }
 
             for (uint32_t j = 0; j < W; j++) {
-                matched[j] = indexes[j] & ProbeFunc().equal(build_keys[j], probe_keys[j]);
+                matched[j] = (indexes[j] != 0) & ProbeFunc().equal(build_keys[j], probe_keys[j]);
             }
 
             for (uint32_t j = 0; j < W; j++) {
@@ -1450,7 +1450,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
             }
             bool found = false;
             while (index != 0) {
-                if (ProbeFunc().equal(build_data[index], probe_data[is[j]])) {
+                if (ProbeFunc().equal(build_data[index], probe_keys[j])) {
                     found = true;
                     break;
                 }
