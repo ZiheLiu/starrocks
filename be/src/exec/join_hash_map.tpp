@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <simd/gather.h>
+
 #include "simd/simd.h"
 #include "util/runtime_profile.h"
 
@@ -289,18 +291,17 @@ void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashT
             }
             probe_state->null_array = &nullable_column->null_column()->get_data();
         } else {
-            for (size_t i = 0; i < probe_row_count; i++) {
-                probe_state->next[i] = table_items.first[probe_state->buckets[i]];
-            }
+            SIMDGather::gather32(probe_state->next.data(), table_items.first.data(), probe_state->buckets.data(),
+                                 table_items.first.size(), probe_row_count);
             probe_state->null_array = nullptr;
         }
         probe_state->consider_probe_time_locality();
         return;
     }
 
-    for (size_t i = 0; i < probe_row_count; i++) {
-        probe_state->next[i] = table_items.first[probe_state->buckets[i]];
-    }
+    SIMDGather::gather32(probe_state->next.data(), table_items.first.data(), probe_state->buckets.data(),
+                         table_items.first.size(), probe_row_count);
+
     probe_state->consider_probe_time_locality();
     probe_state->null_array = nullptr;
 }

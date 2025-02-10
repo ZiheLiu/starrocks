@@ -65,5 +65,35 @@ struct SIMDGather {
             c++;
         }
     }
+
+    template <typename TDest, typename TSrc>
+    static void gather32(TDest* dest, const TSrc* src, const uint32_t* index, uint32_t num_src_rows,
+                         uint32_t num_index_rows) {
+        static_assert(std::is_integral_v<TDest>);
+        static_assert(sizeof(TDest) == 4);
+        static_assert(std::is_integral_v<TSrc>);
+        static_assert(sizeof(TSrc) == 4);
+
+        uint32_t i = 0;
+#ifdef __AVX2__
+        static constexpr size_t W = 8;
+        if (num_src_rows < max_process_size) {
+            for (; i + W <= num_index_rows; i += W) {
+                __m256i vindex = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(index));
+                __m256i gathered_values = _mm256_i32gather_epi32(reinterpret_cast<const int*>(src), vindex, 4);
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(dest), gathered_values);
+
+                dest += W;
+                index += W;
+            }
+        }
+#endif
+
+        for (; i < num_index_rows; i++) {
+            *dest = src[*index];
+            dest++;
+            index++;
+        }
+    }
 };
 } // namespace starrocks
