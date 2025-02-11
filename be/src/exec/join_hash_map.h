@@ -733,6 +733,10 @@ private:
     template <bool first_probe>
     void _probe_from_ht_for_left_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                            const Buffer<CppType>& probe_data);
+
+    template <uint8_t Start, uint8_t End>
+    void probe_from_ht_for_left_anti_join_sub_process(__m256i& vmatch, uint32_t& match_count, __m256i& vindexes,
+                                                      __m256i& vprobe_keys, __m256i& vis, const auto* build_raw_data);
     template <bool first_probe, bool FitL2Cache>
     void _do_probe_from_ht_for_left_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                               const Buffer<CppType>& probe_data);

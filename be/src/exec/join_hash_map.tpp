@@ -1442,16 +1442,29 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
     }
 }
 
-template <typename ProbeFunc, uint8_t Start, uint8_t End>
-ALWAYS_INLINE void probe_from_ht_for_left_anti_join_sub_process(__m256i& vmatch, __m256i& vindexes,
-                                                                __m256i& vprobe_keys, const auto* build_raw_data) {
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
+template <uint8_t Start, uint8_t End>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left_anti_join_sub_process(
+        __m256i& vmatch, uint32_t& match_count, __m256i& vindexes, __m256i& vprobe_keys, __m256i& vis,
+        const auto* build_raw_data) {
     if constexpr (Start < End) {
         uint32_t index = _mm256_extract_epi32(vindexes, Start);
-        if (index != 0 && ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, Start))) {
-            vmatch = _mm256_insert_epi32(vmatch, 0xFFFF'FFFF, Start);
+        if (index != 0) {
+            bool found = false;
+            while (index != 0) {
+                if (ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, Start))) {
+                    found = true;
+                    break;
+                }
+                index = _table_items->next[index];
+            }
+            if (!found) {
+                _probe_state->probe_index[match_count] = _mm256_extract_epi32(vis, Start);
+                match_count++;
+            }
         }
-        probe_from_ht_for_left_anti_join_sub_process<ProbeFunc, Start + 1, End>(vmatch, vindexes, vprobe_keys,
-                                                                                build_raw_data);
+
+        probe_from_ht_for_left_anti_join_sub_process<Start + 1, End>(vmatch, vindexes, vprobe_keys, build_raw_data);
     }
 }
 
@@ -1566,9 +1579,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     } else {
-                        probe_from_ht_for_left_anti_join_sub_process<ProbeFunc, 0, 8>(vmatch, vindexes, vprobe_keys,
-                                                                                      build_raw_data);
-                        match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+                        probe_from_ht_for_left_anti_join_sub_process<ProbeFunc, 0, 8>(vmatch, match_count, vindexes,
+                                                                                      vprobe_keys, vis, build_raw_data);
+                        match_mask = 255;
                     }
                 }
             }
