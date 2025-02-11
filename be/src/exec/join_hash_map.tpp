@@ -1443,14 +1443,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
 }
 
 template <typename ProbeFunc, uint8_t Start, uint8_t End>
-void probe_from_ht_for_left_anti_join_sub_process(__m256i& vindexes, __m256i& vprobe_keys, __m256i& vmatch,
-                                                  const auto* build_raw_data) {
+ALWAYS_INLINE void probe_from_ht_for_left_anti_join_sub_process(__m256i& vmatch, __m256i& vindexes,
+                                                                __m256i& vprobe_keys, const auto* build_raw_data) {
     if constexpr (Start < End) {
         uint32_t index = _mm256_extract_epi32(vindexes, Start);
         if (index != 0 && ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, Start))) {
             vmatch = _mm256_insert_epi32(vmatch, Start, 0xFFFF'FFFF);
         }
-        probe_from_ht_for_left_anti_join_sub_process<Start + 1, End>();
+        probe_from_ht_for_left_anti_join_sub_process<ProbeFunc, Start + 1, End>();
     }
 }
 
@@ -1565,9 +1565,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     } else {
-                        probe_from_ht_for_left_anti_join_sub_process<BuildFunc, 0, 8>(vindexes, vprobe_keys, vmatch,
+                        probe_from_ht_for_left_anti_join_sub_process<BuildFunc, 0, 8>(vmatch, vindexes, vprobe_keys,
                                                                                       build_raw_data);
-
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     }
                 }
