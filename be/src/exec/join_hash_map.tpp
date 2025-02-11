@@ -1450,7 +1450,8 @@ ALWAYS_INLINE void probe_from_ht_for_left_anti_join_sub_process(__m256i& vmatch,
         if (index != 0 && ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, Start))) {
             vmatch = _mm256_insert_epi32(vmatch, Start, 0xFFFF'FFFF);
         }
-        probe_from_ht_for_left_anti_join_sub_process<ProbeFunc, Start + 1, End>();
+        probe_from_ht_for_left_anti_join_sub_process<ProbeFunc, Start + 1, End>(vmatch, vindexes, vprobe_keys,
+                                                                                build_raw_data);
     }
 }
 
