@@ -1582,16 +1582,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                     if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
                         vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
                         match_mask = 255;
-                    } else if constexpr (FitL2Cache) {
+                    } else {
                         __m256i vbuild_keys =
                                 _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
                         // TODO(lzh): only support 4B key and value for now.
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
-                    } else {
-                        probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vindexes,
-                                                                     vprobe_keys, build_raw_data);
-                        match_mask = 255;
                     }
                 }
             }
@@ -1627,13 +1623,15 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
 
     if (match_count == probe_row_count) {
         _probe_state->match_flag = JoinMatchFlag::ALL_MATCH_ONE;
-    } else {
+    } else if (match_count * 2 >= probe_row_count) {
         _probe_state->match_flag = JoinMatchFlag::MOST_MATCH_ONE;
         uint8_t* match_filter_data = _probe_state->probe_match_filter.data();
         memset(match_filter_data, 0, sizeof(uint8_t) * _probe_state->probe_row_count);
         for (uint32_t i = 0; i < match_count; i++) {
             match_filter_data[_probe_state->probe_index[i]] = 1;
         }
+    } else {
+        _probe_state->match_flag = JoinMatchFlag::NORMAL;
     }
 
     PROBE_OVER()
