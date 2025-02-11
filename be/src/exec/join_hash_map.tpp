@@ -1601,9 +1601,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
     }
 
     if (match_count == probe_row_count) {
-        _probe_state->match_flag == JoinMatchFlag::ALL_MATCH_ONE;
+        _probe_state->match_flag = JoinMatchFlag::ALL_MATCH_ONE;
     } else {
-        _probe_state->match_flag == JoinMatchFlag::MOST_MATCH_ONE;
+        _probe_state->match_flag = JoinMatchFlag::MOST_MATCH_ONE;
         uint8_t* match_filter_data = _probe_state->probe_match_filter.data();
         memset(match_filter_data, 0, sizeof(uint8_t) * _probe_state->probe_row_count);
         for (uint32_t i = 0; i < match_count; i++) {
