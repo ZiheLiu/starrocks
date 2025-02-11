@@ -1443,28 +1443,38 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-template <uint8_t Start, uint8_t End>
-void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left_anti_join_sub_process(
-        uint32_t& match_count, __m256i& vis, __m256i& vindexes, __m256i& vprobe_keys, const auto* build_raw_data) {
-    if constexpr (Start < End) {
-        uint32_t index = _mm256_extract_epi32(vindexes, Start);
-        if (index != 0) {
-            bool found = false;
-            while (index != 0) {
-                if (ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, Start))) {
-                    found = true;
-                    break;
-                }
-                index = _table_items->next[index];
-            }
-            if (!found) {
-                _probe_state->probe_index[match_count] = _mm256_extract_epi32(vis, Start);
-                match_count++;
-            }
-        }
+ALWAYS_INLINE void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left_anti_join_sub_process(
+        uint32_t& match_count, uint8_t match_mask, __m256i& vis, __m256i& vindexes, __m256i& vprobe_keys,
+        const auto* build_raw_data) {
+    static constexpr uint32_t W = 8;
+    uint32_t is[W];
+    _mm256_store_si256(reinterpret_cast<__m256i*>(is), vis);
+    uint32_t indexes[W];
+    _mm256_store_si256(reinterpret_cast<__m256i*>(indexes), vindexes);
+    CppType probe_keys[W];
+    _mm256_store_si256(reinterpret_cast<__m256i*>(probe_keys), vprobe_keys);
 
-        probe_from_ht_for_left_anti_join_sub_process<Start + 1, End>(match_count, vis, vindexes, vprobe_keys,
-                                                                     build_raw_data);
+    match_mask = ~match_mask;
+    for (; match_mask != 0; match_mask &= match_mask - 1) {
+        const int j = __builtin_ctz(match_mask);
+        uint32_t index = indexes[j];
+        // if (index == 0) {
+        //     _probe_state->probe_index[match_count] = is[j];
+        //     match_count++;
+        //     continue;
+        // }
+        bool found = false;
+        while (index != 0) {
+            if (ProbeFunc().equal(build_raw_data[index], probe_keys[j])) {
+                found = true;
+                break;
+            }
+            index = _table_items->next[index];
+        }
+        if (!found) {
+            _probe_state->probe_index[match_count] = is[j];
+            match_count++;
+        }
     }
 }
 
@@ -1579,43 +1589,16 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     } else {
-                        probe_from_ht_for_left_anti_join_sub_process<0, 8>(match_count, vis, vindexes, vprobe_keys,
-                                                                           build_raw_data);
+                        probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vindexes,
+                                                                     vprobe_keys, build_raw_data);
                         match_mask = 255;
                     }
                 }
             }
 
             if (match_mask != 255) {
-                uint32_t is[W];
-                _mm256_store_si256(reinterpret_cast<__m256i*>(is), vis);
-                uint32_t indexes[W];
-                _mm256_store_si256(reinterpret_cast<__m256i*>(indexes), vindexes);
-                CppType probe_keys[W];
-                _mm256_store_si256(reinterpret_cast<__m256i*>(probe_keys), vprobe_keys);
-
-                match_mask = ~match_mask;
-                for (; match_mask != 0; match_mask &= match_mask - 1) {
-                    const int j = __builtin_ctz(match_mask);
-                    uint32_t index = indexes[j];
-                    if (index == 0) {
-                        _probe_state->probe_index[match_count] = is[j];
-                        match_count++;
-                        continue;
-                    }
-                    bool found = false;
-                    while (index != 0) {
-                        if (ProbeFunc().equal(build_data[index], probe_keys[j])) {
-                            found = true;
-                            break;
-                        }
-                        index = _table_items->next[index];
-                    }
-                    if (!found) {
-                        _probe_state->probe_index[match_count] = is[j];
-                        match_count++;
-                    }
-                }
+                probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vindexes, vprobe_keys,
+                                                             build_raw_data);
             }
         }
 #endif
