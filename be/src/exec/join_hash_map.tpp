@@ -1519,82 +1519,85 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
 
 #if defined(__AVX2__) && defined(__POPCNT__)
         if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && FitL2Cache) {
-            static constexpr uint32_t W = 8;
-            const auto* build_next_data = _table_items->next.data();
-            const auto* build_raw_data = build_data.data();
+            if (config::enable_simd_hash_join) {
+                static constexpr uint32_t W = 8;
+                const auto* build_next_data = _table_items->next.data();
+                const auto* build_raw_data = build_data.data();
 
-            uint8_t match_mask = 255;
-            __m256i vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
-            __m256i vindexes = _mm256_set1_epi32(0x0);
-            __m256i vprobe_keys = _mm256_set1_epi32(0x0);
-            __m256i vis = _mm256_set1_epi32(0x0);
-            while (i + W <= probe_row_count) {
-                if (match_mask == 255) {
-                    vindexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
-                    vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
-                    vis = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
-                    i += W;
-                } else if (match_mask == 0) {
-                    vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
-                } else {
-                    __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
-                            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
-                    __m256i vmatch2 = _mm256_permutevar8x32_epi32(vmatch, vmove_left_mask);
-
-                    // selectively load probe_next
-                    vindexes = _mm256_permutevar8x32_epi32(vindexes, vmove_left_mask);
-                    vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
-                    __m256i vnew_indexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
-                    vindexes = _mm256_blendv_epi8(vindexes, vnew_indexes, vmatch2);
-
-                    // selectively load probe_keys
-                    vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
-                    __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
-                    vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch2);
-
-                    // selectively load i
-                    vis = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
-                    __m256i vnew_is = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
-                    vis = _mm256_blendv_epi8(vis, vnew_is, vmatch2);
-
-                    i += __builtin_popcount(match_mask);
-                }
-
-                // empty mask
-                vmatch = _mm256_cmpeq_epi32(vindexes, _mm256_setzero_si256());
-                match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
-
-                if (match_mask == 255) {
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vis);
-                    match_count += 8;
-                } else {
-                    if (match_mask != 0) {
-                        // selectively store
+                uint8_t match_mask = 255;
+                __m256i vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
+                __m256i vindexes = _mm256_set1_epi32(0x0);
+                __m256i vprobe_keys = _mm256_set1_epi32(0x0);
+                __m256i vis = _mm256_set1_epi32(0x0);
+                while (i + W <= probe_row_count) {
+                    if (match_mask == 255) {
+                        vindexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
+                        vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
+                        vis = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
+                        i += W;
+                    } else if (match_mask == 0) {
+                        vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
+                    } else {
                         __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
                                 _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
-                        __m256i vshuffle_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
-                        _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]),
-                                            vshuffle_is);
-                        match_count += __builtin_popcount(match_mask);
+                        __m256i vmatch2 = _mm256_permutevar8x32_epi32(vmatch, vmove_left_mask);
+
+                        // selectively load probe_next
+                        vindexes = _mm256_permutevar8x32_epi32(vindexes, vmove_left_mask);
+                        vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
+                        __m256i vnew_indexes =
+                                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
+                        vindexes = _mm256_blendv_epi8(vindexes, vnew_indexes, vmatch2);
+
+                        // selectively load probe_keys
+                        vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
+                        __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
+                        vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch2);
+
+                        // selectively load i
+                        vis = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
+                        __m256i vnew_is = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
+                        vis = _mm256_blendv_epi8(vis, vnew_is, vmatch2);
+
+                        i += __builtin_popcount(match_mask);
                     }
 
-                    // get new vmatch.
-                    if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
-                        vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
-                        match_mask = 255;
+                    // empty mask
+                    vmatch = _mm256_cmpeq_epi32(vindexes, _mm256_setzero_si256());
+                    match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+
+                    if (match_mask == 255) {
+                        _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vis);
+                        match_count += 8;
                     } else {
-                        __m256i vbuild_keys =
-                                _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
-                        // TODO(lzh): only support 4B key and value for now.
-                        vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
-                        match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+                        if (match_mask != 0) {
+                            // selectively store
+                            __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                                    _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
+                            __m256i vshuffle_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
+                            _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]),
+                                                vshuffle_is);
+                            match_count += __builtin_popcount(match_mask);
+                        }
+
+                        // get new vmatch.
+                        if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
+                            vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
+                            match_mask = 255;
+                        } else {
+                            __m256i vbuild_keys =
+                                    _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
+                            // TODO(lzh): only support 4B key and value for now.
+                            vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
+                            match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+                        }
                     }
                 }
-            }
 
-            if (match_mask != 255) {
-                probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vindexes, vprobe_keys,
-                                                             build_raw_data);
+                if (match_mask != 255) {
+                    probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vindexes, vprobe_keys,
+                                                                 build_raw_data);
+                }
             }
         }
 #endif
