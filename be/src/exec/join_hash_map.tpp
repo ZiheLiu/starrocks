@@ -1566,7 +1566,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     } else {
-                        probe_from_ht_for_left_anti_join_sub_process<BuildFunc, 0, 8>(vmatch, vindexes, vprobe_keys,
+                        probe_from_ht_for_left_anti_join_sub_process<ProbeFunc, 0, 8>(vmatch, vindexes, vprobe_keys,
                                                                                       build_raw_data);
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     }
