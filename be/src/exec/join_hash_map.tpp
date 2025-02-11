@@ -1434,6 +1434,19 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
+    static constexpr size_t l2_cache_size = 1024 * 1024;
+    if (build_data.size() <= l2_cache_size) {
+        _do_probe_from_ht_for_left_anti_join<first_probe, true>(state, build_data, probe_data);
+    } else {
+        _do_probe_from_ht_for_left_anti_join<first_probe, false>(state, build_data, probe_data);
+    }
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
+template <bool first_probe, bool FitL2Cache>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join(RuntimeState* state,
+                                                                                 const Buffer<CppType>& build_data,
+                                                                                 const Buffer<CppType>& probe_data) {
     const size_t probe_row_count = _probe_state->probe_row_count;
     uint32_t match_count = 0;
 
@@ -1513,8 +1526,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
 
                 // empty mask
                 vmatch = _mm256_cmpeq_epi32(vindexes, _mm256_setzero_si256());
-
-                // selectively store
                 match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
 
                 if (match_mask == 255) {
@@ -1522,6 +1533,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                     match_count += 8;
                 } else {
                     if (match_mask != 0) {
+                        // selectively store
                         __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
                                 _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
                         __m256i vshuffle_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
@@ -1534,11 +1546,61 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                     if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
                         vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
                         match_mask = 255;
-                    } else {
+                    } else if constexpr (FitL2Cache) {
                         __m256i vbuild_keys =
                                 _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
                         // TODO(lzh): only support 4B key and value for now.
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
+                        match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+                    } else {
+                        uint32_t index = _mm256_extract_epi32(vindexes, 0);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 0))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 0, 0xFFFF'FFFF);
+                        }
+
+                        index = _mm256_extract_epi32(vindexes, 1);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 1))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 1, 0xFFFF'FFFF);
+                        }
+
+                        index = _mm256_extract_epi32(vindexes, 2);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 2))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 2, 0xFFFF'FFFF);
+                        }
+
+                        index = _mm256_extract_epi32(vindexes, 3);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 3))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 3, 0xFFFF'FFFF);
+                        }
+
+                        index = _mm256_extract_epi32(vindexes, 4);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 4))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 4, 0xFFFF'FFFF);
+                        }
+
+                        index = _mm256_extract_epi32(vindexes, 5);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 5))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 5, 0xFFFF'FFFF);
+                        }
+
+                        index = _mm256_extract_epi32(vindexes, 6);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 6))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 6, 0xFFFF'FFFF);
+                        }
+
+                        index = _mm256_extract_epi32(vindexes, 7);
+                        if (index != 0 &&
+                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 7))) {
+                            vmatch = _mm256_insert_epi32(vmatch, 7, 0xFFFF'FFFF);
+                        }
+
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     }
                 }
