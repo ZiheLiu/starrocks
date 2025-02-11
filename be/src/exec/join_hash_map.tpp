@@ -1442,6 +1442,18 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
     }
 }
 
+template <typename ProbeFunc, uint8_t Start, uint8_t End>
+void probe_from_ht_for_left_anti_join_sub_process(__m256i& vindexes, __m256i& vprobe_keys, __m256i& vmatch,
+                                                  const auto* build_raw_data) {
+    if constexpr (Start < End) {
+        uint32_t index = _mm256_extract_epi32(vindexes, Start);
+        if (index != 0 && ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, Start))) {
+            vmatch = _mm256_insert_epi32(vmatch, Start, 0xFFFF'FFFF);
+        }
+        probe_from_ht_for_left_anti_join_sub_process<Start + 1, End>();
+    }
+}
+
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool FitL2Cache>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join(RuntimeState* state,
@@ -1553,53 +1565,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     } else {
-                        uint32_t index = _mm256_extract_epi32(vindexes, 0);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 0))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 0, 0xFFFF'FFFF);
-                        }
-
-                        index = _mm256_extract_epi32(vindexes, 1);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 1))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 1, 0xFFFF'FFFF);
-                        }
-
-                        index = _mm256_extract_epi32(vindexes, 2);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 2))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 2, 0xFFFF'FFFF);
-                        }
-
-                        index = _mm256_extract_epi32(vindexes, 3);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 3))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 3, 0xFFFF'FFFF);
-                        }
-
-                        index = _mm256_extract_epi32(vindexes, 4);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 4))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 4, 0xFFFF'FFFF);
-                        }
-
-                        index = _mm256_extract_epi32(vindexes, 5);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 5))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 5, 0xFFFF'FFFF);
-                        }
-
-                        index = _mm256_extract_epi32(vindexes, 6);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 6))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 6, 0xFFFF'FFFF);
-                        }
-
-                        index = _mm256_extract_epi32(vindexes, 7);
-                        if (index != 0 &&
-                            ProbeFunc().equal(build_raw_data[index], _mm256_extract_epi32(vprobe_keys, 7))) {
-                            vmatch = _mm256_insert_epi32(vmatch, 7, 0xFFFF'FFFF);
-                        }
+                        probe_from_ht_for_left_anti_join_sub_process<BuildFunc, 0, 8>(vindexes, vprobe_keys, vmatch,
+                                                                                      build_raw_data);
 
                         match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     }
