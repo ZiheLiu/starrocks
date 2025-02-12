@@ -1765,9 +1765,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         i += __builtin_popcount(match_mask);
                     }
 
-                    __m256i ventries1 = _mm256_i32gather_epi64(reinterpret_cast<const int64_t*>(bucket_data),
+                    __m256i ventries1 = _mm256_i32gather_epi64(reinterpret_cast<const long long int*>(bucket_data),
                                                                _mm256_extracti128_si256(vbuckets, 0), 8);
-                    __m256i ventries2 = _mm256_i32gather_epi64(reinterpret_cast<const int64_t*>(bucket_data),
+                    __m256i ventries2 = _mm256_i32gather_epi64(reinterpret_cast<const long long int*>(bucket_data),
                                                                _mm256_extracti128_si256(vbuckets, 1), 8);
                     __m256i vindexes1 = _mm256_permutevar8x32_epi32(ventries1, even_mask);
                     __m256i vindexes2 = _mm256_permutevar8x32_epi32(ventries2, even_mask);
