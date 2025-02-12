@@ -1731,8 +1731,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                                                                _mm256_extracti128_si256(vbuckets, 0), 8);
                     __m256i ventries2 = _mm256_i32gather_epi64(reinterpret_cast<const long long int*>(bucket_data),
                                                                _mm256_extracti128_si256(vbuckets, 1), 8);
-                    __m256i vindexes1 = _mm256_permutevar8x32_epi32(ventries1, even_mask);
-                    __m256i vindexes2 = _mm256_permutevar8x32_epi32(ventries2, even_mask);
+                    __m256i vindexes1 = _mm256_permutevar8x32_epi32(ventries1, odd_mask);
+                    __m256i vindexes2 = _mm256_permutevar8x32_epi32(ventries2, odd_mask);
                     __m256i vindexes = _mm256_blend_epi32(vindexes1, vindexes2, 0b1111'0000);
 
                     // empty mask
@@ -1758,8 +1758,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                             vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
                             match_mask = 255;
                         } else {
-                            __m256i vbuild_keys1 = _mm256_permutevar8x32_epi32(ventries1, odd_mask);
-                            __m256i vbuild_keys2 = _mm256_permutevar8x32_epi32(ventries2, odd_mask);
+                            __m256i vbuild_keys1 = _mm256_permutevar8x32_epi32(ventries1, even_mask);
+                            __m256i vbuild_keys2 = _mm256_permutevar8x32_epi32(ventries2, even_mask);
                             __m256i vbuild_keys = _mm256_blend_epi32(vbuild_keys1, vbuild_keys2, 0b1111'0000);
                             vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
                             match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
