@@ -1813,47 +1813,50 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         }
 #endif
 
-        if (std::is_integral_v<CppType> && sizeof(CppType) == 4 && abs(config::enable_simd_hash_join) == 2) {
-            for (; i < probe_row_count; i++) {
-                uint32_t bucket = _probe_state->buckets[i];
+        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+            if (abs(config::enable_simd_hash_join) == 2) {
+                for (; i < probe_row_count; i++) {
+                    uint32_t bucket = _probe_state->buckets[i];
 
-                int probe_times = 1;
-                do {
-                    auto entry = _table_items->buckets[bucket];
-                    if (entry.index == 0) {
-                        _probe_state->probe_index[match_count] = i;
-                        match_count++;
-                        break;
-                    }
+                    int probe_times = 1;
+                    do {
+                        auto entry = _table_items->buckets[bucket];
+                        if (entry.index == 0) {
+                            _probe_state->probe_index[match_count] = i;
+                            match_count++;
+                            break;
+                        }
 
-                    if (entry.value == probe_data[i]) {
-                        break;
-                    }
+                        if (entry.value == probe_data[i]) {
+                            break;
+                        }
 
-                    bucket = (bucket + probe_times) % _table_items->bucket_size;
-                    probe_times++;
-                } while (true);
+                        bucket = (bucket + probe_times) % _table_items->bucket_size;
+                        probe_times++;
+                    } while (true);
+                }
             }
-        } else {
-            for (; i < probe_row_count; i++) {
-                size_t index = _probe_state->next[i];
-                if (index == 0) {
-                    _probe_state->probe_index[match_count] = i;
-                    match_count++;
-                    continue;
+            break;
+        }
+
+        for (; i < probe_row_count; i++) {
+            size_t index = _probe_state->next[i];
+            if (index == 0) {
+                _probe_state->probe_index[match_count] = i;
+                match_count++;
+                continue;
+            }
+            bool found = false;
+            while (index != 0) {
+                if (ProbeFunc().equal(build_data[index], probe_data[i])) {
+                    found = true;
+                    break;
                 }
-                bool found = false;
-                while (index != 0) {
-                    if (ProbeFunc().equal(build_data[index], probe_data[i])) {
-                        found = true;
-                        break;
-                    }
-                    index = _table_items->next[index];
-                }
-                if (!found) {
-                    _probe_state->probe_index[match_count] = i;
-                    match_count++;
-                }
+                index = _table_items->next[index];
+            }
+            if (!found) {
+                _probe_state->probe_index[match_count] = i;
+                match_count++;
             }
         }
     }
