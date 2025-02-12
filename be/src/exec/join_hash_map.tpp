@@ -30,6 +30,7 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
+    table_items->buckets.resize(table_items->bucket_size);
 }
 
 template <LogicalType LT>
@@ -186,6 +187,7 @@ void FixedSizeJoinBuildFunc<LT>::prepare(RuntimeState* state, JoinHashTableItems
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
+    table_items->buckets.resize(table_items->bucket_size);
     table_items->build_key_column = ColumnType::create(table_items->row_count + 1);
 }
 
