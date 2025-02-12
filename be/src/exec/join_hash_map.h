@@ -99,6 +99,12 @@ struct HashTableSlotDescriptor {
 };
 
 struct JoinHashTableItems {
+    struct Entry {
+        uint32_t value;
+        uint32_t index;
+    };
+    Buffer<Entry> buckets;
+
     //TODO: memory continues problem?
     ChunkPtr build_chunk = nullptr;
     Columns key_columns;
@@ -399,6 +405,9 @@ public:
     static const Buffer<CppType>& get_key_data(const JoinHashTableItems& table_items);
     static void construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                      HashTableProbeState* probe_state);
+    template <bool SIMD>
+    static void do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
+                                        HashTableProbeState* probe_state);
 };
 
 template <LogicalType LT>
@@ -460,6 +469,8 @@ public:
 
     static void prepare(RuntimeState* state, HashTableProbeState* probe_state) {}
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
+    template <bool SIMD>
+    static void do_lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
     static const Buffer<CppType>& get_key_data(const HashTableProbeState& probe_state);
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
 };
@@ -737,6 +748,8 @@ private:
     void probe_from_ht_for_left_anti_join_sub_process(uint32_t& match_count, uint8_t match_mask, __m256i& vis,
                                                       __m256i& vindexes, __m256i& vprobe_keys,
                                                       const auto* build_raw_data);
+    void probe_from_ht_for_left_anti_join_sub_process(uint32_t& match_count, uint8_t match_mask, __m256i& vis,
+                                                      __m256i& vbuckets, __m256i& voffsets, __m256i& vprobe_keys);
     template <bool first_probe, bool FitL2Cache>
     void _do_probe_from_ht_for_left_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                               const Buffer<CppType>& probe_data);
