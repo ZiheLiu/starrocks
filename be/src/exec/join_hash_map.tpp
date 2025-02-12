@@ -1781,7 +1781,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                     for (; match_mask != 0; match_mask &= match_mask - 1) {
                         const int j = __builtin_ctz(match_mask);
 
-                        int probe_times = offsets[j];
+                        int probe_times = offsets[j] + 1;
                         uint32_t bucket = (buckets[j] + probe_times) % _table_items->bucket_size;
                         probe_times++;
 
