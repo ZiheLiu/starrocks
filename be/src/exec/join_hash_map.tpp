@@ -1835,28 +1835,48 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         probe_times++;
                     } while (true);
                 }
-            }
-            break;
-        }
-
-        for (; i < probe_row_count; i++) {
-            size_t index = _probe_state->next[i];
-            if (index == 0) {
-                _probe_state->probe_index[match_count] = i;
-                match_count++;
-                continue;
-            }
-            bool found = false;
-            while (index != 0) {
-                if (ProbeFunc().equal(build_data[index], probe_data[i])) {
-                    found = true;
-                    break;
+            } else {
+                for (; i < probe_row_count; i++) {
+                    size_t index = _probe_state->next[i];
+                    if (index == 0) {
+                        _probe_state->probe_index[match_count] = i;
+                        match_count++;
+                        continue;
+                    }
+                    bool found = false;
+                    while (index != 0) {
+                        if (ProbeFunc().equal(build_data[index], probe_data[i])) {
+                            found = true;
+                            break;
+                        }
+                        index = _table_items->next[index];
+                    }
+                    if (!found) {
+                        _probe_state->probe_index[match_count] = i;
+                        match_count++;
+                    }
                 }
-                index = _table_items->next[index];
             }
-            if (!found) {
-                _probe_state->probe_index[match_count] = i;
-                match_count++;
+        } else {
+            for (; i < probe_row_count; i++) {
+                size_t index = _probe_state->next[i];
+                if (index == 0) {
+                    _probe_state->probe_index[match_count] = i;
+                    match_count++;
+                    continue;
+                }
+                bool found = false;
+                while (index != 0) {
+                    if (ProbeFunc().equal(build_data[index], probe_data[i])) {
+                        found = true;
+                        break;
+                    }
+                    index = _table_items->next[index];
+                }
+                if (!found) {
+                    _probe_state->probe_index[match_count] = i;
+                    match_count++;
+                }
             }
         }
     }
