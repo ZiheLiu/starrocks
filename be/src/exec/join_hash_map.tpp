@@ -1550,7 +1550,7 @@ ALWAYS_INLINE void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-ALWAYS_INLINE void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left_anti_join_sub_process(
+ALWAYS_INLINE void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left_anti_join_sub_process2(
         uint32_t& match_count, uint8_t match_mask, __m256i& vis, __m256i& vbuckets, __m256i& voffsets,
         __m256i& vprobe_keys) {
     if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
@@ -1808,7 +1808,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 }
 
                 if (match_mask != 255) {
-                    probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vbuckets, voffsets,
+                    probe_from_ht_for_left_anti_join_sub_process2(match_count, match_mask, vis, vbuckets, voffsets,
                                                                  vprobe_keys);
                 }
             }
