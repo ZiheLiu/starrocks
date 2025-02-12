@@ -1550,48 +1550,6 @@ ALWAYS_INLINE void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-ALWAYS_INLINE void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left_anti_join_sub_process2(
-        uint32_t& match_count, uint8_t match_mask, __m256i& vis, __m256i& vbuckets, __m256i& voffsets,
-        __m256i& vprobe_keys) {
-    if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-        static constexpr uint32_t W = 8;
-        uint32_t is[W];
-        _mm256_store_si256(reinterpret_cast<__m256i*>(is), vis);
-        uint32_t buckets[W];
-        _mm256_store_si256(reinterpret_cast<__m256i*>(buckets), vbuckets);
-        uint32_t offsets[W];
-        _mm256_store_si256(reinterpret_cast<__m256i*>(offsets), voffsets);
-        CppType probe_keys[W];
-        _mm256_store_si256(reinterpret_cast<__m256i*>(probe_keys), vprobe_keys);
-
-        match_mask = ~match_mask;
-        for (; match_mask != 0; match_mask &= match_mask - 1) {
-            const int j = __builtin_ctz(match_mask);
-
-            int probe_times = offsets[j];
-            uint32_t bucket = (buckets[j] + probe_times) % _table_items->bucket_size;
-            probe_times++;
-
-            do {
-                auto entry = _table_items->buckets[bucket];
-                if (entry.index == 0) {
-                    _probe_state->probe_index[match_count] = is[j];
-                    match_count++;
-                    break;
-                }
-
-                if (entry.value == probe_keys[j]) {
-                    break;
-                }
-
-                bucket = (bucket + probe_times) % _table_items->bucket_size;
-                probe_times++;
-            } while (true);
-        }
-    }
-}
-
-template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool FitL2Cache>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                                  const Buffer<CppType>& build_data,
@@ -1808,8 +1766,39 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 }
 
                 if (match_mask != 255) {
-                    probe_from_ht_for_left_anti_join_sub_process2(match_count, match_mask, vis, vbuckets, voffsets,
-                                                                 vprobe_keys);
+                    uint32_t is[W];
+                    _mm256_store_si256(reinterpret_cast<__m256i*>(is), vis);
+                    uint32_t buckets[W];
+                    _mm256_store_si256(reinterpret_cast<__m256i*>(buckets), vbuckets);
+                    uint32_t offsets[W];
+                    _mm256_store_si256(reinterpret_cast<__m256i*>(offsets), voffsets);
+                    CppType probe_keys[W];
+                    _mm256_store_si256(reinterpret_cast<__m256i*>(probe_keys), vprobe_keys);
+
+                    match_mask = ~match_mask;
+                    for (; match_mask != 0; match_mask &= match_mask - 1) {
+                        const int j = __builtin_ctz(match_mask);
+
+                        int probe_times = offsets[j];
+                        uint32_t bucket = (buckets[j] + probe_times) % _table_items->bucket_size;
+                        probe_times++;
+
+                        do {
+                            auto entry = _table_items->buckets[bucket];
+                            if (entry.index == 0) {
+                                _probe_state->probe_index[match_count] = is[j];
+                                match_count++;
+                                break;
+                            }
+
+                            if (entry.value == probe_keys[j]) {
+                                break;
+                            }
+
+                            bucket = (bucket + probe_times) % _table_items->bucket_size;
+                            probe_times++;
+                        } while (true);
+                    }
                 }
             }
         }

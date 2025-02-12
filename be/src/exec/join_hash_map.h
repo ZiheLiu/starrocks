@@ -748,8 +748,6 @@ private:
     void probe_from_ht_for_left_anti_join_sub_process(uint32_t& match_count, uint8_t match_mask, __m256i& vis,
                                                       __m256i& vindexes, __m256i& vprobe_keys,
                                                       const auto* build_raw_data);
-    void probe_from_ht_for_left_anti_join_sub_process2(uint32_t& match_count, uint8_t match_mask, __m256i& vis,
-                                                       __m256i& vbuckets, __m256i& voffsets, __m256i& vprobe_keys);
     template <bool first_probe, bool FitL2Cache>
     void _do_probe_from_ht_for_left_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                               const Buffer<CppType>& probe_data);
