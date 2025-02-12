@@ -788,7 +788,9 @@ CONF_mInt32(tablet_max_pending_versions, "1000");
 // NOTE: it will be deleted.
 CONF_mBool(enable_bitmap_union_disk_format_with_set, "false");
 
-CONF_mBool(enable_simd_hash_join, "true");
+// 0: the chained hash table.
+// 1: the chained hash table with vectorized.
+CONF_mInt64(enable_simd_hash_join, "1");
 
 // pipeline poller timeout guard
 CONF_mInt64(pipeline_poller_timeout_guard_ms, "-1");
