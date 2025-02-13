@@ -152,6 +152,7 @@ struct JoinHashTableItems {
     bool cache_miss_serious = false;
     bool mor_reader_mode = false;
     bool enable_late_materialization = false;
+    bool no_conflicts = true;
     bool no_duplicated_build_keys = true;
 
     float get_keys_per_bucket() const { return keys_per_bucket; }
@@ -733,7 +734,7 @@ private:
     // for one key inner join
     template <bool first_probe>
     void _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
-    template <bool first_probe, bool no_duplicated>
+    template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys>
     void _do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,

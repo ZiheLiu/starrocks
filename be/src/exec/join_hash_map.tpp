@@ -88,6 +88,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         uint32_t bucket = hash >> 3;
                         uint32_t j = 1;
                         for (; table_items->buckets[bucket].index.value != 0; j++) {
+                            table_items->no_duplicated_build_keys &= table_items->buckets[bucket].value != data[i];
                             bucket = (bucket + j) % table_items->bucket_size;
                         }
 
@@ -95,7 +96,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         table_items->buckets[bucket].index.set(i);
                         table_items->buckets[hash >> 3].index.set_salt(hash & 7);
 
-                        table_items->no_duplicated_build_keys &= j == 1;
+                        table_items->no_conflicts &= j == 1;
                     } else {
                         uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
                                 data[i], table_items->bucket_size, table_items->log_bucket_size);
@@ -113,13 +114,14 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     uint32_t bucket = hash >> 3;
                     uint32_t j = 1;
                     for (; table_items->buckets[bucket].index.value != 0; j++) {
+                        table_items->no_duplicated_build_keys &= table_items->buckets[bucket].value != data[i];
                         bucket = (bucket + j) % table_items->bucket_size;
                     }
                     table_items->buckets[bucket].value = data[i];
                     table_items->buckets[bucket].index.set(i);
                     table_items->buckets[hash >> 3].index.set_salt(hash & 7);
 
-                    table_items->no_duplicated_build_keys &= j == 1;
+                    table_items->no_conflicts &= j == 1;
                 } else {
                     uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
@@ -137,13 +139,14 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 uint32_t bucket = hash >> 3;
                 uint32_t j = 1;
                 for (; table_items->buckets[bucket].index.value != 0; j++) {
+                    table_items->no_duplicated_build_keys &= table_items->buckets[bucket].value != data[i];
                     bucket = (bucket + j) % table_items->bucket_size;
                 }
                 table_items->buckets[bucket].value = data[i];
                 table_items->buckets[bucket].index.set(i);
                 table_items->buckets[hash >> 3].index.set_salt(hash & 7);
 
-                table_items->no_duplicated_build_keys &= j == 1;
+                table_items->no_conflicts &= j == 1;
             } else {
                 uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                   table_items->log_bucket_size);
@@ -1127,15 +1130,23 @@ template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                            const Buffer<CppType>& probe_data) {
-    if (_table_items->no_duplicated_build_keys) {
-        _do_probe_from_ht<first_probe, true>(state, build_data, probe_data);
+    if (_table_items->no_conflicts) {
+        if (_table_items->no_duplicated_build_keys) {
+            _do_probe_from_ht<first_probe, true, true>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht<first_probe, true, false>(state, build_data, probe_data);
+        }
     } else {
-        _do_probe_from_ht<first_probe, false>(state, build_data, probe_data);
+        if (_table_items->no_duplicated_build_keys) {
+            _do_probe_from_ht<first_probe, false, true>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht<first_probe, false, false>(state, build_data, probe_data);
+        }
     }
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-template <bool first_probe, bool no_duplicated>
+template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                               const Buffer<CppType>& probe_data) {
     _probe_state->match_flag = JoinMatchFlag::NORMAL;
@@ -1191,7 +1202,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                 }
 
                 if (match_salt) {
-                    if constexpr (no_duplicated) {
+                    if constexpr (no_conflicts) {
                         probe_cont++;
                         if (entry->value == probe_data_p[i]) {
                             _probe_state->probe_index[match_count] = i;
@@ -1233,6 +1244,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                                     _probe_state->has_remain = true;
                                     _probe_state->count = state->chunk_size();
                                     return;
+                                }
+
+                                if constexpr (no_duplicated_build_keys) {
+                                    break;
                                 }
                             }
 
