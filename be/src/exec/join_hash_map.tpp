@@ -1148,7 +1148,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
             for (; i < probe_row_count; i++) {
                 const uint32_t hash = _probe_state->buckets[i];
                 uint32_t bucket = hash >> 3;
-                auto entry = _table_items->buckets[bucket];
+                const auto* entry = &_table_items->buckets[bucket];
 
                 uint32_t probe_times = 1;
                 if constexpr (!first_probe) {
@@ -1156,11 +1156,11 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
                         probe_times = _probe_state->cur_probe_times;
                         bucket = (bucket + probe_times) % _table_items->bucket_size;
                         probe_times++;
-                        entry = _table_items->buckets[bucket];
+                        entry = &_table_items->buckets[bucket];
                     }
                 }
 
-                bool match_salt = entry.index.match_salt(hash & 7) != 0;
+                bool match_salt = entry->index.match_salt(hash & 7) != 0;
                 if constexpr (!first_probe) {
                     if (i == _probe_state->cur_probe_index) {
                         match_salt = true;
@@ -1169,9 +1169,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
 
                 if (match_salt) {
                     do {
-                        if (entry.value == probe_data[i]) {
+                        if (entry->value == probe_data[i]) {
                             _probe_state->probe_index[match_count] = i;
-                            _probe_state->build_index[match_count] = entry.index.index();
+                            _probe_state->build_index[match_count] = entry->index.index();
                             match_count++;
 
                             if constexpr (first_probe) {
@@ -1182,7 +1182,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
                             if (UNLIKELY(match_count > state->chunk_size())) {
                                 _probe_state->cur_probe_times = probe_times;
                                 _probe_state->cur_probe_index = i;
-                                _probe_state->cur_build_index = entry.index.index();
+                                _probe_state->cur_build_index = entry->index.index();
                                 _probe_state->has_remain = true;
                                 _probe_state->count = state->chunk_size();
                                 return;
@@ -1192,8 +1192,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
 
                         bucket = (bucket + probe_times) % _table_items->bucket_size;
                         probe_times++;
-                        entry = _table_items->buckets[bucket];
-                    } while (entry.index.value != 0);
+                        entry = &_table_items->buckets[bucket];
+                    } while (entry->index.value != 0);
 
                     if constexpr (first_probe) {
                         if (_probe_state->cur_row_match_count > 1) {
@@ -1921,28 +1921,28 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 for (; i < probe_row_count; i++) {
                     const uint32_t hash = _probe_state->buckets[i];
                     uint32_t bucket = hash >> 3;
-                    auto entry = _table_items->buckets[bucket];
-                    if (entry.index.match_salt(hash & 7) == 0) {
+                    const auto* entry = &_table_items->buckets[bucket];
+                    if (entry->index.match_salt(hash & 7) == 0) {
                         _probe_state->probe_index[match_count] = i;
                         match_count++;
-                    } else if (entry.value == probe_data[i]) {
+                    } else if (entry->value == probe_data[i]) {
                         // Do nothing.
                     } else {
                         int probe_times = 1;
                         do {
-                            auto entry = _table_items->buckets[bucket];
-                            if (entry.index.value == 0) {
+                            if (entry->index.value == 0) {
                                 _probe_state->probe_index[match_count] = i;
                                 match_count++;
                                 break;
                             }
 
-                            if (entry.value == probe_data[i]) {
+                            if (entry->value == probe_data[i]) {
                                 break;
                             }
 
                             bucket = (bucket + probe_times) % _table_items->bucket_size;
                             probe_times++;
+                            entry = &_table_items->buckets[bucket];
                         } while (true);
                     }
                 }
