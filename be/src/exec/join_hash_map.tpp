@@ -1221,14 +1221,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         entry = &_table_items->buckets[bucket];
                     } while (entry->index.value != 0);
 
-                    if constexpr (first_probe) {
+                    if constexpr (!no_duplicated && first_probe) {
                         if (_probe_state->cur_row_match_count > 1) {
                             one_to_many = true;
                         }
                     }
                 }
 
-                if constexpr (!no_duplicated && first_probe) {
+                if constexpr (first_probe) {
                     _probe_state->cur_row_match_count = 0;
                 }
             }
