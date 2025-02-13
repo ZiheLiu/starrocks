@@ -209,6 +209,7 @@ struct HashTableProbeState {
     bool has_remain = false;
     // When one-to-many, one probe may not be able to probe all the data,
     // cur_probe_index records the position of the last probe
+    uint32_t cur_probe_times = 0;
     uint32_t cur_probe_index = 0;
     uint32_t cur_build_index = 0;
     uint32_t cur_row_match_count = 0;
