@@ -1691,8 +1691,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
 
                 const __m256i vones = _mm256_set1_epi32(1);
                 const __m256i vbucket_mask = _mm256_set1_epi32(_table_items->bucket_size - 1);
-                const __m256i vindex_mask = _mm256_set1_epi32(0x00FF'FFFF);
-                const __m256i vsalt_lookup = _mm256_set_epi32(128, 64, 32, 16, 8, 4, 2, 1);
+                const __m256i vsalt_lookup = _mm256_set_epi32(1ul << 31, 1ul << 30, 1ul << 29, 1ul << 28, 1ul << 27,
+                                                              1ul << 26, 1ul << 25, 1ul << 24);
                 const __m256i even_mask = _mm256_set_epi32(6, 4, 2, 0, 6, 4, 2, 0);
                 const __m256i odd_mask = _mm256_set_epi32(7, 5, 3, 1, 7, 5, 3, 1);
 
@@ -1763,8 +1763,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                     // empty mask
                     vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vindexes, _mm256_setzero_si256()));
                     match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
-
-                    vindexes = _mm256_and_si256(vindexes, vindex_mask);
 
                     if (match_mask == 255) {
                         _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vis);
