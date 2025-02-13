@@ -99,9 +99,22 @@ struct HashTableSlotDescriptor {
 };
 
 struct JoinHashTableItems {
+    struct Index {
+        // high 8 bits: salt
+        // low 24 bits: index
+        uint32_t value;
+
+        void set(uint32_t v) { value = v; }
+        void set_salt(uint32_t salt_value) { value |= build_salt(salt_value); }
+
+        uint32_t index() const { return value & 0x00FF'FFFF; }
+        uint32_t match_salt(uint32_t salt_value) const { return value & build_salt(salt_value); }
+
+        static uint32_t build_salt(uint32_t salt_value) { return 1 << (salt_value + 24); }
+    };
     struct Entry {
         uint32_t value;
-        uint32_t index;
+        Index index;
     };
     Buffer<Entry> buckets;
 
