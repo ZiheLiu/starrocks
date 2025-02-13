@@ -1164,6 +1164,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     const size_t probe_row_count = _probe_state->probe_row_count;
 
+    const CppType* __restrict probe_data_p = probe_data.data();
+
     if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         if (abs(config::enable_simd_hash_join) == 2) {
             for (; i < probe_row_count; i++) {
@@ -1189,10 +1191,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                 }
 
                 if (match_salt) {
-                    do {
+                    if constexpr (no_duplicated) {
                         probe_cont++;
-
-                        if (entry->value == probe_data[i]) {
+                        if (entry->value == probe_data_p[i]) {
                             _probe_state->probe_index[match_count] = i;
                             _probe_state->build_index[match_count] = entry->index.index();
                             match_count++;
@@ -1211,19 +1212,39 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                                 return;
                             }
                         }
+                    } else {
+                        do {
+                            probe_cont++;
 
-                        if constexpr (no_duplicated) {
-                            break;
-                        }
+                            if (entry->value == probe_data_p[i]) {
+                                _probe_state->probe_index[match_count] = i;
+                                _probe_state->build_index[match_count] = entry->index.index();
+                                match_count++;
 
-                        bucket = (bucket + probe_times) % _table_items->bucket_size;
-                        probe_times++;
-                        entry = &_table_items->buckets[bucket];
-                    } while (entry->index.value != 0);
+                                if constexpr (first_probe) {
+                                    _probe_state->cur_row_match_count++;
+                                    _probe_state->probe_match_filter[i] = 1;
+                                }
 
-                    if constexpr (!no_duplicated && first_probe) {
-                        if (_probe_state->cur_row_match_count > 1) {
-                            one_to_many = true;
+                                if (UNLIKELY(match_count > state->chunk_size())) {
+                                    _probe_state->cur_probe_times = probe_times;
+                                    _probe_state->cur_probe_index = i;
+                                    _probe_state->cur_build_index = entry->index.index();
+                                    _probe_state->has_remain = true;
+                                    _probe_state->count = state->chunk_size();
+                                    return;
+                                }
+                            }
+
+                            bucket = (bucket + probe_times) % _table_items->bucket_size;
+                            probe_times++;
+                            entry = &_table_items->buckets[bucket];
+                        } while (entry->index.value != 0);
+
+                        if constexpr (first_probe) {
+                            if (_probe_state->cur_row_match_count > 1) {
+                                one_to_many = true;
+                            }
                         }
                     }
                 }
