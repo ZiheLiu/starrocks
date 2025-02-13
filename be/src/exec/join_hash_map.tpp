@@ -1266,7 +1266,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
         }
     }
 
-    // COUNTER_UPDATE(_probe_state->probe_counter, probe_cont);
+    COUNTER_UPDATE(_probe_state->probe_counter, probe_cont);
 
     if constexpr (first_probe) {
         CHECK_MATCH()
