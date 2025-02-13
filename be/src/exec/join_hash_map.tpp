@@ -1210,10 +1210,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                                 _probe_state->count = state->chunk_size();
                                 return;
                             }
+                        }
 
-                            if constexpr (no_duplicated) {
-                                break;
-                            }
+                        if constexpr (no_duplicated) {
+                            break;
                         }
 
                         bucket = (bucket + probe_times) % _table_items->bucket_size;
