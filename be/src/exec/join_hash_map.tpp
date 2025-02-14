@@ -1918,7 +1918,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                     const uint32_t hash = _probe_state->buckets[i];
                     uint32_t bucket = hash >> 3;
                     const auto* entry = &_table_items->set_buckets[bucket];
-                    if (entry->salt & (1 << (hash & 7)) == 0) {
+                    if ((entry->salt & (1 << (hash & 7))) == 0) {
                         _probe_state->probe_index[match_count] = i;
                         match_count++;
                     } else if (entry->key == probe_data[i]) {
