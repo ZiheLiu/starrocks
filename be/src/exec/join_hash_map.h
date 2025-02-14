@@ -111,16 +111,16 @@ struct JoinHashTableItems {
         uint32_t has_next() const { return value & 0x8000'0000; }
     };
     struct Entry {
-        uint32_t key;
         uint8_t salt;
         uint8_t has_next;
+        uint32_t key;
         uint32_t build_index;
     };
     Buffer<Entry> buckets;
 
     struct SetEntry {
-        uint32_t key;
         uint8_t salt;
+        uint32_t key;
     };
     Buffer<SetEntry> set_buckets;
 
