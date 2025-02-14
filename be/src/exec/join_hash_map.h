@@ -100,23 +100,29 @@ struct HashTableSlotDescriptor {
 
 struct JoinHashTableItems {
     struct Index {
-        // high 8 bits: salt
-        // low 24 bits: index
+        // high 1 bit: has_next
+        // low 31 bits: index
         uint32_t value;
 
         void set(uint32_t v) { value = v; }
-        void set_salt(uint32_t salt_value) { value |= build_salt(salt_value); }
+        void set_has_next() { value |= 0x8000'0000; }
 
-        uint32_t index() const { return value & 0x00FF'FFFF; }
-        uint32_t match_salt(uint32_t salt_value) const { return value & build_salt(salt_value); }
-
-        static uint32_t build_salt(uint32_t salt_value) { return 1 << (salt_value + 24); }
+        uint32_t index() const { return value & 0x7FFF'FFFF; }
+        uint32_t has_next() const { return value & 0x8000'0000; }
     };
     struct Entry {
-        uint32_t value;
-        Index index;
+        uint32_t key;
+        uint8_t salt;
+        uint8_t has_next;
+        uint32_t build_index;
     };
     Buffer<Entry> buckets;
+
+    struct SetEntry {
+        uint32_t key;
+        uint8_t salt;
+    };
+    Buffer<SetEntry> set_buckets;
 
     //TODO: memory continues problem?
     ChunkPtr build_chunk = nullptr;
@@ -421,7 +427,7 @@ public:
     static const Buffer<CppType>& get_key_data(const JoinHashTableItems& table_items);
     static void construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                      HashTableProbeState* probe_state);
-    template <bool SIMD>
+    template <uint8_t SIMD>
     static void do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                         HashTableProbeState* probe_state);
 };
@@ -766,7 +772,7 @@ private:
     void probe_from_ht_for_left_anti_join_sub_process(uint32_t& match_count, uint8_t match_mask, __m256i& vis,
                                                       __m256i& vindexes, __m256i& vprobe_keys,
                                                       const auto* build_raw_data);
-    template <bool first_probe, bool FitL2Cache>
+    template <bool first_probe, bool no_conflicts>
     void _do_probe_from_ht_for_left_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                               const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_anti_join(RuntimeState* state,
