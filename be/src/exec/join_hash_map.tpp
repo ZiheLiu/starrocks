@@ -107,7 +107,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         uint32_t bucket = hash >> 3;
                         auto* entry = &buckets[bucket];
                         uint32_t j = 1;
-                        while (entry->salt != 0 && entry->key != data[i]) {
+                        while (entry->salt != 0 &&
+                               ((entry->salt & (1 << (hash & 0x7))) == 0 || entry->key != data[i])) {
                             bucket = (bucket + j) % table_items->bucket_size;
                             j++;
                             entry = &buckets[bucket];
@@ -148,7 +149,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     uint32_t bucket = hash >> 3;
                     auto* entry = &buckets[bucket];
                     uint32_t j = 1;
-                    while (entry->salt != 0 && entry->key != data[i]) {
+                    while (entry->salt != 0 && ((entry->salt & (1 << (hash & 0x7))) == 0 || entry->key != data[i])) {
                         bucket = (bucket + j) % table_items->bucket_size;
                         j++;
                         entry = &buckets[bucket];
@@ -189,7 +190,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 uint32_t bucket = hash >> 3;
                 auto* entry = &buckets[bucket];
                 uint32_t j = 1;
-                while (entry->salt != 0 && entry->key != data[i]) {
+                while (entry->salt != 0 && ((entry->salt & (1 << (hash & 0x7))) == 0 || entry->key != data[i])) {
                     bucket = (bucket + j) % table_items->bucket_size;
                     j++;
                     entry = &buckets[bucket];
