@@ -87,9 +87,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
     auto* buckets = [&] {
         if constexpr (SIMD == 1 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            return table_items->set_buckets;
+            return table_items->set_buckets.data();
         } else {
-            return table_items->buckets;
+            return table_items->buckets.data();
         }
     }();
 
