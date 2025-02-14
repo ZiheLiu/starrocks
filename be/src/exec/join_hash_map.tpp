@@ -86,7 +86,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     auto& data = get_key_data(*table_items);
 
     auto* buckets = [&] {
-        if constexpr (SIMD == 1) {
+        if constexpr (SIMD == 1 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             return table_items->set_buckets;
         } else {
             return table_items->buckets;
