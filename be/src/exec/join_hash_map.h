@@ -114,7 +114,6 @@ struct JoinHashTableItems {
         uint8_t salt;
         uint8_t has_next;
         uint32_t key;
-        uint32_t build_index;
     };
     Buffer<Entry> buckets;
 

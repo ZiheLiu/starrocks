@@ -117,7 +117,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         if (entry->salt == 0) { // New key is coming.
                             entry->key = data[i];
                             if constexpr (SIMD == 2) {
-                                entry->build_index = i;
+                                table_items->first[bucket] = i;
                             }
                             entry->salt |= 1 << (hash & 0x7);
                             buckets[hash >> 3].salt |= 1 << (hash & 0x7);
@@ -126,7 +126,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             if constexpr (SIMD == 2) {
                                 entry->has_next = true;
                                 table_items->next[i] = entry->build_index;
-                                entry->build_index = i;
+                                table_items->first[bucket] = i;
                             }
                             table_items->no_duplicated_build_keys = false;
                         }
@@ -158,7 +158,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     if (entry->salt == 0) { // New key is coming.
                         entry->key = data[i];
                         if constexpr (SIMD == 2) {
-                            entry->build_index = i;
+                            table_items->first[bucket] = i;
                         }
                         entry->salt |= 1 << (hash & 0x7);
                         buckets[hash >> 3].salt |= 1 << (hash & 0x7);
@@ -167,7 +167,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         if constexpr (SIMD == 2) {
                             entry->has_next = true;
                             table_items->next[i] = entry->build_index;
-                            entry->build_index = i;
+                            table_items->first[bucket] = i;
                         }
                         table_items->no_duplicated_build_keys = false;
                     }
@@ -199,7 +199,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 if (entry->salt == 0) { // New key is coming.
                     entry->key = data[i];
                     if constexpr (SIMD == 2) {
-                        entry->build_index = i;
+                        table_items->first[bucket] = i;
                     }
                     entry->salt |= 1 << (hash & 0x7);
                     buckets[hash >> 3].salt |= 1 << (hash & 0x7);
@@ -208,7 +208,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     if constexpr (SIMD == 2) {
                         entry->has_next = true;
                         table_items->next[i] = entry->build_index;
-                        entry->build_index = i;
+                        table_items->first[bucket] = i;
                     }
                     table_items->no_duplicated_build_keys = false;
                 }
@@ -1275,8 +1275,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         probe_cont++;
 
                         if (entry->key == probe_data_p[i]) {
+                            uint32_t build_index = _table_items->first[bucket];
                             _probe_state->probe_index[match_count] = i;
-                            _probe_state->build_index[match_count] = entry->build_index;
+                            _probe_state->build_index[match_count] = build_index;
                             match_count++;
 
                             if constexpr (first_probe) {
@@ -1286,7 +1287,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
                             if (UNLIKELY(match_count > state->chunk_size())) {
                                 _probe_state->cur_probe_index = i;
-                                _probe_state->cur_build_index = entry->build_index;
+                                _probe_state->cur_build_index = build_index;
                                 _probe_state->has_remain = true;
                                 _probe_state->count = state->chunk_size();
                                 return;
@@ -1300,7 +1301,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                                 break;
                             }
 
-                            uint32_t build_index = _table_items->next[entry->build_index];
+                            build_index = _table_items->next[build_index];
                             do {
                                 _probe_state->probe_index[match_count] = i;
                                 _probe_state->build_index[match_count] = build_index;
