@@ -125,7 +125,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             // SIMD==1: left anti join does nothing.
                             if constexpr (SIMD == 2) {
                                 entry->has_next = true;
-                                table_items->next[i] = entry->build_index;
+                                table_items->next[i] = table_items->first[bucket];
                                 table_items->first[bucket] = i;
                             }
                             table_items->no_duplicated_build_keys = false;
@@ -166,7 +166,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         // SIMD==1: left anti join does nothing.
                         if constexpr (SIMD == 2) {
                             entry->has_next = true;
-                            table_items->next[i] = entry->build_index;
+                            table_items->next[i] = table_items->first[bucket];
                             table_items->first[bucket] = i;
                         }
                         table_items->no_duplicated_build_keys = false;
@@ -207,7 +207,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     // SIMD==1: left anti join does nothing.
                     if constexpr (SIMD == 2) {
                         entry->has_next = true;
-                        table_items->next[i] = entry->build_index;
+                        table_items->next[i] = table_items->first[bucket];
                         table_items->first[bucket] = i;
                     }
                     table_items->no_duplicated_build_keys = false;
