@@ -1742,7 +1742,6 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    static constexpr size_t l2_cache_size = 1024 * 1024;
     if (_table_items->no_conflicts) {
         _do_probe_from_ht_for_left_anti_join<first_probe, true>(state, build_data, probe_data);
     } else {
