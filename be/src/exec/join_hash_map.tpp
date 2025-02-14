@@ -107,18 +107,19 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         uint32_t bucket = hash >> 3;
                         auto* entry = &buckets[bucket];
                         uint32_t j = 1;
-                        while (entry->build_index != 0 && entry->key != data[i]) {
+                        while (entry->salt != 0 && entry->key != data[i]) {
                             bucket = (bucket + j) % table_items->bucket_size;
                             j++;
                             entry = &buckets[bucket];
                         }
 
-                        if (entry->build_index == 0) { // New key is coming.
+                        if (entry->salt == 0) { // New key is coming.
                             entry->key = data[i];
                             if constexpr (SIMD == 2) {
                                 entry->build_index = i;
                             }
-                            buckets[hash >> 3].salt = 1 << (hash & 0x7);
+                            entry->salt |= 1 << (hash & 0x7);
+                            buckets[hash >> 3].salt |= 1 << (hash & 0x7);
                         } else { // The key already exits.
                             // SIMD==1: left anti join does nothing.
                             if constexpr (SIMD == 2) {
@@ -147,18 +148,19 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     uint32_t bucket = hash >> 3;
                     auto* entry = &buckets[bucket];
                     uint32_t j = 1;
-                    while (entry->build_index != 0 && entry->key != data[i]) {
+                    while (entry->salt != 0 && entry->key != data[i]) {
                         bucket = (bucket + j) % table_items->bucket_size;
                         j++;
                         entry = &buckets[bucket];
                     }
 
-                    if (entry->build_index == 0) { // New key is coming.
+                    if (entry->salt == 0) { // New key is coming.
                         entry->key = data[i];
                         if constexpr (SIMD == 2) {
                             entry->build_index = i;
                         }
-                        buckets[hash >> 3].salt = 1 << (hash & 0x7);
+                        entry->salt |= 1 << (hash & 0x7);
+                        buckets[hash >> 3].salt |= 1 << (hash & 0x7);
                     } else { // The key already exits.
                         // SIMD==1: left anti join does nothing.
                         if constexpr (SIMD == 2) {
@@ -187,18 +189,19 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 uint32_t bucket = hash >> 3;
                 auto* entry = &buckets[bucket];
                 uint32_t j = 1;
-                while (entry->build_index != 0 && entry->key != data[i]) {
+                while (entry->salt != 0 && entry->key != data[i]) {
                     bucket = (bucket + j) % table_items->bucket_size;
                     j++;
                     entry = &buckets[bucket];
                 }
 
-                if (entry->build_index == 0) { // New key is coming.
+                if (entry->salt == 0) { // New key is coming.
                     entry->key = data[i];
                     if constexpr (SIMD == 2) {
                         entry->build_index = i;
                     }
-                    buckets[hash >> 3].salt = 1 << (hash & 0x7);
+                    entry->salt |= 1 << (hash & 0x7);
+                    buckets[hash >> 3].salt |= 1 << (hash & 0x7);
                 } else { // The key already exits.
                     // SIMD==1: left anti join does nothing.
                     if constexpr (SIMD == 2) {
@@ -1328,7 +1331,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         bucket = (bucket + probe_times) % _table_items->bucket_size;
                         probe_times++;
                         entry = &_table_items->buckets[bucket];
-                    } while (entry->build_index != 0);
+                    } while (entry->salt != 0);
                 }
 
                 if constexpr (first_probe) {
