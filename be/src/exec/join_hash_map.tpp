@@ -592,7 +592,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_prepare(RuntimeState* state) {
     _probe_state->probe_match_index.resize(chunk_size);
     _probe_state->probe_match_filter.resize(chunk_size);
     _probe_state->buckets.resize(chunk_size);
-    _probe_state->hashes.resize(chunk_size);
+    _probe_state->salts.resize(chunk_size);
 
     if (_table_items->join_type == TJoinOp::RIGHT_OUTER_JOIN || _table_items->join_type == TJoinOp::FULL_OUTER_JOIN ||
         _table_items->join_type == TJoinOp::RIGHT_SEMI_JOIN || _table_items->join_type == TJoinOp::RIGHT_ANTI_JOIN) {
