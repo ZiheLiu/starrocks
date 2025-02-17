@@ -44,7 +44,7 @@ void HashJoinProbeMetrics::prepare(RuntimeProfile* runtime_profile) {
     other_join_conjunct_evaluate_timer = ADD_TIMER(runtime_profile, "OtherJoinConjunctEvaluateTime");
     where_conjunct_evaluate_timer = ADD_TIMER(runtime_profile, "WhereConjunctEvaluateTime");
     probe_counter = ADD_COUNTER(runtime_profile, "probeCount", TUnit::UNIT);
-    probe2_counter = ADD_COUNTER(runtime_profile, "probeCount", TUnit::UNIT);
+    probe2_counter = ADD_COUNTER(runtime_profile, "probeCount2", TUnit::UNIT);
     partition_probe_overhead = ADD_TIMER(runtime_profile, "PartitionProbeOverhead");
 }
 
