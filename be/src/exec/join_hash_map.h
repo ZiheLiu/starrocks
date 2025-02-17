@@ -274,7 +274,7 @@ struct HashTableProbeState {
     HashTableProbeState(const HashTableProbeState& rhs)
             : is_nulls(rhs.is_nulls),
               buckets(rhs.buckets),
-              hashes(rhs.hashes),
+              salts(rhs.salts),
               next(rhs.next),
               probe_slice(rhs.probe_slice),
               null_array(rhs.null_array),
