@@ -30,6 +30,8 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
+
+    table_items->ctrls.resize(table_items->bucket_size);
     if (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN) {
         table_items->set_buckets.resize(table_items->bucket_size);
     } else {
@@ -434,9 +436,9 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
     if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         const size_t count = data.size();
-        auto* buckets = probe_state->buckets.data();
+        auto* hashes = probe_state->hashes.data();
         for (size_t i = 0; i < count; i++) {
-            buckets[i] = multiplicative_hash(data[i]);
+            hashes[i] = multiplicative_hash(data[i]);
         }
     } else {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
@@ -587,6 +589,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_prepare(RuntimeState* state) {
     _probe_state->probe_match_index.resize(chunk_size);
     _probe_state->probe_match_filter.resize(chunk_size);
     _probe_state->buckets.resize(chunk_size);
+    _probe_state->buckets.resize(hashes);
 
     if (_table_items->join_type == TJoinOp::RIGHT_OUTER_JOIN || _table_items->join_type == TJoinOp::FULL_OUTER_JOIN ||
         _table_items->join_type == TJoinOp::RIGHT_SEMI_JOIN || _table_items->join_type == TJoinOp::RIGHT_ANTI_JOIN) {
@@ -1274,7 +1277,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             const auto* ctrls = _table_items->ctrls.data();
             const auto* buckets = _table_items->buckets.data();
             for (; i < probe_row_count; i++) {
-                const size_t hash = _probe_state->buckets[i];
+                const size_t hash = _probe_state->hashes[i];
                 const uint32_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
                 uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);
@@ -1924,7 +1927,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 const auto* ctrls = _table_items->ctrls.data();
                 const auto* buckets = _table_items->set_buckets.data();
                 for (; i < probe_row_count; i++) {
-                    const size_t hash = _probe_state->buckets[i];
+                    const size_t hash = _probe_state->hashes[i];
                     const uint32_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
                     uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);

@@ -192,7 +192,8 @@ struct JoinHashTableItems {
 struct HashTableProbeState {
     //TODO: memory release
     Buffer<uint8_t> is_nulls;
-    Buffer<size_t> buckets;
+    Buffer<uint32_t> buckets;
+    Buffer<size_t> hashes;
     Buffer<uint32_t> next;
     Buffer<Slice> probe_slice;
     Buffer<uint8_t>* null_array = nullptr;
