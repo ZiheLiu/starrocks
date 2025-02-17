@@ -1276,27 +1276,29 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         if (abs(config::enable_simd_hash_join) == 2) {
             const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-            const auto* ctrls = _table_items->ctrls.data();
-            const auto* buckets = _table_items->buckets.data();
+            const auto* __restrict ctrls = _table_items->ctrls.data();
+            const auto* __restrict buckets = _table_items->buckets.data();
+            const auto* __restrict hashes = _probe_state->hashes.data();
+            auto* __restrict probe_indexes = _probe_state->probe_index.data();
+            auto* __restrict build_indexes = _probe_state->build_index.data();
             for (; i < probe_row_count; i++) {
-                const size_t hash = _probe_state->hashes[i];
+                const size_t hash = hashes[i];
                 const uint8_t salt = (hash & 0x7F) | 0x80;
 
                 uint32_t bucket = hash >> 7;
                 uint32_t probe_times = 1;
                 uint8_t cur_salt = ctrls[bucket].salt;
-                const auto& probe_key = probe_data_p[i];
                 while (cur_salt != 0) {
                     probe_cont++;
 
                     if (cur_salt == salt) {
                         probe_cont2++;
-                        if (buckets[bucket].key == probe_key) {
+                        if (buckets[bucket].key == probe_data_p[i]) {
                             const auto first_build_index = buckets[bucket].build_index;
 
                             uint32_t build_index = first_build_index.index();
-                            _probe_state->probe_index[match_count] = i;
-                            _probe_state->build_index[match_count] = build_index;
+                            probe_indexes[match_count] = i;
+                            build_indexes[match_count] = build_index;
                             match_count++;
 
                             if constexpr (first_probe) {
@@ -1350,7 +1352,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         break;
                     }
 
-                    bucket = (bucket + probe_times) & (bucket_size_mask - 1);
+                    bucket = (bucket + probe_times) & bucket_size_mask;
                     cur_salt = ctrls[bucket].salt;
                     probe_times++;
                 }
@@ -1938,11 +1940,13 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             if (abs(config::enable_simd_hash_join) == 2) {
                 const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-                const auto* ctrls = _table_items->ctrls.data();
-                const auto* buckets = _table_items->set_buckets.data();
+                const auto* __restrict p_probe_data = probe_data.data();
+                const auto* __restrict ctrls = _table_items->ctrls.data();
+                const auto* __restrict buckets = _table_items->buckets.data();
+                const auto* __restrict hashes = _probe_state->hashes.data();
+                auto* __restrict probe_indexes = _probe_state->probe_index.data();
                 for (; i < probe_row_count; i++) {
-                    const auto& probe_key = probe_data[i];
-                    const size_t hash = _probe_state->hashes[i];
+                    const size_t hash = hashes[i];
                     const uint8_t salt = (hash & 0x7F) | 0x80;
 
                     uint32_t bucket = hash >> 7;
@@ -1953,14 +1957,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         const uint8_t cur_salt = ctrls[bucket].salt;
 
                         if (cur_salt == 0) {
-                            _probe_state->probe_index[match_count] = i;
+                            probe_indexes[match_count] = i;
                             match_count++;
                             break;
                         }
 
                         if (cur_salt == salt) {
                             probe_cont2++;
-                            if (buckets[bucket].key == probe_key) {
+                            if (buckets[bucket].key == p_probe_data[i]) {
                                 break;
                             }
                         }
