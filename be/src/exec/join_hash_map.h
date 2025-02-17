@@ -237,6 +237,7 @@ struct HashTableProbeState {
     RuntimeProfile::Counter* output_probe_column_timer = nullptr;
     RuntimeProfile::Counter* output_build_column_timer = nullptr;
     RuntimeProfile::Counter* probe_counter = nullptr;
+    RuntimeProfile::Counter* probe2_counter = nullptr;
 
     HashTableProbeState()
             : build_index_column(UInt32Column::create()),
@@ -298,7 +299,8 @@ struct HashTableProbeState {
               probe_pool(rhs.probe_pool == nullptr ? nullptr : std::make_unique<MemPool>()),
               search_ht_timer(rhs.search_ht_timer),
               output_probe_column_timer(rhs.output_probe_column_timer),
-              probe_counter(rhs.probe_counter) {}
+              probe_counter(rhs.probe_counter),
+              probe2_counter(rhs.probe2_counter) {}
 
     // Disable copy assignment.
     HashTableProbeState& operator=(const HashTableProbeState& rhs) = delete;
@@ -332,6 +334,7 @@ struct HashTableParam {
     RuntimeProfile::Counter* output_build_column_timer = nullptr;
     RuntimeProfile::Counter* output_probe_column_timer = nullptr;
     RuntimeProfile::Counter* probe_counter = nullptr;
+    RuntimeProfile::Counter* probe2_counter = nullptr;
     bool mor_reader_mode = false;
 };
 
@@ -876,7 +879,8 @@ public:
     // and the different probe state from this.
     JoinHashTable clone_readable_table();
     void set_probe_profile(RuntimeProfile::Counter* search_ht_timer, RuntimeProfile::Counter* output_probe_column_timer,
-                           RuntimeProfile::Counter* output_build_column_timer, RuntimeProfile::Counter* probe_counter);
+                           RuntimeProfile::Counter* output_build_column_timer, RuntimeProfile::Counter* probe_counter,
+                           RuntimeProfile::Counter* probe2_counter);
 
     void create(const HashTableParam& param);
     void close();

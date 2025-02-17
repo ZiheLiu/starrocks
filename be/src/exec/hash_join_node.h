@@ -145,6 +145,7 @@ private:
     RuntimeProfile::Counter* _probe_timer = nullptr;
     RuntimeProfile::Counter* _search_ht_timer = nullptr;
     RuntimeProfile::Counter* _probe_counter = nullptr;
+    RuntimeProfile::Counter* _probe2_counter = nullptr;
     RuntimeProfile::Counter* _output_build_column_timer = nullptr;
     RuntimeProfile::Counter* _output_probe_column_timer = nullptr;
     RuntimeProfile::Counter* _build_rows_counter = nullptr;

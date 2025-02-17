@@ -95,7 +95,8 @@ StatusOr<ChunkPtr> SingleHashJoinProberImpl::probe_remain(RuntimeState* state, b
 void HashJoinProber::attach(HashJoinBuilder* builder, const HashJoinProbeMetrics& probe_metrics) {
     builder->visitHt([&](JoinHashTable* ht) {
         ht->set_probe_profile(probe_metrics.search_ht_timer, probe_metrics.output_probe_column_timer,
-                              probe_metrics.output_build_column_timer, probe_metrics.probe_counter);
+                              probe_metrics.output_build_column_timer, probe_metrics.probe_counter,
+                              probe_metrics.probe2_counter);
     });
     _impl = builder->create_prober();
 }
