@@ -438,7 +438,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
         const size_t count = data.size();
         auto* hashes = probe_state->hashes.data();
         for (size_t i = 0; i < count; i++) {
-            hashes[i] = multiplicative_hash(data[i]);
+            hashes[i] = multiplicative_hash(data[i]) >> (64 - table_items.log_bucket_size - 7);
         }
     } else {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
@@ -1275,15 +1275,13 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         if (abs(config::enable_simd_hash_join) == 2) {
             const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-            const uint32_t salt_shift = 64 - _table_items->log_bucket_size - 7;
-            const uint32_t bucket_shift = 64 - _table_items->log_bucket_size;
             const auto* ctrls = _table_items->ctrls.data();
             const auto* buckets = _table_items->buckets.data();
             for (; i < probe_row_count; i++) {
                 const size_t hash = _probe_state->hashes[i];
-                const uint8_t salt = ((hash >> salt_shift) & 0x7F) | 0x80;
+                const uint8_t salt = (hash & 0x7F) | 0x80;
 
-                uint32_t bucket = hash >> bucket_shift;
+                uint32_t bucket = hash >> 7;
                 uint32_t probe_times = 1;
                 uint8_t cur_salt = ctrls[bucket].salt;
                 const auto& probe_key = probe_data_p[i];
@@ -1933,16 +1931,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             if (abs(config::enable_simd_hash_join) == 2) {
                 const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-                const uint32_t salt_shift = 64 - _table_items->log_bucket_size - 7;
-                const uint32_t bucket_shift = 64 - _table_items->log_bucket_size;
                 const auto* ctrls = _table_items->ctrls.data();
                 const auto* buckets = _table_items->set_buckets.data();
                 for (; i < probe_row_count; i++) {
                     const auto& probe_key = probe_data[i];
                     const size_t hash = _probe_state->hashes[i];
-                    const uint8_t salt = ((hash >> salt_shift) & 0x7F) | 0x80;
+                    const uint8_t salt = (hash & 0x7F) | 0x80;
 
-                    uint32_t bucket = hash >> bucket_shift;
+                    uint32_t bucket = hash >> 7;
                     int probe_times = 1;
                     while (true) {
                         probe_cont++;
