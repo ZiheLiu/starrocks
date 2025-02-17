@@ -436,9 +436,12 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
     if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         const size_t count = data.size();
-        auto* hashes = probe_state->hashes.data();
+        auto* buckets = probe_state->buckets.data();
+        auto* salts = probe_state->salts.data();
         for (size_t i = 0; i < count; i++) {
-            hashes[i] = multiplicative_hash(data[i]) >> (64 - table_items.log_bucket_size - 7);
+            const size_t hash = multiplicative_hash(data[i]) >> (64 - table_items.log_bucket_size - 7);
+            buckets[i] = hash >> 7;
+            salts[i] = static_cast<uint8_t>(hash & 0x7F) | 0x80;
         }
     } else {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
@@ -1278,14 +1281,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
             const auto* __restrict ctrls = _table_items->ctrls.data();
             const auto* __restrict buckets = _table_items->buckets.data();
-            const auto* __restrict hashes = _probe_state->hashes.data();
+            const auto* __restrict probe_buckets = _probe_state->buckets.data();
+            const auto* __restrict salts = _probe_state->salts.data();
             auto* __restrict probe_indexes = _probe_state->probe_index.data();
             auto* __restrict build_indexes = _probe_state->build_index.data();
             for (; i < probe_row_count; i++) {
-                const size_t hash = hashes[i];
-                const uint8_t salt = (hash & 0x7F) | 0x80;
+                const uint8_t salt = salts[i];
+                uint32_t bucket = probe_buckets[i];
 
-                uint32_t bucket = hash >> 7;
                 uint32_t probe_times = 1;
                 uint8_t cur_salt = ctrls[bucket].salt;
                 while (cur_salt != 0) {
@@ -1943,13 +1946,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 const auto* __restrict p_probe_data = probe_data.data();
                 const auto* __restrict ctrls = _table_items->ctrls.data();
                 const auto* __restrict buckets = _table_items->set_buckets.data();
-                const auto* __restrict hashes = _probe_state->hashes.data();
+                const auto* __restrict probe_buckets = _probe_state->buckets.data();
+                const auto* __restrict salts = _probe_state->salts.data();
                 auto* __restrict probe_indexes = _probe_state->probe_index.data();
                 for (; i < probe_row_count; i++) {
-                    const size_t hash = hashes[i];
-                    const uint8_t salt = (hash & 0x7F) | 0x80;
-
-                    uint32_t bucket = hash >> 7;
+                    const uint8_t salt = salts[i];
+                    uint32_t bucket = probe_buckets[i];
                     int probe_times = 1;
                     while (true) {
                         probe_cont++;

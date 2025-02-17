@@ -198,7 +198,7 @@ struct HashTableProbeState {
     //TODO: memory release
     Buffer<uint8_t> is_nulls;
     Buffer<uint32_t> buckets;
-    Buffer<size_t> hashes;
+    Buffer<uint8_t> salts;
     Buffer<uint32_t> next;
     Buffer<Slice> probe_slice;
     Buffer<uint8_t>* null_array = nullptr;
