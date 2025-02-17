@@ -110,11 +110,11 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 if (null_array[i] == 0) {
                     if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                         const size_t hash = multiplicative_hash(data[i]);
-                        const uint32_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
+                        const uint8_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
                         uint32_t probe_times = 1;
                         uint32_t bucket = hash >> (64 - table_items->log_bucket_size);
-                        uint32_t cur_salt = ctrls[bucket].salt;
+                        uint8_t cur_salt = ctrls[bucket].salt;
                         while (cur_salt != 0 && (cur_salt != salt || buckets[bucket].key != data[i])) {
                             bucket = (bucket + probe_times) % table_items->bucket_size;
                             cur_salt = ctrls[bucket].salt;
@@ -149,11 +149,11 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             for (size_t i = 1; i < table_items->row_count + 1; i++) {
                 if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                     const size_t hash = multiplicative_hash(data[i]);
-                    const uint32_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
+                    const uint8_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
                     uint32_t probe_times = 1;
                     uint32_t bucket = hash >> (64 - table_items->log_bucket_size);
-                    uint32_t cur_salt = ctrls[bucket].salt;
+                    uint8_t cur_salt = ctrls[bucket].salt;
                     while (cur_salt != 0 && (cur_salt != salt || buckets[bucket].key != data[i])) {
                         bucket = (bucket + probe_times) % table_items->bucket_size;
                         cur_salt = ctrls[bucket].salt;
@@ -188,11 +188,11 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         for (size_t i = 1; i < table_items->row_count + 1; i++) {
             if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                 const size_t hash = multiplicative_hash(data[i]);
-                const uint32_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
+                const uint8_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
                 uint32_t probe_times = 1;
                 uint32_t bucket = hash >> (64 - table_items->log_bucket_size);
-                uint32_t cur_salt = ctrls[bucket].salt;
+                uint8_t cur_salt = ctrls[bucket].salt;
                 while (cur_salt != 0 && (cur_salt != salt || buckets[bucket].key != data[i])) {
                     bucket = (bucket + probe_times) % table_items->bucket_size;
                     cur_salt = ctrls[bucket].salt;
@@ -1278,7 +1278,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             const auto* buckets = _table_items->buckets.data();
             for (; i < probe_row_count; i++) {
                 const size_t hash = _probe_state->hashes[i];
-                const uint32_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
+                const uint8_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
                 uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);
                 uint32_t probe_times = 1;
@@ -1928,14 +1928,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 const auto* buckets = _table_items->set_buckets.data();
                 for (; i < probe_row_count; i++) {
                     const size_t hash = _probe_state->hashes[i];
-                    const uint32_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
+                    const uint8_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
                     uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);
                     int probe_times = 1;
                     do {
                         probe_cont++;
 
-                        const uint32_t cur_salt = ctrls[bucket].salt;
+                        const uint8_t cur_salt = ctrls[bucket].salt;
 
                         if (cur_salt == 0) {
                             _probe_state->probe_index[match_count] = i;
