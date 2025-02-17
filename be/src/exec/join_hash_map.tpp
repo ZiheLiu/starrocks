@@ -1274,19 +1274,26 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         if (abs(config::enable_simd_hash_join) == 2) {
+            const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+            const uint32_t salt_shift = 64 - _table_items->log_bucket_size - 7;
+            const uint32_t bucket_shift = 64 - _table_items->log_bucket_size;
             const auto* ctrls = _table_items->ctrls.data();
             const auto* buckets = _table_items->buckets.data();
             for (; i < probe_row_count; i++) {
                 const size_t hash = _probe_state->hashes[i];
-                const uint8_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
+                const uint8_t salt = ((hash >> salt_shift) & 0x7F) | 0x80;
 
-                uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);
+                uint32_t bucket = hash >> bucket_shift;
                 uint32_t probe_times = 1;
-                while (ctrls[bucket].salt != 0) {
+                uint8_t cur_salt = ctrls[bucket].salt;
+                const auto& probe_key = probe_data_p[i];
+                while (cur_salt != 0) {
                     probe_cont++;
 
-                    if (ctrls[bucket].salt == salt && buckets[bucket].key == probe_data_p[i]) {
-                        uint32_t build_index = buckets[bucket].build_index.index();
+                    if (cur_salt == salt && buckets[bucket].key == probe_key) {
+                        const auto first_build_index = buckets[bucket].build_index;
+
+                        uint32_t build_index = first_build_index.index();
                         _probe_state->probe_index[match_count] = i;
                         _probe_state->build_index[match_count] = build_index;
                         match_count++;
@@ -1308,7 +1315,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                             break;
                         }
 
-                        if (!buckets[bucket].build_index.has_next()) {
+                        if (!first_build_index.has_next()) {
                             break;
                         }
 
@@ -1341,7 +1348,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         break;
                     }
 
-                    bucket = (bucket + probe_times) % _table_items->bucket_size;
+                    bucket = (bucket + probe_times) & (bucket_size_mask - 1);
+                    cur_salt = ctrls[bucket].salt;
                     probe_times++;
                 }
 
@@ -1924,15 +1932,19 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
 
         if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             if (abs(config::enable_simd_hash_join) == 2) {
+                const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+                const uint32_t salt_shift = 64 - _table_items->log_bucket_size - 7;
+                const uint32_t bucket_shift = 64 - _table_items->log_bucket_size;
                 const auto* ctrls = _table_items->ctrls.data();
                 const auto* buckets = _table_items->set_buckets.data();
                 for (; i < probe_row_count; i++) {
+                    const auto& probe_key = probe_data[i];
                     const size_t hash = _probe_state->hashes[i];
-                    const uint8_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
+                    const uint8_t salt = ((hash >> salt_shift) & 0x7F) | 0x80;
 
-                    uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);
+                    uint32_t bucket = hash >> bucket_shift;
                     int probe_times = 1;
-                    do {
+                    while (true) {
                         probe_cont++;
 
                         const uint8_t cur_salt = ctrls[bucket].salt;
@@ -1943,7 +1955,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                             break;
                         }
 
-                        if (cur_salt == salt && buckets[bucket].key == probe_data[i]) {
+                        if (cur_salt == salt && buckets[bucket].key == probe_key) {
                             break;
                         }
 
@@ -1951,9 +1963,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                             break;
                         }
 
-                        bucket = (bucket + probe_times) % _table_items->bucket_size;
+                        bucket = (bucket + probe_times) & bucket_size_mask;
                         probe_times++;
-                    } while (true);
+                    }
                 }
             } else {
                 for (; i < probe_row_count; i++) {
