@@ -79,12 +79,17 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
     do_construct_hash_table<0>(state, table_items, probe_state);
 }
 
+static size_t multiplicative_hash(auto key) {
+    static constexpr uint64_t a = 11400714819323198485ull;
+    const uint64_t k = *reinterpret_cast<uint32_t*>(&key);
+    return k * a;
+}
+
 template <LogicalType LT>
 template <uint8_t SIMD>
 void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                                 HashTableProbeState* probe_state) {
     auto& data = get_key_data(*table_items);
-
     auto* buckets = [&] {
         if constexpr (SIMD == 1 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             return table_items->set_buckets.data();
@@ -92,6 +97,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             return table_items->buckets.data();
         }
     }();
+    auto* ctrls = table_items->ctrls.data();
 
     if (table_items->key_columns[0]->is_nullable()) {
         const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
@@ -101,37 +107,34 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             for (size_t i = 1; i < table_items->row_count + 1; i++) {
                 if (null_array[i] == 0) {
                     if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                        const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                data[i], table_items->bucket_size << 3, table_items->log_bucket_size + 3);
+                        const size_t hash = multiplicative_hash(data[i]);
+                        const uint32_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
-                        uint32_t bucket = hash >> 3;
-                        auto* entry = &buckets[bucket];
-                        uint32_t j = 1;
-                        while (entry->salt != 0 &&
-                               ((entry->salt & (1 << (hash & 0x7))) == 0 || entry->key != data[i])) {
-                            bucket = (bucket + j) % table_items->bucket_size;
-                            j++;
-                            entry = &buckets[bucket];
+                        uint32_t probe_times = 1;
+                        uint32_t bucket = hash >> (64 - table_items->log_bucket_size);
+                        uint32_t cur_salt = ctrls[bucket].salt;
+                        while (cur_salt != 0 && (cur_salt != salt || buckets[bucket].key != data[i])) {
+                            bucket = (bucket + probe_times) % table_items->bucket_size;
+                            cur_salt = ctrls[bucket].salt;
+                            probe_times++;
                         }
 
-                        if (entry->salt == 0) { // New key is coming.
-                            entry->key = data[i];
+                        if (cur_salt == 0) { // New key is coming.
+                            ctrls[bucket].salt = salt;
+                            buckets[bucket].key = data[i];
                             if constexpr (SIMD == 2) {
-                                table_items->first[bucket] = i;
+                                buckets[bucket].build_index.set(i);
                             }
-                            entry->salt |= 1 << (hash & 0x7);
-                            buckets[hash >> 3].salt |= 1 << (hash & 0x7);
                         } else { // The key already exits.
-                            // SIMD==1: left anti join does nothing.
                             if constexpr (SIMD == 2) {
-                                entry->has_next = true;
-                                table_items->next[i] = table_items->first[bucket];
-                                table_items->first[bucket] = i;
+                                table_items->next[i] = buckets[bucket].build_index.index();
+                                buckets[bucket].build_index.set(i);
+                                buckets[bucket].build_index.set_has_next();
                             }
                             table_items->no_duplicated_build_keys = false;
                         }
 
-                        table_items->no_conflicts &= j == 1;
+                        table_items->no_conflicts &= probe_times == 1;
                     } else {
                         uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
                                 data[i], table_items->bucket_size, table_items->log_bucket_size);
@@ -143,36 +146,34 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         } else {
             for (size_t i = 1; i < table_items->row_count + 1; i++) {
                 if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                    const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
-                            data[i], table_items->bucket_size << 3, table_items->log_bucket_size + 3);
+                    const size_t hash = multiplicative_hash(data[i]);
+                    const uint32_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
-                    uint32_t bucket = hash >> 3;
-                    auto* entry = &buckets[bucket];
-                    uint32_t j = 1;
-                    while (entry->salt != 0 && ((entry->salt & (1 << (hash & 0x7))) == 0 || entry->key != data[i])) {
-                        bucket = (bucket + j) % table_items->bucket_size;
-                        j++;
-                        entry = &buckets[bucket];
+                    uint32_t probe_times = 1;
+                    uint32_t bucket = hash >> (64 - table_items->log_bucket_size);
+                    uint32_t cur_salt = ctrls[bucket].salt;
+                    while (cur_salt != 0 && (cur_salt != salt || buckets[bucket].key != data[i])) {
+                        bucket = (bucket + probe_times) % table_items->bucket_size;
+                        cur_salt = ctrls[bucket].salt;
+                        probe_times++;
                     }
 
-                    if (entry->salt == 0) { // New key is coming.
-                        entry->key = data[i];
+                    if (cur_salt == 0) { // New key is coming.
+                        ctrls[bucket].salt = salt;
+                        buckets[bucket].key = data[i];
                         if constexpr (SIMD == 2) {
-                            table_items->first[bucket] = i;
+                            buckets[bucket].build_index.set(i);
                         }
-                        entry->salt |= 1 << (hash & 0x7);
-                        buckets[hash >> 3].salt |= 1 << (hash & 0x7);
                     } else { // The key already exits.
-                        // SIMD==1: left anti join does nothing.
                         if constexpr (SIMD == 2) {
-                            entry->has_next = true;
-                            table_items->next[i] = table_items->first[bucket];
-                            table_items->first[bucket] = i;
+                            table_items->next[i] = buckets[bucket].build_index.index();
+                            buckets[bucket].build_index.set(i);
+                            buckets[bucket].build_index.set_has_next();
                         }
                         table_items->no_duplicated_build_keys = false;
                     }
 
-                    table_items->no_conflicts &= j == 1;
+                    table_items->no_conflicts &= probe_times == 1;
                 } else {
                     uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
@@ -184,36 +185,34 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     } else {
         for (size_t i = 1; i < table_items->row_count + 1; i++) {
             if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
-                        data[i], table_items->bucket_size << 3, table_items->log_bucket_size + 3);
+                const size_t hash = multiplicative_hash(data[i]);
+                const uint32_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
-                uint32_t bucket = hash >> 3;
-                auto* entry = &buckets[bucket];
-                uint32_t j = 1;
-                while (entry->salt != 0 && ((entry->salt & (1 << (hash & 0x7))) == 0 || entry->key != data[i])) {
-                    bucket = (bucket + j) % table_items->bucket_size;
-                    j++;
-                    entry = &buckets[bucket];
+                uint32_t probe_times = 1;
+                uint32_t bucket = hash >> (64 - table_items->log_bucket_size);
+                uint32_t cur_salt = ctrls[bucket].salt;
+                while (cur_salt != 0 && (cur_salt != salt || buckets[bucket].key != data[i])) {
+                    bucket = (bucket + probe_times) % table_items->bucket_size;
+                    cur_salt = ctrls[bucket].salt;
+                    probe_times++;
                 }
 
-                if (entry->salt == 0) { // New key is coming.
-                    entry->key = data[i];
+                if (cur_salt == 0) { // New key is coming.
+                    ctrls[bucket].salt = salt;
+                    buckets[bucket].key = data[i];
                     if constexpr (SIMD == 2) {
-                        table_items->first[bucket] = i;
+                        buckets[bucket].build_index.set(i);
                     }
-                    entry->salt |= 1 << (hash & 0x7);
-                    buckets[hash >> 3].salt |= 1 << (hash & 0x7);
                 } else { // The key already exits.
-                    // SIMD==1: left anti join does nothing.
                     if constexpr (SIMD == 2) {
-                        entry->has_next = true;
-                        table_items->next[i] = table_items->first[bucket];
-                        table_items->first[bucket] = i;
+                        table_items->next[i] = buckets[bucket].build_index.index();
+                        buckets[bucket].build_index.set(i);
+                        buckets[bucket].build_index.set_has_next();
                     }
                     table_items->no_duplicated_build_keys = false;
                 }
 
-                table_items->no_conflicts &= j == 1;
+                table_items->no_conflicts &= probe_times == 1;
             } else {
                 uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                   table_items->log_bucket_size);
@@ -281,6 +280,7 @@ void FixedSizeJoinBuildFunc<LT>::prepare(RuntimeState* state, JoinHashTableItems
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
     table_items->buckets.resize(table_items->bucket_size);
+    table_items->ctrls.resize(table_items->bucket_size);
     table_items->build_key_column = ColumnType::create(table_items->row_count + 1);
 }
 
@@ -433,8 +433,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
     const auto& data = get_key_data(*probe_state);
 
     if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-        JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size << 3,
-                                                     table_items.log_bucket_size + 3, data, 0, data.size());
+        const size_t count = data.size();
+        auto* buckets = probe_state->buckets.data();
+        for (size_t i = 0; i < count; i++) {
+            buckets[i] = multiplicative_hash(data[i]);
+        }
     } else {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
                                                      table_items.log_bucket_size, data, 0, data.size());
@@ -1245,6 +1248,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             _probe_state->build_index[match_count] = build_index;
             match_count++;
 
+            if constexpr (no_duplicated_build_keys) {
+                break;
+            }
+
             if (UNLIKELY(match_count > state->chunk_size())) {
                 _probe_state->cur_probe_index = i;
                 _probe_state->cur_build_index = build_index;
@@ -1264,18 +1271,46 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         if (abs(config::enable_simd_hash_join) == 2) {
+            const auto* ctrls = _table_items->ctrls.data();
+            const auto* buckets = _table_items->buckets.data();
             for (; i < probe_row_count; i++) {
-                const uint32_t hash = _probe_state->buckets[i];
+                const size_t hash = _probe_state->buckets[i];
+                const uint32_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
-                uint32_t bucket = hash >> 3;
-                const auto* entry = &_table_items->buckets[bucket];
-                if (entry->salt & (1 << (hash & 0x7))) {
-                    uint32_t probe_times = 1;
-                    do {
-                        probe_cont++;
+                uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);
+                uint32_t probe_times = 1;
+                while (ctrls[bucket].salt != 0) {
+                    probe_cont++;
 
-                        if (entry->key == probe_data_p[i]) {
-                            uint32_t build_index = _table_items->first[bucket];
+                    if (ctrls[bucket].salt == salt && buckets[bucket].key == probe_data_p[i]) {
+                        uint32_t build_index = buckets[bucket].build_index.index();
+                        _probe_state->probe_index[match_count] = i;
+                        _probe_state->build_index[match_count] = build_index;
+                        match_count++;
+
+                        if constexpr (first_probe) {
+                            _probe_state->cur_row_match_count++;
+                            _probe_state->probe_match_filter[i] = 1;
+                        }
+
+                        if (UNLIKELY(match_count > state->chunk_size())) {
+                            _probe_state->cur_probe_index = i;
+                            _probe_state->cur_build_index = build_index;
+                            _probe_state->has_remain = true;
+                            _probe_state->count = state->chunk_size();
+                            return;
+                        }
+
+                        if constexpr (no_duplicated_build_keys) {
+                            break;
+                        }
+
+                        if (!buckets[bucket].build_index.has_next()) {
+                            break;
+                        }
+
+                        build_index = _table_items->next[build_index];
+                        do {
                             _probe_state->probe_index[match_count] = i;
                             _probe_state->build_index[match_count] = build_index;
                             match_count++;
@@ -1293,56 +1328,24 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                                 return;
                             }
 
-                            if constexpr (no_duplicated_build_keys) {
-                                break;
-                            }
-
-                            if (!entry->has_next) {
-                                break;
-                            }
-
                             build_index = _table_items->next[build_index];
-                            do {
-                                _probe_state->probe_index[match_count] = i;
-                                _probe_state->build_index[match_count] = build_index;
-                                match_count++;
+                        } while (build_index != 0);
 
-                                if constexpr (first_probe) {
-                                    _probe_state->cur_row_match_count++;
-                                    _probe_state->probe_match_filter[i] = 1;
-                                }
+                        break;
+                    }
 
-                                if (UNLIKELY(match_count > state->chunk_size())) {
-                                    _probe_state->cur_probe_index = i;
-                                    _probe_state->cur_build_index = build_index;
-                                    _probe_state->has_remain = true;
-                                    _probe_state->count = state->chunk_size();
-                                    return;
-                                }
+                    if constexpr (no_conflicts) {
+                        break;
+                    }
 
-                                build_index = _table_items->next[build_index];
-                            } while (build_index != 0);
-
-                            break;
-                        }
-
-                        if constexpr (no_conflicts) {
-                            break;
-                        }
-
-                        bucket = (bucket + probe_times) % _table_items->bucket_size;
-                        probe_times++;
-                        entry = &_table_items->buckets[bucket];
-                    } while (entry->salt != 0);
+                    bucket = (bucket + probe_times) % _table_items->bucket_size;
+                    probe_times++;
                 }
 
                 if constexpr (first_probe) {
                     if (_probe_state->cur_row_match_count > 1) {
                         one_to_many = true;
                     }
-                }
-
-                if constexpr (first_probe) {
                     _probe_state->cur_row_match_count = 0;
                 }
             }
@@ -1918,38 +1921,36 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
 
         if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             if (abs(config::enable_simd_hash_join) == 2) {
+                const auto* ctrls = _table_items->ctrls.data();
+                const auto* buckets = _table_items->set_buckets.data();
                 for (; i < probe_row_count; i++) {
-                    const uint32_t hash = _probe_state->buckets[i];
-                    uint32_t bucket = hash >> 3;
-                    const auto* entry = &_table_items->set_buckets[bucket];
-                    if ((entry->salt & (1 << (hash & 7))) == 0) {
-                        _probe_state->probe_index[match_count] = i;
-                        match_count++;
-                    } else if (entry->key == probe_data[i]) {
-                        // Do nothing.
-                    } else {
-                        int probe_times = 1;
-                        do {
-                            probe_cont++;
-                            if (entry->salt == 0) {
-                                _probe_state->probe_index[match_count] = i;
-                                match_count++;
-                                break;
-                            }
+                    const size_t hash = _probe_state->buckets[i];
+                    const uint32_t salt = (hash >> (64 - _table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
-                            if (entry->key == probe_data[i]) {
-                                break;
-                            }
+                    uint32_t bucket = hash >> (64 - _table_items->log_bucket_size);
+                    int probe_times = 1;
+                    do {
+                        probe_cont++;
 
-                            if constexpr (no_conflicts) {
-                                break;
-                            }
+                        const uint32_t cur_salt = ctrls[bucket].salt;
 
-                            bucket = (bucket + probe_times) % _table_items->bucket_size;
-                            probe_times++;
-                            entry = &_table_items->set_buckets[bucket];
-                        } while (true);
-                    }
+                        if (cur_salt == 0) {
+                            _probe_state->probe_index[match_count] = i;
+                            match_count++;
+                            break;
+                        }
+
+                        if (cur_salt == salt && buckets[bucket].key == probe_data[i]) {
+                            break;
+                        }
+
+                        if constexpr (no_conflicts) {
+                            break;
+                        }
+
+                        bucket = (bucket + probe_times) % _table_items->bucket_size;
+                        probe_times++;
+                    } while (true);
                 }
             } else {
                 for (; i < probe_row_count; i++) {

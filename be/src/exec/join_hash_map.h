@@ -110,15 +110,19 @@ struct JoinHashTableItems {
         uint32_t index() const { return value & 0x7FFF'FFFF; }
         uint32_t has_next() const { return value & 0x8000'0000; }
     };
-    struct Entry {
+
+    struct Ctrl {
         uint8_t salt;
-        uint8_t has_next;
+    };
+    Buffer<Ctrl> ctrls;
+
+    struct Entry {
         uint32_t key;
+        Index build_index;
     };
     Buffer<Entry> buckets;
 
     struct SetEntry {
-        uint8_t salt;
         uint32_t key;
     };
     Buffer<SetEntry> set_buckets;
@@ -188,7 +192,7 @@ struct JoinHashTableItems {
 struct HashTableProbeState {
     //TODO: memory release
     Buffer<uint8_t> is_nulls;
-    Buffer<uint32_t> buckets;
+    Buffer<size_t> buckets;
     Buffer<uint32_t> next;
     Buffer<Slice> probe_slice;
     Buffer<uint8_t>* null_array = nullptr;
