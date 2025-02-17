@@ -436,10 +436,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
     if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         const size_t count = data.size();
+        const auto* pdata = data.data();
         auto* buckets = probe_state->buckets.data();
         auto* salts = probe_state->salts.data();
         for (size_t i = 0; i < count; i++) {
-            const size_t hash = multiplicative_hash(data[i]) >> (64 - table_items.log_bucket_size - 7);
+            const size_t hash = multiplicative_hash(pdata[i]) >> (64 - table_items.log_bucket_size - 7);
             buckets[i] = hash >> 7;
             salts[i] = static_cast<uint8_t>(hash & 0x7F) | 0x80;
         }
