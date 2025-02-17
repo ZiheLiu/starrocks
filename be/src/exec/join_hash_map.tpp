@@ -1942,7 +1942,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
                 const auto* __restrict p_probe_data = probe_data.data();
                 const auto* __restrict ctrls = _table_items->ctrls.data();
-                const auto* __restrict buckets = _table_items->buckets.data();
+                const auto* __restrict buckets = _table_items->set_buckets.data();
                 const auto* __restrict hashes = _probe_state->hashes.data();
                 auto* __restrict probe_indexes = _probe_state->probe_index.data();
                 for (; i < probe_row_count; i++) {
