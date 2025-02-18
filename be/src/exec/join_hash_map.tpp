@@ -425,7 +425,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
             for (size_t i = 0; i < probe_row_count; i++) {
                 if (null_array[i] == 0) {
-                    if constexpr (SIMD == 1) {
+                    if constexpr (SIMD) {
                         probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 3];
                     } else {
                         probe_state->next[i] = table_items.first[probe_state->buckets[i]];
@@ -438,7 +438,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             probe_state->null_array = &nullable_column->null_column()->get_data();
         } else {
             for (size_t i = 0; i < probe_row_count; i++) {
-                if constexpr (SIMD == 1) {
+                if constexpr (SIMD) {
                     probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 3];
                 } else {
                     probe_state->next[i] = table_items.first[probe_state->buckets[i]];
@@ -452,7 +452,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
     }
 
     for (size_t i = 0; i < probe_row_count; i++) {
-        if constexpr (SIMD == 1) {
+        if constexpr (SIMD) {
             probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 3];
         } else {
             probe_state->next[i] = table_items.first[probe_state->buckets[i]];
