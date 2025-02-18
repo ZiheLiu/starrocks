@@ -1673,63 +1673,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
     const size_t probe_row_count = _probe_state->probe_row_count;
-    static constexpr uint32_t W = 8;
 
     uint32_t match_count = 0;
     uint32_t i = 0;
-
-    uint32_t matched[W]{true, true, true, true, true, true, true, true};
-    uint32_t is[W];
-    uint32_t indexes[W];
-    CppType probe_keys[W];
-    CppType build_keys[W];
-    while (i + W <= probe_row_count) {
-        for (uint32_t j = 0; j < W; j++) {
-            if (matched[j]) {
-                is[j] = i;
-                indexes[j] = _probe_state->next[i];
-                probe_keys[j] = probe_data[i];
-                i++;
-            } else {
-                indexes[j] = _table_items->next[indexes[j]];
-            }
-        }
-
-        for (uint32_t j = 0; j < W; j++) {
-            build_keys[j] = build_data[indexes[j]];
-        }
-
-        for (uint32_t j = 0; j < W; j++) {
-            matched[j] = (indexes[j] != 0) & ProbeFunc().equal(build_keys[j], probe_keys[j]);
-        }
-
-        for (uint32_t j = 0; j < W; j++) {
-            if (matched[j]) {
-                _probe_state->probe_index[match_count] = is[j];
-                match_count++;
-            }
-        }
-
-        for (uint32_t j = 0; j < W; j++) {
-            matched[j] |= indexes[j] == 0;
-        }
-    }
-
-    for (uint32_t j = 0; j < W; j++) {
-        if (matched[j]) {
-            continue;
-        }
-
-        uint32_t index = indexes[j];
-        while (index != 0) {
-            if (ProbeFunc().equal(build_data[index], probe_keys[j])) {
-                _probe_state->probe_index[match_count] = is[j];
-                match_count++;
-                break;
-            }
-            index = _table_items->next[index];
-        }
-    }
 
     for (; i < probe_row_count; i++) {
         uint32_t index = _probe_state->next[i];
