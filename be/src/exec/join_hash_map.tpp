@@ -2053,7 +2053,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                     }
 
                     if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 3) {
-                        if (raw_index & 0x8000'0000) {
+                        if ((raw_index & 0x8000'0000) == 0) {
                             break;
                         }
                     }
