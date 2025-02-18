@@ -76,6 +76,14 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
             do_construct_hash_table<2>(state, table_items, probe_state);
             return;
         }
+    } else if (abs(config::enable_simd_hash_join) == 3) {
+        if (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN) {
+            do_construct_hash_table<3>(state, table_items, probe_state);
+            return;
+        } else if (table_items->join_type == TJoinOp::INNER_JOIN) {
+            do_construct_hash_table<4>(state, table_items, probe_state);
+            return;
+        }
     }
 
     do_construct_hash_table<0>(state, table_items, probe_state);
@@ -101,14 +109,25 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     }();
     auto* ctrls = table_items->ctrls.data();
 
+    const size_t num_rows = table_items->row_count + 1;
+    if constexpr ((SIMD == 3 || SIMD == 4) && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+        const auto* __restrict pdata = data.data();
+        auto* __restrict next = table_items->next.data();
+        for (size_t i = 1; i < num_rows; i++) {
+            // use next to cache bucket_num
+            next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
+                                                                  table_items->log_bucket_size);
+        }
+    }
+
     if (table_items->key_columns[0]->is_nullable()) {
         const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
         const auto& null_array = nullable_column->null_column()->get_data();
 
         if (nullable_column->has_null()) {
-            for (size_t i = 1; i < table_items->row_count + 1; i++) {
+            for (size_t i = 1; i < num_rows; i++) {
                 if (null_array[i] == 0) {
-                    if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+                    if constexpr ((SIMD == 1 || SIMD == 2) && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                         const size_t hash = multiplicative_hash(data[i]);
                         const uint8_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
@@ -137,6 +156,12 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         }
 
                         table_items->no_conflicts &= probe_times == 1;
+                    } else if constexpr ((SIMD == 3 || SIMD == 4) && std::is_integral_v<CppType> &&
+                                         sizeof(CppType) == 4) {
+                        const uint32_t bucket_num = table_items->next[i];
+                        const uint32_t prev_first = table_items->first[bucket_num];
+                        table_items->next[i] = prev_first;
+                        table_items->first[bucket_num] = i | (static_cast<uint32_t>(prev_first != 0) << 31);
                     } else {
                         uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
                                 data[i], table_items->bucket_size, table_items->log_bucket_size);
@@ -146,8 +171,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
             }
         } else {
-            for (size_t i = 1; i < table_items->row_count + 1; i++) {
-                if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+            for (size_t i = 1; i < num_rows; i++) {
+                if constexpr ((SIMD == 1 || SIMD == 2) && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                     const size_t hash = multiplicative_hash(data[i]);
                     const uint8_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
@@ -176,6 +201,11 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     }
 
                     table_items->no_conflicts &= probe_times == 1;
+                } else if constexpr ((SIMD == 3 || SIMD == 4) && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+                    const uint32_t bucket_num = table_items->next[i];
+                    const uint32_t prev_first = table_items->first[bucket_num];
+                    table_items->next[i] = prev_first;
+                    table_items->first[bucket_num] = i | (static_cast<uint32_t>(prev_first != 0) << 31);
                 } else {
                     uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
@@ -185,8 +215,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             }
         }
     } else {
-        for (size_t i = 1; i < table_items->row_count + 1; i++) {
-            if constexpr (SIMD && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+        for (size_t i = 1; i < num_rows; i++) {
+            if constexpr ((SIMD == 1 || SIMD == 2) && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                 const size_t hash = multiplicative_hash(data[i]);
                 const uint8_t salt = (hash >> (64 - table_items->log_bucket_size - 7) & 0x7F) | 0x80;
 
@@ -215,6 +245,11 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
 
                 table_items->no_conflicts &= probe_times == 1;
+            } else if constexpr ((SIMD == 3 || SIMD == 4) && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+                const uint32_t bucket_num = table_items->next[i];
+                const uint32_t prev_first = table_items->first[bucket_num];
+                table_items->next[i] = prev_first;
+                table_items->first[bucket_num] = i | (static_cast<uint32_t>(prev_first != 0) << 31);
             } else {
                 uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                   table_items->log_bucket_size);
@@ -1207,23 +1242,29 @@ template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                            const Buffer<CppType>& probe_data) {
-    if (_table_items->no_conflicts) {
-        if (_table_items->no_duplicated_build_keys) {
-            _do_probe_from_ht<first_probe, true, true>(state, build_data, probe_data);
+    if (abs(config::enable_simd_hash_join) == 3) {
+        _do_probe_from_ht<first_probe, false, false, 3>(state, build_data, probe_data);
+    } else if (abs(config::enable_simd_hash_join) == 2) {
+        if (_table_items->no_conflicts) {
+            if (_table_items->no_duplicated_build_keys) {
+                _do_probe_from_ht<first_probe, true, true, 2>(state, build_data, probe_data);
+            } else {
+                _do_probe_from_ht<first_probe, true, false, 2>(state, build_data, probe_data);
+            }
         } else {
-            _do_probe_from_ht<first_probe, true, false>(state, build_data, probe_data);
+            if (_table_items->no_duplicated_build_keys) {
+                _do_probe_from_ht<first_probe, false, true, 2>(state, build_data, probe_data);
+            } else {
+                _do_probe_from_ht<first_probe, false, false, 2>(state, build_data, probe_data);
+            }
         }
     } else {
-        if (_table_items->no_duplicated_build_keys) {
-            _do_probe_from_ht<first_probe, false, true>(state, build_data, probe_data);
-        } else {
-            _do_probe_from_ht<first_probe, false, false>(state, build_data, probe_data);
-        }
+        _do_probe_from_ht<first_probe, false, false, 0>(state, build_data, probe_data);
     }
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys>
+template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                               const Buffer<CppType>& probe_data) {
     _probe_state->match_flag = JoinMatchFlag::NORMAL;
@@ -1232,7 +1273,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     size_t i = _probe_state->cur_probe_index;
 
     if constexpr (!first_probe) { // chunk_size + 1 probe
-        if (!(std::is_integral_v<CppType> && sizeof(CppType) == 4 && abs(config::enable_simd_hash_join) == 2)) {
+        if constexpr (!(std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 2)) {
             _probe_state->probe_index[0] = _probe_state->cur_probe_index;
             _probe_state->build_index[0] = _probe_state->cur_build_index;
             match_count = 1;
@@ -1249,7 +1290,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     if constexpr (first_probe) {
         memset(_probe_state->probe_match_filter.data(), 0, _probe_state->probe_row_count * sizeof(uint8_t));
-    } else if (abs(config::enable_simd_hash_join) == 2) {
+    } else if constexpr (SIMD == 2) {
         uint32_t build_index = _probe_state->cur_build_index;
         do {
             _probe_state->probe_index[match_count] = i;
@@ -1277,32 +1318,58 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     const CppType* __restrict probe_data_p = probe_data.data();
 
-    if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-        if (abs(config::enable_simd_hash_join) == 2) {
-            const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-            const auto* __restrict ctrls = _table_items->ctrls.data();
-            const auto* __restrict buckets = _table_items->buckets.data();
-            const auto* __restrict probe_buckets = _probe_state->buckets.data();
-            const auto* __restrict salts = _probe_state->salts.data();
-            auto* __restrict probe_indexes = _probe_state->probe_index.data();
-            auto* __restrict build_indexes = _probe_state->build_index.data();
-            for (; i < probe_row_count; i++) {
-                const uint8_t salt = salts[i];
-                uint32_t bucket = probe_buckets[i];
+    if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 2) {
+        const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+        const auto* __restrict ctrls = _table_items->ctrls.data();
+        const auto* __restrict buckets = _table_items->buckets.data();
+        const auto* __restrict probe_buckets = _probe_state->buckets.data();
+        const auto* __restrict salts = _probe_state->salts.data();
+        auto* __restrict probe_indexes = _probe_state->probe_index.data();
+        auto* __restrict build_indexes = _probe_state->build_index.data();
+        for (; i < probe_row_count; i++) {
+            const uint8_t salt = salts[i];
+            uint32_t bucket = probe_buckets[i];
 
-                uint32_t probe_times = 1;
-                uint8_t cur_salt = ctrls[bucket].salt;
-                while (cur_salt != 0) {
-                    probe_cont++;
+            uint32_t probe_times = 1;
+            uint8_t cur_salt = ctrls[bucket].salt;
+            while (cur_salt != 0) {
+                probe_cont++;
 
-                    if (cur_salt == salt) {
-                        probe_cont2++;
-                        if (buckets[bucket].key == probe_data_p[i]) {
-                            const auto first_build_index = buckets[bucket].build_index;
+                if (cur_salt == salt) {
+                    probe_cont2++;
+                    if (buckets[bucket].key == probe_data_p[i]) {
+                        const auto first_build_index = buckets[bucket].build_index;
 
-                            uint32_t build_index = first_build_index.index();
-                            probe_indexes[match_count] = i;
-                            build_indexes[match_count] = build_index;
+                        uint32_t build_index = first_build_index.index();
+                        probe_indexes[match_count] = i;
+                        build_indexes[match_count] = build_index;
+                        match_count++;
+
+                        if constexpr (first_probe) {
+                            _probe_state->cur_row_match_count++;
+                            _probe_state->probe_match_filter[i] = 1;
+                        }
+
+                        if (UNLIKELY(match_count > state->chunk_size())) {
+                            _probe_state->cur_probe_index = i;
+                            _probe_state->cur_build_index = build_index;
+                            _probe_state->has_remain = true;
+                            _probe_state->count = state->chunk_size();
+                            return;
+                        }
+
+                        if constexpr (no_duplicated_build_keys) {
+                            break;
+                        }
+
+                        if (!first_build_index.has_next()) {
+                            break;
+                        }
+
+                        build_index = _table_items->next[build_index];
+                        do {
+                            _probe_state->probe_index[match_count] = i;
+                            _probe_state->build_index[match_count] = build_index;
                             match_count++;
 
                             if constexpr (first_probe) {
@@ -1318,75 +1385,71 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                                 return;
                             }
 
-                            if constexpr (no_duplicated_build_keys) {
-                                break;
-                            }
-
-                            if (!first_build_index.has_next()) {
-                                break;
-                            }
-
                             build_index = _table_items->next[build_index];
-                            do {
-                                _probe_state->probe_index[match_count] = i;
-                                _probe_state->build_index[match_count] = build_index;
-                                match_count++;
+                        } while (build_index != 0);
 
-                                if constexpr (first_probe) {
-                                    _probe_state->cur_row_match_count++;
-                                    _probe_state->probe_match_filter[i] = 1;
-                                }
-
-                                if (UNLIKELY(match_count > state->chunk_size())) {
-                                    _probe_state->cur_probe_index = i;
-                                    _probe_state->cur_build_index = build_index;
-                                    _probe_state->has_remain = true;
-                                    _probe_state->count = state->chunk_size();
-                                    return;
-                                }
-
-                                build_index = _table_items->next[build_index];
-                            } while (build_index != 0);
-
-                            break;
-                        }
-                    }
-
-                    if constexpr (no_conflicts) {
                         break;
                     }
-
-                    bucket = (bucket + probe_times) & bucket_size_mask;
-                    cur_salt = ctrls[bucket].salt;
-                    probe_times++;
                 }
 
-                if constexpr (first_probe) {
-                    if (_probe_state->cur_row_match_count > 1) {
-                        one_to_many = true;
-                    }
-                    _probe_state->cur_row_match_count = 0;
+                if constexpr (no_conflicts) {
+                    break;
                 }
+
+                bucket = (bucket + probe_times) & bucket_size_mask;
+                cur_salt = ctrls[bucket].salt;
+                probe_times++;
             }
 
-            COUNTER_UPDATE(_probe_state->probe_counter, probe_cont);
-            COUNTER_UPDATE(_probe_state->probe2_counter, probe_cont2);
             if constexpr (first_probe) {
-                CHECK_MATCH()
+                if (_probe_state->cur_row_match_count > 1) {
+                    one_to_many = true;
+                }
+                _probe_state->cur_row_match_count = 0;
             }
-
-            _probe_state->cur_probe_times = 0;
-            PROBE_OVER()
-
-            return;
         }
+
+        COUNTER_UPDATE(_probe_state->probe_counter, probe_cont);
+        COUNTER_UPDATE(_probe_state->probe2_counter, probe_cont2);
+        if constexpr (first_probe) {
+            CHECK_MATCH()
+        }
+
+        _probe_state->cur_probe_times = 0;
+        PROBE_OVER()
+
+        return;
     }
 
-    for (; i < probe_row_count; i++) {
-        size_t build_index = _probe_state->next[i];
+    if (_table_items->used_buckets == _table_items->row_count) {
+        for (; i < probe_row_count; i++) {
+            probe_cont++;
 
-        if (build_index != 0) {
-            if (_table_items->used_buckets == _table_items->row_count) {
+            uint32_t build_index = _probe_state->next[i];
+            if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 3) {
+                build_index = build_index & 0x7FFF'FFFF;
+            }
+            if (build_index != 0 && ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                _probe_state->probe_index[match_count] = i;
+                _probe_state->build_index[match_count] = build_index;
+                match_count++;
+
+                if constexpr (first_probe) {
+                    _probe_state->cur_row_match_count++;
+                    _probe_state->probe_match_filter[i] = 1;
+                }
+            }
+        }
+    } else {
+        for (; i < probe_row_count; i++) {
+            probe_cont++;
+
+            uint32_t raw_build_index = _probe_state->next[i];
+            while (raw_build_index != 0) {
+                uint32_t build_index = raw_build_index;
+                if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 3) {
+                    build_index = build_index & 0x7FFF'FFFF;
+                }
                 if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
                     _probe_state->probe_index[match_count] = i;
                     _probe_state->build_index[match_count] = build_index;
@@ -1398,35 +1461,20 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                     }
                     RETURN_IF_CHUNK_FULL()
                 }
-                probe_cont++;
-            } else {
-                do {
-                    if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
-                        _probe_state->probe_index[match_count] = i;
-                        _probe_state->build_index[match_count] = build_index;
-                        match_count++;
-
-                        if constexpr (first_probe) {
-                            _probe_state->cur_row_match_count++;
-                            _probe_state->probe_match_filter[i] = 1;
-                        }
-                        RETURN_IF_CHUNK_FULL()
+                if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 3) {
+                    if ((raw_build_index & 0x8000'0000) == 0) {
+                        break;
                     }
-                    probe_cont++;
-                    auto next_index = _table_items->next[build_index];
-                    build_index = next_index;
-                } while (build_index != 0);
+                }
+                raw_build_index = _table_items->next[build_index];
             }
 
             if constexpr (first_probe) {
                 if (_probe_state->cur_row_match_count > 1) {
                     one_to_many = true;
                 }
+                _probe_state->cur_row_match_count = 0;
             }
-        }
-
-        if constexpr (first_probe) {
-            _probe_state->cur_row_match_count = 0;
         }
     }
 
@@ -1771,10 +1819,18 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    if (_table_items->no_conflicts) {
-        _do_probe_from_ht_for_left_anti_join<first_probe, true>(state, build_data, probe_data);
+    if (abs(config::enable_simd_hash_join) == 1) {
+        _do_probe_from_ht_for_left_anti_join<first_probe, false, 1>(state, build_data, probe_data);
+    } else if (abs(config::enable_simd_hash_join) == 3) {
+        _do_probe_from_ht_for_left_anti_join<first_probe, false, 3>(state, build_data, probe_data);
+    } else if (abs(config::enable_simd_hash_join) == 2) {
+        if (_table_items->no_conflicts) {
+            _do_probe_from_ht_for_left_anti_join<first_probe, true, 2>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_anti_join<first_probe, false, 2>(state, build_data, probe_data);
+        }
     } else {
-        _do_probe_from_ht_for_left_anti_join<first_probe, false>(state, build_data, probe_data);
+        _do_probe_from_ht_for_left_anti_join<first_probe, false, 0>(state, build_data, probe_data);
     }
 }
 
@@ -1815,7 +1871,7 @@ ALWAYS_INLINE void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_from_ht_for_left
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-template <bool first_probe, bool no_conflicts>
+template <bool first_probe, bool no_conflicts, uint8_t SIMD>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                                  const Buffer<CppType>& build_data,
                                                                                  const Buffer<CppType>& probe_data) {
@@ -1857,168 +1913,152 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         uint32_t i = 0;
 
 #if defined(__AVX2__) && defined(__POPCNT__)
-        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            if (config::enable_simd_hash_join == 1) {
-                static constexpr uint32_t W = 8;
-                const auto* build_next_data = _table_items->next.data();
-                const auto* build_raw_data = build_data.data();
+        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 1) {
+            static constexpr uint32_t W = 8;
+            const auto* build_next_data = _table_items->next.data();
+            const auto* build_raw_data = build_data.data();
 
-                uint8_t match_mask = 255;
-                __m256i vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
-                __m256i vindexes = _mm256_set1_epi32(0x0);
-                __m256i vprobe_keys = _mm256_set1_epi32(0x0);
-                __m256i vis = _mm256_set1_epi32(0x0);
-                while (i + W <= probe_row_count) {
-                    if (match_mask == 255) {
-                        vindexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
-                        vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
-                        vis = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
-                        i += W;
-                    } else if (match_mask == 0) {
-                        vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
-                    } else {
+            uint8_t match_mask = 255;
+            __m256i vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
+            __m256i vindexes = _mm256_set1_epi32(0x0);
+            __m256i vprobe_keys = _mm256_set1_epi32(0x0);
+            __m256i vis = _mm256_set1_epi32(0x0);
+            while (i + W <= probe_row_count) {
+                if (match_mask == 255) {
+                    vindexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
+                    vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
+                    vis = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
+                    i += W;
+                } else if (match_mask == 0) {
+                    vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
+                } else {
+                    __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
+                    __m256i vmatch2 = _mm256_permutevar8x32_epi32(vmatch, vmove_left_mask);
+
+                    // selectively load probe_next
+                    vindexes = _mm256_permutevar8x32_epi32(vindexes, vmove_left_mask);
+                    vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
+                    __m256i vnew_indexes = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
+                    vindexes = _mm256_blendv_epi8(vindexes, vnew_indexes, vmatch2);
+
+                    // selectively load probe_keys
+                    vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
+                    __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
+                    vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch2);
+
+                    // selectively load i
+                    vis = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
+                    __m256i vnew_is = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
+                    vis = _mm256_blendv_epi8(vis, vnew_is, vmatch2);
+
+                    i += __builtin_popcount(match_mask);
+                }
+
+                // empty mask
+                vmatch = _mm256_cmpeq_epi32(vindexes, _mm256_setzero_si256());
+                match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+
+                if (match_mask == 255) {
+                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vis);
+                    match_count += 8;
+                } else {
+                    if (match_mask != 0) {
+                        // selectively store
                         __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
                                 _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
-                        __m256i vmatch2 = _mm256_permutevar8x32_epi32(vmatch, vmove_left_mask);
-
-                        // selectively load probe_next
-                        vindexes = _mm256_permutevar8x32_epi32(vindexes, vmove_left_mask);
-                        vindexes = _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_next_data), vindexes, 4);
-                        __m256i vnew_indexes =
-                                _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_probe_state->next[i]));
-                        vindexes = _mm256_blendv_epi8(vindexes, vnew_indexes, vmatch2);
-
-                        // selectively load probe_keys
-                        vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
-                        __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&probe_data[i]));
-                        vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch2);
-
-                        // selectively load i
-                        vis = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
-                        __m256i vnew_is = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
-                        vis = _mm256_blendv_epi8(vis, vnew_is, vmatch2);
-
-                        i += __builtin_popcount(match_mask);
+                        __m256i vshuffle_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
+                        _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]),
+                                            vshuffle_is);
+                        match_count += __builtin_popcount(match_mask);
                     }
 
-                    // empty mask
-                    vmatch = _mm256_cmpeq_epi32(vindexes, _mm256_setzero_si256());
-                    match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
-
-                    if (match_mask == 255) {
-                        _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]), vis);
-                        match_count += 8;
+                    // get new vmatch.
+                    if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
+                        vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
+                        match_mask = 255;
                     } else {
-                        if (match_mask != 0) {
-                            // selectively store
-                            __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
-                                    _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
-                            __m256i vshuffle_is = _mm256_permutevar8x32_epi32(vis, vmove_left_mask);
-                            _mm256_storeu_si256(reinterpret_cast<__m256i*>(&_probe_state->probe_index[match_count]),
-                                                vshuffle_is);
-                            match_count += __builtin_popcount(match_mask);
-                        }
-
-                        // get new vmatch.
-                        if constexpr (std::is_same_v<ProbeFunc, DirectMappingJoinProbeFunc<LT>>) {
-                            vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
-                            match_mask = 255;
-                        } else {
-                            __m256i vbuild_keys =
-                                    _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
-                            // TODO(lzh): only support 4B key and value for now.
-                            vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
-                            match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
-                        }
+                        __m256i vbuild_keys =
+                                _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_raw_data), vindexes, 4);
+                        // TODO(lzh): only support 4B key and value for now.
+                        vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys));
+                        match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
                     }
                 }
+            }
 
-                if (match_mask != 255) {
-                    probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vindexes, vprobe_keys,
-                                                                 build_raw_data);
-                }
+            if (match_mask != 255) {
+                probe_from_ht_for_left_anti_join_sub_process(match_count, match_mask, vis, vindexes, vprobe_keys,
+                                                             build_raw_data);
             }
         }
 #endif
 
-        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            if (abs(config::enable_simd_hash_join) == 2) {
-                const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-                const auto* __restrict p_probe_data = probe_data.data();
-                const auto* __restrict ctrls = _table_items->ctrls.data();
-                const auto* __restrict buckets = _table_items->set_buckets.data();
-                const auto* __restrict probe_buckets = _probe_state->buckets.data();
-                const auto* __restrict salts = _probe_state->salts.data();
-                auto* __restrict probe_indexes = _probe_state->probe_index.data();
-                for (; i < probe_row_count; i++) {
-                    const uint8_t salt = salts[i];
-                    uint32_t bucket = probe_buckets[i];
-                    int probe_times = 1;
-                    while (true) {
-                        probe_cont++;
+        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 2) {
+            const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+            const auto* __restrict p_probe_data = probe_data.data();
+            const auto* __restrict ctrls = _table_items->ctrls.data();
+            const auto* __restrict buckets = _table_items->set_buckets.data();
+            const auto* __restrict probe_buckets = _probe_state->buckets.data();
+            const auto* __restrict salts = _probe_state->salts.data();
+            auto* __restrict probe_indexes = _probe_state->probe_index.data();
+            for (; i < probe_row_count; i++) {
+                const uint8_t salt = salts[i];
+                uint32_t bucket = probe_buckets[i];
+                int probe_times = 1;
+                while (true) {
+                    probe_cont++;
 
-                        const uint8_t cur_salt = ctrls[bucket].salt;
+                    const uint8_t cur_salt = ctrls[bucket].salt;
 
-                        if (cur_salt == 0) {
-                            probe_indexes[match_count] = i;
-                            match_count++;
-                            break;
-                        }
-
-                        if (cur_salt == salt) {
-                            probe_cont2++;
-                            if (buckets[bucket].key == p_probe_data[i]) {
-                                break;
-                            }
-                        }
-
-                        if constexpr (no_conflicts) {
-                            break;
-                        }
-
-                        bucket = (bucket + probe_times) & bucket_size_mask;
-                        probe_times++;
-                    }
-                }
-            } else {
-                for (; i < probe_row_count; i++) {
-                    size_t index = _probe_state->next[i];
-                    if (index == 0) {
-                        _probe_state->probe_index[match_count] = i;
+                    if (cur_salt == 0) {
+                        probe_indexes[match_count] = i;
                         match_count++;
-                        continue;
+                        break;
                     }
-                    bool found = false;
-                    while (index != 0) {
-                        probe_cont++;
-                        if (ProbeFunc().equal(build_data[index], probe_data[i])) {
-                            found = true;
+
+                    if (cur_salt == salt) {
+                        probe_cont2++;
+                        if (buckets[bucket].key == p_probe_data[i]) {
                             break;
                         }
-                        index = _table_items->next[index];
                     }
-                    if (!found) {
-                        _probe_state->probe_index[match_count] = i;
-                        match_count++;
+
+                    if constexpr (no_conflicts) {
+                        break;
                     }
+
+                    bucket = (bucket + probe_times) & bucket_size_mask;
+                    probe_times++;
                 }
             }
         } else {
             for (; i < probe_row_count; i++) {
-                size_t index = _probe_state->next[i];
-                if (index == 0) {
+                uint32_t raw_index = _probe_state->next[i];
+                if (raw_index == 0) {
                     _probe_state->probe_index[match_count] = i;
                     match_count++;
                     continue;
                 }
                 bool found = false;
-                while (index != 0) {
+                while (raw_index != 0) {
                     probe_cont++;
+                    uint32_t index = raw_index;
+                    if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 3) {
+                        index &= 0x7FFF'FFFF;
+                    }
                     if (ProbeFunc().equal(build_data[index], probe_data[i])) {
                         found = true;
                         break;
                     }
-                    index = _table_items->next[index];
+
+                    if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4 && SIMD == 3) {
+                        if (raw_index & 0x8000'0000) {
+                            break;
+                        }
+                    }
+
+                    raw_index = _table_items->next[index];
                 }
                 if (!found) {
                     _probe_state->probe_index[match_count] = i;

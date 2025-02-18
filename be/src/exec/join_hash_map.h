@@ -753,7 +753,7 @@ private:
     // for one key inner join
     template <bool first_probe>
     void _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
-    template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys>
+    template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
     void _do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
@@ -785,7 +785,7 @@ private:
     void probe_from_ht_for_left_anti_join_sub_process(uint32_t& match_count, uint8_t match_mask, __m256i& vis,
                                                       __m256i& vindexes, __m256i& vprobe_keys,
                                                       const auto* build_raw_data);
-    template <bool first_probe, bool no_conflicts>
+    template <bool first_probe, bool no_conflicts, uint8_t SIMD>
     void _do_probe_from_ht_for_left_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                               const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_anti_join(RuntimeState* state,
