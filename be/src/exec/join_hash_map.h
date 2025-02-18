@@ -111,22 +111,6 @@ struct JoinHashTableItems {
         uint32_t has_next() const { return value & 0x8000'0000; }
     };
 
-    struct Ctrl {
-        uint8_t salt;
-    };
-    Buffer<Ctrl> ctrls;
-
-    struct Entry {
-        uint32_t key;
-        Index build_index;
-    };
-    Buffer<Entry> buckets;
-
-    struct SetEntry {
-        uint32_t key;
-    };
-    Buffer<SetEntry> set_buckets;
-
     //TODO: memory continues problem?
     ChunkPtr build_chunk = nullptr;
     Columns key_columns;
@@ -167,13 +151,10 @@ struct JoinHashTableItems {
     float get_keys_per_bucket() const { return keys_per_bucket; }
     bool ht_cache_miss_serious() const { return cache_miss_serious; }
 
+    template <uint8_t MODE = 0>
     void calculate_ht_info(size_t key_bytes) {
         if (used_buckets == 0) { // to avoid redo
             used_buckets = SIMD::count_nonzero(first);
-
-            if (used_buckets == 0) {
-                used_buckets = SIMD::count_nonzero(reinterpret_cast<const uint8_t*>(ctrls.data()), ctrls.size());
-            }
 
             keys_per_bucket = used_buckets == 0 ? 0 : row_count * 1.0 / used_buckets;
             size_t probe_bytes = key_bytes + row_count * sizeof(uint32_t);
@@ -185,6 +166,8 @@ struct JoinHashTableItems {
                                   (probe_bytes > (1UL << 26) && keys_per_bucket > 1.5) || probe_bytes > (1UL << 27));
             VLOG_QUERY << "ht cache miss serious = " << cache_miss_serious << " row# = " << row_count
                        << " , bytes = " << probe_bytes << " , depth = " << keys_per_bucket;
+
+            no_conflicts = used_buckets == row_count;
         }
     }
 
@@ -198,7 +181,6 @@ struct HashTableProbeState {
     //TODO: memory release
     Buffer<uint8_t> is_nulls;
     Buffer<uint32_t> buckets;
-    Buffer<uint8_t> salts;
     Buffer<uint32_t> next;
     Buffer<Slice> probe_slice;
     Buffer<uint8_t>* null_array = nullptr;
@@ -274,7 +256,6 @@ struct HashTableProbeState {
     HashTableProbeState(const HashTableProbeState& rhs)
             : is_nulls(rhs.is_nulls),
               buckets(rhs.buckets),
-              salts(rhs.salts),
               next(rhs.next),
               probe_slice(rhs.probe_slice),
               null_array(rhs.null_array),

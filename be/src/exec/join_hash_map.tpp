@@ -33,13 +33,6 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
-
-    table_items->ctrls.resize(table_items->bucket_size);
-    if (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN) {
-        table_items->set_buckets.resize(table_items->bucket_size);
-    } else {
-        table_items->buckets.resize(table_items->bucket_size);
-    }
 }
 
 template <LogicalType LT>
@@ -163,7 +156,51 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     }
 
+    const bool init = table_items->used_buckets == 0;
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
+
+    [[maybe_unused]] auto calc_no_duplicated_build_keys = [&] {
+        if (table_items->no_conflicts) {
+            return true;
+        }
+
+        if (table_items->keys_per_bucket > 1.5) {
+            return false;
+        }
+
+        static constexpr size_t MAX_VALUES = 8;
+        CppType values[MAX_VALUES];
+        for (uint32_t i = 0; i < table_items->bucket_size; i++) {
+            uint32_t num_values = 0;
+            uint32_t index = table_items->first[i] & BLOOM_FILTER_MASK;
+            while (index != 0 && num_values < MAX_VALUES) {
+                values[num_values++] = data[index];
+                index = table_items->next[index];
+            }
+
+            if (num_values == MAX_VALUES && index != 0) {
+                return false;
+            }
+
+            if (num_values > 1) {
+                for (uint32_t j = 0; j < num_values; j++) {
+                    for (uint32_t k = j + 1; k < num_values; k++) {
+                        if (values[j] == values[k]) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+
+        return true;
+    };
+
+    if (init) {
+        if constexpr (SIMD == 1) {
+            table_items->no_duplicated_build_keys = calc_no_duplicated_build_keys();
+        }
+    }
 }
 
 template <LogicalType LT>
@@ -174,7 +211,6 @@ void DirectMappingJoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTabl
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
-    table_items->buckets.resize(table_items->bucket_size);
 }
 
 template <LogicalType LT>
@@ -220,8 +256,6 @@ void FixedSizeJoinBuildFunc<LT>::prepare(RuntimeState* state, JoinHashTableItems
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
-    table_items->buckets.resize(table_items->bucket_size);
-    table_items->ctrls.resize(table_items->bucket_size);
     table_items->build_key_column = ColumnType::create(table_items->row_count + 1);
 }
 
@@ -536,7 +570,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_prepare(RuntimeState* state) {
     _probe_state->probe_match_index.resize(chunk_size);
     _probe_state->probe_match_filter.resize(chunk_size);
     _probe_state->buckets.resize(chunk_size);
-    _probe_state->salts.resize(chunk_size);
 
     if (_table_items->join_type == TJoinOp::RIGHT_OUTER_JOIN || _table_items->join_type == TJoinOp::FULL_OUTER_JOIN ||
         _table_items->join_type == TJoinOp::RIGHT_SEMI_JOIN || _table_items->join_type == TJoinOp::RIGHT_ANTI_JOIN) {
@@ -1155,13 +1188,21 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                            const Buffer<CppType>& probe_data) {
     if (config::enable_simd_hash_join == 1 && _table_items->bucket_size <= BLOOM_FILTER_MASK) {
-        if (_table_items->used_buckets == _table_items->row_count) {
-            _do_probe_from_ht<first_probe, true, false, 1>(state, build_data, probe_data);
+        if (_table_items->no_conflicts) {
+            if (_table_items->no_duplicated_build_keys) {
+                _do_probe_from_ht<first_probe, true, true, 1>(state, build_data, probe_data);
+            } else {
+                _do_probe_from_ht<first_probe, true, false, 1>(state, build_data, probe_data);
+            }
         } else {
-            _do_probe_from_ht<first_probe, false, false, 1>(state, build_data, probe_data);
+            if (_table_items->no_duplicated_build_keys) {
+                _do_probe_from_ht<first_probe, false, true, 1>(state, build_data, probe_data);
+            } else {
+                _do_probe_from_ht<first_probe, false, false, 1>(state, build_data, probe_data);
+            }
         }
     } else {
-        if (_table_items->used_buckets == _table_items->row_count) {
+        if (_table_items->no_conflicts) {
             _do_probe_from_ht<first_probe, true, false, 0>(state, build_data, probe_data);
         } else {
             _do_probe_from_ht<first_probe, false, false, 0>(state, build_data, probe_data);
@@ -1224,7 +1265,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                     _probe_state->probe_match_filter[i] = 1;
                 }
 
-                if constexpr (!no_conflicts) {
+                if constexpr (!no_conflicts && !no_duplicated_build_keys) {
                     if (UNLIKELY(match_count > state->chunk_size())) {
                         if constexpr (SIMD == 1) {
                             _probe_state->next[i] = _table_items->next[build_index] | (nexts[i] & 0xFF00'0000ul);
@@ -1238,6 +1279,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         return;
                     }
                 }
+
+                if (no_duplicated_build_keys) {
+                    break;
+                }
             }
 
             if constexpr (no_conflicts) {
@@ -1247,7 +1292,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             build_index = _table_items->next[build_index];
         } while (build_index != 0);
 
-        if constexpr (first_probe && !no_conflicts) {
+        if constexpr (first_probe && (!no_conflicts || !no_duplicated_build_keys)) {
             if (_probe_state->cur_row_match_count > 1) {
                 one_to_many = true;
             }
