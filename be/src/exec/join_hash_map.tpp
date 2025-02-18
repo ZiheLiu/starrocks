@@ -68,9 +68,9 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
         (table_items->join_type == TJoinOp::INNER_JOIN || table_items->join_type == TJoinOp::LEFT_ANTI_JOIN ||
          table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         do_construct_hash_table<1>(state, table_items, probe_state);
+    } else {
+        do_construct_hash_table<0>(state, table_items, probe_state);
     }
-
-    do_construct_hash_table<0>(state, table_items, probe_state);
 }
 
 static size_t multiplicative_hash(auto key) {
