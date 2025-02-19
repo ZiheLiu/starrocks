@@ -16,7 +16,15 @@ package com.starrocks.qe.scheduler.slot;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.starrocks.planner.DeltaLakeScanNode;
+import com.starrocks.planner.FileTableScanNode;
+import com.starrocks.planner.HdfsScanNode;
+import com.starrocks.planner.HudiScanNode;
+import com.starrocks.planner.IcebergMetadataScanNode;
+import com.starrocks.planner.IcebergScanNode;
+import com.starrocks.planner.OdpsScanNode;
 import com.starrocks.planner.OlapScanNode;
+import com.starrocks.planner.PaimonScanNode;
 import com.starrocks.planner.PlanFragment;
 import com.starrocks.planner.PlanFragmentId;
 import com.starrocks.planner.PlanNode;
@@ -66,7 +74,7 @@ public class SlotEstimatorFactory {
     public static class ParallelismBasedSlotsEstimator implements SlotEstimator {
         @Override
         public int estimateSlots(QueryQueueOptions opts, ConnectContext context, DefaultCoordinator coord) {
-            Map<PlanFragmentId, FragmentContext> fragmentContexts = collectFragmentContexts(coord);
+            Map<PlanFragmentId, FragmentContext> fragmentContexts = collectFragmentContexts(opts, coord);
             int numSlots = fragmentContexts.values().stream()
                     .mapToInt(fragmentContext -> estimateFragmentSlots(opts, fragmentContext))
                     .max().orElse(1);
@@ -111,13 +119,14 @@ public class SlotEstimatorFactory {
             return (int) (sourceNode.getCardinality() / opts.v2().getNumRowsPerSlot());
         }
 
-        private static Map<PlanFragmentId, FragmentContext> collectFragmentContexts(DefaultCoordinator coord) {
+        private static Map<PlanFragmentId, FragmentContext> collectFragmentContexts(QueryQueueOptions opts,
+                                                                                    DefaultCoordinator coord) {
             PlanFragment rootFragment = coord.getExecutionDAG().getRootFragment().getPlanFragment();
             PlanNode rootNode = rootFragment.getPlanRoot();
 
             Map<PlanFragmentId, FragmentContext> contexts = Maps.newHashMap();
             collectFragmentSourceNodes(rootNode, contexts);
-            calculateFragmentWorkers(rootFragment, contexts);
+            calculateFragmentWorkers(opts, rootFragment, contexts);
 
             return contexts;
         }
@@ -132,8 +141,9 @@ public class SlotEstimatorFactory {
             node.getChildren().forEach(child -> collectFragmentSourceNodes(child, contexts));
         }
 
-        private static void calculateFragmentWorkers(PlanFragment fragment, Map<PlanFragmentId, FragmentContext> contexts) {
-            fragment.getChildren().forEach(child -> calculateFragmentWorkers(child, contexts));
+        private static void calculateFragmentWorkers(QueryQueueOptions opts, PlanFragment fragment,
+                                                     Map<PlanFragmentId, FragmentContext> contexts) {
+            fragment.getChildren().forEach(child -> calculateFragmentWorkers(opts, child, contexts));
 
             FragmentContext context = contexts.get(fragment.getFragmentId());
             if (context == null) {
@@ -148,6 +158,13 @@ public class SlotEstimatorFactory {
                         .map(TScanRangeLocation::getBackend_id)
                         .collect(Collectors.toSet())
                         .size();
+            } else if (leftMostNode instanceof HdfsScanNode || leftMostNode instanceof IcebergScanNode ||
+                    leftMostNode instanceof HudiScanNode || leftMostNode instanceof DeltaLakeScanNode ||
+                    leftMostNode instanceof FileTableScanNode || leftMostNode instanceof PaimonScanNode
+                    || leftMostNode instanceof OdpsScanNode || leftMostNode instanceof IcebergMetadataScanNode) {
+                // TODO: get the number of scan ranges for connector scan nodes.
+                int numWorkers = (int) leftMostNode.getCardinality() / opts.v2().getNumRowsPerSlot();
+                context.numWorkers = Math.max(1, Math.min(numWorkers, opts.v2().getNumWorkers()));
             } else if (fragment.isGatherFragment()) {
                 context.numWorkers = 1;
             } else {
