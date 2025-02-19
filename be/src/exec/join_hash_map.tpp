@@ -156,51 +156,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     }
 
-    const bool init = table_items->used_buckets == 0;
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
-
-    [[maybe_unused]] auto calc_no_duplicated_build_keys = [&] {
-        if (table_items->no_conflicts) {
-            return true;
-        }
-
-        if (table_items->keys_per_bucket > 1.5) {
-            return false;
-        }
-
-        static constexpr size_t MAX_VALUES = 8;
-        CppType values[MAX_VALUES];
-        for (uint32_t i = 0; i < table_items->bucket_size; i++) {
-            uint32_t num_values = 0;
-            uint32_t index = table_items->first[i] & BLOOM_FILTER_MASK;
-            while (index != 0 && num_values < MAX_VALUES) {
-                values[num_values++] = data[index];
-                index = table_items->next[index];
-            }
-
-            if (num_values == MAX_VALUES && index != 0) {
-                return false;
-            }
-
-            if (num_values > 1) {
-                for (uint32_t j = 0; j < num_values; j++) {
-                    for (uint32_t k = j + 1; k < num_values; k++) {
-                        if (values[j] == values[k]) {
-                            return false;
-                        }
-                    }
-                }
-            }
-        }
-
-        return true;
-    };
-
-    // if (init) {
-    //     if constexpr (SIMD == 1) {
-    //         table_items->no_duplicated_build_keys = calc_no_duplicated_build_keys();
-    //     }
-    // }
 }
 
 template <LogicalType LT>
