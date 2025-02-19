@@ -711,6 +711,8 @@ public class Config extends ConfigBase {
      * Used to calculate the total number of slots the system has,
      * which is equal to the configuration value * BE number * BE cores.
      * It will be set to `4` if it is non-positive.
+     *
+     * 4 * 20 * 48
      */
     @ConfField(mutable = true)
     public static int query_queue_v2_concurrency_level = 4;

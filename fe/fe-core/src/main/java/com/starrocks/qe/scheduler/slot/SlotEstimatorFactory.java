@@ -58,7 +58,8 @@ public class SlotEstimatorFactory {
     public static class MemoryBasedSlotsEstimator implements SlotEstimator {
         @Override
         public int estimateSlots(QueryQueueOptions opts, ConnectContext context, DefaultCoordinator coord) {
-            final long planMemCosts = (long) context.getAuditEventBuilder().build().planMemCosts;
+            final long planMemCosts = (long) Math.max(context.getAuditEventBuilder().build().planMemCosts,
+                    context.getAuditEventBuilder().build().planCpuCosts);
             long numSlotsPerWorker = planMemCosts / opts.v2().getNumWorkers() / opts.v2().getMemBytesPerSlot();
             numSlotsPerWorker = Math.max(numSlotsPerWorker, 0);
             numSlotsPerWorker = computeMaxLEPower2((int) numSlotsPerWorker);
