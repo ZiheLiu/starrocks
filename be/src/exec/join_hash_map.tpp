@@ -1187,7 +1187,8 @@ template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                            const Buffer<CppType>& probe_data) {
-    if (config::enable_simd_hash_join == 1 && _table_items->bucket_size <= BLOOM_FILTER_MASK) {
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+        _table_items->bucket_size <= BLOOM_FILTER_MASK) {
         if (_table_items->no_conflicts) {
             if (_table_items->no_duplicated_build_keys) {
                 _do_probe_from_ht<first_probe, true, true, 1>(state, build_data, probe_data);
@@ -1489,7 +1490,8 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    if (config::enable_simd_hash_join == 1 && _table_items->bucket_size <= BLOOM_FILTER_MASK) {
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+        _table_items->bucket_size <= BLOOM_FILTER_MASK) {
         _do_probe_from_ht_for_left_semi_join<first_probe, 1>(state, build_data, probe_data);
     } else {
         _do_probe_from_ht_for_left_semi_join<first_probe, 0>(state, build_data, probe_data);
@@ -1610,7 +1612,8 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    if (config::enable_simd_hash_join == 1 && _table_items->bucket_size <= BLOOM_FILTER_MASK) {
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+        _table_items->bucket_size <= BLOOM_FILTER_MASK) {
         _do_probe_from_ht_for_left_anti_join<first_probe, false, 1>(state, build_data, probe_data);
     } else {
         _do_probe_from_ht_for_left_anti_join<first_probe, false, 0>(state, build_data, probe_data);
