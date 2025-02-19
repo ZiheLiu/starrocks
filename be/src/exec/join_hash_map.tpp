@@ -196,11 +196,11 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         return true;
     };
 
-    if (init) {
-        if constexpr (SIMD == 1) {
-            table_items->no_duplicated_build_keys = calc_no_duplicated_build_keys();
-        }
-    }
+    // if (init) {
+    //     if constexpr (SIMD == 1) {
+    //         table_items->no_duplicated_build_keys = calc_no_duplicated_build_keys();
+    //     }
+    // }
 }
 
 template <LogicalType LT>
