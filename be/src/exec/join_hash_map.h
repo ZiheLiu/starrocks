@@ -146,7 +146,7 @@ struct JoinHashTableItems {
     bool mor_reader_mode = false;
     bool enable_late_materialization = false;
     bool no_conflicts = true;
-    bool no_duplicated_build_keys = true;
+    bool no_duplicated_build_keys = false;
 
     float get_keys_per_bucket() const { return keys_per_bucket; }
     bool ht_cache_miss_serious() const { return cache_miss_serious; }
