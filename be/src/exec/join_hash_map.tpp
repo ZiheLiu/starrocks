@@ -399,7 +399,7 @@ uint32_t JoinProbeFunc<LT>::get_first(uint32_t bucket, const JoinHashTableItems&
         if constexpr (!use_sparse_table) {
             return table_items.first[bucket];
         } else {
-            const uint32_t group_index = bucket / num_groups;
+            const uint32_t group_index = bucket / 32;
             const auto& group = table_items.sparse_groups[group_index];
 
             uint32_t bitmap = group.bitmap;
@@ -407,7 +407,7 @@ uint32_t JoinProbeFunc<LT>::get_first(uint32_t bucket, const JoinHashTableItems&
                 return 0;
             }
 
-            const uint32_t index_in_group = bucket % num_groups;
+            const uint32_t index_in_group = bucket % 32;
             if ((bitmap & (1 << index_in_group)) == 0) {
                 return 0;
             }
