@@ -1570,7 +1570,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             }
         }
 
-        while (index != 0) {
+        do {
             if (ProbeFunc().equal(build_data[index], probe_data[i])) {
                 _probe_state->probe_index[match_count] = i;
                 match_count++;
@@ -1580,7 +1580,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 break;
             }
             index = _table_items->next[index];
-        }
+        } while (index != 0);
     }
 
     PROBE_OVER()
@@ -1740,23 +1740,30 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                 }
             }
 
-            bool found = false;
-            do {
-                if (ProbeFunc().equal(build_data[index], probe_data[i])) {
-                    found = true;
-                    break;
+            if constexpr (no_conflicts) {
+                if (!ProbeFunc().equal(build_data[index], probe_data[i])) {
+                    _probe_state->probe_index[match_count] = i;
+                    match_count++;
                 }
+            } else {
+                bool found = false;
+                do {
+                    if (ProbeFunc().equal(build_data[index], probe_data[i])) {
+                        found = true;
+                        break;
+                    }
 
-                if constexpr (no_conflicts) {
-                    break;
+                    if constexpr (no_conflicts) {
+                        break;
+                    }
+
+                    index = _table_items->next[index];
+                } while (index != 0);
+
+                if (!found) {
+                    _probe_state->probe_index[match_count] = i;
+                    match_count++;
                 }
-
-                index = _table_items->next[index];
-            } while (index != 0);
-
-            if (!found) {
-                _probe_state->probe_index[match_count] = i;
-                match_count++;
             }
         }
     }
