@@ -65,8 +65,8 @@ template <LogicalType LT>
 void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                              HashTableProbeState* probe_state) {
     if (config::enable_simd_hash_join == 1 && table_items->bucket_size <= BLOOM_FILTER_MASK &&
-        (table_items->join_type == TJoinOp::INNER_JOIN || table_items->join_type == TJoinOp::LEFT_ANTI_JOIN ||
-         table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+        (table_items->join_type == TJoinOp::INNER_JOIN || table_items->join_type == TJoinOp::LEFT_OUTER_JOIN ||
+         table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         do_construct_hash_table<1>(state, table_items, probe_state);
     } else {
         do_construct_hash_table<0>(state, table_items, probe_state);
@@ -351,8 +351,8 @@ const Buffer<typename DirectMappingJoinProbeFunc<LT>::CppType>& DirectMappingJoi
 template <LogicalType LT>
 void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state) {
     if (config::enable_simd_hash_join == 1 && table_items.bucket_size <= BLOOM_FILTER_MASK &&
-        (table_items.join_type == TJoinOp::INNER_JOIN || table_items.join_type == TJoinOp::LEFT_ANTI_JOIN ||
-         table_items.join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+        (table_items.join_type == TJoinOp::INNER_JOIN || table_items.join_type == TJoinOp::LEFT_OUTER_JOIN ||
+         table_items.join_type == TJoinOp::LEFT_ANTI_JOIN || table_items.join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         do_lookup_init<true>(table_items, probe_state);
     } else {
         do_lookup_init<false>(table_items, probe_state);
@@ -841,21 +841,24 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_copy_build_nullable_column(const Co
     const uint32_t num_rows = _probe_state->count;
     const auto* build_index = _probe_state->build_index.data();
 
+    const auto num_new_nulls = SIMD::count_zero(build_index, num_rows);
     ColumnPtr dest_column = src_column->clone_empty();
-
-    dest_column->append_selective(*src_column, build_index, 0, num_rows);
-
-    // When left outer join is executed,
-    // build_index[i] Equal to 0 means it is not found in the hash table,
-    // but append_selective() has set item of NullColumn to not null
-    // so NullColumn needs to be set back to null
-    if (const auto num_new_nulls = SIMD::count_zero(build_index, num_rows); num_new_nulls > 0) {
-        auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>(dest_column);
-        auto* is_nulls = nullable_column->null_column_data().data();
-        for (uint32_t i = 0; i < num_rows; i++) {
-            is_nulls[i] |= build_index[i] == 0;
+    if (num_new_nulls == num_rows) {
+        dest_column->append_nulls(num_rows);
+    } else {
+        dest_column->append_selective(*src_column, build_index, 0, num_rows);
+        // When left outer join is executed,
+        // build_index[i] Equal to 0 means it is not found in the hash table,
+        // but append_selective() has set item of NullColumn to not null
+        // so NullColumn needs to be set back to null
+        if (num_new_nulls > 0) {
+            auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>(dest_column);
+            auto* is_nulls = nullable_column->null_column_data().data();
+            for (uint32_t i = 0; i < num_rows; i++) {
+                is_nulls[i] |= build_index[i] == 0;
+            }
+            nullable_column->set_has_null(true);
         }
-        nullable_column->set_has_null(true);
     }
 
     (*chunk)->append_column(std::move(dest_column), slot->id());
@@ -1036,6 +1039,20 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_search_ht_impl(RuntimeState* state,
         _probe_state->has_remain = true;                         \
         _probe_state->count = state->chunk_size();               \
         return;                                                  \
+    }
+
+#define RETURN_IF_CHUNK_FULL2()                                                                          \
+    if (UNLIKELY(match_count > state->chunk_size())) {                                                   \
+        if constexpr (SIMD == 1) {                                                                       \
+            _probe_state->next[i] = _table_items->next[build_index] | (raw_build_index & 0xFF00'0000ul); \
+        } else {                                                                                         \
+            _probe_state->next[i] = _table_items->next[build_index];                                     \
+        }                                                                                                \
+        _probe_state->cur_probe_index = i;                                                               \
+        _probe_state->cur_build_index = build_index;                                                     \
+        _probe_state->has_remain = true;                                                                 \
+        _probe_state->count = state->chunk_size();                                                       \
+        return;                                                                                          \
     }
 
 #define COWAIT_IF_CHUNK_FULL()                              \
@@ -1354,6 +1371,19 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                                const Buffer<CppType>& build_data,
                                                                                const Buffer<CppType>& probe_data) {
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+        _table_items->bucket_size <= BLOOM_FILTER_MASK) {
+        _do_probe_from_ht_for_left_outer_join<first_probe, 1>(state, build_data, probe_data);
+    } else {
+        _do_probe_from_ht_for_left_outer_join<first_probe, 0>(state, build_data, probe_data);
+    }
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
+template <bool first_probe, uint8_t SIMD>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_join(RuntimeState* state,
+                                                                                  const Buffer<CppType>& build_data,
+                                                                                  const Buffer<CppType>& probe_data) {
     _probe_state->match_flag = JoinMatchFlag::NORMAL;
     size_t match_count = 0;
     bool one_to_many = false;
@@ -1369,41 +1399,64 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
         }
     }
 
-    size_t probe_row_count = _probe_state->probe_row_count;
+    const auto* nexts = _probe_state->next.data();
+    const auto* buckets = _probe_state->buckets.data();
+    const size_t probe_row_count = _probe_state->probe_row_count;
     for (; i < probe_row_count; i++) {
-        size_t build_index = _probe_state->next[i];
-        if (build_index == 0) {
-            _probe_state->probe_index[match_count] = i;
-            _probe_state->build_index[match_count] = 0;
-            match_count++;
+        const uint32_t raw_build_index = nexts[i];
+        uint32_t build_index = raw_build_index;
 
-            RETURN_IF_CHUNK_FULL()
-        } else {
-            while (build_index != 0) {
-                if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
-                    _probe_state->probe_index[match_count] = i;
-                    _probe_state->build_index[match_count] = build_index;
-                    match_count++;
-                    _probe_state->cur_row_match_count++;
+        if constexpr (SIMD == 1) {
+            build_index &= BLOOM_FILTER_MASK;
+            const uint32_t fp = buckets[i] & 0x07;
+            if (((raw_build_index >> 24) & (1ul << fp)) == 0) {
+                _probe_state->probe_index[match_count] = i;
+                _probe_state->build_index[match_count] = 0;
+                match_count++;
 
-                    RETURN_IF_CHUNK_FULL()
-                }
-                build_index = _table_items->next[build_index];
+                RETURN_IF_CHUNK_FULL2()
+
+                _probe_state->cur_row_match_count = 0;
+                continue;
             }
-            if (_probe_state->cur_row_match_count <= 0) {
-                // one key of left table match none key of right table
+        } else {
+            if (index == 0) {
                 _probe_state->probe_index[match_count] = i;
                 _probe_state->build_index[match_count] = 0;
                 match_count++;
 
                 RETURN_IF_CHUNK_FULL()
-            } else if (_probe_state->cur_row_match_count > 1) {
-                // one key of left table match multi key of right table
-                if constexpr (first_probe) {
-                    one_to_many = true;
-                }
+
+                _probe_state->cur_row_match_count = 0;
+                continue;
             }
         }
+
+        while (build_index != 0) {
+            if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                _probe_state->probe_index[match_count] = i;
+                _probe_state->build_index[match_count] = build_index;
+                match_count++;
+                _probe_state->cur_row_match_count++;
+
+                RETURN_IF_CHUNK_FULL2()
+            }
+            build_index = _table_items->next[build_index];
+        }
+        if (_probe_state->cur_row_match_count <= 0) {
+            // one key of left table match none key of right table
+            _probe_state->probe_index[match_count] = i;
+            _probe_state->build_index[match_count] = 0;
+            match_count++;
+
+            RETURN_IF_CHUNK_FULL2()
+        } else if (_probe_state->cur_row_match_count > 1) {
+            // one key of left table match multi key of right table
+            if constexpr (first_probe) {
+                one_to_many = true;
+            }
+        }
+
         _probe_state->cur_row_match_count = 0;
     }
 
