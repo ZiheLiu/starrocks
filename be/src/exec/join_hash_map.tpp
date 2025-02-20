@@ -1420,7 +1420,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
                 continue;
             }
         } else {
-            if (index == 0) {
+            if (build_index == 0) {
                 _probe_state->probe_index[match_count] = i;
                 _probe_state->build_index[match_count] = 0;
                 match_count++;
