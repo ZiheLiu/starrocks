@@ -1373,14 +1373,22 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
                                                                                const Buffer<CppType>& probe_data) {
     if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
         _table_items->bucket_size <= BLOOM_FILTER_MASK) {
-        _do_probe_from_ht_for_left_outer_join<first_probe, 1>(state, build_data, probe_data);
+        if (_table_items->no_conflicts) {
+            _do_probe_from_ht_for_left_outer_join<first_probe, true, 1>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_outer_join<first_probe, false, 1>(state, build_data, probe_data);
+        }
     } else {
-        _do_probe_from_ht_for_left_outer_join<first_probe, 0>(state, build_data, probe_data);
+        if (_table_items->no_conflicts) {
+            _do_probe_from_ht_for_left_outer_join<first_probe, true, 0>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_outer_join<first_probe, false, 0>(state, build_data, probe_data);
+        }
     }
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-template <bool first_probe, uint8_t SIMD>
+template <bool first_probe, bool no_conflicts, uint8_t SIMD>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                                   const Buffer<CppType>& build_data,
                                                                                   const Buffer<CppType>& probe_data) {
@@ -1441,6 +1449,11 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
 
                 RETURN_IF_CHUNK_FULL2()
             }
+
+            if constexpr (no_conflicts) {
+                break;
+            }
+
             build_index = _table_items->next[build_index];
         }
         if (_probe_state->cur_row_match_count <= 0) {
@@ -1501,14 +1514,22 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
                                                                               const Buffer<CppType>& probe_data) {
     if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
         _table_items->bucket_size <= BLOOM_FILTER_MASK) {
-        _do_probe_from_ht_for_left_semi_join<first_probe, 1>(state, build_data, probe_data);
+        if (_table_items->no_conflicts) {
+            _do_probe_from_ht_for_left_semi_join<first_probe, true, 1>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_semi_join<first_probe, false, 1>(state, build_data, probe_data);
+        }
     } else {
-        _do_probe_from_ht_for_left_semi_join<first_probe, 0>(state, build_data, probe_data);
+        if (_table_items->no_conflicts) {
+            _do_probe_from_ht_for_left_semi_join<first_probe, true, 0>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_semi_join<first_probe, false, 0>(state, build_data, probe_data);
+        }
     }
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-template <bool first_probe, uint8_t MODE>
+template <bool first_probe, bool no_conflicts, uint8_t MODE>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join(RuntimeState* state,
                                                                                  const Buffer<CppType>& build_data,
                                                                                  const Buffer<CppType>& probe_data) {
@@ -1539,6 +1560,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             if (ProbeFunc().equal(build_data[index], probe_data[i])) {
                 _probe_state->probe_index[match_count] = i;
                 match_count++;
+                break;
+            }
+            if constexpr (no_conflicts) {
                 break;
             }
             index = _table_items->next[index];
@@ -1622,10 +1646,19 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
     if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
-        _table_items->bucket_size <= BLOOM_FILTER_MASK) {
-        _do_probe_from_ht_for_left_anti_join<first_probe, false, 1>(state, build_data, probe_data);
+        _table_items->bucket_size <= BLOOM_FILTER_MASK &&
+        _table_items->join_type != TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN) {
+        if (_table_items->no_conflicts) {
+            _do_probe_from_ht_for_left_anti_join<first_probe, true, 1>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_anti_join<first_probe, false, 1>(state, build_data, probe_data);
+        }
     } else {
-        _do_probe_from_ht_for_left_anti_join<first_probe, false, 0>(state, build_data, probe_data);
+        if (_table_items->no_conflicts) {
+            _do_probe_from_ht_for_left_anti_join<first_probe, true, 0>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_anti_join<first_probe, false, 0>(state, build_data, probe_data);
+        }
     }
 }
 
@@ -1697,6 +1730,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
             do {
                 if (ProbeFunc().equal(build_data[index], probe_data[i])) {
                     found = true;
+                    break;
+                }
+
+                if constexpr (no_conflicts) {
                     break;
                 }
 
