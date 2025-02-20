@@ -1214,15 +1214,17 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     const size_t probe_row_count = _probe_state->probe_row_count;
     const auto* nexts = _probe_state->next.data();
     const auto* buckets = _probe_state->buckets.data();
+    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
     for (; i < probe_row_count; i++) {
-        uint32_t build_index = nexts[i];
+        const uint32_t raw_build_index = nexts[i];
+        uint32_t build_index = raw_build_index;
 
         if constexpr (SIMD == 1) {
             const uint32_t fp = buckets[i] & 0x07;
             if (((build_index >> 24) & (1ul << fp)) == 0) {
                 continue;
             }
-            build_index = build_index & BLOOM_FILTER_MASK;
+            build_index &= BLOOM_FILTER_MASK;
         } else {
             if (build_index == 0) {
                 continue;
@@ -1236,23 +1238,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                 match_count++;
 
                 if constexpr (first_probe) {
-                    _probe_state->cur_row_match_count++;
+                    cur_row_match_count++;
                     _probe_state->probe_match_filter[i] = 1;
                 }
 
                 if constexpr (!no_conflicts && !no_duplicated_build_keys) {
-                    if (UNLIKELY(match_count > state->chunk_size())) {
-                        if constexpr (SIMD == 1) {
-                            _probe_state->next[i] = _table_items->next[build_index] | (nexts[i] & 0xFF00'0000ul);
-                        } else {
-                            _probe_state->next[i] = _table_items->next[build_index];
-                        }
-                        _probe_state->cur_probe_index = i;
-                        _probe_state->cur_build_index = build_index;
-                        _probe_state->has_remain = true;
-                        _probe_state->count = state->chunk_size();
-                        return;
-                    }
+                    RETURN_IF_CHUNK_FULL2()
                 }
 
                 if (no_duplicated_build_keys) {
@@ -1268,10 +1259,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
         } while (build_index != 0);
 
         if constexpr (first_probe && (!no_conflicts || !no_duplicated_build_keys)) {
-            if (_probe_state->cur_row_match_count > 1) {
+            if (cur_row_match_count > 1) {
                 one_to_many = true;
             }
-            _probe_state->cur_row_match_count = 0;
+            cur_row_match_count = 0;
         }
     }
 
