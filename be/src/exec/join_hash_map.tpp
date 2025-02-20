@@ -73,7 +73,7 @@ void JoinBuildFunc<LT>::construct_sparse_hash_table(RuntimeState* state, JoinHas
         return;
     }
 
-    table_items->sparse_groups.resize(used_buckets);
+    table_items->sparse_groups.resize(num_groups);
     auto* sparse_groups = table_items->sparse_groups.data();
     auto* first = table_items->first.data();
 
