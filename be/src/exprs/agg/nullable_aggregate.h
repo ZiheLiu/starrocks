@@ -533,28 +533,33 @@ public:
             __m256i all0 = _mm256_setzero_si256();
             while (offset + batch_nums < chunk_size) {
                 __m256i f = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(f_data + offset));
-                int mask = _mm256_movemask_epi8(_mm256_cmpgt_epi8(f, all0));
-                if (mask == 0) {
-                    // all not null
-                    this->data(state).is_null = false;
-                    for (size_t i = offset; i < offset + batch_nums; i++) {
-                        this->nested_function->update(ctx, &data_column, this->data(state).mutable_nest_state(), i);
-                    }
-                } else if (mask == 0xffffffff) {
-                    // all null
+                // mask[i] = f[i] > 0 ? 1 : 0
+                // int mask = _mm256_movemask_epi8(_mm256_cmpgt_epi8(f, all0));
+                // mask[i] = f[i] == 0 ? 1 : 0
+                const int notnull_mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(f, all0));
+                if (notnull_mask == 0) { // all null
                     if constexpr (!IgnoreNull) {
                         this->data(state).is_null = false;
                         for (size_t i = offset; i < offset + batch_nums; i++) {
                             this->nested_function->process_null(ctx, this->data(state).mutable_nest_state());
                         }
                     }
-                } else {
+                } else if (notnull_mask == 0xffff'ffff) { // all not null
+                    this->data(state).is_null = false;
                     for (size_t i = offset; i < offset + batch_nums; i++) {
-                        if (f_data[i] == 0) {
-                            this->nested_function->update(ctx, &data_column, this->data(state).mutable_nest_state(), i);
-                            this->data(state).is_null = false;
-                        } else {
-                            if constexpr (!IgnoreNull) {
+                        this->nested_function->update(ctx, &data_column, this->data(state).mutable_nest_state(), i);
+                    }
+                } else {
+                    phmap::priv::BitMask<uint32_t, 32> bitmask(notnull_mask);
+                    for (auto idx : bitmask) {
+                        this->nested_function->update(ctx, &data_column, this->data(state).mutable_nest_state(),
+                                                      offset + idx);
+                        this->data(state).is_null = false;
+                    }
+
+                    if constexpr (!IgnoreNull) {
+                        for (size_t i = offset; i < offset + batch_nums; i++) {
+                            if (f_data[i] != 0) {
                                 this->data(state).is_null = false;
                                 this->nested_function->process_null(ctx, this->data(state).mutable_nest_state());
                             }
