@@ -1544,9 +1544,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
     const auto* buckets = _probe_state->buckets.data();
 
     uint32_t match_count = 0;
-    uint32_t i = 0;
 
-    for (; i < probe_row_count; i++) {
+    for (uint32_t i = 0; i < probe_row_count; i++) {
         uint32_t index = nexts[i];
 
         if constexpr (MODE == 1) {
@@ -1572,6 +1571,19 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             }
             index = _table_items->next[index];
         } while (index != 0);
+    }
+
+    if (match_count == probe_row_count) {
+        _probe_state->match_flag = JoinMatchFlag::ALL_MATCH_ONE;
+    } else if (match_count * 2 >= probe_row_count) {
+        _probe_state->match_flag = JoinMatchFlag::MOST_MATCH_ONE;
+        uint8_t* match_filter_data = _probe_state->probe_match_filter.data();
+        memset(match_filter_data, 0, sizeof(uint8_t) * _probe_state->probe_row_count);
+        for (uint32_t i = 0; i < match_count; i++) {
+            match_filter_data[_probe_state->probe_index[i]] = 1;
+        }
+    } else {
+        _probe_state->match_flag = JoinMatchFlag::NORMAL;
     }
 
     PROBE_OVER()
