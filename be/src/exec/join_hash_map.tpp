@@ -57,8 +57,41 @@ const Buffer<typename JoinBuildFunc<LT>::CppType>& JoinBuildFunc<LT>::get_key_da
     }
 }
 
-static bool is_support_linear_probe(TJoinOp::type type) {
-    return type == TJoinOp::INNER_JOIN || type == TJoinOp::LEFT_ANTI_JOIN;
+template <LogicalType LT>
+void JoinBuildFunc<LT>::construct_sparse_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
+                                                    HashTableProbeState* probe_state) {
+    if (table_items->bucket_size <= 1024 * 1024 / 4) {
+        return;
+    }
+
+    // Use sparse hash table if it can save at least 25% memory.
+    // new_size * 4B, bucket_size * 4B
+    static constexpr uint32_t num_group_items = 32;
+    const uint32_t num_groups = table_items->bucket_size / num_group_items;
+    const uint32_t used_buckets = table_items->used_buckets;
+    if (const uint64_t new_size = num_groups * 2ull + used_buckets; 4ull * new_size > 3 * table_items->bucket_size) {
+        return;
+    }
+
+    table_items->sparse_groups.resize(used_buckets);
+    auto* sparse_groups = table_items->sparse_groups.data();
+    auto* first = table_items->first.data();
+
+    uint32_t num_items = 0;
+    uint32_t first_idx = 0;
+    for (uint32_t i = 0; i < num_groups; i++) {
+        sparse_groups[i].index = num_items;
+
+        uint32_t bitmap = 0;
+        for (uint32_t j = 0; j < num_group_items; j++, first_idx++) {
+            if (first[first_idx] != 0) {
+                bitmap |= (1 << j);
+                first[num_items++] = first[first_idx];
+            }
+        }
+        sparse_groups[i].bitmap = bitmap;
+    }
+    table_items->first.resize(num_items);
 }
 
 template <LogicalType LT>
@@ -68,15 +101,11 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
         (table_items->join_type == TJoinOp::INNER_JOIN || table_items->join_type == TJoinOp::LEFT_OUTER_JOIN ||
          table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         do_construct_hash_table<1>(state, table_items, probe_state);
+
+        construct_sparse_hash_table(state, table_items, probe_state);
     } else {
         do_construct_hash_table<0>(state, table_items, probe_state);
     }
-}
-
-static size_t multiplicative_hash(auto key) {
-    static constexpr uint64_t a = 11400714819323198485ull;
-    const uint64_t k = *reinterpret_cast<uint32_t*>(&key);
-    return k * a;
 }
 
 template <LogicalType LT>
@@ -353,17 +382,51 @@ void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashT
     if (config::enable_simd_hash_join == 1 && table_items.bucket_size <= BLOOM_FILTER_MASK &&
         (table_items.join_type == TJoinOp::INNER_JOIN || table_items.join_type == TJoinOp::LEFT_OUTER_JOIN ||
          table_items.join_type == TJoinOp::LEFT_ANTI_JOIN || table_items.join_type == TJoinOp::LEFT_SEMI_JOIN)) {
-        do_lookup_init<true>(table_items, probe_state);
+        if (table_items.sparse_groups.empty()) {
+            do_lookup_init<true, false>(table_items, probe_state);
+        } else {
+            do_lookup_init<true, true>(table_items, probe_state);
+        }
     } else {
-        do_lookup_init<false>(table_items, probe_state);
+        do_lookup_init<false, false>(table_items, probe_state);
+    }
+}
+template <LogicalType LT>
+template <bool SIMD, bool use_sparse_table>
+uint32_t JoinProbeFunc<LT>::get_first(uint32_t bucket, const JoinHashTableItems& table_items, uint32_t num_groups) {
+    if constexpr (SIMD) {
+        bucket = bucket >> 3;
+        if constexpr (!use_sparse_table) {
+            return table_items.first[bucket];
+        } else {
+            const uint32_t group_index = bucket / num_groups;
+            const auto& group = table_items.sparse_groups[group_index];
+
+            uint32_t bitmap = group.bitmap;
+            if (bitmap == 0) {
+                return 0;
+            }
+
+            const uint32_t index_in_group = bucket % num_groups;
+            if ((bitmap & (1 << index_in_group)) == 0) {
+                return 0;
+            }
+
+            bitmap &= (1 << index_in_group) - 1;
+            const uint32_t offset_in_group = __builtin_popcount(bitmap);
+            return table_items.first[group.index + offset_in_group];
+        }
+    } else {
+        return table_items.first[bucket];
     }
 }
 
 template <LogicalType LT>
-template <bool SIMD>
+template <bool SIMD, bool use_sparse_table>
 void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state) {
     const size_t probe_row_count = probe_state->probe_row_count;
     const auto& data = get_key_data(*probe_state);
+    const uint32_t num_groups = table_items.sparse_groups.size();
 
     if constexpr (SIMD) {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size << 3,
@@ -381,11 +444,8 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
             for (size_t i = 0; i < probe_row_count; i++) {
                 if (null_array[i] == 0) {
-                    if constexpr (SIMD) {
-                        probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 3];
-                    } else {
-                        probe_state->next[i] = table_items.first[probe_state->buckets[i]];
-                    }
+                    probe_state->next[i] =
+                            get_first<SIMD, use_sparse_table>(probe_state->buckets[i], table_items, num_groups);
                 } else {
                     probe_state->next[i] = 0;
                 }
@@ -394,11 +454,8 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             probe_state->null_array = &nullable_column->null_column()->get_data();
         } else {
             for (size_t i = 0; i < probe_row_count; i++) {
-                if constexpr (SIMD) {
-                    probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 3];
-                } else {
-                    probe_state->next[i] = table_items.first[probe_state->buckets[i]];
-                }
+                probe_state->next[i] =
+                        get_first<SIMD, use_sparse_table>(probe_state->buckets[i], table_items, num_groups);
             }
             probe_state->null_array = nullptr;
         }
@@ -408,11 +465,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
     }
 
     for (size_t i = 0; i < probe_row_count; i++) {
-        if constexpr (SIMD) {
-            probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 3];
-        } else {
-            probe_state->next[i] = table_items.first[probe_state->buckets[i]];
-        }
+        probe_state->next[i] = get_first<SIMD, use_sparse_table>(probe_state->buckets[i], table_items, num_groups);
     }
 
     probe_state->consider_probe_time_locality();

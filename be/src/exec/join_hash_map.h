@@ -99,18 +99,6 @@ struct HashTableSlotDescriptor {
 };
 
 struct JoinHashTableItems {
-    struct Index {
-        // high 1 bit: has_next
-        // low 31 bits: index
-        uint32_t value;
-
-        void set(uint32_t v) { value = v; }
-        void set_has_next() { value |= 0x8000'0000; }
-
-        uint32_t index() const { return value & 0x7FFF'FFFF; }
-        uint32_t has_next() const { return value & 0x8000'0000; }
-    };
-
     //TODO: memory continues problem?
     ChunkPtr build_chunk = nullptr;
     Columns key_columns;
@@ -123,6 +111,13 @@ struct JoinHashTableItems {
     // the list of keys in a bucket.
     // A paper (https://dare.uva.nl/search?identifier=5ccbb60a-38b8-4eeb-858a-e7735dd37487) talks
     // about the bucket-chained hash table of this kind.
+
+    struct Group {
+        uint32_t bitmap;
+        uint32_t index;
+    };
+    Buffer<Group> sparse_groups;
+
     Buffer<uint32_t> first;
     Buffer<uint32_t> next;
     Buffer<Slice> build_slice;
@@ -141,7 +136,7 @@ struct JoinHashTableItems {
     bool right_to_nullable = false;
     bool has_large_column = false;
     float keys_per_bucket = 0;
-    size_t used_buckets = 0;
+    uint32_t used_buckets = 0;
     bool cache_miss_serious = false;
     bool mor_reader_mode = false;
     bool enable_late_materialization = false;
@@ -424,6 +419,9 @@ public:
     template <uint8_t SIMD>
     static void do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                         HashTableProbeState* probe_state);
+
+    static void construct_sparse_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
+                                            HashTableProbeState* probe_state);
 };
 
 template <LogicalType LT>
@@ -485,7 +483,10 @@ public:
 
     static void prepare(RuntimeState* state, HashTableProbeState* probe_state) {}
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
-    template <bool SIMD>
+    template <bool SIMD, bool use_sparse_table>
+    static ALWAYS_INLINE uint32_t get_first(uint32_t bucket, const JoinHashTableItems& table_items,
+                                            uint32_t num_groups);
+    template <bool SIMD, bool use_sparse_table>
     static void do_lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
     static const Buffer<CppType>& get_key_data(const HashTableProbeState& probe_state);
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
