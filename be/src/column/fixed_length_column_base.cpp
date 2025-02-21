@@ -52,7 +52,7 @@ void FixedLengthColumnBase<T>::append_selective(const Column& src, const uint32_
     static constexpr uint32_t W = 256 / (8 * sizeof(T));
     T buffer[W];
     size_t i = 0;
-    for (; i + W <= size; i++) {
+    for (; i + W <= size; i += W) {
         for (int j = 0; j < W; j++) {
             buffer[j] = src_data[indexes[i + j]];
         }
