@@ -49,7 +49,7 @@ void FixedLengthColumnBase<T>::append_selective(const Column& src, const uint32_
     _data.resize(orig_size + size);
     auto* dest_data = _data.data() + orig_size;
 
-    static constexpr uint32_t W = 8;
+    static constexpr uint32_t W = 256 / (8 * sizeof(T));
     T buffer[W];
     size_t i = 0;
     for (; i + W <= size; i++) {
