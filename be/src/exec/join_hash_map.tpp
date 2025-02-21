@@ -143,7 +143,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
                     const uint32_t prev_first = table_items->first[bucket_num];
                     table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
-                    table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) |  (fp << 24);
+                    table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | (fp << 24);
                 } else {
                     uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
@@ -161,7 +161,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
                 const uint32_t prev_first = table_items->first[bucket_num];
                 table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
-                table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) |  (fp << 24);
+                table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | (fp << 24);
             } else {
                 uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                   table_items->log_bucket_size);
@@ -378,8 +378,8 @@ template <LogicalType LT>
 template <bool SIMD>
 void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state) {
     const size_t probe_row_count = probe_state->probe_row_count;
-    const auto& data = get_key_data(*probe_state);
 
+    const auto& data = get_key_data(*probe_state);
     if constexpr (SIMD) {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size << 8,
                                                      table_items.log_bucket_size + 8, data, 0, data.size());
@@ -388,31 +388,72 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                                                      table_items.log_bucket_size, data, 0, data.size());
     }
 
+    const auto* first = table_items.first.data();
+    const auto* buckets = probe_state->buckets.data();
+    auto* next = probe_state->next.data();
+
     if ((*probe_state->key_columns)[0]->is_nullable()) {
         const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>((*probe_state->key_columns)[0]);
 
         if (nullable_column->has_null()) {
             const auto& null_array = nullable_column->null_column()->get_data();
 
-            for (size_t i = 0; i < probe_row_count; i++) {
+            static constexpr uint32_t W = 8;
+            uint32_t buffer[W];
+            size_t i = 0;
+            for (; i + W <= probe_row_count; i += W) {
+                for (uint32_t j = 0; j < W; j++) {
+                    if (null_array[i + j] == 0) {
+                        if constexpr (SIMD) {
+                            buffer[j] = first[buckets[i + j] >> 8];
+                        } else {
+                            buffer[j] = first[buckets[i + j]];
+                        }
+                    } else {
+                        buffer[j] = 0;
+                    }
+                }
+
+                for (uint32_t j = 0; j < W; j++) {
+                    next[i + j] = buffer[j];
+                }
+            }
+
+            for (; i < probe_row_count; i++) {
                 if (null_array[i] == 0) {
                     if constexpr (SIMD) {
-                        probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 8];
+                        next[i] = first[buckets[i] >> 8];
                     } else {
-                        probe_state->next[i] = table_items.first[probe_state->buckets[i]];
+                        next[i] = first[buckets[i]];
                     }
                 } else {
-                    probe_state->next[i] = 0;
+                    next[i] = 0;
                 }
             }
 
             probe_state->null_array = &nullable_column->null_column()->get_data();
         } else {
-            for (size_t i = 0; i < probe_row_count; i++) {
+            static constexpr uint32_t W = 8;
+            uint32_t buffer[W];
+            size_t i = 0;
+            for (; i + W <= probe_row_count; i += W) {
+                for (uint32_t j = 0; j < W; j++) {
+                    if constexpr (SIMD) {
+                        buffer[j] = first[buckets[i + j] >> 8];
+                    } else {
+                        buffer[j] = first[buckets[i + j]];
+                    }
+                }
+
+                for (uint32_t j = 0; j < W; j++) {
+                    next[i + j] = buffer[j];
+                }
+            }
+            for (; i < probe_row_count; i++) {
                 if constexpr (SIMD) {
-                    probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 8];
+                    next[i] = first[buckets[i] >> 8];
                 } else {
-                    probe_state->next[i] = table_items.first[probe_state->buckets[i]];
+                    next[i] = first[buckets[i]];
                 }
             }
             probe_state->null_array = nullptr;
@@ -422,11 +463,27 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
         return;
     }
 
-    for (size_t i = 0; i < probe_row_count; i++) {
+    static constexpr uint32_t W = 8;
+    uint32_t buffer[W];
+    size_t i = 0;
+    for (; i + W <= probe_row_count; i += W) {
+        for (uint32_t j = 0; j < W; j++) {
+            if constexpr (SIMD) {
+                buffer[j] = first[buckets[i + j] >> 8];
+            } else {
+                buffer[j] = first[buckets[i + j]];
+            }
+        }
+
+        for (uint32_t j = 0; j < W; j++) {
+            next[i + j] = buffer[j];
+        }
+    }
+    for (; i < probe_row_count; i++) {
         if constexpr (SIMD) {
-            probe_state->next[i] = table_items.first[probe_state->buckets[i] >> 8];
+            next[i] = first[buckets[i] >> 8];
         } else {
-            probe_state->next[i] = table_items.first[probe_state->buckets[i]];
+            next[i] = first[buckets[i]];
         }
     }
 
