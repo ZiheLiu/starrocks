@@ -1236,7 +1236,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
         if constexpr (SIMD == 1) {
             const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-            if (((raw_build_index >> 24) & fp) != fp) {
+            if (~(raw_build_index >> 24) & fp) {
                 continue;
             }
             build_index &= BLOOM_FILTER_MASK;
@@ -1426,7 +1426,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
         if constexpr (SIMD == 1) {
             build_index &= BLOOM_FILTER_MASK;
             const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-            if (((raw_build_index >> 24) & fp) != fp) {
+            if (~(raw_build_index >> 24) & fp) {
                 _probe_state->probe_index[match_count] = i;
                 _probe_state->build_index[match_count] = 0;
                 match_count++;
@@ -1566,7 +1566,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
         if constexpr (MODE == 1) {
             const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-            if (((index >> 24) & fp) != fp) {
+            if (~(index >> 24) & fp) {
                 continue;
             }
             index &= BLOOM_FILTER_MASK;
@@ -1745,7 +1745,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
 
             if constexpr (SIMD == 1) {
                 const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-                if (((index >> 24) & fp) != fp) {
+                if (~(index >> 24) & fp) {
                     _probe_state->probe_index[match_count] = i;
                     match_count++;
                     continue;
