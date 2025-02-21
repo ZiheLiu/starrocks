@@ -1232,6 +1232,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
         }
 
         do {
+            probe_cont++;
             if (ProbeFunc().equal(build_data[build_index], probe_data[i])) {
                 _probe_state->probe_index[match_count] = i;
                 _probe_state->build_index[match_count] = build_index;
@@ -1751,6 +1752,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
             } else {
                 bool found = false;
                 do {
+                    probe_cont++;
                     if (ProbeFunc().equal(build_data[index], probe_data[i])) {
                         found = true;
                         break;
