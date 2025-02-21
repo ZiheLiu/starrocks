@@ -99,14 +99,19 @@ void NullableColumn::append_selective(const Column& src, const uint32_t* indexes
     size_t orig_size = _null_column->size();
     if (src.only_null()) {
         append_nulls(size);
-    } else if (src.is_nullable() && src.has_null()) {
+    } else if (src.is_nullable()) {
         const auto& src_column = down_cast<const NullableColumn&>(src);
 
         DCHECK_EQ(src_column._null_column->size(), src_column._data_column->size());
 
-        _null_column->append_selective(*src_column._null_column, indexes, from, size);
-        _data_column->append_selective(*src_column._data_column, indexes, from, size);
-        _has_null = _has_null || SIMD::contain_nonzero(_null_column->get_data(), orig_size, size);
+        if (!src_column.has_null()) {
+            _data_column->append_selective(*src_column._data_column, indexes, from, size);
+            _null_column->resize(orig_size + size);
+        } else {
+            _null_column->append_selective(*src_column._null_column, indexes, from, size);
+            _data_column->append_selective(*src_column._data_column, indexes, from, size);
+            _has_null = _has_null || SIMD::contain_nonzero(_null_column->get_data(), orig_size, size);
+        }
     } else {
         _null_column->resize(orig_size + size);
         _data_column->append_selective(src, indexes, from, size);
