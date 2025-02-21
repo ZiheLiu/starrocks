@@ -99,7 +99,7 @@ void NullableColumn::append_selective(const Column& src, const uint32_t* indexes
     size_t orig_size = _null_column->size();
     if (src.only_null()) {
         append_nulls(size);
-    } else if (src.is_nullable()) {
+    } else if (src.is_nullable() && src.has_null()) {
         const auto& src_column = down_cast<const NullableColumn&>(src);
 
         DCHECK_EQ(src_column._null_column->size(), src_column._data_column->size());
