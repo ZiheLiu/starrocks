@@ -42,11 +42,28 @@ void FixedLengthColumnBase<T>::append(const Column& src, size_t offset, size_t c
 template <typename T>
 void FixedLengthColumnBase<T>::append_selective(const Column& src, const uint32_t* indexes, uint32_t from,
                                                 uint32_t size) {
+    indexes += from;
     const T* src_data = reinterpret_cast<const T*>(src.raw_data());
-    size_t orig_size = _data.size();
+
+    const size_t orig_size = _data.size();
     _data.resize(orig_size + size);
-    for (size_t i = 0; i < size; ++i) {
-        _data[orig_size + i] = src_data[indexes[from + i]];
+    auto* dest_data = _data.data() + orig_size;
+
+    static constexpr uint32_t W = 8;
+    T buffer[W];
+    size_t i = 0;
+    for (; i + W <= size; i++) {
+        for (int j = 0; j < W; j++) {
+            buffer[j] = src_data[indexes[i + j]];
+        }
+
+        for (int j = 0; j < W; j++) {
+            dest_data[i + j] = buffer[j];
+        }
+    }
+
+    for (; i < size; i++) {
+        dest_data[i] = src_data[indexes[i]];
     }
 }
 
