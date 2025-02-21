@@ -125,7 +125,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
                         const uint32_t prev_first = table_items->first[bucket_num];
                         table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
-                        table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | fp;
+                        table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | (fp << 24);
                     } else {
                         uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
                                 data[i], table_items->bucket_size, table_items->log_bucket_size);
@@ -143,7 +143,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
                     const uint32_t prev_first = table_items->first[bucket_num];
                     table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
-                    table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | fp;
+                    table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) |  (fp << 24);
                 } else {
                     uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
@@ -161,7 +161,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
                 const uint32_t prev_first = table_items->first[bucket_num];
                 table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
-                table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | fp;
+                table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) |  (fp << 24);
             } else {
                 uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                   table_items->log_bucket_size);
