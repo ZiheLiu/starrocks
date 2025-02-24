@@ -542,7 +542,7 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t build_row_s
                _estimated_build_cost<CacheLevel::MEMORY>(build_row_size)) {
         // It is only after this that performance gains can be realized beyond the L3 cache.
         _partition_join_min_rows = _fit_L3_cache_max_rows;
-    } else {
+    } else if (config::partition_hash_join_num <= 0) {
         // Partitioned joins don't have performance gains. Not using partition hash join.
         _partition_num = 1;
     }
@@ -557,6 +557,9 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t build_row_s
 
 void AdaptivePartitionHashJoinBuilder::_init_partition_nums(const HashTableParam& param) {
     _partition_num = 16;
+    if (config::partition_hash_join_num > 0) {
+        _partition_num = config::partition_hash_join_num;
+    }
 
     size_t estimated_bytes_each_row = _estimated_row_size(param);
 
@@ -696,14 +699,15 @@ Status AdaptivePartitionHashJoinBuilder::_append_chunk_to_partitions(const Chunk
 }
 
 Status AdaptivePartitionHashJoinBuilder::do_append_chunk(const ChunkPtr& chunk) {
-    if (_partition_num > 1 && hash_table_row_count() > _partition_join_max_rows) {
+    if (_partition_num > 1 && hash_table_row_count() > _partition_join_max_rows &&
+        config::partition_hash_join_num <= 0) {
         RETURN_IF_ERROR(_convert_to_single_partition());
     }
 
     if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
         size_t build_row_size = ht_mem_usage() / hash_table_row_count();
         _adjust_partition_rows(build_row_size);
-        if (_partition_num == 1) {
+        if (_partition_num == 1 && config::partition_hash_join_num <= 0) {
             RETURN_IF_ERROR(_convert_to_single_partition());
         }
     }
@@ -724,7 +728,8 @@ ChunkPtr AdaptivePartitionHashJoinBuilder::convert_to_spill_schema(const ChunkPt
 Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
     DCHECK_EQ(_partition_num, _builders.size());
 
-    if (_partition_num > 1 && hash_table_row_count() < _partition_join_min_rows) {
+    if (_partition_num > 1 && hash_table_row_count() < _partition_join_min_rows &&
+        config::partition_hash_join_num <= 0) {
         RETURN_IF_ERROR(_convert_to_single_partition());
     }
 
