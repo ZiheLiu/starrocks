@@ -791,6 +791,7 @@ CONF_mBool(enable_bitmap_union_disk_format_with_set, "false");
 // 0: the chained hash table.
 // 1: the chained hash table with vectorized.
 CONF_mInt64(enable_simd_hash_join, "1");
+CONF_mInt64(partition_hash_join_num, "0");
 
 // pipeline poller timeout guard
 CONF_mInt64(pipeline_poller_timeout_guard_ms, "-1");
