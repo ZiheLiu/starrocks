@@ -73,6 +73,8 @@ public:
     // time-consuming copy operation.
     FixedLengthColumnBase(FixedLengthColumnBase&& src) noexcept : _data(std::move(src._data)) {}
 
+    bool is_fixed_length() const override { return true; }
+
     bool is_numeric() const override { return std::is_arithmetic_v<ValueType>; }
 
     bool is_decimal() const override { return IsDecimal<ValueType>; }
@@ -114,11 +116,17 @@ public:
 
     void append(const Buffer<T>& values) { _data.insert(_data.end(), values.begin(), values.end()); }
 
+    void append(T* values, size_t size) { _data.insert(_data.end(), values, values + size); }
+
     void append_datum(const Datum& datum) override { _data.emplace_back(datum.get<ValueType>()); }
 
     void append(const Column& src, size_t offset, size_t count) override;
 
     void append_selective(const Column& src, const uint32_t* indexes, uint32_t from, uint32_t size) override;
+
+    void append_partition(std::vector<Column*>& dst_columns1, std::vector<Column*>& dst_columns2,
+                          const std::vector<uint32_t>& partition_indexes,
+                          const std::vector<size_t>& num_rows_per_partition) override;
 
     void append_value_multiple_times(const Column& src, uint32_t index, uint32_t size) override;
 

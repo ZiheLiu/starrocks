@@ -39,6 +39,87 @@ void FixedLengthColumnBase<T>::append(const Column& src, size_t offset, size_t c
     _data.insert(_data.end(), num_src._data.begin() + offset, num_src._data.begin() + offset + count);
 }
 
+namespace {
+template <typename T>
+struct PartitionContext {
+    uint32_t buffer_num_rows;
+    size_t num_rows;
+    T* dst_data;
+};
+} // namespace
+
+template <typename T>
+void FixedLengthColumnBase<T>::append_partition(std::vector<Column*>& dst_columns1, std::vector<Column*>& dst_columns2,
+                                                const std::vector<uint32_t>& partition_indexes,
+                                                const std::vector<size_t>& num_rows_per_partition) {
+    const size_t num_partitions = partition_indexes.size();
+    const size_t num_rows = size();
+    const auto* src_data = _data.data();
+
+    static constexpr uint32_t W = 8;
+    std::vector<T> buffer(W * num_partitions);
+    T* buffer_data = buffer.data();
+
+    // std::vector<size_t> num_rows_per_partition(num_partitions, 0);
+    // for (size_t i = 0; i < num_rows; i++) {
+    //     num_rows_per_partition[partition_indexes[i]]++;
+    // }
+
+    static constexpr size_t chunk_size = 4096;
+
+    std::vector<PartitionContext<T>> ctxs;
+    ctxs.reserve(num_partitions);
+    for (size_t i = 0; i < num_partitions; i++) {
+        size_t new_num_rows = num_rows_per_partition[partition_indexes[i]];
+        const size_t dst1_num_rows = dst_columns1[i]->size();
+        const size_t dst1_new_num_rows = dst1_num_rows + new_num_rows;
+        if (dst1_new_num_rows <= chunk_size) {
+            dst_columns1[i]->resize(dst1_new_num_rows);
+        } else {
+            dst_columns1[i]->resize(chunk_size);
+
+            new_num_rows -= chunk_size - dst_columns1.size();
+            dst_columns2[i]->resize(new_num_rows);
+        }
+
+        auto* col = down_cast<FixedLengthColumnBase<T>*>(dst_columns1[i]);
+        auto* data = col->_data.data() + dst1_num_rows;
+        ctxs.emplace_back(PartitionContext<T>{0, data, dst1_num_rows});
+    }
+
+    for (size_t i = 0; i < num_rows; i++) {
+        const uint32_t dst_index = partition_indexes[i];
+        auto& ctx = ctxs[dst_index];
+        auto* partition_buffer = buffer_data + dst_index * 8;
+
+        partition_buffer[ctx.buffer_num_rows++] = src_data[i];
+
+        if (ctx.num_rows + ctx.buffer_num_rows >= 4096) {
+            const size_t copy_rows = std::min(ctx.buffer_num_rows, 4096 - ctx.num_rows);
+            strings::memcpy_inlined(ctx.dst_data, partition_buffer, copy_rows * sizeof(T));
+            ctx.buffer_num_rows -= copy_rows;
+
+            if (dst_columns2[dst_index] != nullptr) {
+                ctx.dst_data = down_cast<FixedLengthColumnBase<T>*>(dst_columns2[dst_index])->_data.data();
+                ctx.num_rows = 0;
+            }
+        } else if (ctx.buffer_num_rows == W) {
+            strings::memcpy_inlined(ctx.dst_data, partition_buffer, W * sizeof(T));
+            ctx.buffer_num_rows = 0;
+            ctx.dst_data += W;
+            ctx.num_rows += W;
+        }
+    }
+
+    for (size_t i = 0; i < num_partitions; i++) {
+        auto& ctx = ctxs[i];
+        if (ctx.buffer_num_rows > 0) {
+            auto* partition_buffer = buffer_data + i * 8;
+            strings::memcpy_inlined(ctx.dst_data, partition_buffer, ctx.buffer_num_rows * sizeof(T));
+        }
+    }
+}
+
 template <typename T>
 void FixedLengthColumnBase<T>::append_selective(const Column& src, const uint32_t* indexes, uint32_t from,
                                                 uint32_t size) {

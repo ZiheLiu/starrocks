@@ -94,9 +94,88 @@ void NullableColumn::append(const Column& src, size_t offset, size_t count) {
     DCHECK_EQ(_null_column->size(), _data_column->size());
 }
 
+void NullableColumn::append_partition(std::vector<Column*>& dst_columns1, std::vector<Column*>& dst_columns2,
+                                      const std::vector<uint32_t>& partition_indexes,
+                                      const std::vector<size_t>& num_rows_per_partition) override {
+    static constexpr size_t chunk_size = 4096;
+
+    if (only_null()) {
+        for (size_t i = 0; i < num_rows_per_partition.size(); i++) {
+            size_t new_num_rows = num_rows_per_partition[i];
+            const size_t orig_size = dst_columns1[i]->size();
+            if (orig_size + new_num_rows <= chunk_size) {
+                dst_columns1[i]->append_nulls(new_num_rows);
+            } else {
+                dst_columns1[i]->append_nulls(chunk_size - orig_size);
+                dst_columns2[i]->append_nulls(orig_size + new_num_rows - chunk_size);
+            }
+        }
+    } else {
+        if (!has_null()) {
+            std::vector<Column*> dst_data_columns1;
+            std::vector<Column*> dst_data_columns2;
+            for (size_t i = 0; i < num_rows_per_partition.size(); i++) {
+                size_t new_num_rows = num_rows_per_partition[i];
+                auto* dst_nullable_col1 = down_cast<NullableColumn*>(dst_columns1[i]);
+                const size_t orig_size = dst_columns1[i]->size();
+
+                if (orig_size + new_num_rows <= chunk_size) {
+                    dst_nullable_col1->_null_column->resize(orig_size + new_num_rows);
+                } else {
+                    dst_nullable_col1->_null_column->resize(chunk_size);
+                    auto* dst_nullable_col2 = down_cast<NullableColumn*>(dst_columns2[i]);
+                    dst_nullable_col2->_null_column->resize(orig_size + new_num_rows - chunk_size);
+                }
+
+                dst_data_columns1.emplace_back(dst_nullable_col1->_data_column.get());
+                dst_data_columns2.emplace_back(
+                        dst_columns2[i] == nullptr ? nullptr
+                                                   : down_cast<NullableColumn*>(dst_columns2[i])->_data_column.get());
+            }
+            _data_column->append_partition(dst_data_columns1, dst_data_columns2, partition_indexes,
+                                           num_rows_per_partition);
+        } else {
+            std::vector<Column*> dst_data_columns1;
+            std::vector<Column*> dst_data_columns2;
+            std::vector<Column*> dst_null_columns1;
+            std::vector<Column*> dst_null_columns2;
+            std::vector<size_t> dst1_orig_size;
+            for (size_t i = 0; i < num_rows_per_partition.size(); i++) {
+                dst1_orig_size.emplace_back(dst_columns1[i]->size());
+                dst_data_columns1.emplace_back(down_cast<NullableColumn*>(dst_columns1[i])->_data_column.get());
+                dst_data_columns2.emplace_back(
+                        dst_columns2[i] == nullptr ? nullptr
+                                                   : down_cast<NullableColumn*>(dst_columns2[i])->_data_column.get());
+                dst_null_columns1.emplace_back(down_cast<NullableColumn*>(dst_columns1[i])->_null_column.get());
+                dst_null_columns2.emplace_back(
+                        dst_columns2[i] == nullptr ? nullptr
+                                                   : down_cast<NullableColumn*>(dst_columns2[i])->_null_column.get());
+            }
+
+            _data_column->append_partition(dst_data_columns1, dst_data_columns2, partition_indexes,
+                                           num_rows_per_partition);
+            _null_column->append_partition(dst_null_columns1, dst_null_columns2, partition_indexes,
+                                           num_rows_per_partition);
+
+            for (size_t i = 0; i < num_rows_per_partition.size(); i++) {
+                auto* dst_nullable_col1 = down_cast<NullableColumn*>(dst_columns1[i]);
+                dst_nullable_col1->_has_null =
+                        dst_nullable_col1->_has_null ||
+                        SIMD::contain_nonzero(_null_column->get_data(), dst1_orig_size[i], dst_nullable_col1->size());
+                if (dst_columns2[i] != nullptr) {
+                    auto* dst_nullable_col2 = down_cast<NullableColumn*>(dst_columns2[i]);
+                    dst_nullable_col2->_has_null =
+                            dst_nullable_col2->_has_null ||
+                            SIMD::contain_nonzero(_null_column->get_data(), 0, dst_nullable_col2->size());
+                }
+            }
+        }
+    }
+}
+
 void NullableColumn::append_selective(const Column& src, const uint32_t* indexes, uint32_t from, uint32_t size) {
     DCHECK_EQ(_null_column->size(), _data_column->size());
-    size_t orig_size = _null_column->size();
+    const size_t orig_size = _null_column->size();
     if (src.only_null()) {
         append_nulls(size);
     } else if (src.is_nullable()) {

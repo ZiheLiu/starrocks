@@ -158,6 +158,7 @@ private:
     int32_t _remain_partition_idx = 0;
     std::vector<std::unique_ptr<SingleHashJoinProberImpl>> _probers;
     std::vector<PartitionChunkChannel> _partition_input_channels;
+    std::vector<ChunkPtr> _tmp_partition_chunks;
 };
 
 bool PartitionedHashJoinProberImpl::probe_chunk_empty() const {
@@ -222,6 +223,32 @@ Status PartitionedHashJoinProberImpl::push_probe_chunk(RuntimeState* state, Chun
         // find partition id
         for (size_t i = 0; i < hash_values.size(); ++i) {
             hash_values[i] = HashUtil::fmix32(hash_values[i]) & (num_partitions - 1);
+        }
+    }
+
+    const bool is_all_fixed_length_col =
+            std::ranges::all_of(partition_columns, [](const ColumnPtr& col) { return col->is_fixed_length(); });
+    if (is_all_fixed_length_col) {
+        if (_tmp_partition_chunks.empty()) {
+            for (size_t i = 0; i < num_partition_cols; ++i) {
+                _tmp_partition_chunks.emplace_back(chunk->clone_empty());
+            }
+
+            for (size_t col_i = 0; col_i < chunk->num_columns(); col_i++) {
+                std::vector<Column*> dst_columns1;
+                std::vector<Column*> dst_columns2;
+
+                for (size_t partition_i = 0; partition_i < num_partitions; ++partition_i) {
+                    auto& channel = _partition_input_channels[partition_i];
+                    if (channel.is_empty()) {
+                        dst_columns1.emplace_back(_tmp_partition_chunks[partition_i]->get_column_by_index(col_i).get());
+                        dst_columns2.emplace_back(nullptr);
+                    } else {
+                        dst_columns1.emplace_back(channel.back()->get_column_by_index(col_i).get());
+                        dst_columns2.emplace_back(_tmp_partition_chunks[partition_i]->get_column_by_index(col_i).get());
+                    }
+                }
+            }
         }
     }
 

@@ -82,6 +82,8 @@ public:
 
     void update_has_null();
 
+    bool is_fixed_length() const override { return _data_column->is_fixed_length(); }
+
     bool is_nullable() const override { return true; }
     bool is_json() const override { return _data_column->is_json(); }
     bool is_array() const override { return _data_column->is_array(); }
@@ -141,6 +143,10 @@ public:
     void append(const Column& src, size_t offset, size_t count) override;
 
     void append_selective(const Column& src, const uint32_t* indexes, uint32_t from, uint32_t size) override;
+
+    void append_partition(std::vector<Column*>& dst_columns1, std::vector<Column*>& dst_columns2,
+                          const std::vector<uint32_t>& partition_indexes,
+                          const std::vector<size_t>& num_rows_per_partition) override;
 
     void append_value_multiple_times(const Column& src, uint32_t index, uint32_t size) override;
 

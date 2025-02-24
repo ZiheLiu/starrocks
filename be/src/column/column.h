@@ -77,6 +77,8 @@ public:
 
     virtual bool is_null(size_t idx) const { return false; }
 
+    virtual bool is_fixed_length() const { return false; }
+
     virtual bool is_numeric() const { return false; }
 
     virtual bool is_constant() const { return false; }
@@ -209,6 +211,10 @@ public:
         static_assert(std::is_same<T, uint32_t>::value, "The type of indexes must be uint32_t");
         return append_selective(src, indexes.data(), 0, static_cast<uint32_t>(indexes.size()));
     }
+
+    virtual void append_partition(std::vector<Column*>& dst_columns1, std::vector<Column*>& dst_columns2,
+                                  const std::vector<uint32_t>& partition_indexes,
+                                  const std::vector<size_t>& num_rows_per_partition) {}
 
     // This function will get row through 'from' index from src, and copy size elements to this column.
     // Currently only `ObjectColumn<BitmapValue>` support shallow copy
