@@ -79,7 +79,7 @@ static bool is_support_linear_probe(TJoinOp::type type) {
 template <LogicalType LT>
 void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                              HashTableProbeState* probe_state) {
-    if (config::enable_simd_hash_join == 1 && table_items->bucket_size <= BLOOM_FILTER_MASK &&
+    if (abs(config::enable_simd_hash_join) == 1 && table_items->bucket_size <= BLOOM_FILTER_MASK &&
         (table_items->join_type == TJoinOp::INNER_JOIN || table_items->join_type == TJoinOp::LEFT_OUTER_JOIN ||
          table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         do_construct_hash_table<1>(state, table_items, probe_state);
@@ -365,7 +365,7 @@ const Buffer<typename DirectMappingJoinProbeFunc<LT>::CppType>& DirectMappingJoi
 
 template <LogicalType LT>
 void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state) {
-    if (config::enable_simd_hash_join == 1 && table_items.bucket_size <= BLOOM_FILTER_MASK &&
+    if (abs(config::enable_simd_hash_join) == 1 && table_items.bucket_size <= BLOOM_FILTER_MASK &&
         (table_items.join_type == TJoinOp::INNER_JOIN || table_items.join_type == TJoinOp::LEFT_OUTER_JOIN ||
          table_items.join_type == TJoinOp::LEFT_ANTI_JOIN || table_items.join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         do_lookup_init<true>(table_items, probe_state);
@@ -400,6 +400,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
             static constexpr uint32_t W = 8;
             uint32_t buffer[W];
+            uint32_t bf[W];
             size_t i = 0;
             for (; i + W <= probe_row_count; i += W) {
                 for (uint32_t j = 0; j < W; j++) {
@@ -414,20 +415,34 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                     }
                 }
 
+                if constexpr (SIMD) {
+                    for (uint32_t j = 0; j < W; j++) {
+                        bf[j] = BLOOM_FILTERS[buckets[i + j] & 0xff];
+                    }
+
+                    for (uint32_t j = 0; j < W; j++) {
+                        const uint32_t matched = (~(buffer[j] >> 24) & bf[j]) == 0;
+                        const uint32_t mask = ~matched + 1;
+                        buffer[j] &= mask & BLOOM_FILTER_MASK;
+                    }
+                }
+
                 for (uint32_t j = 0; j < W; j++) {
                     next[i + j] = buffer[j];
                 }
             }
-
             for (; i < probe_row_count; i++) {
-                if (null_array[i] == 0) {
-                    if constexpr (SIMD) {
-                        next[i] = first[buckets[i] >> 8];
-                    } else {
-                        next[i] = first[buckets[i]];
-                    }
+                if constexpr (SIMD) {
+                    uint32_t index = first[buckets[i] >> 8];
+
+                    const uint32_t cur_bf = BLOOM_FILTERS[buckets[i] & 0xff];
+                    const uint32_t matched = (~(index >> 24) & cur_bf) == 0;
+                    const uint32_t mask = ~matched + 1;
+                    index &= mask & BLOOM_FILTER_MASK;
+
+                    next[i] = index;
                 } else {
-                    next[i] = 0;
+                    next[i] = first[buckets[i]];
                 }
             }
 
@@ -435,6 +450,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
         } else {
             static constexpr uint32_t W = 8;
             uint32_t buffer[W];
+            uint32_t bf[W];
             size_t i = 0;
             for (; i + W <= probe_row_count; i += W) {
                 for (uint32_t j = 0; j < W; j++) {
@@ -445,13 +461,32 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                     }
                 }
 
+                if constexpr (SIMD) {
+                    for (uint32_t j = 0; j < W; j++) {
+                        bf[j] = BLOOM_FILTERS[buckets[i + j] & 0xff];
+                    }
+
+                    for (uint32_t j = 0; j < W; j++) {
+                        const uint32_t matched = (~(buffer[j] >> 24) & bf[j]) == 0;
+                        const uint32_t mask = ~matched + 1;
+                        buffer[j] &= mask & BLOOM_FILTER_MASK;
+                    }
+                }
+
                 for (uint32_t j = 0; j < W; j++) {
                     next[i + j] = buffer[j];
                 }
             }
             for (; i < probe_row_count; i++) {
                 if constexpr (SIMD) {
-                    next[i] = first[buckets[i] >> 8];
+                    uint32_t index = first[buckets[i] >> 8];
+
+                    const uint32_t cur_bf = BLOOM_FILTERS[buckets[i] & 0xff];
+                    const uint32_t matched = (~(index >> 24) & cur_bf) == 0;
+                    const uint32_t mask = ~matched + 1;
+                    index &= mask & BLOOM_FILTER_MASK;
+
+                    next[i] = index;
                 } else {
                     next[i] = first[buckets[i]];
                 }
@@ -465,6 +500,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
     static constexpr uint32_t W = 8;
     uint32_t buffer[W];
+    uint32_t bf[W];
     size_t i = 0;
     for (; i + W <= probe_row_count; i += W) {
         for (uint32_t j = 0; j < W; j++) {
@@ -475,13 +511,32 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             }
         }
 
+        if constexpr (SIMD) {
+            for (uint32_t j = 0; j < W; j++) {
+                bf[j] = BLOOM_FILTERS[buckets[i + j] & 0xff];
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                const uint32_t matched = (~(buffer[j] >> 24) & bf[j]) == 0;
+                const uint32_t mask = ~matched + 1;
+                buffer[j] &= mask & BLOOM_FILTER_MASK;
+            }
+        }
+
         for (uint32_t j = 0; j < W; j++) {
             next[i + j] = buffer[j];
         }
     }
     for (; i < probe_row_count; i++) {
         if constexpr (SIMD) {
-            next[i] = first[buckets[i] >> 8];
+            uint32_t index = first[buckets[i] >> 8];
+
+            const uint32_t cur_bf = BLOOM_FILTERS[buckets[i] & 0xff];
+            const uint32_t matched = (~(index >> 24) & cur_bf) == 0;
+            const uint32_t mask = ~matched + 1;
+            index &= mask & BLOOM_FILTER_MASK;
+
+            next[i] = index;
         } else {
             next[i] = first[buckets[i]];
         }
@@ -1113,19 +1168,19 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_search_ht_impl(RuntimeState* state,
         return;                                                  \
     }
 
-#define RETURN_IF_CHUNK_FULL2()                                                                          \
-    if (UNLIKELY(match_count > state->chunk_size())) {                                                   \
-        if constexpr (SIMD == 1) {                                                                       \
-            _probe_state->next[i] = _table_items->next[build_index] | (raw_build_index & 0xFF00'0000ul); \
-        } else {                                                                                         \
-            _probe_state->next[i] = _table_items->next[build_index];                                     \
-        }                                                                                                \
-        _probe_state->cur_probe_index = i;                                                               \
-        _probe_state->cur_build_index = build_index;                                                     \
-        _probe_state->has_remain = true;                                                                 \
-        _probe_state->count = state->chunk_size();                                                       \
-        _probe_state->cur_row_match_count = cur_row_match_count;                                         \
-        return;                                                                                          \
+#define RETURN_IF_CHUNK_FULL2()                                      \
+    if (UNLIKELY(match_count > state->chunk_size())) {               \
+        if constexpr (SIMD == 1) {                                   \
+            _probe_state->next[i] = _table_items->next[build_index]; \
+        } else {                                                     \
+            _probe_state->next[i] = _table_items->next[build_index]; \
+        }                                                            \
+        _probe_state->cur_probe_index = i;                           \
+        _probe_state->cur_build_index = build_index;                 \
+        _probe_state->has_remain = true;                             \
+        _probe_state->count = state->chunk_size();                   \
+        _probe_state->cur_row_match_count = cur_row_match_count;     \
+        return;                                                      \
     }
 
 #define COWAIT_IF_CHUNK_FULL()                              \
@@ -1233,7 +1288,7 @@ template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                            const Buffer<CppType>& probe_data) {
-    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && abs(config::enable_simd_hash_join) == 1 &&
         _table_items->bucket_size <= BLOOM_FILTER_MASK) {
         if (_table_items->no_conflicts) {
             if (_table_items->no_duplicated_build_keys) {
@@ -1285,22 +1340,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     const size_t probe_row_count = _probe_state->probe_row_count;
     const auto* nexts = _probe_state->next.data();
-    const auto* buckets = _probe_state->buckets.data();
     uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
     for (; i < probe_row_count; i++) {
-        const uint32_t raw_build_index = nexts[i];
-        uint32_t build_index = raw_build_index;
+        uint32_t build_index = nexts[i];
 
-        if constexpr (SIMD == 1) {
-            const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-            if (~(raw_build_index >> 24) & fp) {
-                continue;
-            }
-            build_index &= BLOOM_FILTER_MASK;
-        } else {
-            if (build_index == 0) {
-                continue;
-            }
+        if (build_index == 0) {
+            continue;
         }
 
         do {
@@ -1436,7 +1481,7 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                                const Buffer<CppType>& build_data,
                                                                                const Buffer<CppType>& probe_data) {
-    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && abs(config::enable_simd_hash_join) == 1 &&
         _table_items->bucket_size <= BLOOM_FILTER_MASK) {
         if (_table_items->no_conflicts) {
             _do_probe_from_ht_for_left_outer_join<first_probe, true, 1>(state, build_data, probe_data);
@@ -1480,32 +1525,16 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
         const uint32_t raw_build_index = nexts[i];
         uint32_t build_index = raw_build_index;
 
-        if constexpr (SIMD == 1) {
-            build_index &= BLOOM_FILTER_MASK;
-            const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-            if (~(raw_build_index >> 24) & fp) {
-                _probe_state->probe_index[match_count] = i;
-                _probe_state->build_index[match_count] = 0;
-                match_count++;
+        if (build_index == 0) {
+            _probe_state->probe_index[match_count] = i;
+            _probe_state->build_index[match_count] = 0;
+            match_count++;
 
-                if constexpr (!no_conflicts) {
-                    RETURN_IF_CHUNK_FULL2()
-                }
-                cur_row_match_count = 0;
-                continue;
+            if constexpr (!no_conflicts) {
+                RETURN_IF_CHUNK_FULL2()
             }
-        } else {
-            if (build_index == 0) {
-                _probe_state->probe_index[match_count] = i;
-                _probe_state->build_index[match_count] = 0;
-                match_count++;
-
-                if constexpr (!no_conflicts) {
-                    RETURN_IF_CHUNK_FULL2()
-                }
-                cur_row_match_count = 0;
-                continue;
-            }
+            cur_row_match_count = 0;
+            continue;
         }
 
         if constexpr (no_conflicts) {
@@ -1590,7 +1619,7 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && abs(config::enable_simd_hash_join) == 1 &&
         _table_items->bucket_size <= BLOOM_FILTER_MASK) {
         if (_table_items->no_conflicts) {
             _do_probe_from_ht_for_left_semi_join<first_probe, true, 1>(state, build_data, probe_data);
@@ -1619,23 +1648,30 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
     const auto* build_nexts = _table_items->next.data();
 
     uint32_t match_count = 0;
+    uint32_t i = 0;
 
-    for (uint32_t i = 0; i < probe_row_count; i++) {
+    // if constexpr (MODE == 1) {
+    //     static constexpr uint32_t W = 256 / (8 * sizeof(CppType));
+    //
+    //     uint32_t indexes[W];
+    //     uint32_t is[W];
+    //     CppType keys[W];
+    //     uint32_t not_matches[W]{0};
+    //     while (i + W <= probe_row_count) {
+    //         for (uint32_t j = 0; j < W; j++) {
+    //             if (!not_matches[j]) {
+    //                 keys[j] = probe_data[i];
+    //                 indexes[j] = nexts[i];
+    //                 not_matches[j] = ~(indexes[j] >> 24) & BLOOM_FILTERS[buckets[i] & 0xff];
+    //                 is[j] = i++;
+    //             }
+    //         }
+    //     }
+    // }
+
+    for (; i < probe_row_count; i++) {
         uint32_t index = nexts[i];
-
-        if constexpr (MODE == 1) {
-            const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-            if (~(index >> 24) & fp) {
-                continue;
-            }
-            index &= BLOOM_FILTER_MASK;
-        } else {
-            if (index == 0) {
-                continue;
-            }
-        }
-
-        do {
+        while (index != 0) {
             if (ProbeFunc().equal(build_data[index], probe_data[i])) {
                 probe_indexes[match_count] = i;
                 match_count++;
@@ -1645,7 +1681,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 break;
             }
             index = build_nexts[index];
-        } while (index != 0);
+        }
     }
 
     if (match_count == probe_row_count) {
@@ -1737,7 +1773,7 @@ template <bool first_probe>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(RuntimeState* state,
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
-    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && config::enable_simd_hash_join == 1 &&
+    if (std::is_same_v<BuildFunc, JoinBuildFunc<LT>> && abs(config::enable_simd_hash_join) == 1 &&
         _table_items->bucket_size <= BLOOM_FILTER_MASK &&
         _table_items->join_type != TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN) {
         if (_table_items->no_conflicts) {
@@ -1797,25 +1833,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         uint32_t i = 0;
 
         const auto* nexts = _probe_state->next.data();
-        const auto* buckets = _probe_state->buckets.data();
 
         for (; i < probe_row_count; i++) {
             uint32_t index = nexts[i];
 
-            if constexpr (SIMD == 1) {
-                const uint32_t fp = BLOOM_FILTERS[buckets[i] & 0xff];
-                if (~(index >> 24) & fp) {
-                    _probe_state->probe_index[match_count] = i;
-                    match_count++;
-                    continue;
-                }
-                index &= BLOOM_FILTER_MASK;
-            } else {
-                if (index == 0) {
-                    _probe_state->probe_index[match_count] = i;
-                    match_count++;
-                    continue;
-                }
+            if (index == 0) {
+                _probe_state->probe_index[match_count] = i;
+                match_count++;
+                continue;
             }
 
             if constexpr (no_conflicts) {
