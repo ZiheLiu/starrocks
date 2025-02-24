@@ -1615,6 +1615,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
     const auto* nexts = _probe_state->next.data();
     const auto* buckets = _probe_state->buckets.data();
+    auto* probe_indexes = _probe_state->probe_index.data();
+    const auto* build_nexts = _table_items->next.data();
 
     uint32_t match_count = 0;
 
@@ -1635,14 +1637,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
         do {
             if (ProbeFunc().equal(build_data[index], probe_data[i])) {
-                _probe_state->probe_index[match_count] = i;
+                probe_indexes[match_count] = i;
                 match_count++;
                 break;
             }
             if constexpr (no_conflicts) {
                 break;
             }
-            index = _table_items->next[index];
+            index = build_nexts[index];
         } while (index != 0);
     }
 
