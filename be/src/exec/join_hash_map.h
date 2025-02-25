@@ -485,7 +485,7 @@ public:
 
     static void prepare(RuntimeState* state, HashTableProbeState* probe_state) {}
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
-    template <bool SIMD>
+    template <uint8_t SIMD>
     static void do_lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
     static const Buffer<CppType>& get_key_data(const HashTableProbeState& probe_state);
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
