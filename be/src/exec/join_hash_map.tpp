@@ -108,9 +108,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     [[maybe_unused]] auto* firsts = table_items->first.data();
     [[maybe_unused]] auto* nexts = table_items->next.data();
     [[maybe_unused]] const uint32_t bucket_size_mask = table_items->bucket_size - 1;
+    [[maybe_unused]] const auto* __restrict pdata = data.data();
 
     if constexpr (SIMD == 1) {
-        const auto* __restrict pdata = data.data();
         auto* __restrict next = table_items->next.data();
         for (size_t i = 1; i < num_rows; i++) {
             // use next to cache bucket_num
@@ -118,7 +118,6 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                                                   table_items->log_bucket_size + 8);
         }
     } else if constexpr (SIMD == 2) {
-        const auto* __restrict pdata = data.data();
         auto* __restrict next = table_items->next.data();
         for (size_t i = 1; i < num_rows; i++) {
             // use next to cache bucket_num
@@ -149,7 +148,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             bucket = (bucket + probe_times) & bucket_size_mask;
                             probe_times++;
                         }
-                        firsts[bucket] = (*reinterpret_cast<const uint32_t*>(data + i)) | (1 << 31);
+                        firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                     } else {
                         uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
                                 data[i], table_items->bucket_size, table_items->log_bucket_size);
@@ -175,7 +174,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         bucket = (bucket + probe_times) & bucket_size_mask;
                         probe_times++;
                     }
-                    firsts[bucket] = (*reinterpret_cast<const uint32_t*>(data + i)) | (1 << 31);
+                    firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                 } else {
                     uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
@@ -201,7 +200,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     bucket = (bucket + probe_times) & bucket_size_mask;
                     probe_times++;
                 }
-                firsts[bucket] = (*reinterpret_cast<const uint32_t*>(data + i)) | (1 << 31);
+                firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
             } else {
                 uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
                                                                                   table_items->log_bucket_size);
@@ -1701,9 +1700,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
         const auto* buckets = _table_items->first.data();
         const auto* probe_buckets = _probe_state->buckets.data();
+        const auto* raw_probe_data = reinterpret_cast<const uint32_t*>(probe_data.data());
 
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const auto probe_key = *reinterpret_cast<const uint32_t*>(probe_data + i);
+            const auto probe_key = raw_probe_data[i];
 
             uint32_t bucket = probe_buckets[i];
             uint32_t probe_times = 1;
@@ -1894,9 +1894,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
             const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
             const auto* buckets = _table_items->first.data();
             const auto* probe_buckets = _probe_state->buckets.data();
+            const auto* raw_probe_data = reinterpret_cast<const uint32_t*>(probe_data.data());
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                const auto probe_key = *reinterpret_cast<const uint32_t*>(probe_data + i);
+                const auto probe_key = raw_probe_data[i];
 
                 uint32_t bucket = probe_buckets[i];
                 uint32_t probe_times = 1;
