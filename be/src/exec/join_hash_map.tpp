@@ -1846,6 +1846,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             }
 
             vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vbuild_keys, vzeros));
+            match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
         }
 #endif
 
