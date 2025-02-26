@@ -1788,6 +1788,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         __m256i vprobe_indexes = _mm256_set1_epi32(0x0);
         while (i + W <= probe_row_count) {
             if (match_mask == 255) {
+                vprobe_times = vzeros;
                 vprobe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets));
                 vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys));
                 vprobe_keys = _mm256_or_si256(vprobe_keys, vprobe_key_mask);
@@ -1847,6 +1848,41 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
             vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vbuild_keys, vzeros));
             match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+        }
+
+        if (match_mask != 255) {
+            uint32_t cur_probe_times[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_times), vprobe_times);
+            uint32_t cur_probe_buckets[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_buckets), vprobe_buckets);
+            uint32_t cur_probe_keys[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_keys), vprobe_keys);
+            uint32_t cur_probe_indexes[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_indexes), vprobe_indexes);
+
+            match_mask = ~match_mask; // Get each position i for `match_mask[i] == 0`.
+            for (; match_mask != 0; match_mask &= match_mask - 1) {
+                const uint32_t j = __builtin_ctz(match_mask);
+
+                const uint32_t probe_key = cur_probe_keys[j];
+                uint32_t probe_bucket = cur_probe_buckets[j];
+                uint32_t probe_times = cur_probe_times[j];
+
+                while (true) {
+                    probe_times++;
+                    probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                    const uint32_t build_key = build_buckets[probe_bucket];
+
+                    if (build_key == 0) {
+                        break;
+                    }
+                    if (probe_key == build_key) {
+                        dst_probe_indexes[match_count] = cur_probe_indexes[j];
+                        match_count++;
+                        break;
+                    }
+                }
+            }
         }
 #endif
 
