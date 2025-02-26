@@ -125,8 +125,11 @@ struct JoinHashTableItems {
     // about the bucket-chained hash table of this kind.
     Buffer<uint32_t> first;
     Buffer<uint32_t> next;
+    Buffer<uint8_t> set_has_value;
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
+    uint32_t min_value = 0;
+    uint32_t max_value = 0;
     uint32_t bucket_size = 0;
     uint32_t log_bucket_size = 0;
     uint32_t row_count = 0; // real row count
@@ -136,6 +139,7 @@ struct JoinHashTableItems {
     size_t probe_column_count = 0;
     size_t output_probe_column_count = 0;
     size_t lazy_output_probe_column_count = 0;
+    uint8_t mode = 0;
     bool with_other_conjunct = false;
     bool left_to_nullable = false;
     bool right_to_nullable = false;
