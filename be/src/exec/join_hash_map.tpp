@@ -1686,34 +1686,189 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
     }
 }
 
+// 8*256 = 2048 byte
+static constexpr uint8_t move_left_mask_perm[256][8] = {
+        {0, 1, 2, 3, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7}, {1, 0, 2, 3, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {2, 0, 1, 3, 4, 5, 6, 7}, {0, 2, 1, 3, 4, 5, 6, 7}, {1, 2, 0, 3, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {3, 0, 1, 2, 4, 5, 6, 7}, {0, 3, 1, 2, 4, 5, 6, 7}, {1, 3, 0, 2, 4, 5, 6, 7}, {0, 1, 3, 2, 4, 5, 6, 7},
+        {2, 3, 0, 1, 4, 5, 6, 7}, {0, 2, 3, 1, 4, 5, 6, 7}, {1, 2, 3, 0, 4, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {4, 0, 1, 2, 3, 5, 6, 7}, {0, 4, 1, 2, 3, 5, 6, 7}, {1, 4, 0, 2, 3, 5, 6, 7}, {0, 1, 4, 2, 3, 5, 6, 7},
+        {2, 4, 0, 1, 3, 5, 6, 7}, {0, 2, 4, 1, 3, 5, 6, 7}, {1, 2, 4, 0, 3, 5, 6, 7}, {0, 1, 2, 4, 3, 5, 6, 7},
+        {3, 4, 0, 1, 2, 5, 6, 7}, {0, 3, 4, 1, 2, 5, 6, 7}, {1, 3, 4, 0, 2, 5, 6, 7}, {0, 1, 3, 4, 2, 5, 6, 7},
+        {2, 3, 4, 0, 1, 5, 6, 7}, {0, 2, 3, 4, 1, 5, 6, 7}, {1, 2, 3, 4, 0, 5, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {5, 0, 1, 2, 3, 4, 6, 7}, {0, 5, 1, 2, 3, 4, 6, 7}, {1, 5, 0, 2, 3, 4, 6, 7}, {0, 1, 5, 2, 3, 4, 6, 7},
+        {2, 5, 0, 1, 3, 4, 6, 7}, {0, 2, 5, 1, 3, 4, 6, 7}, {1, 2, 5, 0, 3, 4, 6, 7}, {0, 1, 2, 5, 3, 4, 6, 7},
+        {3, 5, 0, 1, 2, 4, 6, 7}, {0, 3, 5, 1, 2, 4, 6, 7}, {1, 3, 5, 0, 2, 4, 6, 7}, {0, 1, 3, 5, 2, 4, 6, 7},
+        {2, 3, 5, 0, 1, 4, 6, 7}, {0, 2, 3, 5, 1, 4, 6, 7}, {1, 2, 3, 5, 0, 4, 6, 7}, {0, 1, 2, 3, 5, 4, 6, 7},
+        {4, 5, 0, 1, 2, 3, 6, 7}, {0, 4, 5, 1, 2, 3, 6, 7}, {1, 4, 5, 0, 2, 3, 6, 7}, {0, 1, 4, 5, 2, 3, 6, 7},
+        {2, 4, 5, 0, 1, 3, 6, 7}, {0, 2, 4, 5, 1, 3, 6, 7}, {1, 2, 4, 5, 0, 3, 6, 7}, {0, 1, 2, 4, 5, 3, 6, 7},
+        {3, 4, 5, 0, 1, 2, 6, 7}, {0, 3, 4, 5, 1, 2, 6, 7}, {1, 3, 4, 5, 0, 2, 6, 7}, {0, 1, 3, 4, 5, 2, 6, 7},
+        {2, 3, 4, 5, 0, 1, 6, 7}, {0, 2, 3, 4, 5, 1, 6, 7}, {1, 2, 3, 4, 5, 0, 6, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {6, 0, 1, 2, 3, 4, 5, 7}, {0, 6, 1, 2, 3, 4, 5, 7}, {1, 6, 0, 2, 3, 4, 5, 7}, {0, 1, 6, 2, 3, 4, 5, 7},
+        {2, 6, 0, 1, 3, 4, 5, 7}, {0, 2, 6, 1, 3, 4, 5, 7}, {1, 2, 6, 0, 3, 4, 5, 7}, {0, 1, 2, 6, 3, 4, 5, 7},
+        {3, 6, 0, 1, 2, 4, 5, 7}, {0, 3, 6, 1, 2, 4, 5, 7}, {1, 3, 6, 0, 2, 4, 5, 7}, {0, 1, 3, 6, 2, 4, 5, 7},
+        {2, 3, 6, 0, 1, 4, 5, 7}, {0, 2, 3, 6, 1, 4, 5, 7}, {1, 2, 3, 6, 0, 4, 5, 7}, {0, 1, 2, 3, 6, 4, 5, 7},
+        {4, 6, 0, 1, 2, 3, 5, 7}, {0, 4, 6, 1, 2, 3, 5, 7}, {1, 4, 6, 0, 2, 3, 5, 7}, {0, 1, 4, 6, 2, 3, 5, 7},
+        {2, 4, 6, 0, 1, 3, 5, 7}, {0, 2, 4, 6, 1, 3, 5, 7}, {1, 2, 4, 6, 0, 3, 5, 7}, {0, 1, 2, 4, 6, 3, 5, 7},
+        {3, 4, 6, 0, 1, 2, 5, 7}, {0, 3, 4, 6, 1, 2, 5, 7}, {1, 3, 4, 6, 0, 2, 5, 7}, {0, 1, 3, 4, 6, 2, 5, 7},
+        {2, 3, 4, 6, 0, 1, 5, 7}, {0, 2, 3, 4, 6, 1, 5, 7}, {1, 2, 3, 4, 6, 0, 5, 7}, {0, 1, 2, 3, 4, 6, 5, 7},
+        {5, 6, 0, 1, 2, 3, 4, 7}, {0, 5, 6, 1, 2, 3, 4, 7}, {1, 5, 6, 0, 2, 3, 4, 7}, {0, 1, 5, 6, 2, 3, 4, 7},
+        {2, 5, 6, 0, 1, 3, 4, 7}, {0, 2, 5, 6, 1, 3, 4, 7}, {1, 2, 5, 6, 0, 3, 4, 7}, {0, 1, 2, 5, 6, 3, 4, 7},
+        {3, 5, 6, 0, 1, 2, 4, 7}, {0, 3, 5, 6, 1, 2, 4, 7}, {1, 3, 5, 6, 0, 2, 4, 7}, {0, 1, 3, 5, 6, 2, 4, 7},
+        {2, 3, 5, 6, 0, 1, 4, 7}, {0, 2, 3, 5, 6, 1, 4, 7}, {1, 2, 3, 5, 6, 0, 4, 7}, {0, 1, 2, 3, 5, 6, 4, 7},
+        {4, 5, 6, 0, 1, 2, 3, 7}, {0, 4, 5, 6, 1, 2, 3, 7}, {1, 4, 5, 6, 0, 2, 3, 7}, {0, 1, 4, 5, 6, 2, 3, 7},
+        {2, 4, 5, 6, 0, 1, 3, 7}, {0, 2, 4, 5, 6, 1, 3, 7}, {1, 2, 4, 5, 6, 0, 3, 7}, {0, 1, 2, 4, 5, 6, 3, 7},
+        {3, 4, 5, 6, 0, 1, 2, 7}, {0, 3, 4, 5, 6, 1, 2, 7}, {1, 3, 4, 5, 6, 0, 2, 7}, {0, 1, 3, 4, 5, 6, 2, 7},
+        {2, 3, 4, 5, 6, 0, 1, 7}, {0, 2, 3, 4, 5, 6, 1, 7}, {1, 2, 3, 4, 5, 6, 0, 7}, {0, 1, 2, 3, 4, 5, 6, 7},
+        {7, 0, 1, 2, 3, 4, 5, 6}, {0, 7, 1, 2, 3, 4, 5, 6}, {1, 7, 0, 2, 3, 4, 5, 6}, {0, 1, 7, 2, 3, 4, 5, 6},
+        {2, 7, 0, 1, 3, 4, 5, 6}, {0, 2, 7, 1, 3, 4, 5, 6}, {1, 2, 7, 0, 3, 4, 5, 6}, {0, 1, 2, 7, 3, 4, 5, 6},
+        {3, 7, 0, 1, 2, 4, 5, 6}, {0, 3, 7, 1, 2, 4, 5, 6}, {1, 3, 7, 0, 2, 4, 5, 6}, {0, 1, 3, 7, 2, 4, 5, 6},
+        {2, 3, 7, 0, 1, 4, 5, 6}, {0, 2, 3, 7, 1, 4, 5, 6}, {1, 2, 3, 7, 0, 4, 5, 6}, {0, 1, 2, 3, 7, 4, 5, 6},
+        {4, 7, 0, 1, 2, 3, 5, 6}, {0, 4, 7, 1, 2, 3, 5, 6}, {1, 4, 7, 0, 2, 3, 5, 6}, {0, 1, 4, 7, 2, 3, 5, 6},
+        {2, 4, 7, 0, 1, 3, 5, 6}, {0, 2, 4, 7, 1, 3, 5, 6}, {1, 2, 4, 7, 0, 3, 5, 6}, {0, 1, 2, 4, 7, 3, 5, 6},
+        {3, 4, 7, 0, 1, 2, 5, 6}, {0, 3, 4, 7, 1, 2, 5, 6}, {1, 3, 4, 7, 0, 2, 5, 6}, {0, 1, 3, 4, 7, 2, 5, 6},
+        {2, 3, 4, 7, 0, 1, 5, 6}, {0, 2, 3, 4, 7, 1, 5, 6}, {1, 2, 3, 4, 7, 0, 5, 6}, {0, 1, 2, 3, 4, 7, 5, 6},
+        {5, 7, 0, 1, 2, 3, 4, 6}, {0, 5, 7, 1, 2, 3, 4, 6}, {1, 5, 7, 0, 2, 3, 4, 6}, {0, 1, 5, 7, 2, 3, 4, 6},
+        {2, 5, 7, 0, 1, 3, 4, 6}, {0, 2, 5, 7, 1, 3, 4, 6}, {1, 2, 5, 7, 0, 3, 4, 6}, {0, 1, 2, 5, 7, 3, 4, 6},
+        {3, 5, 7, 0, 1, 2, 4, 6}, {0, 3, 5, 7, 1, 2, 4, 6}, {1, 3, 5, 7, 0, 2, 4, 6}, {0, 1, 3, 5, 7, 2, 4, 6},
+        {2, 3, 5, 7, 0, 1, 4, 6}, {0, 2, 3, 5, 7, 1, 4, 6}, {1, 2, 3, 5, 7, 0, 4, 6}, {0, 1, 2, 3, 5, 7, 4, 6},
+        {4, 5, 7, 0, 1, 2, 3, 6}, {0, 4, 5, 7, 1, 2, 3, 6}, {1, 4, 5, 7, 0, 2, 3, 6}, {0, 1, 4, 5, 7, 2, 3, 6},
+        {2, 4, 5, 7, 0, 1, 3, 6}, {0, 2, 4, 5, 7, 1, 3, 6}, {1, 2, 4, 5, 7, 0, 3, 6}, {0, 1, 2, 4, 5, 7, 3, 6},
+        {3, 4, 5, 7, 0, 1, 2, 6}, {0, 3, 4, 5, 7, 1, 2, 6}, {1, 3, 4, 5, 7, 0, 2, 6}, {0, 1, 3, 4, 5, 7, 2, 6},
+        {2, 3, 4, 5, 7, 0, 1, 6}, {0, 2, 3, 4, 5, 7, 1, 6}, {1, 2, 3, 4, 5, 7, 0, 6}, {0, 1, 2, 3, 4, 5, 7, 6},
+        {6, 7, 0, 1, 2, 3, 4, 5}, {0, 6, 7, 1, 2, 3, 4, 5}, {1, 6, 7, 0, 2, 3, 4, 5}, {0, 1, 6, 7, 2, 3, 4, 5},
+        {2, 6, 7, 0, 1, 3, 4, 5}, {0, 2, 6, 7, 1, 3, 4, 5}, {1, 2, 6, 7, 0, 3, 4, 5}, {0, 1, 2, 6, 7, 3, 4, 5},
+        {3, 6, 7, 0, 1, 2, 4, 5}, {0, 3, 6, 7, 1, 2, 4, 5}, {1, 3, 6, 7, 0, 2, 4, 5}, {0, 1, 3, 6, 7, 2, 4, 5},
+        {2, 3, 6, 7, 0, 1, 4, 5}, {0, 2, 3, 6, 7, 1, 4, 5}, {1, 2, 3, 6, 7, 0, 4, 5}, {0, 1, 2, 3, 6, 7, 4, 5},
+        {4, 6, 7, 0, 1, 2, 3, 5}, {0, 4, 6, 7, 1, 2, 3, 5}, {1, 4, 6, 7, 0, 2, 3, 5}, {0, 1, 4, 6, 7, 2, 3, 5},
+        {2, 4, 6, 7, 0, 1, 3, 5}, {0, 2, 4, 6, 7, 1, 3, 5}, {1, 2, 4, 6, 7, 0, 3, 5}, {0, 1, 2, 4, 6, 7, 3, 5},
+        {3, 4, 6, 7, 0, 1, 2, 5}, {0, 3, 4, 6, 7, 1, 2, 5}, {1, 3, 4, 6, 7, 0, 2, 5}, {0, 1, 3, 4, 6, 7, 2, 5},
+        {2, 3, 4, 6, 7, 0, 1, 5}, {0, 2, 3, 4, 6, 7, 1, 5}, {1, 2, 3, 4, 6, 7, 0, 5}, {0, 1, 2, 3, 4, 6, 7, 5},
+        {5, 6, 7, 0, 1, 2, 3, 4}, {0, 5, 6, 7, 1, 2, 3, 4}, {1, 5, 6, 7, 0, 2, 3, 4}, {0, 1, 5, 6, 7, 2, 3, 4},
+        {2, 5, 6, 7, 0, 1, 3, 4}, {0, 2, 5, 6, 7, 1, 3, 4}, {1, 2, 5, 6, 7, 0, 3, 4}, {0, 1, 2, 5, 6, 7, 3, 4},
+        {3, 5, 6, 7, 0, 1, 2, 4}, {0, 3, 5, 6, 7, 1, 2, 4}, {1, 3, 5, 6, 7, 0, 2, 4}, {0, 1, 3, 5, 6, 7, 2, 4},
+        {2, 3, 5, 6, 7, 0, 1, 4}, {0, 2, 3, 5, 6, 7, 1, 4}, {1, 2, 3, 5, 6, 7, 0, 4}, {0, 1, 2, 3, 5, 6, 7, 4},
+        {4, 5, 6, 7, 0, 1, 2, 3}, {0, 4, 5, 6, 7, 1, 2, 3}, {1, 4, 5, 6, 7, 0, 2, 3}, {0, 1, 4, 5, 6, 7, 2, 3},
+        {2, 4, 5, 6, 7, 0, 1, 3}, {0, 2, 4, 5, 6, 7, 1, 3}, {1, 2, 4, 5, 6, 7, 0, 3}, {0, 1, 2, 4, 5, 6, 7, 3},
+        {3, 4, 5, 6, 7, 0, 1, 2}, {0, 3, 4, 5, 6, 7, 1, 2}, {1, 3, 4, 5, 6, 7, 0, 2}, {0, 1, 3, 4, 5, 6, 7, 2},
+        {2, 3, 4, 5, 6, 7, 0, 1}, {0, 2, 3, 4, 5, 6, 7, 1}, {1, 2, 3, 4, 5, 6, 7, 0}, {0, 1, 2, 3, 4, 5, 6, 7},
+};
+
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool no_conflicts, uint8_t MODE>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join(RuntimeState* state,
                                                                                  const Buffer<CppType>& build_data,
                                                                                  const Buffer<CppType>& probe_data) {
     const size_t probe_row_count = _probe_state->probe_row_count;
+    auto* dst_probe_indexes = _probe_state->probe_index.data();
 
     uint32_t match_count = 0;
-    auto* probe_indexes = _probe_state->probe_index.data();
 
     if constexpr (MODE == 2) {
         const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-        const auto* buckets = _table_items->first.data();
+        const auto* build_buckets = _table_items->first.data();
         const auto* probe_buckets = _probe_state->buckets.data();
-        const auto* raw_probe_data = reinterpret_cast<const uint32_t*>(probe_data.data());
+        const auto* probe_keys = reinterpret_cast<const uint32_t*>(probe_data.data());
 
-        for (uint32_t i = 0; i < probe_row_count; i++) {
-            const auto probe_key = raw_probe_data[i];
+        uint32_t i = 0;
+
+#if defined(__AVX2__) && defined(__POPCNT__)
+
+        static constexpr uint32_t W = 8;
+
+        const __m256i vzeros = _mm256_setzero_si256();
+        const __m256i vones = _mm256_set1_epi32(1);
+        const __m256i vbucket_size_mask = _mm256_set1_epi32(bucket_size_mask);
+        const __m256i vbuild_key_mask = _mm256_set1_epi32(0x7FFF'FFFFul);
+
+        uint8_t match_mask = 255;
+        __m256i vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
+        __m256i vprobe_times = _mm256_set1_epi32(0x0);
+        __m256i vprobe_buckets = _mm256_set1_epi32(0x0);
+        __m256i vprobe_keys = _mm256_set1_epi32(0x0);
+        __m256i vprobe_indexes = _mm256_set1_epi32(0x0);
+        while (i + W <= probe_row_count) {
+            if (match_mask == 255) {
+                vprobe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets));
+                vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys));
+                vprobe_indexes = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
+                i += W;
+            } else if (match_mask == 0) {
+                vprobe_times = _mm256_add_epi32(vprobe_times, vones);
+                vprobe_buckets = _mm256_add_epi32(vprobe_buckets, vprobe_times);
+                vprobe_buckets = _mm256_and_si256(vprobe_buckets, vbucket_size_mask);
+            } else {
+                __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                        _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
+                __m256i vmatch2 = _mm256_permutevar8x32_epi32(vmatch, vmove_left_mask); // move matched items to left
+
+                // selectively load vprobe_times
+                vprobe_times = _mm256_permutevar8x32_epi32(vprobe_times, vmove_left_mask);
+                vprobe_times = _mm256_add_epi32(vprobe_times, vones);
+                vprobe_times = _mm256_blendv_epi8(vprobe_times, vzeros(), vmatch2);
+
+                // selectively load vprobe_buckets
+                vprobe_buckets = _mm256_permutevar8x32_epi32(vprobe_buckets, vmove_left_mask);
+                vprobe_buckets = _mm256_add_epi32(vprobe_buckets, vprobe_times);
+                vprobe_buckets = _mm256_and_si256(vprobe_buckets, vbucket_size_mask);
+                __m256i vnew_probe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets));
+                vprobe_buckets = _mm256_blendv_epi8(vprobe_buckets, vnew_probe_buckets, vmatch2);
+
+                // selectively load probe_keys
+                vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
+                __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys));
+                vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch2);
+
+                // selectively load probe_indexes
+                vprobe_indexes = _mm256_permutevar8x32_epi32(vprobe_indexes, vmove_left_mask);
+                __m256i vnew_is = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
+                vprobe_indexes = _mm256_blendv_epi8(vprobe_indexes, vnew_is, vmatch2);
+
+                i += __builtin_popcount(match_mask);
+            }
+
+            // empty mask
+            vmatch = _mm256_cmpeq_epi32(vprobe_buckets, _mm256_setzero_si256());
+            match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+
+            if (match_mask != 0) {
+                __m256i vbuild_keys =
+                        _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_buckets), vprobe_buckets, 4);
+                vbuild_keys = _mm256_and_si256(vbuild_keys, vbuild_key_mask);
+                __m256i vnew_match = _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys);
+                uint8_t new_match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
+
+                if (new_match_mask == 255) {
+                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_probe_indexes + match_count), vprobe_indexes);
+                    match_count += 8;
+                } else if (new_match_mask != 0) {
+                    // selectively store
+                    __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[new_match_mask])));
+                    __m256i vleft_probe_indexes = _mm256_permutevar8x32_epi32(vprobe_indexes, vmove_left_mask);
+                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_probe_indexes + match_count),
+                                        vleft_probe_indexes);
+                    match_count += __builtin_popcount(match_mask);
+                }
+
+                vmatch = _mm256_or_si256(vmatch, vnew_match);
+                match_mask |= new_match_mask;
+            }
+        }
+#endif
+
+        for (; i < probe_row_count; i++) {
+            const auto probe_key = probe_keys[i];
 
             uint32_t bucket = probe_buckets[i];
             uint32_t probe_times = 1;
             while (true) {
-                const auto build_key = buckets[bucket];
+                const auto build_key = build_buckets[bucket];
                 if (build_key == 0) {
                     break;
                 }
                 if ((build_key & 0x7FFF'FFFFul) == probe_key) {
-                    probe_indexes[match_count] = i;
+                    dst_probe_indexes[match_count] = i;
                     match_count++;
                     break;
                 }
@@ -1728,7 +1883,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             uint32_t index = nexts[i];
             while (index != 0) {
                 if (ProbeFunc().equal(build_data[index], probe_data[i])) {
-                    probe_indexes[match_count] = i;
+                    dst_probe_indexes[match_count] = i;
                     match_count++;
                     break;
                 }
