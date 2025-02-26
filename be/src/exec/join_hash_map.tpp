@@ -1838,7 +1838,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
         const auto* probe_values = reinterpret_cast<const uint32_t*>(probe_data.data());
         const auto* build_buckets = _table_items->set_has_value.data();
+
         uint8_t* dst_matches = _probe_state->probe_match_filter.data();
+        memset(dst_matches, 0, sizeof(uint8_t) * probe_row_count);
 
         for (uint32_t i = 0; i < probe_row_count; i++) {
             const uint32_t value = probe_values[i];
@@ -1849,10 +1851,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 const uint32_t group = bucket / 8;
                 const uint32_t offset = bucket % 8;
                 matched &= (build_buckets[group] & (1 << offset)) != 0;
+                dst_matches[i] = matched;
+                match_count += matched;
             }
-
-            dst_matches[i] = matched;
-            match_count += matched;
         }
 
         if (match_count == probe_row_count) {
