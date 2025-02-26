@@ -1845,58 +1845,58 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
         }
 
-        // if (match_mask != 0xFF) {
-        //     uint32_t cur_probe_times[W];
-        //     _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_times), vprobe_times);
-        //     uint32_t cur_probe_buckets[W];
-        //     _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_buckets), vprobe_buckets);
-        //     uint32_t cur_probe_keys[W];
-        //     _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_keys), vprobe_keys);
-        //     uint32_t cur_probe_indexes[W];
-        //     _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_indexes), vprobe_indexes);
-        //
-        //     match_mask = ~match_mask; // Get each position i for `match_mask[i] == 0`.
-        //     for (; match_mask != 0; match_mask &= match_mask - 1) {
-        //         const uint32_t j = __builtin_ctz(match_mask);
-        //
-        //         const uint32_t probe_key = cur_probe_keys[j];
-        //         uint32_t probe_bucket = cur_probe_buckets[j];
-        //         uint32_t probe_times = cur_probe_times[j];
-        //
-        //         while (true) {
-        //             probe_times++;
-        //             probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
-        //             const uint32_t build_key = build_buckets[probe_bucket];
-        //
-        //             if (build_key == 0) {
-        //                 break;
-        //             }
-        //             if (probe_key == build_key) {
-        //                 dst_probe_indexes[match_count] = cur_probe_indexes[j];
-        //                 match_count++;
-        //                 break;
-        //             }
-        //         }
-        //     }
-        // }
+        if (match_mask != 0xFF) {
+            uint32_t cur_probe_times[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_times), vprobe_times);
+            uint32_t cur_probe_buckets[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_buckets), vprobe_buckets);
+            uint32_t cur_probe_keys[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_keys), vprobe_keys);
+            uint32_t cur_probe_indexes[W];
+            _mm256_store_si256(reinterpret_cast<__m256i*>(cur_probe_indexes), vprobe_indexes);
+
+            match_mask = ~match_mask; // Get each position i for `match_mask[i] == 0`.
+            for (; match_mask != 0; match_mask &= match_mask - 1) {
+                const uint32_t j = __builtin_ctz(match_mask);
+
+                const uint32_t probe_key = cur_probe_keys[j];
+                uint32_t probe_bucket = cur_probe_buckets[j];
+                uint32_t probe_times = cur_probe_times[j];
+
+                while (true) {
+                    probe_times++;
+                    probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                    const uint32_t build_key = build_buckets[probe_bucket];
+
+                    if (build_key == 0) {
+                        break;
+                    }
+                    if (build_key == probe_key) {
+                        dst_probe_indexes[match_count] = cur_probe_indexes[j];
+                        match_count++;
+                        break;
+                    }
+                }
+            }
+        }
 #endif
 
         for (; i < probe_row_count; i++) {
-            const auto probe_key = probe_keys[i];
+            const uint32_t probe_key = probe_keys[i] | 0x8000'0000ul;
 
-            uint32_t bucket = probe_buckets[i];
+            uint32_t probe_bucket = probe_buckets[i];
             uint32_t probe_times = 1;
             while (true) {
-                const auto build_key = build_buckets[bucket];
+                const uint32_t build_key = build_buckets[probe_bucket];
                 if (build_key == 0) {
                     break;
                 }
-                if ((build_key & 0x7FFF'FFFFul) == probe_key) {
+                if (build_key == probe_key) {
                     dst_probe_indexes[match_count] = i;
                     match_count++;
                     break;
                 }
-                bucket = (bucket + probe_times) & bucket_size_mask;
+                probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
                 probe_times++;
             }
         }
