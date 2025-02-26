@@ -1778,7 +1778,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         const __m256i vzeros = _mm256_setzero_si256();
         const __m256i vones = _mm256_set1_epi32(1);
         const __m256i vbucket_size_mask = _mm256_set1_epi32(bucket_size_mask);
-        const __m256i vbuild_key_mask = _mm256_set1_epi32(0x7FFF'FFFFul);
+        const __m256i vprobe_key_mask = _mm256_set1_epi32(0x8000'0000ul);
 
         uint8_t match_mask = 255;
         __m256i vmatch = _mm256_set1_epi32(0xFFFF'FFFF);
@@ -1790,6 +1790,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             if (match_mask == 255) {
                 vprobe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets));
                 vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys));
+                vprobe_keys = _mm256_or_si256(vprobe_keys, vprobe_key_mask);
                 vprobe_indexes = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
                 i += W;
             } else if (match_mask == 0) {
@@ -1816,6 +1817,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 // selectively load probe_keys
                 vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
                 __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys));
+                vnew_probe_keys = _mm256_or_si256(vnew_probe_keys, vprobe_key_mask);
                 vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch2);
 
                 // selectively load probe_indexes
@@ -1826,33 +1828,24 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 i += __builtin_popcount(match_mask);
             }
 
-            // empty mask
-            vmatch = _mm256_cmpeq_epi32(vprobe_buckets, vzeros);
+            __m256i vbuild_keys =
+                    _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_buckets), vprobe_buckets, 4);
+            vmatch = _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys);
             match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
 
-            if (match_mask != 255) {
-                __m256i vbuild_keys =
-                        _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_buckets), vprobe_buckets, 4);
-                vbuild_keys = _mm256_and_si256(vbuild_keys, vbuild_key_mask);
-                __m256i vnew_match = _mm256_cmpeq_epi32(vprobe_keys, vbuild_keys);
-                uint8_t new_match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
-
-                if (new_match_mask == 255) {
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_probe_indexes + match_count), vprobe_indexes);
-                    match_count += 8;
-                } else if (new_match_mask != 0) {
-                    // selectively store
-                    __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
-                            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[new_match_mask])));
-                    __m256i vleft_probe_indexes = _mm256_permutevar8x32_epi32(vprobe_indexes, vmove_left_mask);
-                    _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_probe_indexes + match_count),
-                                        vleft_probe_indexes);
-                    match_count += __builtin_popcount(match_mask);
-                }
-
-                vmatch = _mm256_or_si256(vmatch, vnew_match);
-                match_mask |= new_match_mask;
+            if (match_mask == 255) {
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_probe_indexes + match_count), vprobe_indexes);
+                match_count += W;
+            } else if (match_mask != 0) {
+                // selectively store
+                __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                        _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
+                __m256i vleft_probe_indexes = _mm256_permutevar8x32_epi32(vprobe_indexes, vmove_left_mask);
+                _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst_probe_indexes + match_count), vleft_probe_indexes);
+                match_count += __builtin_popcount(match_mask);
             }
+
+            vmatch = _mm256_or_si256(vmatch, _mm256_cmpeq_epi32(vbuild_keys, vzeros));
         }
 #endif
 
