@@ -1566,7 +1566,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
     }
 
     const auto* nexts = _probe_state->next.data();
-    const auto* buckets = _probe_state->buckets.data();
     const size_t probe_row_count = _probe_state->probe_row_count;
     uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
     for (; i < probe_row_count; i++) {
@@ -1828,10 +1827,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             }
 
             // empty mask
-            vmatch = _mm256_cmpeq_epi32(vprobe_buckets, _mm256_setzero_si256());
+            vmatch = _mm256_cmpeq_epi32(vprobe_buckets, vzeros);
             match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vmatch));
 
-            if (match_mask != 0) {
+            if (match_mask != 255) {
                 __m256i vbuild_keys =
                         _mm256_i32gather_epi32(reinterpret_cast<const int*>(build_buckets), vprobe_buckets, 4);
                 vbuild_keys = _mm256_and_si256(vbuild_keys, vbuild_key_mask);
