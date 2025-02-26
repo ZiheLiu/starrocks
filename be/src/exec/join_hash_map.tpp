@@ -48,7 +48,7 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
-    table_items->set_has_value.resize(table_items->bucket_size, 0);
+    table_items->set_has_value.resize(table_items->bucket_size / 8, 0);
 }
 
 template <LogicalType LT>
@@ -158,7 +158,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = keys[i] - min_value;
-                    buckets[bucket] = null_array[i] == 0;
+                    const uint32_t group = bucket / 8;
+                    const uint32_t offset = bucket % 8;
+                    buckets[group] |= (null_array[i] == 0) << offset;
                 }
             } else {
                 for (size_t i = 1; i < num_rows; i++) {
@@ -195,7 +197,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = keys[i] - min_value;
-                    buckets[bucket] = true;
+                    const uint32_t group = bucket / 8;
+                    const uint32_t offset = bucket % 8;
+                    buckets[group] |= 1 << offset;
                 }
             } else {
                 for (size_t i = 1; i < num_rows; i++) {
@@ -231,7 +235,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             auto* __restrict buckets = table_items->set_has_value.data();
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket = keys[i] - min_value;
-                buckets[bucket] = true;
+                const uint32_t group = bucket / 8;
+                const uint32_t offset = bucket % 8;
+                buckets[group] |= 1 << offset;
             }
         } else {
             for (size_t i = 1; i < num_rows; i++) {
@@ -1836,10 +1842,17 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
         for (uint32_t i = 0; i < probe_row_count; i++) {
             const uint32_t value = probe_values[i];
-            const bool matched = (min_value <= value) & (value <= max_value) & (build_buckets[value - min_value]);
 
-            dst_matches[i] = matched;
-            match_count += matched;
+            bool matched = (min_value <= value) & (value <= max_value);
+            if (matched) {
+                const uint32_t bucket = value - min_value;
+                const uint32_t group = bucket / 8;
+                const uint32_t offset = bucket % 8;
+                matched |= (build_buckets[group] & (1 << offset)) != 0;
+
+                dst_matches[i] = matched;
+                match_count += matched;
+            }
         }
 
         if (match_count == probe_row_count) {
@@ -2101,9 +2114,15 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
                 const uint32_t value = probe_values[i];
-                const bool matched = (min_value <= value) & (value <= max_value) & (build_buckets[value - min_value]);
-                const bool not_matched = !matched;
+                bool matched = (min_value <= value) & (value <= max_value);
+                if (matched) {
+                    const uint32_t bucket = value - min_value;
+                    const uint32_t group = bucket / 8;
+                    const uint32_t offset = bucket % 8;
+                    matched |= (build_buckets[group] & (1 << offset)) != 0;
+                }
 
+                const bool not_matched = !matched;
                 dst_matches[i] = not_matched;
                 match_count += not_matched;
             }
