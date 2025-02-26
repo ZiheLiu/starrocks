@@ -1784,8 +1784,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         while (i + W <= probe_row_count) {
             if (match_mask == 0xFF) {
                 vprobe_times = _mm256_setzero_si256();
-                vprobe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets));
-                vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys));
+                vprobe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets + i));
+                vprobe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys + i));
                 vprobe_keys = _mm256_or_si256(vprobe_keys, vprobe_key_mask);
                 vprobe_indexes = _mm256_set_epi32(i + 7, i + 6, i + 5, i + 4, i + 3, i + 2, i + 1, i);
                 i += W;
@@ -1794,7 +1794,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 vprobe_buckets = _mm256_add_epi32(vprobe_buckets, vprobe_times);
                 vprobe_buckets = _mm256_and_si256(vprobe_buckets, vbucket_size_mask);
             } else {
-                __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
+                const __m256i vmove_left_mask = _mm256_cvtepu8_epi32(
                         _mm_loadl_epi64(reinterpret_cast<const __m128i*>(move_left_mask_perm[match_mask])));
                 vmatch = _mm256_permutevar8x32_epi32(vmatch, vmove_left_mask); // move matched items to left
 
@@ -1807,12 +1807,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 vprobe_buckets = _mm256_permutevar8x32_epi32(vprobe_buckets, vmove_left_mask);
                 vprobe_buckets = _mm256_add_epi32(vprobe_buckets, vprobe_times);
                 vprobe_buckets = _mm256_and_si256(vprobe_buckets, vbucket_size_mask);
-                __m256i vnew_probe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets));
+                __m256i vnew_probe_buckets = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_buckets + i));
                 vprobe_buckets = _mm256_blendv_epi8(vprobe_buckets, vnew_probe_buckets, vmatch);
 
                 // selectively load probe_keys
                 vprobe_keys = _mm256_permutevar8x32_epi32(vprobe_keys, vmove_left_mask);
-                __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys));
+                __m256i vnew_probe_keys = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_keys + i));
                 vnew_probe_keys = _mm256_or_si256(vnew_probe_keys, vprobe_key_mask);
                 vprobe_keys = _mm256_blendv_epi8(vprobe_keys, vnew_probe_keys, vmatch);
 
