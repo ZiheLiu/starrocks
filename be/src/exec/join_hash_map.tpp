@@ -1829,15 +1829,27 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
     if constexpr (MODE == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         const uint32_t min_value = _table_items->min_value;
         const uint32_t max_value = _table_items->max_value;
+
         const auto* probe_values = reinterpret_cast<const uint32_t*>(probe_data.data());
         const auto* build_buckets = _table_items->set_has_value.data();
-        for (uint32_t i = 0; i < probe_row_count; i++) {
-            dst_probe_indexes[match_count] = i;
+        uint8_t* dst_matches = _probe_state->probe_match_filter.data();
 
+        for (uint32_t i = 0; i < probe_row_count; i++) {
             const uint32_t value = probe_values[i];
             const bool matched = (min_value <= value) & (value <= max_value) & (build_buckets[value - min_value]);
+
+            dst_matches[i] = matched;
             match_count += matched;
         }
+
+        if (match_count == probe_row_count) {
+            _probe_state->match_flag = JoinMatchFlag::ALL_MATCH_ONE;
+        } else {
+            _probe_state->match_flag = JoinMatchFlag::MOST_MATCH_ONE;
+        }
+
+        PROBE_OVER()
+        return;
     } else if constexpr (MODE == 2) {
         const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
         const auto* build_buckets = _table_items->first.data();
@@ -2082,17 +2094,28 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         if constexpr (SIMD == 3) {
             const uint32_t min_value = _table_items->min_value;
             const uint32_t max_value = _table_items->max_value;
+
             const auto* probe_values = reinterpret_cast<const uint32_t*>(probe_data.data());
             const auto* build_buckets = _table_items->set_has_value.data();
-            auto* dst_probe_indexes = _probe_state->probe_index.data();
+            uint8_t* dst_matches = _probe_state->probe_match_filter.data();
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                dst_probe_indexes[match_count] = i;
-
                 const uint32_t value = probe_values[i];
                 const bool matched = (min_value <= value) & (value <= max_value) & (build_buckets[value - min_value]);
-                match_count += !matched;
+                const bool not_matched = !matched;
+
+                dst_matches[i] = not_matched;
+                match_count += not_matched;
             }
+
+            if (match_count == probe_row_count) {
+                _probe_state->match_flag = JoinMatchFlag::ALL_MATCH_ONE;
+            } else {
+                _probe_state->match_flag = JoinMatchFlag::MOST_MATCH_ONE;
+            }
+
+            PROBE_OVER()
+            return;
         } else if constexpr (SIMD == 2) {
             const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
             const auto* buckets = _table_items->first.data();
