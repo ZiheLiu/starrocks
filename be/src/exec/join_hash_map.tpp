@@ -1848,7 +1848,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 const uint32_t bucket = value - min_value;
                 const uint32_t group = bucket / 8;
                 const uint32_t offset = bucket % 8;
-                matched |= (build_buckets[group] & (1 << offset)) != 0;
+                matched &= (build_buckets[group] & (1 << offset)) != 0;
             }
 
             dst_matches[i] = matched;
@@ -2119,7 +2119,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                     const uint32_t bucket = value - min_value;
                     const uint32_t group = bucket / 8;
                     const uint32_t offset = bucket % 8;
-                    matched |= (build_buckets[group] & (1 << offset)) != 0;
+                    matched &= (build_buckets[group] & (1 << offset)) != 0;
                 }
 
                 const bool not_matched = !matched;
