@@ -1835,6 +1835,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
     if constexpr (MODE == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         const uint32_t min_value = _table_items->min_value;
         const uint32_t max_value = _table_items->max_value;
+        const uint32_t group_mask = _table_items->bucket_size / 8 - 1;
 
         const auto* probe_values = reinterpret_cast<const uint32_t*>(probe_data.data());
         const auto* build_buckets = _table_items->set_has_value.data();
@@ -1845,15 +1846,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         for (uint32_t i = 0; i < probe_row_count; i++) {
             const uint32_t value = probe_values[i];
 
-            bool matched = (min_value <= value) & (value <= max_value);
-            if (matched) {
-                const uint32_t bucket = value - min_value;
-                const uint32_t group = bucket / 8;
-                const uint32_t offset = bucket % 8;
-                matched &= (build_buckets[group] & (1 << offset)) != 0;
-                dst_matches[i] = matched;
-                match_count += matched;
-            }
+            const uint32_t bucket = value - min_value;
+            const uint32_t group = (bucket / 8) & group_mask;
+            const uint32_t offset = bucket % 8;
+            bool matched = matched =
+                    (min_value <= value) & (value <= max_value) & (build_buckets[group] & (1 << offset)) != 0;
+
+            dst_matches[i] = matched;
+            match_count += matched;
         }
 
         if (match_count == probe_row_count) {
