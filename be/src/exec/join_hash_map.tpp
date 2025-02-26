@@ -1805,7 +1805,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 // selectively load vprobe_times
                 vprobe_times = _mm256_permutevar8x32_epi32(vprobe_times, vmove_left_mask);
                 vprobe_times = _mm256_add_epi32(vprobe_times, vones);
-                vprobe_times = _mm256_blendv_epi8(vprobe_times, vzeros(), vmatch2);
+                vprobe_times = _mm256_blendv_epi8(vprobe_times, vzeros, vmatch2);
 
                 // selectively load vprobe_buckets
                 vprobe_buckets = _mm256_permutevar8x32_epi32(vprobe_buckets, vmove_left_mask);
