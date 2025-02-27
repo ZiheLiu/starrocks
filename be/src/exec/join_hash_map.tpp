@@ -1863,24 +1863,25 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 continue;
             }
 
-            __m256i vbuckets = _mm256_sub_epi32(vprobe_values, vmin_value);
-            vbuckets = _mm256_blendv_epi8(vbuckets, _mm256_setzero_si256(), vnot_in_range);
-            __m256i vgroups = _mm256_srli_epi32(vbuckets, 3);
-            __m256i voffsets = _mm256_and_si256(vbuckets, _mm256_set1_epi32(7));
+            __m256i vbucket_indexes = _mm256_sub_epi32(vprobe_values, vmin_value);
+            vbucket_indexes = _mm256_blendv_epi8(vbucket_indexes, _mm256_setzero_si256(), vnot_in_range);
+
+            __m256i voffsets = _mm256_and_si256(vbucket_indexes, _mm256_set1_epi32(7));
             voffsets = _mm256_sllv_epi32(_mm256_set1_epi32(1), voffsets);
 
-            __m256i vbuild_buckets = _mm256_set_epi32(
+            __m256i vgroups = _mm256_srli_epi32(vbucket_indexes, 3);
+            __m256i vbuckets = _mm256_set_epi32(
                     build_buckets[_mm256_extract_epi32(vgroups, 7)], build_buckets[_mm256_extract_epi32(vgroups, 6)],
                     build_buckets[_mm256_extract_epi32(vgroups, 5)], build_buckets[_mm256_extract_epi32(vgroups, 4)],
                     build_buckets[_mm256_extract_epi32(vgroups, 3)], build_buckets[_mm256_extract_epi32(vgroups, 2)],
                     build_buckets[_mm256_extract_epi32(vgroups, 1)], build_buckets[_mm256_extract_epi32(vgroups, 0)]);
 
-            __m256i vnot_match = _mm256_cmpeq_epi32(_mm256_and_si256(vbuild_buckets, voffsets), _mm256_setzero_si256());
+            __m256i vnot_match = _mm256_cmpeq_epi32(_mm256_and_si256(vbuckets, voffsets), _mm256_setzero_si256());
             uint8_t not_match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_match));
             uint8_t match_mask = ~(not_match_mask | not_in_range_mask);
 
             uint64_t result = (static_cast<uint64_t>(match_mask) * 0xFF) & 0x0101'0101'0101'0101ull;
-            reinterpret_cast<uint64_t*>(dst_matches)[i] = result;
+            *reinterpret_cast<uint64_t*>(dst_matches + i) = result;
             match_count += __builtin_popcount(match_mask);
         }
 #endif
