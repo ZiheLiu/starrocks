@@ -1859,6 +1859,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             __m256i vnot_in_range = _mm256_or_si256(_mm256_cmpgt_epi32(vmin_value, vprobe_values),
                                                     _mm256_cmpgt_epi32(vprobe_values, vmax_value));
             uint8_t not_in_range_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_in_range));
+
             if (not_in_range_mask == 0xFF) {
                 continue;
             }
@@ -1870,17 +1871,23 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             voffsets = _mm256_sllv_epi32(_mm256_set1_epi32(1), voffsets);
 
             __m256i vgroups = _mm256_srli_epi32(vbucket_indexes, 3);
-            __m256i vbuckets = _mm256_set_epi32(
-                    build_buckets[_mm256_extract_epi32(vgroups, 7)], build_buckets[_mm256_extract_epi32(vgroups, 6)],
-                    build_buckets[_mm256_extract_epi32(vgroups, 5)], build_buckets[_mm256_extract_epi32(vgroups, 4)],
-                    build_buckets[_mm256_extract_epi32(vgroups, 3)], build_buckets[_mm256_extract_epi32(vgroups, 2)],
-                    build_buckets[_mm256_extract_epi32(vgroups, 1)], build_buckets[_mm256_extract_epi32(vgroups, 0)]);
+            __m256i vbuckets = _mm256_set_epi32(build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 7))],
+                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 6))],
+                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 5))],
+                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 4))],
+                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 3))],
+                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 2))],
+                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 1))],
+                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 0))]);
 
             __m256i vnot_match = _mm256_cmpeq_epi32(_mm256_and_si256(vbuckets, voffsets), _mm256_setzero_si256());
             uint8_t not_match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_match));
             uint8_t match_mask = ~(not_match_mask | not_in_range_mask);
 
-            uint64_t result = (static_cast<uint64_t>(match_mask) * 0xFF) & 0x0101'0101'0101'0101ull;
+            uint64_t result = 0;
+            for (int j = 0; j < 8; j++) {
+                result |= (static_cast<uint64_t>((match_mask >> j) & 1) << (j * 8));
+            }
             *reinterpret_cast<uint64_t*>(dst_matches + i) = result;
             match_count += __builtin_popcount(match_mask);
         }
