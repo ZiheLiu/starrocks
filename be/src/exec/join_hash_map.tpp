@@ -1856,7 +1856,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
             // vprobe_values >= vmin_value  not -> vmin_value > vprobe_values
             // vmax_value >= vprobe_values  not -> vprobe_values > vmax_value
-            __m256i vnot_in_range = _mm256_or_epi32(_mm256_cmpgt_epi32(vmin_value, vprobe_values),
+            __m256i vnot_in_range = _mm256_or_si256(_mm256_cmpgt_epi32(vmin_value, vprobe_values),
                                                     _mm256_cmpgt_epi32(vprobe_values, vmax_value));
             uint8_t not_in_range_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_in_range));
             if (not_in_range_mask == 0xFF) {
