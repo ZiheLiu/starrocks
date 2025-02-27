@@ -43,12 +43,58 @@ static constexpr uint8_t BLOOM_FILTERS[256] = {
 };
 
 template <LogicalType LT>
+uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
+    const int64_t conf_mode = abs(config::enable_simd_hash_join);
+    if (conf_mode == 1 && table_items->bucket_size <= BLOOM_FILTER_MASK &&
+        (table_items->join_type == TJoinOp::INNER_JOIN || table_items->join_type == TJoinOp::LEFT_OUTER_JOIN ||
+         table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+        return 1;
+    }
+
+    if (conf_mode == 2 && std::is_integral_v<CppType> && sizeof(CppType) == 4 &&
+        (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+        return 2;
+    }
+
+    if (conf_mode == 3 &&
+        (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN) &&
+        table_items->row_count > 0) {
+        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+            const size_t num_rows = table_items->row_count + 1;
+            const auto* keys = reinterpret_cast<const int32_t*>(get_key_data(*table_items).data());
+            const int32_t min_key = *std::min_element(keys + 1, keys + num_rows);
+            const int32_t max_key = *std::max_element(keys + 1, keys + num_rows);
+            const uint32_t key_interval = static_cast<int64_t>(max_key) - min_key + 1;
+
+            if (key_interval <= table_items->bucket_size / 8) {
+                table_items->min_value = min_key;
+                table_items->max_value = max_key;
+                return 3;
+            }
+
+            if (key_interval <= 1024 * 1024 / 8) {
+                table_items->bucket_size = 1024 * 1024;
+                table_items->min_value = min_key;
+                table_items->max_value = max_key;
+                return 3;
+            }
+        }
+    }
+
+    return 0;
+}
+
+template <LogicalType LT>
 void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table_items) {
     table_items->bucket_size = JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1);
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
-    table_items->first.resize(table_items->bucket_size, 0);
-    table_items->next.resize(table_items->row_count + 1, 0);
-    table_items->set_has_value.resize(table_items->bucket_size / 8, 0);
+    table_items->mode = decide_mode(table_items);
+    if (table_items->mode == 3) {
+        table_items->set_has_value.resize(table_items->bucket_size / 8, 0);
+    } else {
+        table_items->first.resize(table_items->bucket_size, 0);
+        table_items->next.resize(table_items->row_count + 1, 0);
+    }
 }
 
 template <LogicalType LT>
@@ -76,40 +122,21 @@ const Buffer<typename JoinBuildFunc<LT>::CppType>& JoinBuildFunc<LT>::get_key_da
 template <LogicalType LT>
 void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                              HashTableProbeState* probe_state) {
-    if (abs(config::enable_simd_hash_join) == 1 && table_items->bucket_size <= BLOOM_FILTER_MASK &&
-        (table_items->join_type == TJoinOp::INNER_JOIN || table_items->join_type == TJoinOp::LEFT_OUTER_JOIN ||
-         table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
-        table_items->mode = 1;
+    if (table_items->mode == 1) {
         do_construct_hash_table<1>(state, table_items, probe_state);
         return;
     }
 
-    if (abs(config::enable_simd_hash_join) == 2 && std::is_integral_v<CppType> && sizeof(CppType) == 4 &&
-        (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN)) {
-        table_items->mode = 2;
+    if (table_items->mode == 2) {
         do_construct_hash_table<2>(state, table_items, probe_state);
         return;
     }
 
-    if (abs(config::enable_simd_hash_join) == 3 &&
-        (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN) &&
-        table_items->row_count > 0) {
-        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const size_t num_rows = table_items->row_count + 1;
-            const auto* keys = reinterpret_cast<const int32_t*>(get_key_data(*table_items).data());
-            const int32_t min_key = *std::min_element(keys + 1, keys + num_rows);
-            const int32_t max_key = *std::max_element(keys + 1, keys + num_rows);
-            if (max_key - min_key + 1 <= table_items->bucket_size) {
-                table_items->mode = 3;
-                table_items->min_value = min_key;
-                table_items->max_value = max_key;
-                do_construct_hash_table<3>(state, table_items, probe_state);
-                return;
-            }
-        }
+    if (table_items->mode == 3) {
+        do_construct_hash_table<3>(state, table_items, probe_state);
+        return;
     }
 
-    table_items->mode = 0;
     do_construct_hash_table<0>(state, table_items, probe_state);
 }
 

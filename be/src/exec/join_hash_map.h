@@ -421,6 +421,7 @@ public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
 
+    static uint8_t decide_mode(JoinHashTableItems* table_items);
     static void prepare(RuntimeState* runtime, JoinHashTableItems* table_items);
     static const Buffer<CppType>& get_key_data(const JoinHashTableItems& table_items);
     static void construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
