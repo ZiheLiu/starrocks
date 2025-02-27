@@ -96,9 +96,9 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
         table_items->row_count > 0) {
         if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             const size_t num_rows = table_items->row_count + 1;
-            const auto* keys = reinterpret_cast<const uint32_t*>(get_key_data(*table_items).data());
-            const uint32_t min_key = *std::min_element(keys + 1, keys + num_rows);
-            const uint32_t max_key = *std::max_element(keys + 1, keys + num_rows);
+            const auto* keys = reinterpret_cast<const int32_t*>(get_key_data(*table_items).data());
+            const int32_t min_key = *std::min_element(keys + 1, keys + num_rows);
+            const int32_t max_key = *std::max_element(keys + 1, keys + num_rows);
             if (max_key - min_key + 1 <= table_items->bucket_size) {
                 table_items->mode = 3;
                 table_items->min_value = min_key;
@@ -153,8 +153,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
         if (nullable_column->has_null()) {
             if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const uint32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const uint32_t*>(data.data());
+                const int32_t min_value = table_items->min_value;
+                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = keys[i] - min_value;
@@ -192,8 +192,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             }
         } else {
             if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const uint32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const uint32_t*>(data.data());
+                const int32_t min_value = table_items->min_value;
+                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = keys[i] - min_value;
@@ -230,8 +230,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     } else {
         if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const uint32_t min_value = table_items->min_value;
-            const auto* keys = reinterpret_cast<const uint32_t*>(data.data());
+            const int32_t min_value = table_items->min_value;
+            const auto* keys = reinterpret_cast<const int32_t*>(data.data());
             auto* __restrict buckets = table_items->set_has_value.data();
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket = keys[i] - min_value;
@@ -1833,11 +1833,11 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
     uint32_t match_count = 0;
 
     if constexpr (MODE == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-        const uint32_t min_value = _table_items->min_value;
-        const uint32_t max_value = _table_items->max_value;
+        const int32_t min_value = _table_items->min_value;
+        const int32_t max_value = _table_items->max_value;
         const uint32_t group_mask = _table_items->bucket_size / 8 - 1;
 
-        const auto* probe_values = reinterpret_cast<const uint32_t*>(probe_data.data());
+        const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
         const auto* build_buckets = _table_items->set_has_value.data();
 
         uint8_t* dst_matches = _probe_state->probe_match_filter.data();
@@ -1887,7 +1887,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 #endif
 
         for (; i < probe_row_count; i++) {
-            const uint32_t value = probe_values[i];
+            const int32_t value = probe_values[i];
 
             const uint32_t bucket = value - min_value;
             const uint32_t group = (bucket / 8) & group_mask;
@@ -2148,15 +2148,15 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         }
     } else {
         if constexpr (SIMD == 3) {
-            const uint32_t min_value = _table_items->min_value;
-            const uint32_t max_value = _table_items->max_value;
+            const int32_t min_value = _table_items->min_value;
+            const int32_t max_value = _table_items->max_value;
 
-            const auto* probe_values = reinterpret_cast<const uint32_t*>(probe_data.data());
+            const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
             const auto* build_buckets = _table_items->set_has_value.data();
             uint8_t* dst_matches = _probe_state->probe_match_filter.data();
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                const uint32_t value = probe_values[i];
+                const int32_t value = probe_values[i];
                 bool matched = (min_value <= value) & (value <= max_value);
                 if (matched) {
                     const uint32_t bucket = value - min_value;

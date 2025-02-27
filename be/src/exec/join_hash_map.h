@@ -128,8 +128,8 @@ struct JoinHashTableItems {
     Buffer<uint8_t> set_has_value;
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
-    uint32_t min_value = 0;
-    uint32_t max_value = 0;
+    int32_t min_value = 0;
+    int32_t max_value = 0;
     uint32_t bucket_size = 0;
     uint32_t log_bucket_size = 0;
     uint32_t row_count = 0; // real row count
