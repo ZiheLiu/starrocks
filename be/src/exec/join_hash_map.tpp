@@ -1849,8 +1849,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             const uint32_t bucket = value - min_value;
             const uint32_t group = (bucket / 8) & group_mask;
             const uint32_t offset = bucket % 8;
-            bool matched = matched =
-                    (min_value <= value) & (value <= max_value) & (build_buckets[group] & (1 << offset)) != 0;
+            bool matched = (min_value <= value) & (value <= max_value) & ((build_buckets[group] & (1 << offset)) != 0);
 
             dst_matches[i] = matched;
             match_count += matched;
