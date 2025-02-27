@@ -1843,7 +1843,49 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         uint8_t* dst_matches = _probe_state->probe_match_filter.data();
         memset(dst_matches, 0, sizeof(uint8_t) * probe_row_count);
 
-        for (uint32_t i = 0; i < probe_row_count; i++) {
+        uint32_t i = 0;
+
+#if defined(__AVX2__)
+        static constexpr uint32_t W = 8;
+
+        const __m256i vmin_value = _mm256_set1_epi32(min_value);
+        const __m256i vmax_value = _mm256_set1_epi32(max_value);
+
+        for (; i + W <= probe_row_count; i += W) {
+            __m256i vprobe_values = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_values + i));
+
+            // vprobe_values >= vmin_value  not -> vmin_value > vprobe_values
+            // vmax_value >= vprobe_values  not -> vprobe_values > vmax_value
+            __m256i vnot_in_range = _mm256_or_epi32(_mm256_cmpgt_epi32(vmin_value, vprobe_values),
+                                                    _mm256_cmpgt_epi32(vprobe_values, vmax_value));
+            uint8_t not_in_range_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_in_range));
+            if (not_in_range_mask == 0xFF) {
+                continue;
+            }
+
+            __m256i vbuckets = _mm256_sub_epi32(vprobe_values, vmin_value);
+            vbuckets = _mm256_blend_epi32(vbuckets, _mm256_setzero_si256(), not_in_range_mask);
+            __m256i vgroups = _mm256_srli_epi32(vbuckets, 3);
+            __m256i voffsets = _mm256_and_si256(vbuckets, _mm256_set1_epi32(7));
+            voffsets = _mm256_sllv_epi32(_mm256_set1_epi32(1), voffsets);
+
+            __m256i vbuild_buckets = _mm256_set_epi32(
+                    build_buckets[_mm256_extract_epi32(vgroups, 7)], build_buckets[_mm256_extract_epi32(vgroups, 6)],
+                    build_buckets[_mm256_extract_epi32(vgroups, 5)], build_buckets[_mm256_extract_epi32(vgroups, 4)],
+                    build_buckets[_mm256_extract_epi32(vgroups, 3)], build_buckets[_mm256_extract_epi32(vgroups, 2)],
+                    build_buckets[_mm256_extract_epi32(vgroups, 1)], build_buckets[_mm256_extract_epi32(vgroups, 0)]);
+
+            __m256i vnot_match = _mm256_cmpeq_epi32(_mm256_and_si256(vbuild_buckets, voffsets), _mm256_setzero_si256());
+            uint8_t not_match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_match));
+            uint8_t match_mask = ~(not_match_mask | not_in_range_mask);
+
+            uint64_t result = (static_cast<uint64_t>(match_mask) * 0xFF) & 0x0101'0101'0101'0101ull;
+            reinterpret_cast<uint64_t*>(dst_matches)[i] = result;
+            match_count += __builtin_popcount(match_mask);
+        }
+#endif
+
+        for (; i < probe_row_count; i++) {
             const uint32_t value = probe_values[i];
 
             const uint32_t bucket = value - min_value;
