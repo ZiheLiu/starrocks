@@ -1864,7 +1864,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
             }
 
             __m256i vbuckets = _mm256_sub_epi32(vprobe_values, vmin_value);
-            vbuckets = _mm256_blend_epi32(vbuckets, _mm256_setzero_si256(), not_in_range_mask);
+            vbuckets = _mm256_blendv_epi8(vbuckets, _mm256_setzero_si256(), vnot_in_range);
             __m256i vgroups = _mm256_srli_epi32(vbuckets, 3);
             __m256i voffsets = _mm256_and_si256(vbuckets, _mm256_set1_epi32(7));
             voffsets = _mm256_sllv_epi32(_mm256_set1_epi32(1), voffsets);
