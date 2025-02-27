@@ -66,13 +66,13 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
             const int32_t max_key = *std::max_element(keys + 1, keys + num_rows);
             const uint32_t key_interval = static_cast<int64_t>(max_key) - min_key + 1;
 
-            if (key_interval <= table_items->bucket_size / 8) {
+            if ((key_interval + 7) / 8 <= table_items->bucket_size) {
                 table_items->min_value = min_key;
                 table_items->max_value = max_key;
                 return 3;
             }
 
-            if (key_interval <= 1024 * 1024 / 8) {
+            if ((key_interval + 7) / 8 <= 1024 * 1024) {
                 table_items->bucket_size = 1024 * 1024;
                 table_items->min_value = min_key;
                 table_items->max_value = max_key;
