@@ -42,6 +42,16 @@ static constexpr uint8_t BLOOM_FILTERS[256] = {
         76, 72,  88, 104, 72, 200, 137, 138, 140, 136, 152, 168, 200, 136,
 };
 
+static uint32_t compute_min_ge_power2(uint32_t num) {
+    num -= 1;
+    num |= (num >> 1);
+    num |= (num >> 2);
+    num |= (num >> 4);
+    num |= (num >> 8);
+    num |= (num >> 16);
+    return num < 0 ? 1 : num + 1;
+}
+
 template <LogicalType LT>
 uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
     const int64_t conf_mode = abs(config::enable_simd_hash_join);
@@ -70,8 +80,9 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
 
             if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
                 // one bit vs. 4 bytes
-                if ((key_interval + 31) / 32 <= table_items->bucket_size) {
-                    table_items->bucket_size = table_items->bucket_size / 8;
+                if ((key_interval + 31) / 32 <= table_items->bucket_size &&
+                    (key_interval + 7) / 8 <= std::numeric_limits<uint32_t>::max()) {
+                    table_items->bucket_size = std::max<uint32_t>(1ul, compute_min_ge_power2(key_interval) / 8);
                     table_items->min_value = min_key;
                     table_items->max_value = max_key;
                     return 3;
@@ -2673,20 +2684,22 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         if constexpr (SIMD == 3) {
             const int32_t min_value = _table_items->min_value;
             const int32_t max_value = _table_items->max_value;
+            const uint32_t group_mask = _table_items->bucket_size / 8 - 1;
 
             const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
             const auto* build_buckets = _table_items->set_has_value.data();
+
             uint8_t* dst_matches = _probe_state->probe_match_filter.data();
+            memset(dst_matches, 0, sizeof(uint8_t) * probe_row_count);
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
                 const int32_t value = probe_values[i];
-                bool matched = (min_value <= value) & (value <= max_value);
-                if (matched) {
-                    const uint32_t bucket = value - min_value;
-                    const uint32_t group = bucket / 8;
-                    const uint32_t offset = bucket % 8;
-                    matched &= (build_buckets[group] & (1 << offset)) != 0;
-                }
+
+                const uint32_t bucket = value - min_value;
+                const uint32_t group = (bucket / 8) & group_mask;
+                const uint32_t offset = bucket % 8;
+                bool matched =
+                        (min_value <= value) & (value <= max_value) & ((build_buckets[group] & (1 << offset)) != 0);
 
                 const bool not_matched = !matched;
                 dst_matches[i] = not_matched;
