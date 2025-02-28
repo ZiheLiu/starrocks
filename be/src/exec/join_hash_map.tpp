@@ -227,14 +227,16 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                 const int32_t min_value = table_items->min_value;
                 const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+                bool no_duplicated_build_keys = true;
                 for (size_t i = 1; i < num_rows; i++) {
                     if (null_array[i] != 0) {
                         const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
-                        table_items->no_duplicated_build_keys &= table_items->first[bucket_index] == 0;
+                        no_duplicated_build_keys &= table_items->first[bucket_index] == 0;
                         table_items->next[i] = table_items->first[bucket_index];
                         table_items->first[bucket_index] = i;
                     }
                 }
+                table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else {
                 for (size_t i = 1; i < num_rows; i++) {
                     if (null_array[i] == 0) {
@@ -277,12 +279,14 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                 const int32_t min_value = table_items->min_value;
                 const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+                bool no_duplicated_build_keys = true;
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
-                    table_items->no_duplicated_build_keys &= table_items->first[bucket_index] == 0;
+                    no_duplicated_build_keys &= table_items->first[bucket_index] == 0;
                     table_items->next[i] = table_items->first[bucket_index];
                     table_items->first[bucket_index] = i;
                 }
+                table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else {
                 for (size_t i = 1; i < num_rows; i++) {
                     if constexpr (SIMD == 1) {
@@ -324,12 +328,14 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             const int32_t min_value = table_items->min_value;
             const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+            bool no_duplicated_build_keys = true;
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
-                table_items->no_duplicated_build_keys &= table_items->first[bucket_index] == 0;
+                no_duplicated_build_keys &= table_items->first[bucket_index] == 0;
                 table_items->next[i] = table_items->first[bucket_index];
                 table_items->first[bucket_index] = i;
             }
+            table_items->no_duplicated_build_keys = no_duplicated_build_keys;
         } else {
             for (size_t i = 1; i < num_rows; i++) {
                 if constexpr (SIMD == 1) {
