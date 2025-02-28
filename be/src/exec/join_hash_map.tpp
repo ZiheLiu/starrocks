@@ -82,7 +82,7 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
                 // one bit vs. 4 bytes
                 if ((key_interval + 31) / 32 <= table_items->bucket_size &&
                     (key_interval + 7) / 8 <= std::numeric_limits<uint32_t>::max()) {
-                    table_items->bucket_size = std::max<uint32_t>(1ul, compute_min_ge_power2(key_interval) / 8);
+                    table_items->bucket_size = compute_min_ge_power2((key_interval + 7) / 8);
                     table_items->min_value = min_key;
                     table_items->max_value = max_key;
                     return 3;
