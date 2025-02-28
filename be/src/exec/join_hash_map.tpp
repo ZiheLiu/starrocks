@@ -1634,41 +1634,47 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (SIMD == 4) {
-        for (; i < probe_row_count; i++) {
-            uint32_t build_index = probe_build_indexes[i];
-
-            if (build_index == 0 || !ProbeFunc().equal(build_data[build_index], probe_data[i])) {
-                continue;
+        if constexpr (no_duplicated_build_keys) {
+            for (; i < probe_row_count; i++) {
+                const uint32_t build_index = probe_build_indexes[i];
+                if (build_index != 0 && ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                    _probe_state->probe_index[match_count] = i;
+                    _probe_state->build_index[match_count] = build_index;
+                    match_count++;
+                }
             }
+        } else {
+            for (; i < probe_row_count; i++) {
+                uint32_t build_index = probe_build_indexes[i];
 
-            do {
-                _probe_state->probe_index[match_count] = i;
-                _probe_state->build_index[match_count] = build_index;
-                match_count++;
+                if (build_index == 0 || !ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                    continue;
+                }
+
+                do {
+                    _probe_state->probe_index[match_count] = i;
+                    _probe_state->build_index[match_count] = build_index;
+                    match_count++;
+
+                    if constexpr (first_probe) {
+                        cur_row_match_count++;
+                        _probe_state->probe_match_filter[i] = 1;
+                    }
+
+                    RETURN_IF_CHUNK_FULL2();
+
+                    build_index = _table_items->next[build_index];
+                } while (build_index != 0);
 
                 if constexpr (first_probe) {
-                    cur_row_match_count++;
-                    _probe_state->probe_match_filter[i] = 1;
-                }
-
-                if constexpr (no_duplicated_build_keys) {
-                    break;
-                }
-
-                RETURN_IF_CHUNK_FULL2();
-
-                build_index = _table_items->next[build_index];
-            } while (build_index != 0);
-
-            if constexpr (first_probe) {
-                if constexpr (!no_duplicated_build_keys) {
                     if (cur_row_match_count > 1) {
                         one_to_many = true;
                     }
+                    cur_row_match_count = 0;
                 }
-                cur_row_match_count = 0;
             }
         }
+
     } else {
         for (; i < probe_row_count; i++) {
             uint32_t build_index = probe_build_indexes[i];
@@ -1875,36 +1881,47 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
     uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (SIMD == 4) {
-        for (; i < probe_row_count; i++) {
-            uint32_t build_index = probe_build_indexes[i];
-
-            if (build_index == 0 || !ProbeFunc().equal(build_data[build_index], probe_data[i])) {
-                _probe_state->probe_index[match_count] = i;
-                _probe_state->build_index[match_count] = 0;
-                match_count++;
-
-                if constexpr (!no_duplicated_build_keys) {
-                    RETURN_IF_CHUNK_FULL2()
-                }
-                cur_row_match_count = 0;
-                continue;
+        if constexpr (no_duplicated_build_keys) {
+            DCHECK_EQ(i, 0);
+            for (uint32_t j = 0; j < probe_row_count; j++) {
+                _probe_state->probe_index[j] = j;
             }
 
-            do {
-                _probe_state->probe_index[match_count] = i;
-                _probe_state->build_index[match_count] = build_index;
-                match_count++;
-                cur_row_match_count++;
+            for (uint32_t j = 0; j < probe_row_count; j++) {
+                uint32_t build_index = probe_build_indexes[i];
+                if (build_index != 0 && ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                    _probe_state->build_index[j] = build_index;
+                } else {
+                    _probe_state->build_index[j] = 0;
+                }
+            }
+            match_count = probe_row_count;
+        } else {
+            for (; i < probe_row_count; i++) {
+                uint32_t build_index = probe_build_indexes[i];
 
-                if constexpr (no_duplicated_build_keys) {
-                    break;
+                if (build_index == 0 || !ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                    _probe_state->probe_index[match_count] = i;
+                    _probe_state->build_index[match_count] = 0;
+                    match_count++;
+
+                    RETURN_IF_CHUNK_FULL2()
+                    cur_row_match_count = 0;
+                    continue;
                 }
 
-                RETURN_IF_CHUNK_FULL2();
+                do {
+                    _probe_state->probe_index[match_count] = i;
+                    _probe_state->build_index[match_count] = build_index;
+                    match_count++;
+                    cur_row_match_count++;
 
-                build_index = _table_items->next[build_index];
-            } while (build_index != 0);
-            cur_row_match_count = 0;
+                    RETURN_IF_CHUNK_FULL2();
+
+                    build_index = _table_items->next[build_index];
+                } while (build_index != 0);
+                cur_row_match_count = 0;
+            }
         }
     } else {
         for (; i < probe_row_count; i++) {
