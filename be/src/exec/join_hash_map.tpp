@@ -1646,6 +1646,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                 if (build_index != 0 && ProbeFunc().equal(build_data[build_index], probe_data[i])) {
                     _probe_state->probe_index[match_count] = i;
                     _probe_state->build_index[match_count] = build_index;
+                    _probe_state->probe_match_filter[i] = 1;
                     match_count++;
                 }
             }
