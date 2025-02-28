@@ -109,6 +109,13 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
                 }
             }
         }
+
+        // fallback to mode 1
+        if (table_items->bucket_size <= BLOOM_FILTER_MASK &&
+            (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
+             join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+            return 1;
+        }
     }
 
     return 0;
