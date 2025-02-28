@@ -2366,7 +2366,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
     if constexpr (MODE == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
         const int32_t min_value = _table_items->min_value;
         const int32_t max_value = _table_items->max_value;
-        const uint32_t group_mask = _table_items->bucket_size / 8 - 1;
+        const uint32_t group_mask = _table_items->bucket_size - 1;
 
         const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
         const auto* build_buckets = _table_items->set_has_value.data();
@@ -2684,7 +2684,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         if constexpr (SIMD == 3) {
             const int32_t min_value = _table_items->min_value;
             const int32_t max_value = _table_items->max_value;
-            const uint32_t group_mask = _table_items->bucket_size / 8 - 1;
+            const uint32_t group_mask = _table_items->bucket_size - 1;
 
             const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
             const auto* build_buckets = _table_items->set_has_value.data();
