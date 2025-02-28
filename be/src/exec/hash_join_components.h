@@ -116,7 +116,7 @@ public:
     virtual size_t get_output_probe_column_count() const = 0;
     virtual size_t get_output_build_column_count() const = 0;
 
-    virtual void get_build_info(size_t* bucket_size, float* avg_keys_per_bucket) = 0;
+    virtual void get_build_info(size_t* bucket_size, float* avg_keys_per_bucket, uint8_t* mode) = 0;
 
     virtual void visitHt(const std::function<void(JoinHashTable*)>& visitor) = 0;
 
@@ -157,9 +157,10 @@ public:
 
     int64_t ht_mem_usage() const override { return _ht.mem_usage(); }
 
-    void get_build_info(size_t* bucket_size, float* avg_keys_per_bucket) override {
+    void get_build_info(size_t* bucket_size, float* avg_keys_per_bucket, uint8_t* mode) override {
         *bucket_size = _ht.get_bucket_size();
         *avg_keys_per_bucket = _ht.get_keys_per_bucket();
+        *mode = _ht.get_mode();
     }
 
     size_t get_output_probe_column_count() const override { return _ht.get_output_probe_column_count(); }

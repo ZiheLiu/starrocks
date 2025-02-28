@@ -54,6 +54,7 @@ void HashJoinBuildMetrics::prepare(RuntimeProfile* runtime_profile) {
     build_runtime_filter_timer = ADD_TIMER(runtime_profile, "RuntimeFilterBuildTime");
     build_conjunct_evaluate_timer = ADD_TIMER(runtime_profile, "BuildConjunctEvaluateTime");
     build_buckets_counter = ADD_COUNTER(runtime_profile, "BuildBuckets", TUnit::UNIT);
+    mode_counter = ADD_COUNTER(runtime_profile, "Mode", TUnit::UNIT);
     runtime_filter_num = ADD_COUNTER(runtime_profile, "RuntimeFilterNum", TUnit::UNIT);
     build_keys_per_bucket = ADD_COUNTER(runtime_profile, "BuildKeysPerBucket%", TUnit::UNIT);
     hash_table_memory_usage = ADD_COUNTER(runtime_profile, "HashTableMemoryUsage", TUnit::BYTES);
@@ -217,9 +218,11 @@ Status HashJoiner::build_ht(RuntimeState* state) {
 
         size_t bucket_size = 0;
         float avg_keys_per_bucket = 0;
-        _hash_join_builder->get_build_info(&bucket_size, &avg_keys_per_bucket);
+        uint8_t mode = 0;
+        _hash_join_builder->get_build_info(&bucket_size, &avg_keys_per_bucket, &mode);
         COUNTER_SET(build_metrics().build_buckets_counter, static_cast<int64_t>(bucket_size));
         COUNTER_SET(build_metrics().build_keys_per_bucket, static_cast<int64_t>(100 * avg_keys_per_bucket));
+        COUNTER_SET(build_metrics().mode_counter, static_cast<int64_t>(mode));
     }
 
     return Status::OK();
@@ -360,7 +363,8 @@ void HashJoiner::decr_prober(RuntimeState* state) {
 float HashJoiner::avg_keys_per_bucket() const {
     size_t bucket_size = 0;
     float avg_keys_per_bucket = 0;
-    _hash_join_builder->get_build_info(&bucket_size, &avg_keys_per_bucket);
+    uint8_t mode = 0;
+    _hash_join_builder->get_build_info(&bucket_size, &avg_keys_per_bucket, &mode);
     return avg_keys_per_bucket;
 }
 

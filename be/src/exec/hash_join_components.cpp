@@ -422,7 +422,7 @@ public:
 
     int64_t ht_mem_usage() const override;
 
-    void get_build_info(size_t* bucket_size, float* avg_keys_per_bucket) override;
+    void get_build_info(size_t* bucket_size, float* avg_keys_per_bucket, uint8_t* mode) override;
 
     size_t get_output_probe_column_count() const override;
     size_t get_output_build_column_count() const override;
@@ -599,13 +599,13 @@ bool AdaptivePartitionHashJoinBuilder::anti_join_key_column_has_null() const {
                        [](const auto& builder) { return builder->anti_join_key_column_has_null(); });
 }
 
-void AdaptivePartitionHashJoinBuilder::get_build_info(size_t* bucket_size, float* avg_keys_per_bucket) {
+void AdaptivePartitionHashJoinBuilder::get_build_info(size_t* bucket_size, float* avg_keys_per_bucket, uint8_t* mode) {
     size_t total_bucket_size = 0;
     float total_keys_per_bucket = 0;
     for (const auto& builder : _builders) {
         size_t bucket_size = 0;
         float keys_per_bucket = 0;
-        builder->get_build_info(&bucket_size, &keys_per_bucket);
+        builder->get_build_info(&bucket_size, &keys_per_bucket, mode);
         total_bucket_size += bucket_size;
         total_keys_per_bucket += keys_per_bucket;
     }

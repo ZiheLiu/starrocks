@@ -934,9 +934,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_prepare(RuntimeState* state) {
     }
 
     ProbeFunc().prepare(state, _probe_state);
-
-
-    COUNTER_UPDATE(_probe_state->probe2_counter, _table_items->mode);
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
