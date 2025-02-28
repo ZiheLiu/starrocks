@@ -71,12 +71,13 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
             if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
                 // one bit vs. 4 bytes
                 if ((key_interval + 31) / 32 <= table_items->bucket_size) {
+                    table_items->bucket_size = table_items->bucket_size / 8;
                     table_items->min_value = min_key;
                     table_items->max_value = max_key;
                     return 3;
                 }
 
-                if ((key_interval + 31) / 32 <= 1024 * 1024) {
+                if ((key_interval + 7) / 8 <= 1024 * 1024) {
                     table_items->bucket_size = 1024 * 1024;
                     table_items->min_value = min_key;
                     table_items->max_value = max_key;
@@ -107,7 +108,7 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
     table_items->bucket_size = JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1);
     table_items->mode = decide_mode(table_items);
     if (table_items->mode == 3) {
-        table_items->set_has_value.resize(table_items->bucket_size / 8, 0);
+        table_items->set_has_value.resize(table_items->bucket_size, 0);
     } else {
         table_items->first.resize(table_items->bucket_size, 0);
         table_items->next.resize(table_items->row_count + 1, 0);
