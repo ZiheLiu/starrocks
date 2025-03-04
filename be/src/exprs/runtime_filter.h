@@ -938,7 +938,23 @@ private:
                 }
             } else {
                 if constexpr (can_use_bf) {
-                    for (int i = 0; i < size; ++i) {
+                    int i = 0;
+                    if constexpr (!multi_partition) {
+                        if (const size_t num_zeros = SIMD::count_zero(_selection, size); num_zeros == 0) {
+                            static constexpr size_t W = 8;
+                            size_t hashes[W];
+                            const auto* pinput_data = input_data.data();
+                            for (; i + W <= size; i += W) {
+                                for (int j = 0; j < W; j++) {
+                                    hashes[j] = compute_hash(pinput_data[i + j]);
+                                }
+                                for (int j = 0; j < W; j++) {
+                                    _selection[i + j] = _bf.test_hash(hashes[j]);
+                                }
+                            }
+                        }
+                    }
+                    for (; i < size; ++i) {
                         _rf_test_data<multi_partition>(_selection, input_data, _hash_values, i);
                     }
                 }
@@ -947,7 +963,23 @@ private:
             const auto& input_data = GetContainer<Type>::get_data(input_column);
             _evaluate_min_max(input_data, _selection, size);
             if constexpr (can_use_bf) {
-                for (int i = 0; i < size; ++i) {
+                int i = 0;
+                if constexpr (!multi_partition) {
+                    if (const size_t num_zeros = SIMD::count_zero(_selection, size); num_zeros == 0) {
+                        static constexpr size_t W = 8;
+                        size_t hashes[W];
+                        const auto* pinput_data = input_data.data();
+                        for (; i + W <= size; i += W) {
+                            for (int j = 0; j < W; j++) {
+                                hashes[j] = compute_hash(pinput_data[i + j]);
+                            }
+                            for (int j = 0; j < W; j++) {
+                                _selection[i + j] = _bf.test_hash(hashes[j]);
+                            }
+                        }
+                    }
+                }
+                for (; i < size; ++i) {
                     _rf_test_data<multi_partition>(_selection, input_data, _hash_values, i);
                 }
             }
