@@ -79,10 +79,10 @@ public:
     }
 
     bool test_hash(const uint64_t hash) const noexcept {
-        if (UNLIKELY(_directory == nullptr)) {
-            DCHECK(false) << "unexpected test_hash on cleared bf";
-            return true;
-        }
+        // if (UNLIKELY(_directory == nullptr)) {
+        //     DCHECK(false) << "unexpected test_hash on cleared bf";
+        //     return true;
+        // }
         const uint32_t bucket_idx = hash & _directory_mask;
 #ifdef __AVX2__
         const __m256i mask = make_mask(hash >> _log_num_buckets);
@@ -943,10 +943,9 @@ private:
                         if (const size_t num_zeros = SIMD::count_zero(_selection, size); num_zeros == 0) {
                             static constexpr size_t W = 8;
                             size_t hashes[W];
-                            const auto* pinput_data = input_data.data();
                             for (; i + W <= size; i += W) {
                                 for (int j = 0; j < W; j++) {
-                                    hashes[j] = compute_hash(pinput_data[i + j]);
+                                    hashes[j] = compute_hash(input_data[i + j]);
                                 }
                                 for (int j = 0; j < W; j++) {
                                     _selection[i + j] = _bf.test_hash(hashes[j]);
@@ -968,10 +967,9 @@ private:
                     if (const size_t num_zeros = SIMD::count_zero(_selection, size); num_zeros == 0) {
                         static constexpr size_t W = 8;
                         size_t hashes[W];
-                        const auto* pinput_data = input_data.data();
                         for (; i + W <= size; i += W) {
                             for (int j = 0; j < W; j++) {
-                                hashes[j] = compute_hash(pinput_data[i + j]);
+                                hashes[j] = compute_hash(input_data[i + j]);
                             }
                             for (int j = 0; j < W; j++) {
                                 _selection[i + j] = _bf.test_hash(hashes[j]);
