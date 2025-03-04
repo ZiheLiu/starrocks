@@ -83,9 +83,14 @@ void NullableColumn::append(const Column& src, size_t offset, size_t count) {
 
         DCHECK_EQ(c._null_column->size(), c._data_column->size());
 
-        _null_column->append(*c._null_column, offset, count);
-        _data_column->append(*c._data_column, offset, count);
-        _has_null = _has_null || SIMD::contain_nonzero(c._null_column->get_data(), offset, count);
+        if (!c.has_null()) {
+            _null_column->resize(_null_column->size() + count);
+            _data_column->append(*c._data_column, offset, count);
+        } else {
+            _null_column->append(*c._null_column, offset, count);
+            _data_column->append(*c._data_column, offset, count);
+            _has_null = _has_null || SIMD::contain_nonzero(c._null_column->get_data(), offset, count);
+        }
     } else {
         _null_column->resize(_null_column->size() + count);
         _data_column->append(src, offset, count);

@@ -57,15 +57,22 @@ template <typename T>
 void BinaryColumnBase<T>::append(const Column& src, size_t offset, size_t count) {
     DCHECK(offset + count <= src.size());
     const auto& b = down_cast<const BinaryColumnBase<T>&>(src);
+
     const unsigned char* p = &b._bytes[b._offsets[offset]];
     const unsigned char* e = &b._bytes[b._offsets[offset + count]];
-
     _bytes.insert(_bytes.end(), p, e);
 
-    for (size_t i = offset; i < offset + count; i++) {
-        size_t l = b._offsets[i + 1] - b._offsets[i];
-        _offsets.emplace_back(_offsets.back() + l);
+    const size_t num_prev_offsets = _offsets.size();
+    _offsets.resize(num_prev_offsets + count);
+
+    auto* offsets = _offsets.data() + num_prev_offsets;
+    strings::memcpy_inlined(offsets, b._offsets.data() + offset + 1, count * sizeof(Offset));
+
+    const auto delta = _offsets[num_prev_offsets - 1] - b._offsets[offset];
+    for (size_t i = 0; i < count; i++) {
+        offsets[i] += delta;
     }
+
     _slices_cache = false;
 }
 
