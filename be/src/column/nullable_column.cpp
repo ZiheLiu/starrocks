@@ -310,15 +310,21 @@ uint32_t NullableColumn::serialize_default(uint8_t* pos) {
 }
 
 size_t NullableColumn::serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval, size_t start,
-                                                   size_t count) {
-    _null_column->serialize_batch_at_interval(dst, byte_offset, byte_interval, start, count);
-    for (size_t i = start; i < start + count; i++) {
-        if (_null_column->get_data()[i] == 0) {
-            _data_column->serialize(i, dst + (i - start) * byte_interval + byte_offset + 1);
-        } else {
-            _data_column->serialize_default(dst + (i - start) * byte_interval + byte_offset + 1);
-        }
+                                                   size_t count, uint8_t serialized_bytes) {
+    _null_column->serialize_batch_at_interval(dst, byte_offset, byte_interval, start, count, serialized_bytes);
+    if (SIMD::contain_nonzero(_null_column->get_data(), 0)) {
+        _data_column->serialize_batch_at_interval(dst, byte_offset + 1, byte_interval + 1, start, count,
+                                                  serialized_bytes - 1);
+    } else {
+        // TODO: serialize_batch_default_at_interval
     }
+    // for (size_t i = start; i < start + count; i++) {
+    //     if (_null_column->get_data()[i] == 0) {
+    //         _data_column->serialize(i, dst + (i - start) * byte_interval + byte_offset + 1);
+    //     } else {
+    //         _data_column->serialize_default(dst + (i - start) * byte_interval + byte_offset + 1);
+    //     }
+    // }
     return _null_column->type_size() + _data_column->type_size();
 }
 

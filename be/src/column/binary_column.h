@@ -180,6 +180,9 @@ public:
         _slices_cache = false;
     }
 
+    size_t serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval, size_t start,
+                                       size_t count, uint8_t serialized_bytes) override;
+
     void append(const Column& src, size_t offset, size_t count) override;
 
     void append_selective(const Column& src, const uint32_t* indexes, uint32_t from, uint32_t size) override;

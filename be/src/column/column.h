@@ -308,7 +308,7 @@ public:
     // (which should be fixed size) of this column if this column supports this method, otherwise
     // it returns 0.
     virtual size_t serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval, size_t start,
-                                               size_t count) {
+                                               size_t count, uint8_t serialized_bytes) {
         return 0;
     };
 

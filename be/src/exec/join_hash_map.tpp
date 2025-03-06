@@ -476,7 +476,7 @@ template <LogicalType LT>
 void FixedSizeJoinBuildFunc<LT>::_build_columns(JoinHashTableItems* table_items, HashTableProbeState* probe_state,
                                                 const Columns& data_columns, uint32_t start, uint32_t count) {
     JoinHashMapHelper::serialize_fixed_size_key_column<LT>(data_columns, table_items->build_key_column.get(), start,
-                                                           count);
+                                                           count, table_items->bytes_per_key);
 
     const auto& data = get_key_data(*table_items);
     JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items->bucket_size,
@@ -503,7 +503,7 @@ void FixedSizeJoinBuildFunc<LT>::_build_nullable_columns(JoinHashTableItems* tab
     }
 
     JoinHashMapHelper::serialize_fixed_size_key_column<LT>(data_columns, table_items->build_key_column.get(), start,
-                                                           count);
+                                                           count, table_items->bytes_per_key);
     const auto& data = get_key_data(*table_items);
     JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items->bucket_size,
                                                  table_items->log_bucket_size, data, start, count);
@@ -878,7 +878,7 @@ void FixedSizeJoinProbeFunc<LT>::_probe_column(const JoinHashTableItems& table_i
     uint32_t row_count = probe_state->probe_row_count;
 
     JoinHashMapHelper::serialize_fixed_size_key_column<LT>(data_columns, probe_state->probe_key_column.get(), 0,
-                                                           row_count);
+                                                           row_count, table_items.bytes_per_key);
     const auto& data = get_key_data(*probe_state);
     JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
                                                  table_items.log_bucket_size, data, 0, row_count);
@@ -905,7 +905,7 @@ void FixedSizeJoinProbeFunc<LT>::_probe_nullable_column(const JoinHashTableItems
     probe_state->null_array = &null_columns[0]->get_data();
 
     JoinHashMapHelper::serialize_fixed_size_key_column<LT>(data_columns, probe_state->probe_key_column.get(), 0,
-                                                           row_count);
+                                                           row_count, table_items.bytes_per_key);
     const auto& data = get_key_data(*probe_state);
     JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
                                                  table_items.log_bucket_size, data, 0, row_count);

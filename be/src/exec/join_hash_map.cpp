@@ -753,6 +753,30 @@ Status JoinHashTable::_upgrade_key_columns_if_overflow() {
     return Status::OK();
 }
 
+size_t JoinHashTable::_get_max_size_of_varchar(size_t col_index) {
+    const auto& key_col = _table_items->key_columns[col_index];
+    const Column* key_data_col = nullptr;
+    if (!key_col->is_nullable()) {
+        key_data_col = key_col.get();
+    } else {
+        auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>(key_col);
+        key_data_col = nullable_column->data_column().get();
+    }
+
+    const auto* str_col = down_cast<const BinaryColumn*>(key_data_col);
+    const auto& offsets = str_col->get_offset();
+    const size_t num_rows = str_col->size();
+    uint64_t max_size = 0;
+    for (size_t i = 0; i < num_rows; i++) {
+        if (const uint64_t size = offsets[i + 1] - offsets[i]; size > max_size) {
+            max_size = size;
+        }
+    }
+
+    // 1B: length
+    return max_size + 1 <= std::numeric_limits<int8_t>::max() ? max_size + 1 : 0;
+}
+
 JoinHashMapType JoinHashTable::_choose_join_hash_map() {
     if (_table_items->row_count == 0) {
         return JoinHashMapType::empty;
@@ -809,16 +833,32 @@ JoinHashMapType JoinHashTable::_choose_join_hash_map() {
 
     size_t total_size_in_byte = 0;
 
-    for (auto& join_key : _table_items->join_keys) {
+    _table_items->bytes_per_key.resize(_table_items->join_keys.size());
+    for (size_t i = 0; i < _table_items->join_keys.size(); i++) {
+        auto& join_key = _table_items->join_keys[i];
         if (join_key.is_null_safe_equal) {
             total_size_in_byte += 1;
         }
-        size_t s = _get_size_of_fixed_and_contiguous_type(join_key.type->type);
-        if (s > 0) {
-            total_size_in_byte += s;
-        } else {
-            return JoinHashMapType::slice;
+
+        size_t num_row_bytes = _get_size_of_fixed_and_contiguous_type(join_key.type->type);
+        if (num_row_bytes > 0) {
+            _table_items->bytes_per_key[i] = num_row_bytes + join_key.is_null_safe_equal;
+            total_size_in_byte += num_row_bytes;
+            continue;
         }
+
+        if (join_key.type->type == LogicalType::TYPE_VARCHAR || join_key.type->type == LogicalType::TYPE_CHAR) {
+            num_row_bytes = _get_max_size_of_varchar(i);
+            if (num_row_bytes > 0) {
+                total_size_in_byte += num_row_bytes;
+                if (total_size_in_byte <= 16) {
+                    _table_items->bytes_per_key[i] = num_row_bytes + join_key.is_null_safe_equal;
+                    continue;
+                }
+            }
+        }
+
+        return JoinHashMapType::slice;
     }
 
     if (total_size_in_byte <= 4) {

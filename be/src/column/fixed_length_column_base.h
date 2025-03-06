@@ -185,7 +185,7 @@ public:
                                          uint32_t max_one_row_size, uint8_t* null_masks, bool has_null) override;
 
     size_t serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval, size_t start,
-                                       size_t count) override;
+                                       size_t count, uint8_t serialized_bytes) override;
 
     const uint8_t* deserialize_and_append(const uint8_t* pos) override;
 

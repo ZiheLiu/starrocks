@@ -262,9 +262,9 @@ uint32_t AdaptiveNullableColumn::serialize_default(uint8_t* pos) {
 }
 
 size_t AdaptiveNullableColumn::serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval,
-                                                           size_t start, size_t count) {
+                                                           size_t start, size_t count, uint8_t serialized_bytes) {
     materialized_nullable();
-    return NullableColumn::serialize_batch_at_interval(dst, byte_offset, byte_interval, start, count);
+    return NullableColumn::serialize_batch_at_interval(dst, byte_offset, byte_interval, start, count, serialized_bytes);
 }
 
 void AdaptiveNullableColumn::serialize_batch(uint8_t* dst, Buffer<uint32_t>& slice_sizes, size_t chunk_size,

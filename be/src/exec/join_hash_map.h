@@ -99,18 +99,6 @@ struct HashTableSlotDescriptor {
 };
 
 struct JoinHashTableItems {
-    struct Index {
-        // high 1 bit: has_next
-        // low 31 bits: index
-        uint32_t value;
-
-        void set(uint32_t v) { value = v; }
-        void set_has_next() { value |= 0x8000'0000; }
-
-        uint32_t index() const { return value & 0x7FFF'FFFF; }
-        uint32_t has_next() const { return value & 0x8000'0000; }
-    };
-
     //TODO: memory continues problem?
     ChunkPtr build_chunk = nullptr;
     Columns key_columns;
@@ -128,6 +116,7 @@ struct JoinHashTableItems {
     Buffer<uint8_t> set_has_value;
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
+    Buffer<uint8_t> bytes_per_key;
     int32_t min_value = 0;
     int32_t max_value = 0;
     uint32_t bucket_size = 0;
@@ -399,7 +388,7 @@ public:
     // combine keys into fixed size key by column.
     template <LogicalType LT>
     static void serialize_fixed_size_key_column(const Columns& key_columns, Column* fixed_size_key_column,
-                                                uint32_t start, uint32_t count) {
+                                                uint32_t start, uint32_t count, const Buffer<uint8_t>& bytes_per_key) {
         using CppType = typename RunTimeTypeTraits<LT>::CppType;
         using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
 
@@ -408,9 +397,10 @@ public:
 
         const size_t byte_interval = sizeof(CppType);
         size_t byte_offset = 0;
-        for (const auto& key_col : key_columns) {
-            size_t offset = key_col->serialize_batch_at_interval(buf, byte_offset, byte_interval, start, count);
-            byte_offset += offset;
+        for (size_t i = 0; i < key_columns.size(); i++) {
+            const auto& key_col = key_columns[i];
+            key_col->serialize_batch_at_interval(buf, byte_offset, byte_interval, start, count, bytes_per_key[i]);
+            byte_offset += bytes_per_key[i];
         }
     }
 };
@@ -909,6 +899,7 @@ private:
     void _init_join_keys();
 
     JoinHashMapType _choose_join_hash_map();
+    size_t _get_max_size_of_varchar(size_t col_index);
     static size_t _get_size_of_fixed_and_contiguous_type(LogicalType data_type);
 
     Status _upgrade_key_columns_if_overflow();
