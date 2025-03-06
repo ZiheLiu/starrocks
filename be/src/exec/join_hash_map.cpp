@@ -580,7 +580,7 @@ Status JoinHashTable::build(RuntimeState* state) {
 }
 
 void JoinHashTable::reset_probe_state(starrocks::RuntimeState* state) {
-    _hash_map_type = _choose_join_hash_map();
+    // _hash_map_type = _choose_join_hash_map();
     switch (_hash_map_type) {
 #define M(NAME)                                                                                                       \
     case JoinHashMapType::NAME:                                                                                       \
