@@ -58,12 +58,12 @@ size_t BinaryColumnBase<T>::serialize_batch_at_interval(uint8_t* dst, size_t byt
                                                         size_t start, size_t count, uint8_t serialized_bytes) {
     const uint8_t max_row_bytes = serialized_bytes - 1;
     dst += byte_offset;
-    for (size_t i = start; i < count; i++) {
+    for (size_t i = start; i < start + count; i++) {
         const size_t row_bytes = _offsets[i + 1] - _offsets[i];
         if (row_bytes > max_row_bytes) {
             *dst = 0xFF;
         } else {
-            *dst = row_bytes;
+            *dst = static_cast<uint8_t>(row_bytes);
             strings::memcpy_inlined(dst + 1, _bytes.data() + _offsets[i], row_bytes);
             // TODO: zero for padding
         }

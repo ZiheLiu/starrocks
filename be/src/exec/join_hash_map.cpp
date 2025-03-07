@@ -767,7 +767,7 @@ size_t JoinHashTable::_get_max_size_of_varchar(size_t col_index) {
     const auto& offsets = str_col->get_offset();
     const size_t num_rows = str_col->size();
     uint64_t max_size = 0;
-    for (size_t i = 0; i < num_rows; i++) {
+    for (size_t i = 1; i < num_rows; i++) {
         if (const uint64_t size = offsets[i + 1] - offsets[i]; size > max_size) {
             max_size = size;
         }
