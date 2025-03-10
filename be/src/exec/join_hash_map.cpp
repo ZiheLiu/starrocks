@@ -660,6 +660,14 @@ void JoinHashTable::append_chunk(const ChunkPtr& chunk, const Columns& key_colum
     _table_items->row_count += chunk->num_rows();
 }
 
+void JoinHashTable::reserve(uint32_t num_new_rows) {
+    num_new_rows += _table_items->row_count;
+    Columns& columns = _table_items->build_chunk->columns();
+    for (size_t i = 0; i < _table_items->build_column_count; i++) {
+        columns[i]->reserve(num_new_rows);
+    }
+}
+
 void JoinHashTable::merge_ht(const JoinHashTable& ht) {
     _table_items->row_count += ht._table_items->row_count;
 

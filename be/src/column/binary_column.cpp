@@ -62,11 +62,11 @@ size_t BinaryColumnBase<T>::serialize_batch_at_interval(uint8_t* dst, size_t byt
         const size_t row_bytes = _offsets[i + 1] - _offsets[i];
         if (row_bytes > max_row_bytes) {
             *dst = 0xFF;
-            std::memset(dst + 1, 0, max_row_bytes);
+            // std::memset(dst + 1, 0, max_row_bytes);
         } else {
             *dst = static_cast<uint8_t>(row_bytes);
             strings::memcpy_inlined(dst + 1, _bytes.data() + _offsets[i], row_bytes);
-            std::memset(dst + 1 + row_bytes, 0, max_row_bytes - row_bytes);
+            // std::memset(dst + 1 + row_bytes, 0, max_row_bytes - row_bytes);
         }
         dst += byte_interval;
     }

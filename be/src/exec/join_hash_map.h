@@ -391,11 +391,12 @@ public:
                                                 uint32_t start, uint32_t count, const Buffer<uint8_t>& bytes_per_key) {
         using CppType = typename RunTimeTypeTraits<LT>::CppType;
         using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+        const size_t byte_interval = sizeof(CppType);
 
         auto& data = reinterpret_cast<ColumnType*>(fixed_size_key_column)->get_data();
         auto* buf = reinterpret_cast<uint8_t*>(&data[start]);
+        std::memset(buf, 0, byte_interval * count);
 
-        const size_t byte_interval = sizeof(CppType);
         size_t byte_offset = 0;
         for (size_t i = 0; i < key_columns.size(); i++) {
             const auto& key_col = key_columns[i];
@@ -873,6 +874,7 @@ public:
 
     void append_chunk(const ChunkPtr& chunk, const Columns& key_columns);
     void merge_ht(const JoinHashTable& ht);
+    void reserve(uint32_t num_new_rows);
     // convert input column to spill schema order
     ChunkPtr convert_to_spill_schema(const ChunkPtr& chunk) const;
 
