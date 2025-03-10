@@ -83,15 +83,17 @@ void BinaryColumnBase<T>::append(const Column& src, size_t offset, size_t count)
     const unsigned char* e = &b._bytes[b._offsets[offset + count]];
     _bytes.insert(_bytes.end(), p, e);
 
+    // new_offsets[i] = new_offsets[i - 1] + b._offsets[offset + i + 1] - b._offsets[offset + i]
+    //    = b._offsets[offset + i + 1] + (new_offsets[i - 1] - b._offsets[offset + i])
+    //    = b._offsets[offset + i + 1] + delta
     const size_t num_prev_offsets = _offsets.size();
     _offsets.resize(num_prev_offsets + count);
-
-    auto* offsets = _offsets.data() + num_prev_offsets;
-    strings::memcpy_inlined(offsets, b._offsets.data() + offset + 1, count * sizeof(Offset));
+    auto* new_offsets = _offsets.data() + num_prev_offsets;
+    strings::memcpy_inlined(new_offsets, b._offsets.data() + offset + 1, count * sizeof(Offset));
 
     const auto delta = _offsets[num_prev_offsets - 1] - b._offsets[offset];
     for (size_t i = 0; i < count; i++) {
-        offsets[i] += delta;
+        new_offsets[i] += delta;
     }
 
     _slices_cache = false;
