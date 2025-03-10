@@ -76,7 +76,7 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
             const auto* keys = reinterpret_cast<const int32_t*>(get_key_data(*table_items).data());
             const int32_t min_key = *std::min_element(keys + 1, keys + num_rows);
             const int32_t max_key = *std::max_element(keys + 1, keys + num_rows);
-            const uint32_t key_interval = static_cast<int64_t>(max_key) - min_key + 1;
+            const uint64_t key_interval = static_cast<int64_t>(max_key) - min_key + 1;
 
             if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
                 // one bit vs. 4 bytes
@@ -107,6 +107,19 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
                     table_items->max_value = max_key;
                     return 4;
                 }
+
+                // Sparse Hash Table
+                // old first: bucket_size * 4B
+                // new:
+                // - group: key_interval * 2bits = key_interval / 16 B
+                // - first: row_count * 4B
+                if (key_interval / 16 + table_items->row_count <= table_items->bucket_size) {
+                    // TODO: row_count + 1 overflow?
+                    table_items->bucket_size = table_items->row_count + 1;
+                    table_items->min_value = min_key;
+                    table_items->max_value = max_key;
+                    return 5;
+                }
             }
         }
 
@@ -130,6 +143,10 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
     } else {
         table_items->first.resize(table_items->bucket_size, 0);
         table_items->next.resize(table_items->row_count + 1, 0);
+        if (table_items->mode == 5) {
+            const uint32_t key_interval = static_cast<int64_t>(table_items->max_value) - table_items->min_value + 1;
+            table_items->dense_groups.resize((key_interval + 31) / 32, {0, 0});
+        }
     }
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
 }
@@ -176,6 +193,11 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
 
     if (table_items->mode == 4) {
         do_construct_hash_table<4>(state, table_items, probe_state);
+        return;
+    }
+
+    if (table_items->mode == 5) {
+        do_construct_hash_table<5>(state, table_items, probe_state);
         return;
     }
 
@@ -244,6 +266,41 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     }
                 }
                 table_items->no_duplicated_build_keys = no_duplicated_build_keys;
+            } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+                const int32_t min_value = table_items->min_value;
+                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+
+                for (size_t i = 1; i < num_rows; i++) {
+                    if (null_array[i] != 0) {
+                        const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+                        const uint32_t group_index = bucket_index / 32;
+                        const uint32_t index_in_group = bucket_index % 32;
+                        table_items->dense_groups[group_index].bitmap |= 1 << index_in_group;
+                    }
+                }
+                for (uint32_t group_index = 0; auto& group : table_items->dense_groups) {
+                    group.group_index = group_index;
+                    group_index += __builtin_popcount(group.bitmap);
+                }
+
+                bool no_duplicated_build_keys = true;
+                for (size_t i = 1; i < num_rows; i++) {
+                    if (null_array[i] != 0) {
+                        const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+                        const uint32_t group_index = bucket_index / 32;
+                        const uint32_t index_in_group = bucket_index % 32;
+
+                        const uint32_t bitmap =
+                                table_items->dense_groups[group_index].bitmap & ((1 << index_in_group) - 1);
+                        const uint32_t offset_in_group = __builtin_popcount(bitmap);
+                        const uint32_t index = table_items->dense_groups[group_index].group_index + offset_in_group;
+
+                        no_duplicated_build_keys &= table_items->first[index] == 0;
+                        table_items->next[i] = table_items->first[index];
+                        table_items->first[index] = i;
+                    }
+                }
+                table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else {
                 for (size_t i = 1; i < num_rows; i++) {
                     if (null_array[i] == 0) {
@@ -294,6 +351,36 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     table_items->first[bucket_index] = i;
                 }
                 table_items->no_duplicated_build_keys = no_duplicated_build_keys;
+            } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+                const int32_t min_value = table_items->min_value;
+                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+
+                for (size_t i = 1; i < num_rows; i++) {
+                    const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+                    const uint32_t group_index = bucket_index / 32;
+                    const uint32_t index_in_group = bucket_index % 32;
+                    table_items->dense_groups[group_index].bitmap |= 1 << index_in_group;
+                }
+                for (uint32_t group_index = 0; auto& group : table_items->dense_groups) {
+                    group.group_index = group_index;
+                    group_index += __builtin_popcount(group.bitmap);
+                }
+
+                bool no_duplicated_build_keys = true;
+                for (size_t i = 1; i < num_rows; i++) {
+                    const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+                    const uint32_t group_index = bucket_index / 32;
+                    const uint32_t index_in_group = bucket_index % 32;
+
+                    const uint32_t bitmap = table_items->dense_groups[group_index].bitmap & ((1 << index_in_group) - 1);
+                    const uint32_t offset_in_group = __builtin_popcount(bitmap);
+                    const uint32_t index = table_items->dense_groups[group_index].group_index + offset_in_group;
+
+                    no_duplicated_build_keys &= table_items->first[index] == 0;
+                    table_items->next[i] = table_items->first[index];
+                    table_items->first[index] = i;
+                }
+                table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else {
                 for (size_t i = 1; i < num_rows; i++) {
                     if constexpr (SIMD == 1) {
@@ -341,6 +428,36 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 no_duplicated_build_keys &= table_items->first[bucket_index] == 0;
                 table_items->next[i] = table_items->first[bucket_index];
                 table_items->first[bucket_index] = i;
+            }
+            table_items->no_duplicated_build_keys = no_duplicated_build_keys;
+        } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+            const int32_t min_value = table_items->min_value;
+            const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+
+            for (size_t i = 1; i < num_rows; i++) {
+                const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+                const uint32_t group_index = bucket_index / 32;
+                const uint32_t index_in_group = bucket_index % 32;
+                table_items->dense_groups[group_index].bitmap |= 1 << index_in_group;
+            }
+            for (uint32_t group_index = 0; auto& group : table_items->dense_groups) {
+                group.group_index = group_index;
+                group_index += __builtin_popcount(group.bitmap);
+            }
+
+            bool no_duplicated_build_keys = true;
+            for (size_t i = 1; i < num_rows; i++) {
+                const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+                const uint32_t group_index = bucket_index / 32;
+                const uint32_t index_in_group = bucket_index % 32;
+
+                const uint32_t bitmap = table_items->dense_groups[group_index].bitmap & ((1 << index_in_group) - 1);
+                const uint32_t offset_in_group = __builtin_popcount(bitmap);
+                const uint32_t index = table_items->dense_groups[group_index].group_index + offset_in_group;
+
+                no_duplicated_build_keys &= table_items->first[index] == 0;
+                table_items->next[i] = table_items->first[index];
+                table_items->first[index] = i;
             }
             table_items->no_duplicated_build_keys = no_duplicated_build_keys;
         } else {
@@ -573,9 +690,31 @@ void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashT
         do_lookup_init<3>(table_items, probe_state);
     } else if (table_items.mode == 4) {
         do_lookup_init<4>(table_items, probe_state);
+    } else if (table_items.mode == 5) {
+        do_lookup_init<5>(table_items, probe_state);
     } else {
         do_lookup_init<0>(table_items, probe_state);
     }
+}
+
+template <LogicalType LT>
+uint32_t JoinProbeFunc<LT>::get_sparse_first(uint32_t bucket_index, const JoinHashTableItems& table_items) {
+    const uint32_t group_index = bucket_index / 32;
+    const auto& group = table_items.dense_groups[group_index];
+
+    uint32_t bitmap = group.bitmap;
+    if (bitmap == 0) {
+        return 0;
+    }
+
+    const uint32_t index_in_group = bucket_index % 32;
+    if ((bitmap & (1 << index_in_group)) == 0) {
+        return 0;
+    }
+
+    bitmap &= (1 << index_in_group) - 1;
+    const uint32_t offset_in_group = __builtin_popcount(bitmap);
+    return table_items.first[group.group_index + offset_in_group];
 }
 
 template <LogicalType LT>
@@ -641,6 +780,19 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
                     const uint32_t bucket_index = (static_cast<int64_t>(probe_keys[i]) - min_value) & matched_mask;
                     next[i] = first[bucket_index] & matched_mask;
+                }
+            } else if constexpr (SIMD == 5) {
+                const int32_t min_value = table_items.min_value;
+                const int32_t max_value = table_items.max_value;
+                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                for (uint32_t i = 0; i < probe_row_count; i++) {
+                    const int32_t value = probe_keys[i];
+                    if ((min_value <= value) & (value <= max_value) & (null_array[i] == 0)) {
+                        const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
+                        next[i] = get_sparse_first(bucket_index, table_items);
+                    } else {
+                        next[i] = 0;
+                    }
                 }
             } else {
                 static constexpr uint32_t W = 8;
@@ -711,6 +863,19 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                     const uint32_t bucket_index = (static_cast<int64_t>(probe_keys[i]) - min_value) & matched_mask;
                     next[i] = first[bucket_index] & matched_mask;
                 }
+            } else if constexpr (SIMD == 5) {
+                const int32_t min_value = table_items.min_value;
+                const int32_t max_value = table_items.max_value;
+                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                for (uint32_t i = 0; i < probe_row_count; i++) {
+                    const int32_t value = probe_keys[i];
+                    if ((min_value <= value) & (value <= max_value)) {
+                        const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
+                        next[i] = get_sparse_first(bucket_index, table_items);
+                    } else {
+                        next[i] = 0;
+                    }
+                }
             } else {
                 static constexpr uint32_t W = 8;
                 uint32_t buffer[W];
@@ -775,6 +940,19 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
             const uint32_t bucket_index = (static_cast<int64_t>(probe_keys[i]) - min_value) & matched_mask;
             next[i] = first[bucket_index] & matched_mask;
+        }
+    } else if constexpr (SIMD == 5) {
+        const int32_t min_value = table_items.min_value;
+        const int32_t max_value = table_items.max_value;
+        const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+        for (uint32_t i = 0; i < probe_row_count; i++) {
+            const int32_t value = probe_keys[i];
+            if ((min_value <= value) & (value <= max_value)) {
+                const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
+                next[i] = get_sparse_first(bucket_index, table_items);
+            } else {
+                next[i] = 0;
+            }
         }
     } else {
         static constexpr uint32_t W = 8;
@@ -1594,6 +1772,15 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
         return;
     }
 
+    if (_table_items->mode == 5) {
+        if (_table_items->no_duplicated_build_keys) {
+            _do_probe_from_ht<first_probe, false, true, 5>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht<first_probe, false, false, 5>(state, build_data, probe_data);
+        }
+        return;
+    }
+
     if (_table_items->no_conflicts) {
         _do_probe_from_ht<first_probe, true, false, 0>(state, build_data, probe_data);
     } else {
@@ -1612,7 +1799,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     uint32_t i = _probe_state->cur_probe_index;
 
     if constexpr (!first_probe) { // chunk_size + 1 probe
-        if constexpr (SIMD == 4) {
+        if constexpr (SIMD == 4 || SIMD == 5) {
             uint32_t build_index = _probe_state->cur_build_index;
             do {
                 _probe_state->probe_index[match_count] = i;
@@ -1646,7 +1833,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     const auto* probe_build_indexes = _probe_state->next.data();
     uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
-    if constexpr (SIMD == 4) {
+    if constexpr (SIMD == 4 || SIMD == 5) {
         if constexpr (no_duplicated_build_keys) {
             for (; i < probe_row_count; i++) {
                 const uint32_t build_index = probe_build_indexes[i];
@@ -1846,6 +2033,15 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
         return;
     }
 
+    if (_table_items->mode == 5) {
+        if (_table_items->no_duplicated_build_keys) {
+            _do_probe_from_ht_for_left_outer_join<first_probe, false, true, 5>(state, build_data, probe_data);
+        } else {
+            _do_probe_from_ht_for_left_outer_join<first_probe, false, false, 5>(state, build_data, probe_data);
+        }
+        return;
+    }
+
     if (_table_items->no_conflicts) {
         _do_probe_from_ht_for_left_outer_join<first_probe, true, false, 0>(state, build_data, probe_data);
     } else {
@@ -1865,7 +2061,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
     size_t i = _probe_state->cur_probe_index;
 
     if constexpr (!first_probe) {
-        if constexpr (SIMD == 4) {
+        if constexpr (SIMD == 4 || SIMD == 5) {
             uint32_t build_index = _probe_state->cur_build_index;
             do {
                 _probe_state->probe_index[match_count] = i;
@@ -1894,7 +2090,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
     const size_t probe_row_count = _probe_state->probe_row_count;
     uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
-    if constexpr (SIMD == 4) {
+    if constexpr (SIMD == 4 || SIMD == 5) {
         if constexpr (no_duplicated_build_keys) {
             DCHECK_EQ(i, 0);
             for (uint32_t j = 0; j < probe_row_count; j++) {

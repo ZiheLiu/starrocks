@@ -99,6 +99,11 @@ struct HashTableSlotDescriptor {
 };
 
 struct JoinHashTableItems {
+    struct DenseGroup {
+        uint32_t group_index;
+        uint32_t bitmap;
+    };
+
     //TODO: memory continues problem?
     ChunkPtr build_chunk = nullptr;
     Columns key_columns;
@@ -114,6 +119,7 @@ struct JoinHashTableItems {
     Buffer<uint32_t> first;
     Buffer<uint32_t> next;
     Buffer<uint8_t> set_has_value;
+    Buffer<DenseGroup> dense_groups;
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
     Buffer<uint8_t> bytes_per_key;
@@ -481,6 +487,7 @@ public:
 
     static void prepare(RuntimeState* state, HashTableProbeState* probe_state) {}
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
+    static uint32_t get_sparse_first(uint32_t bucket_index, const JoinHashTableItems& table_items);
     template <uint8_t SIMD>
     static void do_lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state);
     static const Buffer<CppType>& get_key_data(const HashTableProbeState& probe_state);
