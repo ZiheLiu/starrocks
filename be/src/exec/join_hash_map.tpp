@@ -88,8 +88,8 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
                     return 3;
                 }
 
-                if ((key_interval + 7) / 8 <= 1024 * 1024) {
-                    table_items->bucket_size = 1024 * 1024;
+                if ((key_interval + 7) / 8 <= 8 * 1024 * 1024) {
+                    table_items->bucket_size = (key_interval + 7) / 8 * 8;
                     table_items->min_value = min_key;
                     table_items->max_value = max_key;
                     return 3;
