@@ -113,7 +113,8 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
                 // new:
                 // - group: key_interval * 2bits = key_interval / 16 B
                 // - first: row_count * 4B
-                if (key_interval / 16 + table_items->row_count <= table_items->bucket_size) {
+                if (key_interval / 16 + table_items->row_count <=
+                    table_items->bucket_size + table_items->bucket_size / 10) {
                     // TODO: row_count + 1 overflow?
                     table_items->bucket_size = table_items->row_count + 1;
                     table_items->min_value = min_key;
