@@ -2099,7 +2099,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
             }
 
             for (uint32_t j = 0; j < probe_row_count; j++) {
-                uint32_t build_index = probe_build_indexes[i];
+                uint32_t build_index = probe_build_indexes[j];
                 if (build_index != 0 && ProbeFunc().equal(build_data[build_index], probe_data[j])) {
                     _probe_state->build_index[j] = build_index;
                 } else {
