@@ -38,21 +38,30 @@ PROPERTIES (
 );
 
 -- All is non-null.
-insert into t1 select idx, idx % 100, idx % 2 from __row_util;
+insert into t1 select idx, idx % 10, idx % 2 from __row_util;
 
-with w1 as (select approx_top_k(c2, 3) as x from t1)
+with w1 as (select approx_top_k(c2, 3) as x, c1 from t1 group by c1) -- group by.
+select c1, array_sortby((x) -> x.item, x) from w1 order by c1;
+
+with w1 as (select approx_top_k(c2, 3) as x from t1) -- non-group-by.
 select array_sortby((x) -> x.item, x) from w1;
 
 -- Some is null.
-insert into t1 select idx, null, null from __row_util limit 1000;
+insert into t1 select idx, idx % 10, null from __row_util limit 1000;
 
-with w1 as (select approx_top_k(c2, 3) as x from t1)
+with w1 as (select approx_top_k(c2, 3) as x, c1 from t1 group by c1) -- group by.
+select c1, array_sortby((x) -> x.item, x) from w1 order by c1;
+
+with w1 as (select approx_top_k(c2, 3) as x from t1) -- non-group-by.
 select array_sortby((x) -> x.item, x) from w1;
 
 -- The most is null.
-insert into t1 select idx, null, null from __row_util;
+insert into t1 select idx, idx % 10, null from __row_util;
 
-with w1 as (select approx_top_k(c2, 3) as x from t1)
+with w1 as (select approx_top_k(c2, 3) as x, c1 from t1 group by c1) -- group by.
+select c1, array_sortby((x) -> x.item, x) from w1 order by c1;
+
+with w1 as (select approx_top_k(c2, 3) as x from t1) -- non-group-by.
 select array_sortby((x) -> x.item, x) from w1;
 
 CREATE TABLE t2 (
@@ -69,5 +78,8 @@ PROPERTIES (
 -- All is null.
 insert into t2 select idx, null, null from __row_util;
 
-with w1 as (select approx_top_k(c2, 3) as x from t2)
+with w1 as (select approx_top_k(c2, 3) as x, c1 from t1 group by c1) -- group by.
+select c1, array_sortby((x) -> x.item, x) from w1 order by c1;
+
+with w1 as (select approx_top_k(c2, 3) as x from t1) -- non-group-by.
 select array_sortby((x) -> x.item, x) from w1;
