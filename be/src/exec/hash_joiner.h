@@ -354,13 +354,13 @@ private:
             if (column_ptr->only_null()) {
                 ColumnPtr column = ColumnHelper::create_column(expr_ctx->root()->type(), true);
                 column->append_nulls(chunk->num_rows());
-                key_columns.emplace_back(column);
+                key_columns.emplace_back(std::move(column));
             } else if (column_ptr->is_constant()) {
-                auto* const_column = ColumnHelper::as_raw_column<ConstColumn>(column_ptr);
+                auto* const_column = ColumnHelper::as_raw_column<ConstColumn>(std::move(column_ptr));
                 const_column->data_column()->assign(chunk->num_rows(), 0);
                 key_columns.emplace_back(const_column->data_column());
             } else {
-                key_columns.emplace_back(column_ptr);
+                key_columns.emplace_back(std::move(column_ptr));
             }
         }
         return Status::OK();
