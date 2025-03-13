@@ -1838,7 +1838,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
         if constexpr (no_duplicated_build_keys) {
             for (; i < probe_row_count; i++) {
                 const uint32_t build_index = probe_build_indexes[i];
-                if (build_index != 0 && ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                if (build_index != 0) {
                     _probe_state->probe_index[match_count] = i;
                     _probe_state->build_index[match_count] = build_index;
                     _probe_state->probe_match_filter[i] = 1;
@@ -1849,7 +1849,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             for (; i < probe_row_count; i++) {
                 uint32_t build_index = probe_build_indexes[i];
 
-                if (build_index == 0 || !ProbeFunc().equal(build_data[build_index], probe_data[i])) {
+                if (build_index == 0) {
                     continue;
                 }
 
@@ -2097,30 +2097,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
             for (uint32_t j = 0; j < probe_row_count; j++) {
                 _probe_state->probe_index[j] = j;
             }
-
-            for (uint32_t j = 0; j < probe_row_count; j++) {
-                uint32_t build_index = probe_build_indexes[j];
-                if (build_index != 0 && ProbeFunc().equal(build_data[build_index], probe_data[j])) {
-                    _probe_state->build_index[j] = build_index;
-                } else {
-                    _probe_state->build_index[j] = 0;
-                }
-            }
+            strings::memcpy_inlined(_probe_state->build_index.data(), probe_build_indexes,
+                                    probe_row_count * sizeof(uint32_t));
             match_count = probe_row_count;
         } else {
             for (; i < probe_row_count; i++) {
                 uint32_t build_index = probe_build_indexes[i];
-
-                if (build_index == 0 || !ProbeFunc().equal(build_data[build_index], probe_data[i])) {
-                    _probe_state->probe_index[match_count] = i;
-                    _probe_state->build_index[match_count] = 0;
-                    match_count++;
-
-                    RETURN_IF_CHUNK_FULL2()
-                    cur_row_match_count = 0;
-                    continue;
-                }
-
                 do {
                     _probe_state->probe_index[match_count] = i;
                     _probe_state->build_index[match_count] = build_index;
