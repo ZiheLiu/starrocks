@@ -20,6 +20,9 @@
 #include <vector>
 
 #include "column/column.h"
+#ifdef __AVX2__
+#include <immintrin.h>
+#endif
 #ifdef __SSE2__
 #include <emmintrin.h>
 #elif defined(__ARM_NEON) && defined(__aarch64__)
