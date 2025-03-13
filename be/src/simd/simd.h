@@ -68,8 +68,26 @@ count_zero(const T* data, size_t size) {
     size_t count = 0;
     const T* end = data + size;
 
-#if defined(__SSE2__) && defined(__POPCNT__)
-    // count per 16 int
+#if defined(__AVX2__) && defined(__POPCNT__)
+    // each loop handle 32 ints
+    const __m256i zeros = _mm256_setzero_si256();
+    const T* end32 = data + (size / 32 * 32);
+
+    for (; data < end32; data += 32) {
+        count += __builtin_popcount(static_cast<uint32_t>(_mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(
+                                            _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data)), zeros)))) |
+                                    (static_cast<uint32_t>(_mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(
+                                             _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data + 8)), zeros))))
+                                     << 8u) |
+                                    (static_cast<uint32_t>(_mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(
+                                             _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data + 16)), zeros))))
+                                     << 16u) |
+                                    (static_cast<uint32_t>(_mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpeq_epi32(
+                                             _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data + 24)), zeros))))
+                                     << 24u));
+    }
+#elif defined(__SSE2__) && defined(__POPCNT__)
+    // each loop handle 16 ints
     const __m128i zero16 = _mm_setzero_si128();
     const T* end16 = data + (size / 16 * 16);
 
