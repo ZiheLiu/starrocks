@@ -794,15 +794,13 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
                 }
             }
         } else {
-            if (rf->type() != RuntimeFilterSerializeType::BITSET_FILTER) {
-                if (rf->has_null()) {
-                    normalized_rf_with_null<SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
-                            rf, &slot, nullptr);
-                } else {
-                    detail::RuntimeColumnPredicateBuilder::build_minmax_range<
-                            RangeType, SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
-                            *range, rf, _opts.obj_pool, nullptr);
-                }
+            if (rf->has_null()) {
+                normalized_rf_with_null<SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
+                        rf, &slot, nullptr);
+            } else {
+                detail::RuntimeColumnPredicateBuilder::build_minmax_range<
+                        RangeType, SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
+                        *range, rf, _opts.obj_pool, nullptr);
             }
         }
     }
@@ -1117,11 +1115,6 @@ Status ChunkPredicateBuilder<E, Type>::_get_column_predicates(PredicateParser* p
                 continue;
             }
             if (desc->is_topn_filter()) {
-                continue;
-            }
-
-            if (const auto* rf = desc->runtime_filter(_opts.driver_sequence);
-                rf != nullptr && rf->type() == RuntimeFilterSerializeType::BITSET_FILTER) {
                 continue;
             }
 
