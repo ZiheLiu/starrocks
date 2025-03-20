@@ -501,7 +501,7 @@ size_t RuntimeBitsetFilter<LT>::max_serialized_size() const {
 
 template <LogicalType LT>
 size_t RuntimeBitsetFilter<LT>::serialize(int serialize_version, uint8_t* data) const {
-    DCHECK(serialize_version != RF_VERSION);
+    DCHECK(serialize_version >= RF_VERSION_V3);
 
     size_t offset = 0;
 
@@ -531,7 +531,7 @@ size_t RuntimeBitsetFilter<LT>::serialize(int serialize_version, uint8_t* data) 
 
 template <LogicalType LT>
 size_t RuntimeBitsetFilter<LT>::deserialize(int serialize_version, const uint8_t* data) {
-    DCHECK(serialize_version != RF_VERSION);
+    DCHECK(serialize_version >= RF_VERSION_V3);
 
     size_t offset = 0;
 
@@ -555,6 +555,7 @@ size_t RuntimeBitsetFilter<LT>::deserialize(int serialize_version, const uint8_t
     JRF_COPY_FIELD(bitset_size);
     DCHECK_EQ(_bitset.size(), bitset_size);
     memcpy(_bitset.data(), data + offset, bitset_size);
+    offset += bitset_size;
 
 #undef JRF_COPY_FIELD
 
