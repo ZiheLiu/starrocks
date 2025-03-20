@@ -398,24 +398,21 @@ template <LogicalType LT>
 template <bool null_is_true>
 void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* input_column, uint8_t* selection, size_t from,
                                                    size_t to) const {
-    const size_t num_rows = to - from;
-    selection += from;
-
     if (input_column->is_constant()) {
         const auto* const_column = down_cast<const ConstColumn*>(input_column);
         if (const_column->only_null()) {
-            memset(selection, _has_null, num_rows);
+            memset(selection + from, _has_null, to - from);
         } else {
             const auto& values = GetContainer<LT>::get_data(const_column->data_column());
             const bool selected = _test_data(values[0], selection[0]);
-            memset(selection, selected, num_rows);
+            memset(selection + from, selected, to - from);
         }
     } else if (input_column->is_nullable()) {
         const auto* nullable_column = down_cast<const NullableColumn*>(input_column);
         const auto& values = GetContainer<LT>::get_data(nullable_column->data_column());
         if (nullable_column->has_null()) {
             const uint8_t* null_data = nullable_column->immutable_null_column_data().data();
-            for (int i = 0; i < num_rows; i++) {
+            for (int i = from; i < to; i++) {
                 if constexpr (!null_is_true) {
                     selection[i] = _test_data(values[i], selection[i] & (null_data[i] == 0));
                 } else {
@@ -423,13 +420,13 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* input_column, u
                 }
             }
         } else {
-            for (int i = 0; i < num_rows; i++) {
+            for (int i = from; i < to; i++) {
                 selection[i] = _test_data(values[i], selection[i]);
             }
         }
     } else {
         const auto& values = GetContainer<LT>::get_data(input_column);
-        for (int i = 0; i < num_rows; i++) {
+        for (int i = from; i < to; i++) {
             selection[i] = _test_data(values[i], selection[i]);
         }
     }
