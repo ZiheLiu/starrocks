@@ -450,16 +450,16 @@ uint16_t RuntimeBitsetFilter<LT>::_evaluate_branchless(const Column* input_colum
                 const auto idx = sel[i];
                 dst_sel[num_dst_rows] = idx;
                 if constexpr (!null_is_true) {
-                    num_dst_rows += _test_data(values[i], null_data[i] == 0);
+                    num_dst_rows += _test_data(values[idx], null_data[idx] == 0);
                 } else {
-                    num_dst_rows += (null_data[i] != 0) | _test_data(values[i], null_data[i] == 0);
+                    num_dst_rows += (null_data[idx] != 0) | _test_data(values[idx], null_data[idx] == 0);
                 }
             }
         } else {
             for (int i = 0; i < sel_size; i++) {
                 const auto idx = sel[i];
                 dst_sel[num_dst_rows] = idx;
-                num_dst_rows += _test_data(values[i], true);
+                num_dst_rows += _test_data(values[idx], true);
             }
         }
     } else {
@@ -467,7 +467,7 @@ uint16_t RuntimeBitsetFilter<LT>::_evaluate_branchless(const Column* input_colum
         for (int i = 0; i < sel_size; i++) {
             const auto idx = sel[i];
             dst_sel[num_dst_rows] = idx;
-            num_dst_rows += _test_data(values[i], true);
+            num_dst_rows += _test_data(values[idx], true);
         }
     }
 
