@@ -87,6 +87,7 @@ public:
                                                                   ColumnPredicatePtrs& col_preds_owner);
 
     Status get_key_ranges(std::vector<std::unique_ptr<OlapScanRange>>* key_ranges);
+    StatusOr<RuntimeFilterPredicates> get_runtime_filter_predicates(ObjectPool* obj_pool, PredicateParser* parser);
 
     bool is_pred_normalized(size_t index) const;
 

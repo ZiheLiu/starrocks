@@ -346,6 +346,61 @@ StatusOr<PredicateCompoundNode<Type>> ChunkPredicateBuilder<E, Type>::get_predic
                 child_builder));
     }
 
+    for (const auto& it : _opts.runtime_filters->descriptors()) {
+        RuntimeFilterProbeDescriptor* desc = it.second;
+        SlotId slot_id;
+        if (!desc->is_probe_slot_ref(&slot_id)) {
+            continue;
+        }
+        const auto* slot_desc = _opts.tuple_desc->get_slot_by_id(slot_id);
+        if (slot_desc == nullptr) {
+            continue;
+        }
+        if (desc->is_topn_filter()) {
+            continue;
+        }
+
+        // The un-arrived runtime filter will not be added to the predicate tree,
+        // but will be added to `RuntimeFilterPredicates` by `get_runtime_filter_predicates`.
+        const auto* rf = desc->runtime_filter(_opts.driver_sequence);
+        if (rf == nullptr || rf->type() != RuntimeFilterSerializeType::BITSET_FILTER) {
+            continue;
+        }
+
+        auto column_id = parser->column_id(*slot_desc);
+
+        const auto error_status = Status::NotSupported("runtime bitset filter do not support the logical type: " +
+                                                       slot_desc->type().type);
+        RETURN_IF_ERROR(type_dispatch_bitset_filter(slot_desc->type().type, error_status, [&]<LogicalType LT>() {
+            const auto* bitset_rf = down_cast<const RuntimeBitsetFilter<LT>*>(rf->get_membership_filter());
+            auto bitset_in_pred = std::unique_ptr<ColumnPredicate>(
+                    new_bitset_in_predicate(get_type_info(slot_desc->type().type), column_id, bitset_rf->bitset()));
+            bitset_in_pred->set_index_filter_only(true);
+            auto bitset_in_pred_node = PredicateColumnNode{bitset_in_pred.get()};
+            // Only used as index filter. Evaluate will be pushed down by `join_runtime_filter_pushdown`.
+            col_preds_owner.emplace_back(std::move(bitset_in_pred));
+
+            // - For rf with has_null, generate `is_null_pred OR bitset_in_pred`.
+            // - Otherwise, generate `bitset_in_pred`.
+            if (!rf->has_null()) {
+                compound_node.add_child(std::move(bitset_in_pred_node));
+            } else {
+                auto or_node = PredicateOrNode{};
+
+                auto is_null_pred = std::unique_ptr<ColumnPredicate>(
+                        new_column_null_predicate(get_type_info(slot_desc->type().type), column_id, true));
+                is_null_pred->set_index_filter_only(true);
+                or_node.add_child(PredicateColumnNode{is_null_pred.get()});
+                col_preds_owner.emplace_back(std::move(is_null_pred));
+
+                or_node.add_child(std::move(bitset_in_pred_node));
+                compound_node.add_child(std::move(or_node));
+            }
+
+            return Status::OK();
+        }));
+    }
+
     return compound_node;
 }
 
@@ -739,13 +794,15 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
                 }
             }
         } else {
-            if (rf->has_null()) {
-                normalized_rf_with_null<SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
-                        rf, &slot, nullptr);
-            } else {
-                detail::RuntimeColumnPredicateBuilder::build_minmax_range<
-                        RangeType, SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
-                        *range, rf, _opts.obj_pool, nullptr);
+            if (rf->type() != RuntimeFilterSerializeType::BITSET_FILTER) {
+                if (rf->has_null()) {
+                    normalized_rf_with_null<SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
+                            rf, &slot, nullptr);
+                } else {
+                    detail::RuntimeColumnPredicateBuilder::build_minmax_range<
+                            RangeType, SlotType, SlotType, detail::RuntimeColumnPredicateBuilder::DummyDecoder>(
+                            *range, rf, _opts.obj_pool, nullptr);
+                }
             }
         }
     }
@@ -1047,6 +1104,7 @@ Status ChunkPredicateBuilder<E, Type>::_get_column_predicates(PredicateParser* p
             }
         }
     }
+
     if (_opts.runtime_state->enable_join_runtime_filter_pushdown()) {
         for (const auto& it : _opts.runtime_filters->descriptors()) {
             RuntimeFilterProbeDescriptor* desc = it.second;
@@ -1062,8 +1120,15 @@ Status ChunkPredicateBuilder<E, Type>::_get_column_predicates(PredicateParser* p
                 continue;
             }
 
+            if (const auto* rf = desc->runtime_filter(_opts.driver_sequence);
+                rf != nullptr && rf->type() == RuntimeFilterSerializeType::BITSET_FILTER) {
+                continue;
+            }
+
             auto column_id = parser->column_id(*slot_desc);
-            desc->set_has_push_down_to_storage(true);
+            // Connector scan only use parsed predicate_tree to filter with statistics but not with data rows,
+            // so runtime filters still needs to be used.
+            desc->set_has_push_down_to_storage(_opts.is_olap_scan);
             // add placeholder predicates, so that the columns needed by runtime filter can be read in the first stage of late materialization
             std::unique_ptr<ColumnPredicate> p(
                     new_column_placeholder_predicate(get_type_info(slot_desc->type().type), column_id));
@@ -1084,6 +1149,35 @@ Status ChunkPredicateBuilder<E, Type>::get_key_ranges(std::vector<std::unique_pt
         key_ranges->emplace_back(std::make_unique<OlapScanRange>());
     }
     return Status::OK();
+}
+
+template <BoxedExprType E, CompoundNodeType Type>
+StatusOr<RuntimeFilterPredicates> ChunkPredicateBuilder<E, Type>::get_runtime_filter_predicates(
+        ObjectPool* obj_pool, PredicateParser* parser) {
+    RuntimeFilterPredicates predicates(_opts.driver_sequence);
+    for (const auto& it : _opts.runtime_filters->descriptors()) {
+        RuntimeFilterProbeDescriptor* desc = it.second;
+        SlotId slot_id;
+        if (!desc->is_probe_slot_ref(&slot_id)) {
+            continue;
+        }
+
+        auto slot_desc = _opts.tuple_desc->get_slot_by_id(slot_id);
+        if (slot_desc == nullptr) {
+            continue;
+        }
+        if (desc->is_topn_filter()) {
+            continue;
+        }
+        if (!parser->can_pushdown(slot_desc)) {
+            continue;
+        }
+
+        auto column_id = parser->column_id(*slot_desc);
+        desc->set_has_push_down_to_storage(_opts.is_olap_scan);
+        predicates.add_predicate(obj_pool->add(new RuntimeFilterPredicate(desc, column_id)));
+    }
+    return predicates;
 }
 
 template <BoxedExprType E, CompoundNodeType Type>
@@ -1246,28 +1340,7 @@ StatusOr<PredicateTree> ScanConjunctsManager::get_predicate_tree(PredicateParser
 
 StatusOr<RuntimeFilterPredicates> ScanConjunctsManager::get_runtime_filter_predicates(ObjectPool* obj_pool,
                                                                                       PredicateParser* parser) {
-    RuntimeFilterPredicates predicates(_opts.driver_sequence);
-    for (const auto& it : _opts.runtime_filters->descriptors()) {
-        RuntimeFilterProbeDescriptor* desc = it.second;
-        SlotId slot_id;
-        if (!desc->is_probe_slot_ref(&slot_id)) {
-            continue;
-        }
-        auto slot_desc = _opts.tuple_desc->get_slot_by_id(slot_id);
-        if (slot_desc == nullptr) {
-            continue;
-        }
-        if (desc->is_topn_filter()) {
-            continue;
-        }
-        if (!parser->can_pushdown(slot_desc)) {
-            continue;
-        }
-        auto column_id = parser->column_id(*slot_desc);
-        desc->set_has_push_down_to_storage(true);
-        predicates.add_predicate(obj_pool->add(new RuntimeFilterPredicate(desc, column_id)));
-    }
-    return predicates;
+    return _root_builder.get_runtime_filter_predicates(obj_pool, parser);
 }
 
 Status ScanConjunctsManager::get_key_ranges(std::vector<std::unique_ptr<OlapScanRange>>* key_ranges) {

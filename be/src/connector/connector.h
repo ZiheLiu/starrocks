@@ -96,7 +96,7 @@ protected:
     bool _has_any_predicate = false;
     std::vector<ExprContext*> _conjunct_ctxs;
     RuntimeFilterProbeCollector* _runtime_filters = nullptr;
-    RuntimeBloomFilterEvalContext runtime_bloom_filter_eval_context;
+    RuntimeMembershipFilterEvalContext runtime_bloom_filter_eval_context;
     RuntimeProfile* _runtime_profile = nullptr;
     TupleDescriptor* _tuple_desc = nullptr;
     pipeline::ScanSplitContext* _split_context = nullptr;
