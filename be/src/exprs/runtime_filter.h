@@ -1660,10 +1660,11 @@ public:
 
 private:
     template <bool null_is_true>
-    void _evaluate_vectorized(const Column* input_column, uint8_t* __restrict selection, size_t from, size_t to) const;
+    void _evaluate_vectorized(const Column* __restrict input_column, uint8_t* __restrict selection, size_t from,
+                              size_t to) const;
     template <bool null_is_true>
-    uint16_t _evaluate_branchless(const Column* input_column, const std::vector<uint32_t>& hash_values, uint16_t* sel,
-                                  uint16_t sel_size, uint16_t* dst_sel) const;
+    uint16_t _evaluate_branchless(const Column* __restrict input_column, const std::vector<uint32_t>& hash_values,
+                                  uint16_t* __restrict sel, uint16_t sel_size, uint16_t* dst_sel) const;
 
     bool _test_data(const CppType& value, uint8_t selected) const {
         return _bitset.template contains<false /*CheckRange*/>(value, selected);

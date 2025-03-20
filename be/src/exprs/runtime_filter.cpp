@@ -396,7 +396,7 @@ uint16_t RuntimeBitsetFilter<LT>::evaluate(const Column* input_column, const std
 
 template <LogicalType LT>
 template <bool null_is_true>
-void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* input_column, uint8_t* __restrict selection,
+void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict input_column, uint8_t* __restrict selection,
                                                    size_t from, size_t to) const {
     if (input_column->is_constant()) {
         const auto* const_column = down_cast<const ConstColumn*>(input_column);
@@ -434,9 +434,10 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* input_column, u
 
 template <LogicalType LT>
 template <bool null_is_true>
-uint16_t RuntimeBitsetFilter<LT>::_evaluate_branchless(const Column* input_column,
-                                                       const std::vector<uint32_t>& hash_values, uint16_t* sel,
-                                                       uint16_t sel_size, uint16_t* dst_sel) const {
+uint16_t RuntimeBitsetFilter<LT>::_evaluate_branchless(const Column* __restrict input_column,
+                                                       const std::vector<uint32_t>& hash_values,
+                                                       uint16_t* __restrict sel, uint16_t sel_size,
+                                                       uint16_t* dst_sel) const {
     uint16_t num_dst_rows = 0;
     if (input_column->is_nullable()) {
         const auto* nullable_column = down_cast<const NullableColumn*>(input_column);
