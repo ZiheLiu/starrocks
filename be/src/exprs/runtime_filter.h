@@ -1563,7 +1563,7 @@ public:
     void insert(const CppType& value);
 
     template <bool CheckRange>
-    bool contains(const CppType& value, uint8_t selected) const {
+    ALWAYS_INLINE bool contains(const CppType& value, uint8_t selected) const {
         bool matched = selected != 0;
         if constexpr (CheckRange) {
             matched &= (_min_value <= value) & (value <= _max_value);
@@ -1660,7 +1660,7 @@ public:
 
 private:
     template <bool null_is_true>
-    void _evaluate_vectorized(const Column* input_column, uint8_t* selection, size_t from, size_t to) const;
+    void _evaluate_vectorized(const Column* input_column, uint8_t* __restrict selection, size_t from, size_t to) const;
     template <bool null_is_true>
     uint16_t _evaluate_branchless(const Column* input_column, const std::vector<uint32_t>& hash_values, uint16_t* sel,
                                   uint16_t sel_size, uint16_t* dst_sel) const;

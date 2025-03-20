@@ -396,8 +396,8 @@ uint16_t RuntimeBitsetFilter<LT>::evaluate(const Column* input_column, const std
 
 template <LogicalType LT>
 template <bool null_is_true>
-void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* input_column, uint8_t* selection, size_t from,
-                                                   size_t to) const {
+void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* input_column, uint8_t* __restrict selection,
+                                                   size_t from, size_t to) const {
     if (input_column->is_constant()) {
         const auto* const_column = down_cast<const ConstColumn*>(input_column);
         if (const_column->only_null()) {
