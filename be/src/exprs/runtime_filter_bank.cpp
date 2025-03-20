@@ -80,7 +80,7 @@ RuntimeFilter* RuntimeFilterHelper::create_runtime_bloom_filter(ObjectPool* pool
 RuntimeFilter* RuntimeFilterHelper::create_runtime_bitset_filter(ObjectPool* pool, LogicalType type, int8_t join_mode) {
     RuntimeFilter* filter =
             type_dispatch_bitset_filter(type, static_cast<RuntimeFilter*>(nullptr), [&]<LogicalType LT>() {
-                RuntimeFilter* rf = new RuntimeBitsetFilter<LT>();
+                RuntimeFilter* rf = new ComposedRuntimeBitsetFilter<LT>();
                 rf->get_membership_filter()->set_join_mode(join_mode);
                 return rf;
             });
