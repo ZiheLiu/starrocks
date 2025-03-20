@@ -514,7 +514,7 @@ size_t RuntimeBitsetFilter<LT>::serialize(int serialize_version, uint8_t* data) 
     JRF_COPY_FIELD(_join_mode); // 3. join_mode
 
     const auto min_value = _bitset.min_value();
-    const auto max_value = _bitset.min_value();
+    const auto max_value = _bitset.max_value();
     JRF_COPY_FIELD(min_value); // 4. min_value
     JRF_COPY_FIELD(max_value); // 5. max_value
 

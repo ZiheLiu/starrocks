@@ -235,7 +235,7 @@ size_t RuntimeFilterHelper::serialize_runtime_filter(int rf_version, const Runti
     // 2. rf_type
     if (rf_version >= RF_VERSION_V3) {
         const RuntimeFilterSerializeType type = rf->type();
-        memcpy(data + offset, &type, RF_VERSION_SZ);
+        memcpy(data + offset, &type, sizeof(type));
         offset += sizeof(type);
     }
 
