@@ -353,6 +353,15 @@ void Bitset<LT>::init() {
     _bitset.resize(num_buckets);
 }
 
+template <LogicalType LT>
+template <bool CheckRange>
+void Bitset<LT>::contains_batch(uint8_t* __restrict selection, const CppType* __restrict values, size_t from,
+                                size_t to) {
+    for (size_t i = from; i < to; i++) {
+        selection[i] = contains<CheckRange>(values[i], selection[i]);
+    }
+}
+
 // ------------------------------------------------------------------------------------
 // RuntimeBitsetFilter
 // ------------------------------------------------------------------------------------
@@ -422,15 +431,11 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
                 }
             }
         } else {
-            for (int i = from; i < to; i++) {
-                selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i], selection[i]);
-            }
+            _bitset.template contains_batch<false /*CheckRange*/>(selection, values, from, to);
         }
     } else {
-        const auto* __restrict values = GetContainer<LT>::get_data(input_column).data();
-        for (int i = from; i < to; i++) {
-            selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i], selection[i]);
-        }
+        const auto* values = GetContainer<LT>::get_data(input_column).data();
+        _bitset.template contains_batch<false /*CheckRange*/>(selection, values, from, to);
     }
 }
 
