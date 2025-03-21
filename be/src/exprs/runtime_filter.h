@@ -1581,6 +1581,9 @@ public:
 
     template <bool CheckRange>
     void contains_batch(uint8_t* __restrict selection, const CppType* __restrict values, size_t from, size_t to) const;
+    template <bool CheckRange, bool NullIsTrue>
+    void contains_batch(uint8_t* __restrict selection, const CppType* __restrict values,
+                        const uint8_t* __restrict is_nulls, size_t from, size_t to) const;
 
     /// Whether the bitset contains at least one value in the range [min_value, max_value]
     bool contains_range(const CppType& min_value, const CppType& max_value) const;

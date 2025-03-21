@@ -362,6 +362,19 @@ void Bitset<LT>::contains_batch(uint8_t* __restrict selection, const CppType* __
     }
 }
 
+template <LogicalType LT>
+template <bool CheckRange, bool NullIsTrue>
+void Bitset<LT>::contains_batch(uint8_t* __restrict selection, const CppType* __restrict values,
+                                const uint8_t* __restrict is_nulls, size_t from, size_t to) const {
+    for (int i = from; i < to; i++) {
+        if constexpr (!NullIsTrue) {
+            selection[i] = contains<CheckRange>(values[i], selection[i] & (is_nulls[i] == 0));
+        } else {
+            selection[i] = (is_nulls[i] != 0) | contains<CheckRange>(values[i], selection[i] & (is_nulls[i] == 0));
+        }
+    }
+}
+
 // ------------------------------------------------------------------------------------
 // RuntimeBitsetFilter
 // ------------------------------------------------------------------------------------
@@ -418,18 +431,10 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
         }
     } else if (input_column->is_nullable()) {
         const auto* nullable_column = down_cast<const NullableColumn*>(input_column);
-        const auto* __restrict values = GetContainer<LT>::get_data(nullable_column->data_column()).data();
+        const auto* values = GetContainer<LT>::get_data(nullable_column->data_column()).data();
         if (nullable_column->has_null()) {
-            const uint8_t* __restrict null_data = nullable_column->immutable_null_column_data().data();
-            for (int i = from; i < to; i++) {
-                if constexpr (!null_is_true) {
-                    selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i],
-                                                                                   selection[i] & (null_data[i] == 0));
-                } else {
-                    selection[i] = (null_data[i] != 0) | _bitset.template contains<false /*CheckRange*/>(
-                                                                 values[i], selection[i] & (null_data[i] == 0));
-                }
-            }
+            const uint8_t* null_data = nullable_column->immutable_null_column_data().data();
+            _bitset.template contains_batch<false /*CheckRange*/>(selection, values, null_data, from, to);
         } else {
             _bitset.template contains_batch<false /*CheckRange*/>(selection, values, from, to);
         }
