@@ -356,7 +356,7 @@ void Bitset<LT>::init() {
 template <LogicalType LT>
 template <bool CheckRange>
 void Bitset<LT>::contains_batch(uint8_t* __restrict selection, const CppType* __restrict values, size_t from,
-                                size_t to) {
+                                size_t to) const {
     for (size_t i = from; i < to; i++) {
         selection[i] = contains<CheckRange>(values[i], selection[i]);
     }
