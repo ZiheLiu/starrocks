@@ -469,6 +469,91 @@ from t1 join [broadcast] t2 using(c_datetime_1_seq);
 select count(1)
 from t1 join [broadcast] t2 using(c_datetime_2_seq);
 
+-- null safe
+
+with w1 as (
+    select * from t2 order by k1 limit 10
+)
+select count(1)
+from t1 join [broadcast] w1 on t1.c_bool_1_null <=> w1.c_bool_1_null;
+
+ with w1 as (
+    select * from t2 order by k1 limit 10
+)
+select count(1)
+from t1 join [broadcast] w1 on t1.c_bool_2_notnull <=> w1.c_bool_2_notnull;
+
+select count(1)
+from t1 join [broadcast] t2 on t1.c_tinyint_1_null <=> t2.c_tinyint_1_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_tinyint_2_notnull <=> t2.c_tinyint_2_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_smallint_1_null <=> t2.c_smallint_1_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_smallint_2_notnull <=> t2.c_smallint_2_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_int_1_null <=> t2.c_int_1_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_int_2_notnull <=> t2.c_int_2_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_bigint_1_null <=> t2.c_bigint_1_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_bigint_2_notnull <=> t2.c_bigint_2_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_date_1_null <=> t2.c_date_1_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_date_2_notnull <=> t2.c_date_2_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_decimal64_1_null <=> t2.c_decimal64_1_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_decimal64_2_notnull <=> t2.c_decimal64_2_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_1_null <=> t2.c_str_1_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_2_notnull <=> t2.c_str_2_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_3_low_null <=> t2.c_str_3_low_null;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_4_low_notnull <=> t2.c_str_4_low_notnull;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_datetime_1_seq <=> t2.c_datetime_1_seq;
+
+ 
+select count(1)
+from t1 join [broadcast] t2 on t1.c_datetime_2_seq <=> t2.c_datetime_2_seq;
+
 -- left scan and broadcast join cross exchange
 
 with w1 as (
