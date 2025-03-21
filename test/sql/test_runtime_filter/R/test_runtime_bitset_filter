@@ -492,6 +492,112 @@ with w1 as (
     select * from t2 order by k1 limit 10
 )
 select count(1)
+from t1 join [broadcast] w1 on t1.c_bool_1_null <=> w1.c_bool_1_null;
+-- result:
+6400000
+-- !result
+with w1 as (
+   select * from t2 order by k1 limit 10
+)
+select count(1)
+from t1 join [broadcast] w1 on t1.c_bool_2_notnull <=> w1.c_bool_2_notnull;
+-- result:
+6450000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_tinyint_1_null <=> t2.c_tinyint_1_null;
+-- result:
+1100000000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_tinyint_2_notnull <=> t2.c_tinyint_2_notnull;
+-- result:
+1108593760
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_smallint_1_null <=> t2.c_smallint_1_null;
+-- result:
+103907840
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_smallint_2_notnull <=> t2.c_smallint_2_notnull;
+-- result:
+4338192
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_int_1_null <=> t2.c_int_1_null;
+-- result:
+100100000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_int_2_notnull <=> t2.c_int_2_notnull;
+-- result:
+120000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_bigint_1_null <=> t2.c_bigint_1_null;
+-- result:
+100100000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_bigint_2_notnull <=> t2.c_bigint_2_notnull;
+-- result:
+120000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_date_1_null <=> t2.c_date_1_null;
+-- result:
+100100000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_date_2_notnull <=> t2.c_date_2_notnull;
+-- result:
+120000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_decimal64_1_null <=> t2.c_decimal64_1_null;
+-- result:
+100100000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_decimal64_2_notnull <=> t2.c_decimal64_2_notnull;
+-- result:
+120000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_1_null <=> t2.c_str_1_null;
+-- result:
+100100000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_2_notnull <=> t2.c_str_2_notnull;
+-- result:
+120000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_3_low_null <=> t2.c_str_3_low_null;
+-- result:
+600000000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_str_4_low_notnull <=> t2.c_str_4_low_notnull;
+-- result:
+554296880
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_datetime_1_seq <=> t2.c_datetime_1_seq;
+-- result:
+100100000
+-- !result
+select count(1)
+from t1 join [broadcast] t2 on t1.c_datetime_2_seq <=> t2.c_datetime_2_seq;
+-- result:
+120000
+-- !result
+with w1 as (
+    select * from t2 order by k1 limit 10
+)
+select count(1)
 from (select distinct c_bool_1_null from t1)t join [broadcast] w1 using(c_bool_1_null);
 -- result:
 10
@@ -706,7 +812,7 @@ with w1 as (
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] w1 using(c_bool_1_null);
 -- result:
-6400000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 with w1 as (
    select * from t2 order by k1 limit 10
@@ -714,97 +820,97 @@ with w1 as (
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] w1 using(c_bool_2_notnull);
 -- result:
-6450000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_tinyint_1_null);
 -- result:
-1000000000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_tinyint_2_notnull);
 -- result:
-1108593760
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_smallint_1_null);
 -- result:
-3907840
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_smallint_2_notnull);
 -- result:
-4338192
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_int_1_null);
 -- result:
-100000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_int_2_notnull);
 -- result:
-120000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_bigint_1_null);
 -- result:
-100000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_bigint_2_notnull);
 -- result:
-120000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_date_1_null);
 -- result:
-100000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_date_2_notnull);
 -- result:
-120000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_decimal64_1_null);
 -- result:
-100000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_decimal64_2_notnull);
 -- result:
-120000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_str_1_null);
 -- result:
-100000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_str_2_notnull);
 -- result:
-120000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_str_3_low_null);
 -- result:
-500000000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_str_4_low_notnull);
 -- result:
-554296880
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_datetime_1_seq);
 -- result:
-100000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 select /*+SET_VAR(enable_join_runtime_bitset_filter=false)*/ count(1)
 from t1 join [broadcast] t2 using(c_datetime_2_seq);
 -- result:
-120000
+E: (1193, "Unknown system variable 'enable_join_runtime_bitset_filter', the most similar variables are {'enable_topn_runtime_filter', 'enable_global_runtime_filter', 'enable_prune_iceberg_manifest'}")
 -- !result
 with w1 as (
     select * from t3 order by k1 limit 10
