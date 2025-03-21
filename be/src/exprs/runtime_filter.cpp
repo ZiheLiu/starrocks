@@ -409,7 +409,7 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
         }
     } else if (input_column->is_nullable()) {
         const auto* nullable_column = down_cast<const NullableColumn*>(input_column);
-        const auto& values = GetContainer<LT>::get_data(nullable_column->data_column());
+        const auto* values = GetContainer<LT>::get_data(nullable_column->data_column()).data();
         if (nullable_column->has_null()) {
             const uint8_t* null_data = nullable_column->immutable_null_column_data().data();
             for (int i = from; i < to; i++) {
@@ -425,7 +425,7 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
             }
         }
     } else {
-        const auto& values = GetContainer<LT>::get_data(input_column);
+        const auto* values = GetContainer<LT>::get_data(input_column).data();
         for (int i = from; i < to; i++) {
             selection[i] = _test_data(values[i], selection[i]);
         }
