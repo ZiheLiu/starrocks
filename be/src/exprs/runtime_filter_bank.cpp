@@ -340,8 +340,8 @@ Status RuntimeFilterHelper::fill_runtime_filter(const ColumnPtr& column, Logical
         return type_dispatch_filter(type, Status::OK(), FilterIniter<ComposedRuntimeBloomFilter>(), column,
                                     column_offset, filter, eq_null);
     case RuntimeFilterSerializeType::BITSET_FILTER: {
-        const auto error_status =
-                Status::NotSupported("runtime bitset filter do not support the logical type: " + type);
+        const auto error_status = Status::NotSupported("runtime bitset filter do not support the logical type: " +
+                                                       std::string(logical_type_to_string(type)));
         return type_dispatch_bitset_filter(type, error_status, FilterIniter<ComposedRuntimeBitsetFilter>(), column,
                                            column_offset, filter, eq_null);
     }

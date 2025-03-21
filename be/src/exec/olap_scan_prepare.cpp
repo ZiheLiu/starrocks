@@ -370,7 +370,7 @@ StatusOr<PredicateCompoundNode<Type>> ChunkPredicateBuilder<E, Type>::get_predic
         auto column_id = parser->column_id(*slot_desc);
 
         const auto error_status = Status::NotSupported("runtime bitset filter do not support the logical type: " +
-                                                       slot_desc->type().type);
+                                                       std::string(logical_type_to_string(slot_desc->type().type)));
         RETURN_IF_ERROR(type_dispatch_bitset_filter(slot_desc->type().type, error_status, [&]<LogicalType LT>() {
             const auto* bitset_rf = down_cast<const RuntimeBitsetFilter<LT>*>(rf->get_membership_filter());
             auto bitset_in_pred = std::unique_ptr<ColumnPredicate>(
