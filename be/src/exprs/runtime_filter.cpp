@@ -366,11 +366,19 @@ template <LogicalType LT>
 template <bool CheckRange, bool NullIsTrue>
 void Bitset<LT>::contains_batch(uint8_t* __restrict selection, const CppType* __restrict values,
                                 const uint8_t* __restrict is_nulls, size_t from, size_t to) const {
-    for (int i = from; i < to; i++) {
-        if constexpr (!NullIsTrue) {
-            selection[i] = contains<CheckRange>(values[i], selection[i] & (is_nulls[i] == 0));
-        } else {
-            selection[i] = (is_nulls[i] != 0) | contains<CheckRange>(values[i], selection[i] & (is_nulls[i] == 0));
+    if constexpr (!NullIsTrue) {
+        for (int i = from; i < to; i++) {
+            selection[i] &= is_nulls[i] == 0;
+        }
+        for (int i = from; i < to; i++) {
+            selection[i] = contains<CheckRange>(values[i], selection[i]);
+        }
+    } else {
+        for (int i = from; i < to; i++) {
+            selection[i] = contains<CheckRange>(values[i], selection[i]);
+        }
+        for (int i = from; i < to; i++) {
+            selection[i] |= is_nulls[i] != 0;
         }
     }
 }
