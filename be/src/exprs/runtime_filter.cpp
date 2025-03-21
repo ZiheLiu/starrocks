@@ -409,9 +409,9 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
         }
     } else if (input_column->is_nullable()) {
         const auto* nullable_column = down_cast<const NullableColumn*>(input_column);
-        const auto* values = GetContainer<LT>::get_data(nullable_column->data_column()).data();
+        const auto* __restrict values = GetContainer<LT>::get_data(nullable_column->data_column()).data();
         if (nullable_column->has_null()) {
-            const uint8_t* null_data = nullable_column->immutable_null_column_data().data();
+            const uint8_t* __restrict null_data = nullable_column->immutable_null_column_data().data();
             for (int i = from; i < to; i++) {
                 if constexpr (!null_is_true) {
                     selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i],
@@ -427,7 +427,7 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
             }
         }
     } else {
-        const auto* values = GetContainer<LT>::get_data(input_column).data();
+        const auto* __restrict values = GetContainer<LT>::get_data(input_column).data();
         for (int i = from; i < to; i++) {
             selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i], selection[i]);
         }
