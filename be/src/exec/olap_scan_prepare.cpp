@@ -346,8 +346,20 @@ StatusOr<PredicateCompoundNode<Type>> ChunkPredicateBuilder<E, Type>::get_predic
                 child_builder));
     }
 
-    for (const auto& it : _opts.runtime_filters->descriptors()) {
-        RuntimeFilterProbeDescriptor* desc = it.second;
+    RETURN_IF_ERROR(_build_bitset_in_predicates(compound_node, parser, col_preds_owner));
+
+    return compound_node;
+}
+
+template <BoxedExprType E, CompoundNodeType Type>
+Status ChunkPredicateBuilder<E, Type>::_build_bitset_in_predicates(PredicateCompoundNode<Type>& tree_root,
+                                                                   PredicateParser* parser,
+                                                                   ColumnPredicatePtrs& col_preds_owner) {
+    if (_opts.runtime_filters == nullptr) {
+        return Status::OK();
+    }
+
+    for (const auto& [_, desc] : _opts.runtime_filters->descriptors()) {
         SlotId slot_id;
         if (!desc->is_probe_slot_ref(&slot_id)) {
             continue;
@@ -383,7 +395,7 @@ StatusOr<PredicateCompoundNode<Type>> ChunkPredicateBuilder<E, Type>::get_predic
             // - For rf with has_null, generate `is_null_pred OR bitset_in_pred`.
             // - Otherwise, generate `bitset_in_pred`.
             if (!rf->has_null()) {
-                compound_node.add_child(std::move(bitset_in_pred_node));
+                tree_root.add_child(std::move(bitset_in_pred_node));
             } else {
                 auto or_node = PredicateOrNode{};
 
@@ -394,14 +406,14 @@ StatusOr<PredicateCompoundNode<Type>> ChunkPredicateBuilder<E, Type>::get_predic
                 col_preds_owner.emplace_back(std::move(is_null_pred));
 
                 or_node.add_child(std::move(bitset_in_pred_node));
-                compound_node.add_child(std::move(or_node));
+                tree_root.add_child(std::move(or_node));
             }
 
             return Status::OK();
         }));
     }
 
-    return compound_node;
+    return Status::OK();
 }
 
 template <bool Negative>

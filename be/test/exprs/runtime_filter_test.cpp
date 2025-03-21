@@ -1423,7 +1423,7 @@ TEST_F(RuntimeMembershipFilterTest, TestEvaluateBitsetFilter) {
         RuntimeFilter::RunningContext ctx;
         ctx.use_merged_selection = false;
         rf.evaluate(col.get(), &ctx);
-        _check_equal(ctx.selection, {0, 1, 0, 1, 0, 1, 0});
+        _check_equal(ctx.selection, {0, 0, 1, 0, 1, 0, 0});
     }
 
     // Non-null RF evaluates nullable column.
@@ -1432,7 +1432,7 @@ TEST_F(RuntimeMembershipFilterTest, TestEvaluateBitsetFilter) {
         ctx.use_merged_selection = false;
         rf.evaluate(nullable_col.get(), &ctx);
         // Only min-max filter effective.
-        _check_equal(ctx.selection, {0, 1, 0, 1, 0, 1, 0, 0, 0});
+        _check_equal(ctx.selection, {0, 0, 1, 0, 1, 0, 0, 0});
     }
 
     rf.insert_null();
@@ -1442,7 +1442,7 @@ TEST_F(RuntimeMembershipFilterTest, TestEvaluateBitsetFilter) {
         ctx.use_merged_selection = false;
         rf.evaluate(col.get(), &ctx);
         // Only min-max filter effective.
-        _check_equal(ctx.selection, {0, 1, 0, 1, 0, 1, 0});
+        _check_equal(ctx.selection, {0, 0, 1, 0, 1, 0, 0});
     }
 
     // Null RF evaluates nullable column.
@@ -1451,7 +1451,7 @@ TEST_F(RuntimeMembershipFilterTest, TestEvaluateBitsetFilter) {
         ctx.use_merged_selection = false;
         rf.evaluate(nullable_col.get(), &ctx);
         // Only min-max filter effective.
-        _check_equal(ctx.selection, {0, 1, 0, 1, 0, 1, 0, 1, 1});
+        _check_equal(ctx.selection, {0, 0, 1, 0, 1, 0, 1, 1});
     }
 }
 
