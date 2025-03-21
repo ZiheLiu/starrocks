@@ -436,7 +436,7 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
             const uint8_t* null_data = nullable_column->immutable_null_column_data().data();
             _bitset.template contains_batch<false /*CheckRange*/, null_is_true>(selection, values, null_data, from, to);
         } else {
-            _bitset.template contains_batch<false /*CheckRange*/, null_is_true>(selection, values, from, to);
+            _bitset.template contains_batch<false /*CheckRange*/>(selection, values, from, to);
         }
     } else {
         const auto* values = GetContainer<LT>::get_data(input_column).data();
