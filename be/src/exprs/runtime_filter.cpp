@@ -414,20 +414,22 @@ void RuntimeBitsetFilter<LT>::_evaluate_vectorized(const Column* __restrict inpu
             const uint8_t* null_data = nullable_column->immutable_null_column_data().data();
             for (int i = from; i < to; i++) {
                 if constexpr (!null_is_true) {
-                    selection[i] = _test_data(values[i], selection[i] & (null_data[i] == 0));
+                    selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i],
+                                                                                   selection[i] & (null_data[i] == 0));
                 } else {
-                    selection[i] = (null_data[i] != 0) | _test_data(values[i], selection[i] & (null_data[i] == 0));
+                    selection[i] = (null_data[i] != 0) | _bitset.template contains<false /*CheckRange*/>(
+                                                                 values[i], selection[i] & (null_data[i] == 0));
                 }
             }
         } else {
             for (int i = from; i < to; i++) {
-                selection[i] = _test_data(values[i], selection[i]);
+                selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i], selection[i]);
             }
         }
     } else {
         const auto* values = GetContainer<LT>::get_data(input_column).data();
         for (int i = from; i < to; i++) {
-            selection[i] = _test_data(values[i], selection[i]);
+            selection[i] = _bitset.template contains<false /*CheckRange*/>(values[i], selection[i]);
         }
     }
 }
