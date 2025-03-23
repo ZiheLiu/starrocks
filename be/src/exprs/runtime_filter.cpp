@@ -366,17 +366,14 @@ template <LogicalType LT>
 template <bool CheckRange, bool NullIsTrue>
 void Bitset<LT>::contains_batch(uint8_t* __restrict selection, const CppType* __restrict values,
                                 const uint8_t* __restrict is_nulls, size_t from, size_t to) const {
-    if constexpr (!NullIsTrue) {
-        for (int i = from; i < to; i++) {
-            selection[i] &= is_nulls[i] == 0;
-        }
-        for (int i = from; i < to; i++) {
-            selection[i] = contains<CheckRange>(values[i], selection[i]);
-        }
-    } else {
-        for (int i = from; i < to; i++) {
-            selection[i] = contains<CheckRange>(values[i], selection[i]);
-        }
+    for (int i = from; i < to; i++) {
+        selection[i] &= is_nulls[i] == 0;
+    }
+    for (int i = from; i < to; i++) {
+        selection[i] = contains<CheckRange>(values[i], selection[i]);
+    }
+
+    if constexpr (NullIsTrue) {
         for (int i = from; i < to; i++) {
             selection[i] |= is_nulls[i] != 0;
         }
@@ -411,7 +408,11 @@ void RuntimeBitsetFilter<LT>::evaluate(const Column* input_column, RunningContex
 template <LogicalType LT>
 void RuntimeBitsetFilter<LT>::evaluate(const Column* input_column, const std::vector<uint32_t>& hash_values,
                                        uint8_t* selection, uint16_t from, uint16_t to) const {
-    _evaluate_vectorized<false>(input_column, selection, from, to);
+    if (_has_null) {
+        _evaluate_vectorized<true>(input_column, selection, from, to);
+    } else {
+        _evaluate_vectorized<false>(input_column, selection, from, to);
+    }
 }
 
 template <LogicalType LT>
