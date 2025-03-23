@@ -1154,7 +1154,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
         } while (build_index != 0);
 
         if constexpr (first_probe && !no_conflicts) {
-            if (_probe_state->cur_row_match_count > 1) {
+            if (cur_row_match_count > 1) {
                 one_to_many = true;
             }
             cur_row_match_count = 0;
