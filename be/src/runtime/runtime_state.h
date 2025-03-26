@@ -522,10 +522,6 @@ public:
                _query_options.enable_join_runtime_bitset_filter;
     }
 
-    bool lower_upper_support_utf8() const {
-        return _query_options.__isset.lower_upper_support_utf8 && _query_options.lower_upper_support_utf8;
-    }
-
     DebugActionMgr& debug_action_mgr() { return _debug_action_mgr; }
 
 private:
