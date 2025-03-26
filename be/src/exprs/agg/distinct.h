@@ -524,15 +524,15 @@ public:
 };
 
 template <LogicalType LT, AggDistinctType DistinctType, typename T = RunTimeCppType<LT>>
-class DistinctAggregateFunction final
+class DistinctAggregateFunction
         : public TDistinctAggregateFunction<LT, SumResultLT<LT>, DistinctAggregateState, DistinctType, T> {};
 
 template <LogicalType LT, AggDistinctType DistinctType, typename T = RunTimeCppType<LT>>
-class DistinctAggregateFunctionV2 final
+class DistinctAggregateFunctionV2
         : public TDistinctAggregateFunction<LT, SumResultLT<LT>, DistinctAggregateStateV2, DistinctType, T> {};
 
 template <LogicalType LT, AggDistinctType DistinctType, typename T = RunTimeCppType<LT>>
-class DecimalDistinctAggregateFunction final
+class DecimalDistinctAggregateFunction
         : public TDistinctAggregateFunction<LT, TYPE_DECIMAL128, DistinctAggregateStateV2, DistinctType, T> {};
 
 // now we only support String
