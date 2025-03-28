@@ -126,7 +126,7 @@ public class SkeletonBuilder extends OptExpressionVisitor<SkeletonNode, Skeleton
     public SkeletonNode visitPhysicalCTEAnchor(OptExpression optExpression, SkeletonNode parent) {
         SkeletonNode node = new SkeletonNode(optExpression, null, parent);
         visitChildren(node, optExpression.getInputs());
-        if (nodeExecStatsMap.isEmpty()) {
+        if (node.getNodeId() == -1) {
             node.setNodeId(node.getChild(1).getNodeId());
         }
         return node;
@@ -137,7 +137,7 @@ public class SkeletonBuilder extends OptExpressionVisitor<SkeletonNode, Skeleton
     public SkeletonNode visitPhysicalCTEProduce(OptExpression optExpression, SkeletonNode parent) {
         SkeletonNode node = new SkeletonNode(optExpression, null, parent);
         visitChildren(node, optExpression.getInputs());
-        if (nodeExecStatsMap.isEmpty()) {
+        if (node.getNodeId() == -1) {
             node.setNodeId(node.getChild(0).getNodeId());
         }
         return node;
@@ -147,14 +147,14 @@ public class SkeletonBuilder extends OptExpressionVisitor<SkeletonNode, Skeleton
     public SkeletonNode visitPhysicalNoCTE(OptExpression optExpression, SkeletonNode parent) {
         SkeletonNode node = new SkeletonNode(optExpression, null, parent);
         visitChildren(node, optExpression.getInputs());
-        if (nodeExecStatsMap.isEmpty()) {
+        if (node.getNodeId() == -1) {
             node.setNodeId(node.getChild(0).getNodeId());
         }
         return node;
     }
 
     private void fillNodeId(Operator operator, SkeletonNode node) {
-        if (nodeExecStatsMap.isEmpty()) {
+        if (node.getNodeId() == -1) {
             node.setNodeId(idGenerator.getNextId().asInt());
             fillProjectionNodeId(operator);
         }
