@@ -32,10 +32,9 @@ public class SkeletonBuilder extends OptExpressionVisitor<SkeletonNode, Skeleton
 
     private Map<Integer, NodeExecStats> nodeExecStatsMap = Maps.newHashMap();
 
-    private Map<Integer, SkeletonNode> skeletonNodeMap = Maps.newHashMap();
+    private final Map<Integer, SkeletonNode> skeletonNodeMap = Maps.newHashMap();
 
-    private IdGenerator<SkeletonNodeId> idGenerator = SkeletonNodeId.createGenerator();
-
+    private final IdGenerator<SkeletonNodeId> idGenerator = SkeletonNodeId.createGenerator();
 
     public SkeletonBuilder() {
 
@@ -52,8 +51,24 @@ public class SkeletonBuilder extends OptExpressionVisitor<SkeletonNode, Skeleton
     }
 
     public Pair<SkeletonNode, Map<Integer, SkeletonNode>> buildSkeleton(OptExpression root) {
+        assignOperatorId(root, new OperatorIdGenerator());
         SkeletonNode skeletonRoot = root.getOp().accept(this, root, null);
         return Pair.create(skeletonRoot, skeletonNodeMap);
+    }
+
+    private static class OperatorIdGenerator {
+        private int nextId = 0;
+
+        public int getNextId() {
+            return nextId++;
+        }
+    }
+
+    void assignOperatorId(OptExpression root, OperatorIdGenerator nextIdGenerator) {
+        root.getOp().setOperatorId(nextIdGenerator.getNextId());
+        for (OptExpression child : root.getInputs()) {
+            assignOperatorId(child, nextIdGenerator);
+        }
     }
 
     private void visitChildren(SkeletonNode parent, List<OptExpression> optExpressions) {
@@ -131,7 +146,6 @@ public class SkeletonBuilder extends OptExpressionVisitor<SkeletonNode, Skeleton
         }
         return node;
     }
-
 
     @Override
     public SkeletonNode visitPhysicalCTEProduce(OptExpression optExpression, SkeletonNode parent) {

@@ -83,7 +83,7 @@ public class StreamingAggTuningAnalyzer implements PlanTuningAnalyzer.Analyzer {
                     double blockingOutputRows = blockingAggNode.getNodeExecStats().getPullRows();
                     if (blockingOutputRows < inputRows && (inputRows / streamingOutputRows) < STREAMING_AGGREGATION_THRESHOLD
                             && (inputRows / blockingOutputRows) > AGGREGATION_THRESHOLD) {
-                        tuningGuides.addTuningGuide(skeletonNode.getNodeId(),
+                        tuningGuides.addTuningGuide(skeletonNode.getNodeId(), skeletonNode.getOperatorId(),
                                 new StreamingAggTuningGuide((StreamingAggNode) skeletonNode));
                     }
                 }

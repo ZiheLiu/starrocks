@@ -75,6 +75,8 @@ public abstract class Operator {
 
     protected int planNodeId = -1;
 
+    protected int operatorId = -1;
+
     public Operator(OperatorType opType) {
         this.opType = opType;
     }
@@ -226,6 +228,14 @@ public abstract class Operator {
 
     public void setPlanNodeId(int planNodeId) {
         this.planNodeId = planNodeId;
+    }
+
+    public int getOperatorId() {
+        return operatorId;
+    }
+
+    public void setOperatorId(int operatorId) {
+        this.operatorId = operatorId;
     }
 
     protected RowOutputInfo deriveRowOutputInfo(List<OptExpression> inputs) {

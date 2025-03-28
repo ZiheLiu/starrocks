@@ -30,27 +30,40 @@ public class OperatorTuningGuides {
 
     private final UUID originalQueryId;
 
-    private final Map<Integer, List<TuningGuide>> tuningGuides;
+    private final Map<Integer, GuideWrapper> operatorIdToTuningGuides;
 
     private final Cache<UUID, Long> optimizedRecords;
+
+    static class GuideWrapper {
+        private final List<TuningGuide> tuningGuides = Lists.newArrayList();
+        private final int nodeId;
+
+        public GuideWrapper(int nodeId) {
+            this.nodeId = nodeId;
+        }
+    }
 
     public OperatorTuningGuides(UUID originalQueryId, long originalTimeCost) {
         this.originalQueryId = originalQueryId;
         this.originalTimeCost = originalTimeCost;
-        this.tuningGuides = Maps.newHashMap();
+        this.operatorIdToTuningGuides = Maps.newHashMap();
         this.optimizedRecords = Caffeine.newBuilder().maximumSize(50).build();
     }
 
-    public void addTuningGuide(int nodeId, TuningGuide tuningGuide) {
-        tuningGuides.computeIfAbsent(nodeId, e -> Lists.newArrayList()).add(tuningGuide);
+    public void addTuningGuide(int nodeId, int operatorId, TuningGuide tuningGuide) {
+        operatorIdToTuningGuides.computeIfAbsent(operatorId, e -> new GuideWrapper(nodeId)).tuningGuides.add(tuningGuide);
     }
 
-    public List<TuningGuide> getTuningGuides(int nodeId) {
-        return tuningGuides.get(nodeId);
+    public List<TuningGuide> getTuningGuides(int operatorId) {
+        GuideWrapper guide = operatorIdToTuningGuides.get(operatorId);
+        if (guide == null) {
+            return null;
+        }
+        return guide.tuningGuides;
     }
 
     public boolean isEmpty() {
-        return tuningGuides.isEmpty();
+        return operatorIdToTuningGuides.isEmpty();
     }
 
     public long optimizedQueryCount() {
@@ -104,9 +117,9 @@ public class OperatorTuningGuides {
 
     public String getTuneGuidesInfo(boolean isFull) {
         StringBuilder sb = new StringBuilder();
-        for (Map.Entry<Integer, List<TuningGuide>> entry : tuningGuides.entrySet()) {
-            sb.append("PlanNode ").append(entry.getKey()).append(":").append("\n");
-            for (TuningGuide guide : entry.getValue()) {
+        for (Map.Entry<Integer, GuideWrapper> entry : operatorIdToTuningGuides.entrySet()) {
+            sb.append("PlanNode ").append(entry.getValue().nodeId).append(":").append("\n");
+            for (TuningGuide guide : entry.getValue().tuningGuides) {
                 sb.append(guide.getClass().getSimpleName()).append("\n");
                 if (isFull) {
                     sb.append(guide.getDescription()).append("\n");

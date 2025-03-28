@@ -26,6 +26,8 @@ import java.util.Objects;
 
 public class SkeletonNode extends TreeNode<SkeletonNode> {
 
+    protected final int operatorId;
+
     protected int nodeId;
 
     protected final OperatorType type;
@@ -41,6 +43,7 @@ public class SkeletonNode extends TreeNode<SkeletonNode> {
     protected final NodeExecStats nodeExecStats;
 
     public SkeletonNode(OptExpression optExpression, NodeExecStats nodeExecStats, SkeletonNode parent) {
+        this.operatorId = optExpression.getOp().getOperatorId();
         this.nodeId = optExpression.getOp().getPlanNodeId();
         this.type = optExpression.getOp().getOpType();
         this.limit = optExpression.getOp().getLimit();
@@ -56,6 +59,10 @@ public class SkeletonNode extends TreeNode<SkeletonNode> {
 
     public int getNodeId() {
         return nodeId;
+    }
+
+    public int getOperatorId() {
+        return operatorId;
     }
 
     public SkeletonNode getParent() {
@@ -76,7 +83,7 @@ public class SkeletonNode extends TreeNode<SkeletonNode> {
 
     @Override
     public int hashCode() {
-        return Objects.hash(nodeId, type, limit, predicate);
+        return Objects.hash(operatorId, type, limit, predicate);
     }
 
     @Override
@@ -88,7 +95,7 @@ public class SkeletonNode extends TreeNode<SkeletonNode> {
             return false;
         }
         SkeletonNode that = (SkeletonNode) o;
-        return nodeId == that.nodeId && limit == that.limit && type == that.type &&
+        return operatorId == that.operatorId && limit == that.limit && type == that.type &&
                 Objects.equals(predicate, that.predicate);
     }
 
