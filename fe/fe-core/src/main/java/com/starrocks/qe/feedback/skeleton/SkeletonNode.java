@@ -41,9 +41,7 @@ public class SkeletonNode extends TreeNode<SkeletonNode> {
     protected final NodeExecStats nodeExecStats;
 
     public SkeletonNode(OptExpression optExpression, NodeExecStats nodeExecStats, SkeletonNode parent) {
-        if (optExpression.getOp().getPlanNodeId() != - 1) {
-            this.nodeId = optExpression.getOp().getPlanNodeId();
-        }
+        this.nodeId = optExpression.getOp().getPlanNodeId();
         this.type = optExpression.getOp().getOpType();
         this.limit = optExpression.getOp().getLimit();
         this.predicate = optExpression.getOp().getPredicate();
