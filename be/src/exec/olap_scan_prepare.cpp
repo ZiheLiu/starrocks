@@ -37,6 +37,7 @@
 #include "types/date_value.hpp"
 #include "types/logical_type.h"
 #include "types/logical_type_infra.h"
+#include "util/orlp/pdqsort.h"
 
 namespace starrocks {
 
@@ -745,11 +746,15 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
                         _child_builders.emplace_back(child_builder);
                     }
                 } else {
-                    std::set<RangeValueType> values;
+                    std::vector<RangeValueType> values;
+                    values.reserve(pred->hash_set().size());
                     for (const auto& value : pred->hash_set()) {
                         values.insert(value);
                     }
-                    (void)range->add_fixed_values(FILTER_IN, values);
+                    ::pdqsort(values.begin(), values.end());
+
+                    std::set<RangeValueType> values_set(values.begin(), values.end());
+                    (void)range->add_fixed_values(FILTER_IN, values_set);
                 }
             }
         }
