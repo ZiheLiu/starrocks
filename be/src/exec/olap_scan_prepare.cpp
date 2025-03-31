@@ -749,7 +749,7 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
                     std::vector<RangeValueType> values;
                     values.reserve(pred->hash_set().size());
                     for (const auto& value : pred->hash_set()) {
-                        values.insert(value);
+                        values.emplace_back(value);
                     }
                     ::pdqsort(values.begin(), values.end());
 
