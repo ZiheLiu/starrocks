@@ -400,7 +400,9 @@ public class HiveConnectorScanRangeSource extends ConnectorScanRangeSource {
         // encounter very bad cases (scan ranges that meet the predicate conditions are in the later partitions),
         // making BE have to scan more data to find rows that meet the conditions.
         // So shuffle scan ranges can naturally disrupt the scan ranges' order to avoid very bad cases.
-        Collections.shuffle(res);
+        if (ConnectContext.get() == null || ConnectContext.get().getSessionVariable().isEnableConnectorFileListShuffle()) {
+            Collections.shuffle(res);
+        }
         return res;
     }
 

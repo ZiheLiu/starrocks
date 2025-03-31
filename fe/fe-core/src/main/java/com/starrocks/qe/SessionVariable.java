@@ -2211,6 +2211,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = HDFS_BACKEND_SELECTOR_SCAN_RANGE_SHUFFLE, flag = VariableMgr.INVISIBLE)
     private boolean hdfsBackendSelectorScanRangeShuffle = false;
 
+    @VariableMgr.VarAttr(name = "enable_connector_file_list_shuffle")
+    private boolean enableConnectorFileListShuffle = true;
+
     @VariableMgr.VarAttr(name = CBO_PUSH_DOWN_DISTINCT_BELOW_WINDOW)
     private boolean cboPushDownDistinctBelowWindow = true;
 
@@ -4345,6 +4348,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public boolean getHDFSBackendSelectorScanRangeShuffle() {
         return hdfsBackendSelectorScanRangeShuffle;
+    }
+
+    public boolean isEnableConnectorFileListShuffle() {
+        return enableConnectorFileListShuffle;
     }
 
     public boolean isEnableStrictType() {
