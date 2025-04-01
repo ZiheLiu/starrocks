@@ -214,9 +214,7 @@ using ColumnValueRangeType =  std::variant<
         ColumnValueRange<int32_t>,
         ColumnValueRange<int64_t>,
         ColumnValueRange<__int128>,
-        ColumnValueRange<StringValue>, // TODO: remove
         ColumnValueRange<Slice>,
-        ColumnValueRange<DateTimeValue>,
         ColumnValueRange<DecimalV2Value>,
         ColumnValueRange<bool>,
         ColumnValueRange<DateValue>,
