@@ -1016,7 +1016,8 @@ Status ChunkPredicateBuilder<E, Type>::build_olap_filters() {
         // NOLINTNEXTLINE(performance-for-range-copy)
         for (const auto& iter : column_value_ranges) {
             std::vector<ConditionType> filters;
-            std::visit([&](auto&& range) { range.template to_olap_filter<Negative>(filters); }, iter.second);
+            std::visit([&](auto&& range) { range.template to_olap_filter<ConditionType, Negative>(filters); },
+                       iter.second);
             const bool empty_range = std::visit([](auto&& range) { return range.is_empty_value_range(); }, iter.second);
             if (empty_range) {
                 if constexpr (!Negative) {
