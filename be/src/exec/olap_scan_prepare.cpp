@@ -1014,7 +1014,7 @@ Status ChunkPredicateBuilder<E, Type>::build_olap_filters() {
 
         // False alert from clang-tidy-14
         // NOLINTNEXTLINE(performance-for-range-copy)
-        for (const auto& iter : column_value_ranges) {
+        for (auto& iter : column_value_ranges) {
             std::vector<ConditionType> filters;
             std::visit([&](auto&& range) { range.template to_olap_filter<ConditionType, Negative>(filters); },
                        iter.second);
