@@ -33,7 +33,7 @@ public:
     void set_column_name(const std::string& column_name) { this->column_name = column_name; }
     void set_condition_op(const std::string& condition_op) { this->condition_op = condition_op; }
     void set_is_index_filter_only(bool is_index_filter_only) { this->is_index_filter_only = is_index_filter_only; }
-    void add_condition_value(Datum&& value, [[maybe_unused]] LogicalType lt, [[maybe_unused]] int precision,
+    void add_condition_value(Datum value, [[maybe_unused]] LogicalType lt, [[maybe_unused]] int precision,
                              [[maybe_unused]] int scale) {
         condition_values.emplace_back(std::move(value));
     }
