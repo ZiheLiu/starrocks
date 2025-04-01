@@ -283,7 +283,7 @@ void ColumnValueRange<T>::to_olap_filter(std::vector<TCondition>& filters) {
 }
 
 template <class T>
-Status ColumnValueRange<T>::add_fixed_values(SQLFilterOp op, const std::set<T>& values) {
+Status ColumnValueRange<T>::add_fixed_values(SQLFilterOp op, const ValuesContainer& values) {
     if (TYPE_UNKNOWN == _column_type) {
         return Status::InternalError("AddFixedValue failed, Invalid type");
     }
@@ -292,8 +292,8 @@ Status ColumnValueRange<T>::add_fixed_values(SQLFilterOp op, const std::set<T>& 
             // nothing to do
             _fixed_op = op;
         } else if (is_fixed_value_range() && _fixed_op == FILTER_NOT_IN) {
-            std::set<T> not_in_operands = STLSetDifference(_fixed_values, values);
-            std::set<T> in_operands = STLSetDifference(values, _fixed_values);
+            ValuesContainer not_in_operands = STLSetDifference(_fixed_values, values);
+            ValuesContainer in_operands = STLSetDifference(values, _fixed_values);
             if (!not_in_operands.empty() && !in_operands.empty()) {
                 // X in (1,2) and X not in (3) equivalent to X in (1,2)
                 _fixed_values.swap(in_operands);
@@ -337,8 +337,8 @@ Status ColumnValueRange<T>::add_fixed_values(SQLFilterOp op, const std::set<T>& 
             _fixed_op = FILTER_NOT_IN;
         } else if (is_fixed_value_range()) {
             DCHECK_EQ(FILTER_IN, _fixed_op);
-            std::set<T> not_in_operands = STLSetDifference(values, _fixed_values);
-            std::set<T> in_operands = STLSetDifference(_fixed_values, values);
+            ValuesContainer not_in_operands = STLSetDifference(values, _fixed_values);
+            ValuesContainer in_operands = STLSetDifference(_fixed_values, values);
             if (!not_in_operands.empty() && !in_operands.empty()) {
                 // X in (1,2) and X not in (3) equivalent to X in (1,2)
                 // X in (1,2,3,4) and X not in (1,3,5,7) equivalent to X in (2,4)

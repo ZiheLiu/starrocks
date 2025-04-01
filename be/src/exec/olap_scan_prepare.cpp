@@ -461,7 +461,6 @@ requires(!lt_is_date<SlotType>) Status ChunkPredicateBuilder<E, Type>::normalize
                     continue;
                 }
 
-                std::set<RangeValueType> values;
                 if (pred->null_in_set()) {
                     if (pred->is_eq_null()) {
                         // TODO: equal null is also can be normalized, will be optimized later
@@ -476,6 +475,8 @@ requires(!lt_is_date<SlotType>) Status ChunkPredicateBuilder<E, Type>::normalize
                     }
                 }
 
+                boost::container::flat_set<RangeValueType> values;
+                values.reserve(pred->hash_set().size());
                 for (const auto& value : pred->hash_set()) {
                     values.insert(value);
                 }
@@ -495,7 +496,7 @@ requires(!lt_is_date<SlotType>) Status ChunkPredicateBuilder<E, Type>::normalize
             ASSIGN_OR_RETURN(auto* expr_context, _exprs[i].expr_context(_opts.obj_pool, _opts.runtime_state));
             bool ok = get_predicate_value<Negative>(_opts.obj_pool, slot, get_root_expr(expr_context), expr_context,
                                                     &value, &op, &status);
-            if (ok && range->add_fixed_values(FILTER_IN, std::set<RangeValueType>{value}).ok()) {
+            if (ok && range->add_fixed_values(FILTER_IN, boost::container::flat_set<RangeValueType>{value}).ok()) {
                 _normalized_exprs[i] = true;
             }
         }
@@ -538,7 +539,7 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E, Type>::normalize_i
             }
             std::vector<SlotId> slot_ids;
             if (1 == l->get_slot_ids(&slot_ids) && slot_ids[0] == slot.id()) {
-                std::set<DateValue> values;
+                boost::container::flat_set<DateValue> values;
 
                 if (pred_type == starrocks::TYPE_DATETIME) {
                     const auto* pred =
@@ -562,6 +563,7 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E, Type>::normalize_i
                         }
                     }
 
+                    values.reserve(pred->hash_set().size());
                     for (const TimestampValue& ts : pred->hash_set()) {
                         auto date = implicit_cast<DateValue>(ts);
                         if (implicit_cast<TimestampValue>(date) == ts) {
@@ -584,6 +586,8 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E, Type>::normalize_i
                             continue;
                         }
                     }
+
+                    values.reserve(pred->hash_set().size());
                     for (const DateValue& date : pred->hash_set()) {
                         values.insert(date);
                     }
@@ -606,7 +610,7 @@ requires lt_is_date<SlotType> Status ChunkPredicateBuilder<E, Type>::normalize_i
             ASSIGN_OR_RETURN(auto* expr_context, _exprs[i].expr_context(_opts.obj_pool, _opts.runtime_state));
             bool ok = get_predicate_value<Negative>(_opts.obj_pool, slot, get_root_expr(expr_context), expr_context,
                                                     &value, &op, &status);
-            if (ok && range->add_fixed_values(FILTER_IN, std::set<DateValue>{value}).ok()) {
+            if (ok && range->add_fixed_values(FILTER_IN, boost::container::flat_set<DateValue>{value}).ok()) {
                 _normalized_exprs[i] = true;
             }
         }
@@ -746,15 +750,13 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
                         _child_builders.emplace_back(child_builder);
                     }
                 } else {
-                    std::vector<RangeValueType> values;
+                    boost::container::flat_set<RangeValueType> values;
                     values.reserve(pred->hash_set().size());
                     for (const auto& value : pred->hash_set()) {
                         values.emplace_back(value);
                     }
-                    ::pdqsort(values.begin(), values.end());
 
-                    std::set<RangeValueType> values_set(values.begin(), values.end());
-                    (void)range->add_fixed_values(FILTER_IN, values_set);
+                    (void)range->add_fixed_values(FILTER_IN, values);
                 }
             }
         }
@@ -848,7 +850,7 @@ Status ChunkPredicateBuilder<E, Type>::normalize_not_in_or_not_equal_predicate(
             ASSIGN_OR_RETURN(auto* expr_context, _exprs[i].expr_context(_opts.obj_pool, _opts.runtime_state));
             bool ok = get_predicate_value<Negative>(_opts.obj_pool, slot, get_root_expr(expr_context), expr_context,
                                                     &value, &op, &status);
-            if (ok && range->add_fixed_values(FILTER_NOT_IN, std::set<RangeValueType>{value}).ok()) {
+            if (ok && range->add_fixed_values(FILTER_NOT_IN, boost::container::flat_set<RangeValueType>{value}).ok()) {
                 _normalized_exprs[i] = true;
             }
         }
@@ -874,7 +876,6 @@ Status ChunkPredicateBuilder<E, Type>::normalize_not_in_or_not_equal_predicate(
                     continue;
                 }
 
-                std::set<RangeValueType> values;
                 if (pred->null_in_set()) {
                     if (pred->is_eq_null()) {
                         continue;
@@ -889,6 +890,8 @@ Status ChunkPredicateBuilder<E, Type>::normalize_not_in_or_not_equal_predicate(
                     }
                 }
 
+                boost::container::flat_set<RangeValueType> values;
+                values.reserve(pred->hash_set().size());
                 for (const auto& value : pred->hash_set()) {
                     values.insert(value);
                 }

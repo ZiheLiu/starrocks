@@ -36,6 +36,7 @@
 
 #include <column/type_traits.h>
 
+#include <boost/container/flat_set.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/variant.hpp>
 #include <cstdint>
@@ -69,12 +70,14 @@ namespace starrocks {
 template <class T>
 class ColumnValueRange {
 public:
-    typedef typename std::set<T>::iterator iterator_type;
+    using ValuesContainer = boost::container::flat_set<T>;
+    using iterator_type = typename ValuesContainer::iterator;
+
     ColumnValueRange();
     ColumnValueRange(std::string col_name, LogicalType type, T min, T max);
     ColumnValueRange(std::string col_name, LogicalType type, T type_min, T type_max, T min, T max);
 
-    Status add_fixed_values(SQLFilterOp op, const std::set<T>& values);
+    Status add_fixed_values(SQLFilterOp op, const ValuesContainer& values);
 
     Status add_range(SQLFilterOp op, T value);
 
@@ -104,7 +107,7 @@ public:
 
     void convert_to_range_value();
 
-    const std::set<T>& get_fixed_value_set() const { return _fixed_values; }
+    const ValuesContainer& get_fixed_value_set() const { return _fixed_values; }
 
     T get_range_max_value() const { return _high_value; }
 
@@ -143,7 +146,7 @@ private:
     T _high_value;                          // Column's high value, open interval at right
     SQLFilterOp _low_op;
     SQLFilterOp _high_op;
-    std::set<T> _fixed_values; // Column's fixed values
+    ValuesContainer _fixed_values; // Column's fixed values
     SQLFilterOp _fixed_op;
     // Whether this condition only used to filter index, not filter chunk row in storage engine
     bool _is_index_filter_only = false;
