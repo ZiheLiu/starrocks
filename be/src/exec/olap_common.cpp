@@ -567,7 +567,7 @@ Status OlapScanKeys::extend_scan_key(ColumnValueRange<T>& range, int32_t max_sca
     if (range.is_fixed_value_range()) {
         // 3.1.1 construct num of fixed value ScanKey (begin_key == end_key)
         if (_begin_scan_keys.empty()) {
-            const set<T>& fixed_value_set = range.get_fixed_value_set();
+            const auto& fixed_value_set = range.get_fixed_value_set();
             auto iter = fixed_value_set.begin();
 
             for (; iter != fixed_value_set.end(); ++iter) {
@@ -586,7 +586,7 @@ Status OlapScanKeys::extend_scan_key(ColumnValueRange<T>& range, int32_t max_sca
             }
         } // 3.1.2 produces the Cartesian product of ScanKey and fixed_value
         else {
-            const set<T>& fixed_value_set = range.get_fixed_value_set();
+            const auto& fixed_value_set = range.get_fixed_value_set();
             int original_key_range_size = _begin_scan_keys.size();
 
             for (int i = 0; i < original_key_range_size; ++i) {
