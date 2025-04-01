@@ -110,7 +110,7 @@ private:
     std::vector<uint8_t> _normalized_exprs;
     std::map<std::string, ColumnValueRangeType> column_value_ranges; // from conjunct_ctxs
     OlapScanKeys scan_keys;                                          // from _column_value_ranges
-    std::vector<TCondition> olap_filters;                            // from _column_value_ranges
+    std::vector<OlapCondition> olap_filters;                         // from _column_value_ranges
     std::vector<FilterCondition> external_filters;                   // from _column_value_ranges
     std::vector<TCondition> is_null_vector;                          // from conjunct_ctxs
 

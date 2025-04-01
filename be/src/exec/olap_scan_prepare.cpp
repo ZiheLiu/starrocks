@@ -1101,7 +1101,7 @@ Status ChunkPredicateBuilder<E, Type>::build_scan_keys(bool unlimited, int32_t m
 template <BoxedExprType E, CompoundNodeType Type>
 Status ChunkPredicateBuilder<E, Type>::_get_column_predicates(PredicateParser* parser,
                                                               ColumnPredicatePtrs& col_preds_owner) {
-    auto process_filter_conditions = [&]<typename ConditionType>(const ConditionType& filters) {
+    auto process_filter_conditions = [&]<typename ConditionType>(const std::vector<ConditionType>& filters) {
         for (const auto& filter : filters) {
             std::unique_ptr<ColumnPredicate> p(parser->parse_thrift_cond(filter));
             RETURN_IF(!p, Status::RuntimeError("invalid filter"));
