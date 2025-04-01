@@ -251,7 +251,7 @@ void ColumnValueRange<T>::to_olap_filter(std::vector<ConditionType>& filters) {
         }
     } else {
         ConditionType low;
-        low.__set_is_index_filter_only(_is_index_filter_only);
+        low.set_is_index_filter_only(_is_index_filter_only);
         if (_type_min != _low_value || FILTER_LARGER_OR_EQUAL != _low_op) {
             low.set_column_name(_column_name);
             if constexpr (Negative) {
@@ -267,7 +267,7 @@ void ColumnValueRange<T>::to_olap_filter(std::vector<ConditionType>& filters) {
         }
 
         ConditionType high;
-        high.__set_is_index_filter_only(_is_index_filter_only);
+        high.set_is_index_filter_only(_is_index_filter_only);
         if (_type_max != _high_value || FILTER_LESS_OR_EQUAL != _high_op) {
             high.set_column_name(_column_name);
             if constexpr (Negative) {
