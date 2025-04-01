@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "column/datum.h"
 #include "gen_cpp/InternalService_types.h"
 #include "types/logical_type.h"
 
