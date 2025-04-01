@@ -1009,7 +1009,7 @@ template <BoxedExprType E, CompoundNodeType Type>
 Status ChunkPredicateBuilder<E, Type>::build_olap_filters() {
     constexpr bool Negative = Type == CompoundNodeType::OR;
 
-    auto process = [&]<typename ConditionType>(ConditionType& result_filters) {
+    auto process = [&]<typename ConditionType>(std::vector<ConditionType>& result_filters) {
         result_filters.clear();
 
         // False alert from clang-tidy-14
