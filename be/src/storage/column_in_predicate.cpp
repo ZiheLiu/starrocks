@@ -725,6 +725,48 @@ ColumnPredicate* new_column_in_predicate(const TypeInfoPtr& type_info, ColumnId 
     }
 }
 
+template <template <typename, size_t...> typename Set, size_t... Args>
+ColumnPredicate* new_column_in_predicate_generic(const TypeInfoPtr& type_info, ColumnId id,
+                                                 const std::vector<Datum>& operands) {
+    const auto type = type_info->type();
+    return field_type_dispatch_column_predicate(type, nullptr, [&]<LogicalType LT>() -> ColumnPredicate* {
+        if constexpr (lt_is_string<LT>) {
+            std::vector<std::string> strings;
+            strings.reserve(operands.size());
+            for (const auto& v : operands) {
+                strings.emplace_back(v.get_slice().to_string());
+            }
+            return new BinaryColumnInPredicate<LT>(type_info, id, std::move(strings));
+        } else {
+            using SetType = Set<typename CppTypeTraits<LT>::CppType, (Args)...>;
+            SetType value_set = predicate_internal::datums_to_set<LT>(operands);
+            return new ColumnInPredicate<LT, SetType>(type_info, id, std::move(value_set));
+        }
+    });
+}
+
+ColumnPredicate* new_column_in_predicate_small(const TypeInfoPtr& type_info, ColumnId id,
+                                               const std::vector<Datum>& operands) {
+    if (operands.size() == 3) {
+        return new_column_in_predicate_generic<ArraySet, 3>(type_info, id, operands);
+    } else if (operands.size() == 2) {
+        return new_column_in_predicate_generic<ArraySet, 2>(type_info, id, operands);
+    } else if (operands.size() == 1) {
+        return new_column_in_predicate_generic<ArraySet, 1>(type_info, id, operands);
+    }
+    CHECK(false) << "unreachable path";
+    return nullptr;
+}
+
+ColumnPredicate* new_column_in_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id,
+                                                    const std::vector<Datum>& operands) {
+    if (operands.size() > 3) {
+        return new_column_in_predicate_generic<ItemHashSet>(type_info, id, operands);
+    } else {
+        return new_column_in_predicate_small(type_info, id, operands);
+    }
+}
+
 ColumnPredicate* new_dictionary_code_in_predicate(const TypeInfoPtr& type, ColumnId id,
                                                   const std::vector<int32_t>& operands, size_t size) {
     DCHECK(is_integer_type(type->type()));

@@ -19,6 +19,7 @@
 #include "column/column.h" // Column
 #include "column/datum.h"
 #include "common/object_pool.h"
+#include "olap_type_infra.h"
 #include "storage/column_predicate.h"
 #include "storage/olap_common.h" // ColumnId
 #include "storage/range.h"
@@ -184,6 +185,19 @@ static ColumnPredicate* new_column_predicate(const TypeInfoPtr& type_info, Colum
         // No default to ensure newly added enumerator will be handled.
     }
     return nullptr;
+}
+
+template <template <LogicalType> typename Predicate, template <LogicalType> typename BinaryPredicate>
+static ColumnPredicate* new_column_predicate(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
+    const auto type = type_info->type();
+    return field_type_dispatch_column_predicate(type, nullptr, [&]<LogicalType LT>() -> ColumnPredicate* {
+        using CppType = typename CppTypeTraits<LT>::CppType;
+        if constexpr (lt_is_string<LT>) {
+            return new BinaryPredicate<LT>(type_info, id, operand.get_slice());
+        } else {
+            return new Predicate<LT>(type_info, id, operand.get<CppType>());
+        }
+    });
 }
 
 // Base class for column predicate
@@ -940,6 +954,50 @@ ColumnPredicate* new_column_cmp_predicate(PredicateType predicate, const TypeInf
         return new_column_gt_predicate(type, id, operand);
     case PredicateType::kGE:
         return new_column_ge_predicate(type, id, operand);
+    default:
+        CHECK(false) << "not a cmp predicate";
+    }
+}
+
+ColumnPredicate* new_column_ne_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
+    return new_column_predicate<ColumnNePredicate, BinaryColumnNePredicate>(type_info, id, operand);
+}
+
+ColumnPredicate* new_column_eq_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
+    return new_column_predicate<ColumnEqPredicate, BinaryColumnEqPredicate>(type_info, id, operand);
+}
+
+ColumnPredicate* new_column_lt_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
+    return new_column_predicate<ColumnLtPredicate, BinaryColumnLtPredicate>(type_info, id, operand);
+}
+
+ColumnPredicate* new_column_le_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
+    return new_column_predicate<ColumnLePredicate, BinaryColumnLePredicate>(type_info, id, operand);
+}
+
+ColumnPredicate* new_column_gt_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
+    return new_column_predicate<ColumnGtPredicate, BinaryColumnGtPredicate>(type_info, id, operand);
+}
+
+ColumnPredicate* new_column_ge_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
+    return new_column_predicate<ColumnGePredicate, BinaryColumnGePredicate>(type_info, id, operand);
+}
+
+ColumnPredicate* new_column_cmp_predicate_from_datum(PredicateType predicate, const TypeInfoPtr& type, ColumnId id,
+                                                     const Datum& operand) {
+    switch (predicate) {
+    case PredicateType::kEQ:
+        return new_column_eq_predicate_from_datum(type, id, operand);
+    case PredicateType::kNE:
+        return new_column_ne_predicate_from_datum(type, id, operand);
+    case PredicateType::kLT:
+        return new_column_lt_predicate_from_datum(type, id, operand);
+    case PredicateType::kLE:
+        return new_column_le_predicate_from_datum(type, id, operand);
+    case PredicateType::kGT:
+        return new_column_gt_predicate_from_datum(type, id, operand);
+    case PredicateType::kGE:
+        return new_column_ge_predicate_from_datum(type, id, operand);
     default:
         CHECK(false) << "not a cmp predicate";
     }

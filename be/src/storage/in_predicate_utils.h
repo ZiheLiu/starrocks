@@ -145,6 +145,17 @@ inline Converter<typename CppTypeTraits<field_type>::CppType> strings_to_decimal
 }
 
 template <LogicalType field_type>
+inline Converter<typename CppTypeTraits<field_type>::CppType> datums_to_set(const std::vector<Datum>& values) {
+    using CppType = typename CppTypeTraits<field_type>::CppType;
+
+    Converter<CppType> result;
+    for (const auto& v : values) {
+        result.push_back(v.get<CppType>());
+    }
+    return result;
+}
+
+template <LogicalType field_type>
 inline ItemHashSet<typename CppTypeTraits<field_type>::CppType> strings_to_hashset(
         const std::vector<std::string>& strings) {
     using CppType = typename CppTypeTraits<field_type>::CppType;

@@ -1008,31 +1008,40 @@ Status ChunkPredicateBuilder<E, Type>::normalize_expressions() {
 template <BoxedExprType E, CompoundNodeType Type>
 Status ChunkPredicateBuilder<E, Type>::build_olap_filters() {
     constexpr bool Negative = Type == CompoundNodeType::OR;
-    olap_filters.clear();
 
-    // False alert from clang-tidy-14
-    // NOLINTNEXTLINE(performance-for-range-copy)
-    for (auto iter : column_value_ranges) {
-        std::vector<TCondition> filters;
-        std::visit([&](auto&& range) { range.template to_olap_filter<Negative>(filters); }, iter.second);
-        const bool empty_range = std::visit([](auto&& range) { return range.is_empty_value_range(); }, iter.second);
-        if (empty_range) {
-            if constexpr (!Negative) {
-                return Status::EndOfFile("EOF, Filter by always false condition");
-            } else {
-                auto not_null_filter =
-                        std::visit([&](auto&& range) { return range.to_olap_not_null_filter(); }, iter.second);
-                filters.clear();
-                filters.emplace_back(std::move(not_null_filter));
+    auto process = [&]<typename ConditionType>(ConditionType& result_filters) {
+        result_filters.clear();
+
+        // False alert from clang-tidy-14
+        // NOLINTNEXTLINE(performance-for-range-copy)
+        for (const auto& iter : column_value_ranges) {
+            std::vector<ConditionType> filters;
+            std::visit([&](auto&& range) { range.template to_olap_filter<Negative>(filters); }, iter.second);
+            const bool empty_range = std::visit([](auto&& range) { return range.is_empty_value_range(); }, iter.second);
+            if (empty_range) {
+                if constexpr (!Negative) {
+                    return Status::EndOfFile("EOF, Filter by always false condition");
+                } else {
+                    auto not_null_filter = std::visit(
+                            [&](auto&& range) { return range.template to_olap_not_null_filter<ConditionType>(); },
+                            iter.second);
+                    filters.clear();
+                    filters.emplace_back(std::move(not_null_filter));
+                }
+            }
+
+            for (auto& filter : filters) {
+                result_filters.emplace_back(std::move(filter));
             }
         }
+        return Status::OK();
+    };
 
-        for (auto& filter : filters) {
-            olap_filters.emplace_back(std::move(filter));
-        }
+    if (_opts.is_olap_scan) {
+        return process(olap_filters);
+    } else {
+        return process(external_filters);
     }
-
-    return Status::OK();
 }
 
 // Try to convert the ranges predicates applied on key columns to in predicates to increase
@@ -1091,12 +1100,20 @@ Status ChunkPredicateBuilder<E, Type>::build_scan_keys(bool unlimited, int32_t m
 template <BoxedExprType E, CompoundNodeType Type>
 Status ChunkPredicateBuilder<E, Type>::_get_column_predicates(PredicateParser* parser,
                                                               ColumnPredicatePtrs& col_preds_owner) {
-    for (auto& f : olap_filters) {
-        std::unique_ptr<ColumnPredicate> p(parser->parse_thrift_cond(f));
-        RETURN_IF(!p, Status::RuntimeError("invalid filter"));
-        p->set_index_filter_only(f.is_index_filter_only);
-        col_preds_owner.emplace_back(std::move(p));
+    auto process_filter_conditions = [&]<typename ConditionType>(const ConditionType& filters) {
+        for (const auto& filter : filters) {
+            std::unique_ptr<ColumnPredicate> p(parser->parse_thrift_cond(filter));
+            RETURN_IF(!p, Status::RuntimeError("invalid filter"));
+            col_preds_owner.emplace_back(std::move(p));
+        }
+        return Status::OK();
+    };
+    if (_opts.is_olap_scan) {
+        RETURN_IF_ERROR(process_filter_conditions(olap_filters));
+    } else {
+        RETURN_IF_ERROR(process_filter_conditions(external_filters));
     }
+
     for (auto& f : is_null_vector) {
         std::unique_ptr<ColumnPredicate> p(parser->parse_thrift_cond(f));
         RETURN_IF(!p, Status::RuntimeError("invalid filter"));

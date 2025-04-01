@@ -127,10 +127,11 @@ public:
 
     void set_index_filter_only(bool is_index_only) { _is_index_filter_only = is_index_only; }
 
-    template <bool Negative = false>
-    void to_olap_filter(std::vector<TCondition>& filters);
+    template <typename ConditionType, bool Negative = false>
+    void to_olap_filter(std::vector<ConditionType>& filters);
 
-    TCondition to_olap_not_null_filter() const;
+    template <typename ConditionType>
+    ConditionType to_olap_not_null_filter() const;
 
     void clear();
     void clear_to_empty();
