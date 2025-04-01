@@ -753,7 +753,7 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
                     boost::container::flat_set<RangeValueType> values;
                     values.reserve(pred->hash_set().size());
                     for (const auto& value : pred->hash_set()) {
-                        values.emplace_back(value);
+                        values.insert(value);
                     }
 
                     (void)range->add_fixed_values(FILTER_IN, values);
