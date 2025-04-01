@@ -190,14 +190,15 @@ static ColumnPredicate* new_column_predicate(const TypeInfoPtr& type_info, Colum
 template <template <LogicalType> typename Predicate, template <LogicalType> typename BinaryPredicate>
 static ColumnPredicate* new_column_predicate(const TypeInfoPtr& type_info, ColumnId id, const Datum& operand) {
     const auto type = type_info->type();
-    return field_type_dispatch_column_predicate(type, nullptr, [&]<LogicalType LT>() -> ColumnPredicate* {
-        using CppType = typename CppTypeTraits<LT>::CppType;
-        if constexpr (lt_is_string<LT>) {
-            return new BinaryPredicate<LT>(type_info, id, operand.get_slice());
-        } else {
-            return new Predicate<LT>(type_info, id, operand.get<CppType>());
-        }
-    });
+    return field_type_dispatch_column_predicate(
+            type, static_cast<ColumnPredicate*>(nullptr), [&]<LogicalType LT>() -> ColumnPredicate* {
+                using CppType = typename CppTypeTraits<LT>::CppType;
+                if constexpr (lt_is_string<LT>) {
+                    return new BinaryPredicate<LT>(type_info, id, operand.get_slice());
+                } else {
+                    return new Predicate<LT>(type_info, id, operand.get<CppType>());
+                }
+            });
 }
 
 // Base class for column predicate

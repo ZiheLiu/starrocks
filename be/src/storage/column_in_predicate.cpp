@@ -23,6 +23,7 @@
 #include "roaring/roaring.hh"
 #include "storage/column_predicate.h"
 #include "storage/in_predicate_utils.h"
+#include "storage/olap_type_infra.h"
 #include "storage/rowset/bitmap_index_reader.h"
 #include "types/logical_type.h"
 #include "util/bloom_filter.h"
@@ -729,20 +730,21 @@ template <template <typename, size_t...> typename Set, size_t... Args>
 ColumnPredicate* new_column_in_predicate_generic(const TypeInfoPtr& type_info, ColumnId id,
                                                  const std::vector<Datum>& operands) {
     const auto type = type_info->type();
-    return field_type_dispatch_column_predicate(type, nullptr, [&]<LogicalType LT>() -> ColumnPredicate* {
-        if constexpr (lt_is_string<LT>) {
-            std::vector<std::string> strings;
-            strings.reserve(operands.size());
-            for (const auto& v : operands) {
-                strings.emplace_back(v.get_slice().to_string());
-            }
-            return new BinaryColumnInPredicate<LT>(type_info, id, std::move(strings));
-        } else {
-            using SetType = Set<typename CppTypeTraits<LT>::CppType, (Args)...>;
-            SetType value_set = predicate_internal::datums_to_set<LT>(operands);
-            return new ColumnInPredicate<LT, SetType>(type_info, id, std::move(value_set));
-        }
-    });
+    return field_type_dispatch_column_predicate(
+            type, static_cast<ColumnPredicate*>(nullptr), [&]<LogicalType LT>() -> ColumnPredicate* {
+                if constexpr (lt_is_string<LT>) {
+                    std::vector<std::string> strings;
+                    strings.reserve(operands.size());
+                    for (const auto& v : operands) {
+                        strings.emplace_back(v.get_slice().to_string());
+                    }
+                    return new BinaryColumnInPredicate<LT>(type_info, id, std::move(strings));
+                } else {
+                    using SetType = Set<typename CppTypeTraits<LT>::CppType, (Args)...>;
+                    SetType value_set = predicate_internal::datums_to_set<LT>(operands);
+                    return new ColumnInPredicate<LT, SetType>(type_info, id, std::move(value_set));
+                }
+            });
 }
 
 ColumnPredicate* new_column_in_predicate_small(const TypeInfoPtr& type_info, ColumnId id,

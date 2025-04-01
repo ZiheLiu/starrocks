@@ -404,20 +404,21 @@ ColumnPredicate* new_column_not_in_predicate(const TypeInfoPtr& type_info, Colum
 ColumnPredicate* new_column_not_in_predicate_from_datum(const TypeInfoPtr& type_info, ColumnId id,
                                                         const std::vector<Datum>& operands) {
     const auto type = type_info->type();
-    return field_type_dispatch_column_predicate(type, nullptr, [&]<LogicalType LT>() -> ColumnPredicate* {
-        if constexpr (lt_is_string<LT>) {
-            std::vector<std::string> strings;
-            strings.reserve(operands.size());
-            for (const auto& v : operands) {
-                strings.emplace_back(v.get_slice().to_string());
-            }
-            return new BinaryColumnNotInPredicate<LT>(type_info, id, std::move(strings));
-        } else {
-            using SetType = ItemHashSet<typename CppTypeTraits<LT>::CppType>;
-            SetType value_set = predicate_internal::datums_to_set<LT>(operands);
-            return new ColumnNotInPredicate<LT>(type_info, id, std::move(value_set));
-        }
-    });
+    return field_type_dispatch_column_predicate(
+            type, static_cast<ColumnPredicate*>(nullptr), [&]<LogicalType LT>() -> ColumnPredicate* {
+                if constexpr (lt_is_string<LT>) {
+                    std::vector<std::string> strings;
+                    strings.reserve(operands.size());
+                    for (const auto& v : operands) {
+                        strings.emplace_back(v.get_slice().to_string());
+                    }
+                    return new BinaryColumnNotInPredicate<LT>(type_info, id, std::move(strings));
+                } else {
+                    using SetType = ItemHashSet<typename CppTypeTraits<LT>::CppType>;
+                    SetType value_set = predicate_internal::datums_to_set<LT>(operands);
+                    return new ColumnNotInPredicate<LT>(type_info, id, std::move(value_set));
+                }
+            });
 }
 
 } //namespace starrocks

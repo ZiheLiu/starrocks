@@ -217,7 +217,7 @@ ConditionType ColumnValueRange<T>::to_olap_not_null_filter() const {
 }
 
 template <class T>
-template <typename ConditionType, bool Negative = false>
+template <typename ConditionType, bool Negative>
 void ColumnValueRange<T>::to_olap_filter(std::vector<ConditionType>& filters) {
     // If we have fixed range value, we generate in/not-in predicates.
     if (is_fixed_value_range()) {
