@@ -98,7 +98,7 @@ Status GlobalDictDecoderBase<Dict>::decode_array(const Column* in, Column* out) 
 }
 
 template <typename Dict>
-Status GlobalDictDecoderBase<Dict>::decode_string(const Column* in, Column* out) {
+Status GlobalDictDecoderBase<Dict>::decode_string(const Column* in, Column* __restrict out) {
     DCHECK(in != nullptr);
     DCHECK(out != nullptr);
 
@@ -134,17 +134,19 @@ Status GlobalDictDecoderBase<Dict>::decode_string(const Column* in, Column* out)
     }
 
     const auto* column = down_cast<const NullableColumn*>(in);
+    const auto* data_column = down_cast<const DictColumnType*>(column->data_column().get());
+    const auto* src_data = data_column->get_data().data();
+    const auto* src_is_nulls = column->null_column_data().data();
+
     auto* res_column = down_cast<NullableColumn*>(out);
     res_column->null_column_data().resize(in->size());
-
     auto* res_data_column = down_cast<StringColumnType*>(res_column->data_column().get());
-    const auto* data_column = down_cast<const DictColumnType*>(column->data_column().get());
 
     const size_t num_rows = in->size();
     std::vector<StringCppType> res_slices(num_rows);
     for (size_t i = 0; i < num_rows; i++) {
-        if (column->null_column_data()[i] == 0) {
-            DictCppType key = data_column->get_data()[i];
+        if (src_is_nulls[i] == 0) {
+            DictCppType key = src_data[i];
             auto iter = _dict.find(key);
             if (iter == _dict.end()) {
                 return Status::InternalError(fmt::format("Dict Decode failed, Dict can't take cover all key :{}", key));
@@ -155,7 +157,7 @@ Status GlobalDictDecoderBase<Dict>::decode_string(const Column* in, Column* out)
         }
     }
     res_data_column->append_strings(res_slices.data(), num_rows);
-    strings::memcpy_inlined(res_column->null_column_data().data(), column->null_column_data().data(),
+    strings::memcpy_inlined(res_column->null_column_data().data(), src_is_nulls,
                             num_rows * sizeof(NullColumn::ValueType));
 
     return Status::OK();
