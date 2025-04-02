@@ -230,7 +230,7 @@ public:
     // null_in_set: true means null is a value of _hash_set.
     // equal_null: true means that 'null' in column and 'null' in set is equal.
     template <bool null_in_set, bool equal_null, bool use_array>
-    ColumnPtr eval_on_chunk(const ColumnPtr& lhs, uint8_t* filter) {
+    ALWAYS_INLINE ColumnPtr eval_on_chunk(const ColumnPtr& lhs, uint8_t* filter) {
         ColumnViewer<Type> viewer(lhs);
         size_t size = viewer.size();
         ColumnBuilder<TYPE_BOOLEAN> builder(size);
@@ -293,7 +293,8 @@ public:
 
     StatusOr<ColumnPtr> evaluate_with_filter(ExprContext* context, Chunk* ptr, uint8_t* filter) override {
         const bool rejudge = _is_join_runtime_filter && (++_evaluate_times) % 32 == 0;
-        if (!rejudge && !_used) {
+        const bool used = !_is_join_runtime_filter || _used;
+        if (!rejudge && !used) {
             if (filter == nullptr) {
                 return RunTimeColumnType<TYPE_BOOLEAN>::create(ptr->num_rows(), true);
             } else {
