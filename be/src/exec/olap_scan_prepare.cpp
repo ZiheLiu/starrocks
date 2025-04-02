@@ -750,11 +750,7 @@ Status ChunkPredicateBuilder<E, Type>::normalize_join_runtime_filter(const SlotD
                         _child_builders.emplace_back(child_builder);
                     }
                 } else {
-                    std::vector<RangeValueType> values;
-                    values.reserve(pred->hash_set().size());
-                    for (const auto& value : pred->hash_set()) {
-                        values.emplace_back(value);
-                    }
+                    std::vector<RangeValueType> values(pred->hash_set().begin(), pred->hash_set().end());
                     ::pdqsort(values.begin(), values.end());
 
                     boost::container::flat_set<RangeValueType> value_set(values.begin(), values.end());
