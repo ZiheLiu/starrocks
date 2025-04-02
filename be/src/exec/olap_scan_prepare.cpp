@@ -1139,7 +1139,7 @@ Status ChunkPredicateBuilder<E, Type>::_get_column_predicates(PredicateParser* p
         }
     }
 
-    if (_opts.runtime_state->enable_join_runtime_filter_pushdown()) {
+    if (_opts.runtime_state->enable_join_runtime_filter_pushdown() && _opts.is_olap_scan) {
         for (const auto& it : _opts.runtime_filters->descriptors()) {
             RuntimeFilterProbeDescriptor* desc = it.second;
             SlotId slot_id;
