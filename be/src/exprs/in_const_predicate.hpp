@@ -292,7 +292,7 @@ public:
     }
 
     StatusOr<ColumnPtr> evaluate_with_filter(ExprContext* context, Chunk* ptr, uint8_t* filter) override {
-        const bool rejudge = _is_join_runtime_filter && (_evaluate_times++) % 32 == 0;
+        const bool rejudge = _is_join_runtime_filter && ++_evaluate_times % 32 == 0;
         const bool used = !_is_join_runtime_filter || _used;
         if (!rejudge && !used) {
             if (filter == nullptr) {
@@ -453,7 +453,7 @@ private:
     // Ensure the string memory don't early free
     Columns _string_values;
 
-    std::atomic<size_t> _evaluate_times{0};
+    std::atomic<size_t> _evaluate_times{std::numeric_limits<size_t>::max()};
     std::atomic<bool> _used{true};
 };
 
