@@ -292,9 +292,8 @@ public:
     }
 
     StatusOr<ColumnPtr> evaluate_with_filter(ExprContext* context, Chunk* ptr, uint8_t* filter) override {
-        const bool rejudge = _is_join_runtime_filter && ++_evaluate_times % 32 == 0;
-        const bool used = !_is_join_runtime_filter || _used;
-        if (!rejudge && !used) {
+        const bool rejudge = _is_join_runtime_filter && (++_evaluate_times) % 32 == 0;
+        if (!rejudge && !_used) {
             if (filter == nullptr) {
                 return RunTimeColumnType<TYPE_BOOLEAN>::create(ptr->num_rows(), true);
             } else {
