@@ -345,7 +345,7 @@ public:
             const auto* res_data_column = ColumnHelper::get_data_column(res_column.get());
             const auto& res_data = GetContainer<TYPE_BOOLEAN>::get_data(res_data_column);
             const size_t num_rows_after_evaluated = SIMD::count_nonzero(res_data.data(), res_data.size());
-            const size_t num_rows = filter == nullptr ? ptr->num_rows() : SIMD::count_nonzero(filter, res_data.size());
+            const size_t num_rows = filter == nullptr ? res_data.size() : SIMD::count_nonzero(filter, res_data.size());
             _used = num_rows_after_evaluated < num_rows;
         }
 
