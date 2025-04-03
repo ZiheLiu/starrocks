@@ -303,7 +303,7 @@ template <Integer8BitType T>
 inline bool contains_nonzero_bit(const T* data, size_t size) {
     const T* end = data + size;
 
-#ifdef defined(__ARM_NEON) && defined(__aarch64__)
+#if defined(__ARM_NEON) && defined(__aarch64__)
     const T* end16 = data + (size / 16 * 16);
     for (; data < end16; data += 16) {
         uint8x16_t vdata = vld1q_u8(data);
