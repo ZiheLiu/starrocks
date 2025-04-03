@@ -307,7 +307,9 @@ inline bool contains_nonzero_bit(const T* data, size_t size) {
     const T* end16 = data + (size / 16 * 16);
     for (; data < end16; data += 16) {
         uint8x16_t vdata = vld1q_u8(data);
-        if（vmaxvq_u8(vdata) != 0） { return true; }
+        if (vmaxvq_u8(vdata) != 0） {
+            return true;
+        }
     }
 #endif
 
