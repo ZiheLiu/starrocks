@@ -104,5 +104,7 @@ PROPERTIES (
 insert into t1 select idx, idx % (20480000 / 26), idx from __row_util;
 
 select count(1) as cnt from t1 group by c1 order by cnt limit 10;
-function: assert_explain_contains("select count(*) from pre_agg_case group by c3", "StreamingAggTuningGuide")
+
+alter plan advisor add select count(1) as cnt from t1 group by c1 order by cnt limit 10;
+function: assert_explain_contains("select count(1) as cnt from t1 group by c1 order by cnt limit 10", "StreamingAggTuningGuide")
 select count(1) as cnt from t1 group by c1 order by cnt limit 10;
