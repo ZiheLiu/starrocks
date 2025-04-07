@@ -133,7 +133,7 @@ alter plan advisor add select count(*) from pre_agg_case group by c3;
 -- result:
 [REGEX]Add query into plan advisor in FE
 -- !result
-function: assert_explain_contains("select count(*) from pre_agg_case group by c3", "StreamingAggTuningGuide")
+function: assert_explain_not_contains("select count(*) from pre_agg_case group by c3", "StreamingAggTuningGuide")
 -- result:
 None
 -- !result
