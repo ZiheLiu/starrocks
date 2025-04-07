@@ -103,6 +103,8 @@ PROPERTIES (
 );
 insert into t1 select idx, idx % (20480000 / 26), idx from __row_util;
 
+analyze full table t1 with sync mode;
+
 select count(1) as cnt from t1 group by c1 order by cnt limit 10;
 
 alter plan advisor add select count(1) as cnt from t1 group by c1 order by cnt limit 10;
