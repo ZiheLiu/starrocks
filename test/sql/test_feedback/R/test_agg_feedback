@@ -114,7 +114,7 @@ insert into pre_agg_case select generate_series, generate_series, generate_serie
 -- !result
 analyze full table pre_agg_case with sync mode;
 -- result:
-test_db_2dad2000ebc84c9eaf365fefe8d16506.pre_agg_case	analyze	status	OK
+[REGEX].*pre_agg_case	analyze	status	OK
 -- !result
 set enable_plan_advisor=true;
 -- result:
