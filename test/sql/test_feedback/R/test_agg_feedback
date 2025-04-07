@@ -131,7 +131,7 @@ None
 -- !result
 alter plan advisor add select count(*) from pre_agg_case group by c3;
 -- result:
-Add query into plan advisor in FE(172.26.80.7_9010_1744026107331) successfully.
+[REGEX]Add query into plan advisor in FE
 -- !result
 function: assert_explain_not_contains("select count(*) from pre_agg_case group by c3", "StreamingAggTuningGuide")
 -- result:
@@ -139,7 +139,7 @@ None
 -- !result
 truncate plan advisor;
 -- result:
-Clear all plan advisor in FE(172.26.80.7_9010_1744026107331) successfully. Advisor size: 1
+[REGEX]Clear all plan advisor in FE
 -- !result
 CREATE TABLE __row_util_base (
   k1 bigint NULL
@@ -211,7 +211,7 @@ select count(1) as cnt from t1 group by c1 order by cnt limit 10;
 -- !result
 alter plan advisor add select count(1) as cnt from t1 group by c1 order by cnt limit 10;
 -- result:
-Add query into plan advisor in FE(172.26.80.7_9010_1744026107331) successfully.
+[REGEX]Add query into plan advisor in FE
 -- !result
 function: assert_explain_contains("select count(1) as cnt from t1 group by c1 order by cnt limit 10", "StreamingAggTuningGuide")
 -- result:
