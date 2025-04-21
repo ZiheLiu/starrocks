@@ -108,6 +108,11 @@ Status FragmentExecutor::_prepare_query_ctx(ExecEnv* exec_env, const UnifiedExec
         }
     }
 
+    LOG(WARNING) << "[DEBUG] "
+                 << "register "
+                 << "[query_id=" << print_id(query_id) << "] "
+                 << "[fragment_instance_id=" << fragment_instance_id << "] ";
+
     ASSIGN_OR_RETURN(_query_ctx, exec_env->query_context_mgr()->get_or_register(query_id));
     _query_ctx->set_exec_env(exec_env);
     if (params.__isset.instances_number) {
@@ -958,13 +963,25 @@ Status FragmentExecutor::execute(ExecEnv* exec_env) {
 void FragmentExecutor::_fail_cleanup(bool fragment_has_registed) {
     if (_query_ctx) {
         if (_fragment_ctx) {
+            LOG(WARNING) << "[DEBUG] "
+                         << "_fail_cleanup with query_ctx with fragment_ctx"
+                         << "[query_id=" << print_id(_query_ctx->query_id()) << "] "
+                         << "[fragment_instance_id=" << print_id(_fragment_ctx->fragment_instance_id()) << "] "
+                         << "[fragment_has_registed=" << fragment_has_registed << "] ";
             if (fragment_has_registed) {
                 _query_ctx->fragment_mgr()->unregister(_fragment_ctx->fragment_instance_id());
             }
             _fragment_ctx->destroy_pass_through_chunk_buffer();
             _fragment_ctx.reset();
+        } else {
+            LOG(WARNING) << "[DEBUG] "
+                         << "_fail_cleanup with query_ctx without fragment_ctx"
+                         << "[query_id=" << print_id(_query_ctx->query_id()) << "] ";
         }
         _query_ctx->count_down_fragments();
+    } else {
+        LOG(WARNING) << "[DEBUG] "
+                     << "_fail_cleanup without query_ctx";
     }
 }
 

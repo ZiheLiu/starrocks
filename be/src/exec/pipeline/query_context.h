@@ -48,6 +48,7 @@ using std::chrono::steady_clock;
 using std::chrono::duration_cast;
 
 struct ConnectorScanOperatorMemShareArbitrator;
+class QueryContextManager;
 
 // The context for all fragment of one query in one BE
 class QueryContext : public std::enable_shared_from_this<QueryContext> {
@@ -293,6 +294,8 @@ public:
     static constexpr int DEFAULT_EXPIRE_SECONDS = 300;
 
 private:
+    friend class QueryContextManager;
+
     ExecEnv* _exec_env = nullptr;
     TUniqueId _query_id;
     MonotonicStopWatch _lifetime_sw;

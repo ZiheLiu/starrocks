@@ -86,6 +86,19 @@ QueryContext::~QueryContext() noexcept {
 void QueryContext::count_down_fragments() {
     size_t old = _num_active_fragments.fetch_sub(1);
     DCHECK_GE(old, 1);
+
+    LOG(WARNING) << "[DEBUG] "
+                 << "count_down_fragments "
+                 << "[query_id=" << print_id(_query_id) << "] "
+
+                 << "[_total_fragments=" << _total_fragments << "]"
+                 << "[_num_fragments=" << _num_fragments << "]"
+                 << "[_num_active_fragments=" << old << "]"
+
+                 << "[_query_deadline=" << _query_deadline << "]"
+                 << "[_cancelled_by_fe=" << _cancelled_by_fe << "]"
+                 << "[status=" << get_cancelled_status().to_string() << "]";
+
     bool all_fragments_finished = old == 1;
     if (!all_fragments_finished) {
         return;
@@ -399,6 +412,20 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
         auto it = context_map.find(query_id);
         if (it != context_map.end()) {
             RETURN_CANCELLED_STATUS_IF_CTX_CANCELLED(it->second);
+
+            auto* query_ctx = it->second.get();
+            LOG(WARNING) << "[DEBUG] "
+                         << "get_or_register found in context_map#1 "
+                         << "[query_id=" << print_id(query_id) << "] "
+
+                         << "[_total_fragments=" << query_ctx->_total_fragments << "]"
+                         << "[_num_fragments=" << query_ctx->_num_fragments << "]"
+                         << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
+
+                         << "[_query_deadline=" << query_ctx->_query_deadline << "]"
+                         << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
+                         << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
+
             return it->second.get();
         }
     }
@@ -409,6 +436,19 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
         auto sc_it = sc_map.find(query_id);
         if (it != context_map.end()) {
             RETURN_CANCELLED_STATUS_IF_CTX_CANCELLED(it->second);
+
+            auto* query_ctx = it->second.get();
+            LOG(WARNING) << "[DEBUG] "
+                         << "get_or_register found in context_map#2 "
+                         << "[query_id=" << print_id(query_id) << "] "
+
+                         << "[_total_fragments=" << query_ctx->_total_fragments << "]"
+                         << "[_num_fragments=" << query_ctx->_num_fragments << "]"
+                         << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
+
+                         << "[_query_deadline=" << query_ctx->_query_deadline << "]"
+                         << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
+                         << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
             return it->second.get();
         } else {
             // lookup query context for the second chance in sc_map
@@ -418,6 +458,20 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
                 RETURN_CANCELLED_STATUS_IF_CTX_CANCELLED(ctx);
                 auto* raw_ctx_ptr = ctx.get();
                 context_map.emplace(query_id, std::move(ctx));
+
+                auto* query_ctx = raw_ctx_ptr;
+                LOG(WARNING) << "[DEBUG] "
+                             << "get_or_register found in sc_map "
+                             << "[query_id=" << print_id(query_id) << "] "
+
+                             << "[_total_fragments=" << query_ctx->_total_fragments << "]"
+                             << "[_num_fragments=" << query_ctx->_num_fragments << "]"
+                             << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
+
+                             << "[_query_deadline=" << query_ctx->_query_deadline << "]"
+                             << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
+                             << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
+
                 return raw_ctx_ptr;
             }
         }
@@ -428,6 +482,20 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
         ctx_raw_ptr->set_query_id(query_id);
         ctx_raw_ptr->increment_num_fragments();
         context_map.emplace(query_id, std::move(ctx));
+
+        auto* query_ctx = ctx_raw_ptr;
+        LOG(WARNING) << "[DEBUG] "
+                     << "get_or_register not found"
+                     << "[query_id=" << print_id(query_id) << "] "
+
+                     << "[_total_fragments=" << query_ctx->_total_fragments << "]"
+                     << "[_num_fragments=" << query_ctx->_num_fragments << "]"
+                     << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
+
+                     << "[_query_deadline=" << query_ctx->_query_deadline << "]"
+                     << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
+                     << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
+
         return ctx_raw_ptr;
     }
 }
@@ -497,8 +565,34 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
     if (it->second->is_dead()) {
         query_ctx = std::move(it->second);
         context_map.erase(it);
+
+        LOG(WARNING) << "[DEBUG] "
+                     << "remove dead "
+                     << "[query_id=" << print_id(query_id) << "] "
+
+                     << "[_total_fragments=" << query_ctx->_total_fragments << "]"
+                     << "[_num_fragments=" << query_ctx->_num_fragments << "]"
+                     << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
+
+                     << "[_query_deadline=" << query_ctx->_query_deadline << "]"
+                     << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
+                     << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
+
         return true;
     } else if (it->second->has_no_active_instances()) {
+        const auto* raw_query_ctx = it->second.get();
+        LOG(WARNING) << "[DEBUG] "
+                     << "remove has_no_active_instances "
+                     << "[query_id=" << print_id(query_id) << "] "
+
+                     << "[_total_fragments=" << raw_query_ctx->_total_fragments << "]"
+                     << "[_num_fragments=" << raw_query_ctx->_num_fragments << "]"
+                     << "[_num_active_fragments=" << raw_query_ctx->_num_active_fragments << "]"
+
+                     << "[_query_deadline=" << raw_query_ctx->_query_deadline << "]"
+                     << "[_cancelled_by_fe=" << raw_query_ctx->_cancelled_by_fe << "]"
+                     << "[status=" << raw_query_ctx->get_cancelled_status().to_string() << "]";
+
         // although all of active fragments of the query context terminates, but some fragments maybe comes too late
         // in the future, so extend the lifetime of query context and wait for some time till fragments on wire have
         // vanished
@@ -506,8 +600,23 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
         ctx->extend_delivery_lifetime();
         context_map.erase(it);
         sc_map.emplace(query_id, std::move(ctx));
+
         return false;
     }
+
+    const auto* raw_query_ctx = it->second.get();
+    LOG(WARNING) << "[DEBUG] "
+                 << "remove has_active_instances "
+                 << "[query_id=" << print_id(query_id) << "] "
+
+                 << "[_total_fragments=" << raw_query_ctx->_total_fragments << "]"
+                 << "[_num_fragments=" << raw_query_ctx->_num_fragments << "]"
+                 << "[_num_active_fragments=" << raw_query_ctx->_num_active_fragments << "]"
+
+                 << "[_query_deadline=" << raw_query_ctx->_query_deadline << "]"
+                 << "[_cancelled_by_fe=" << raw_query_ctx->_cancelled_by_fe << "]"
+                 << "[status=" << raw_query_ctx->get_cancelled_status().to_string() << "]";
+
     return false;
 }
 
