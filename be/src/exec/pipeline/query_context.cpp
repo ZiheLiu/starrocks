@@ -520,6 +520,11 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
                      << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
                      << "[status=" << query_ctx->get_cancelled_status().to_string() << "]"
 
+                     << "[mutex=" << (&mutex) << "] "
+
+                     << "[context_map_addr=" << (&context_map) << "] "
+                     << "[context_map_contains=" << (context_map.contains(query_id)) << "]"
+
                      << "[sc_map_addr=" << (&sc_map) << "] "
                      << "[src_map_contains=" << (sc_map.contains(query_id)) << "]";
 
@@ -641,7 +646,13 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
                      << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
                      << "[_query_deadline=" << raw_query_ctx->_query_deadline << "]"
                      << "[_cancelled_by_fe=" << raw_query_ctx->_cancelled_by_fe << "]"
+
                      << "[status=" << raw_query_ctx->get_cancelled_status().to_string() << "] "
+
+                     << "[mutex=" << (&mutex) << "] "
+
+                     << "[context_map_addr=" << (&context_map) << "] "
+                     << "[context_map_contains=" << (context_map.contains(query_id)) << "]"
 
                      << "[sc_map_addr=" << (&sc_map) << "] "
                      << "[src_map_contains=" << (sc_map.contains(query_id)) << "]";
