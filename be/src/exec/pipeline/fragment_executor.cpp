@@ -111,7 +111,7 @@ Status FragmentExecutor::_prepare_query_ctx(ExecEnv* exec_env, const UnifiedExec
     LOG(WARNING) << "[DEBUG] "
                  << "register "
                  << "[query_id=" << print_id(query_id) << "] "
-                 << "[fragment_instance_id=" << fragment_instance_id << "] ";
+                 << "[fragment_instance_id=" << print_id(fragment_instance_id) << "] ";
 
     ASSIGN_OR_RETURN(_query_ctx, exec_env->query_context_mgr()->get_or_register(query_id));
     _query_ctx->set_exec_env(exec_env);
