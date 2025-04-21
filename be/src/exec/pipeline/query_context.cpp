@@ -95,6 +95,7 @@ void QueryContext::count_down_fragments() {
                  << "[_num_fragments=" << _num_fragments << "]"
                  << "[_num_active_fragments=" << old << "]"
 
+                 << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
                  << "[_query_deadline=" << _query_deadline << "]"
                  << "[_cancelled_by_fe=" << _cancelled_by_fe << "]"
                  << "[status=" << get_cancelled_status().to_string() << "]";
@@ -351,6 +352,22 @@ void QueryContextManager::_clean_slot_unlocked(size_t i, std::vector<QueryContex
     while (sc_it != sc_map.end()) {
         if (sc_it->second->has_no_active_instances() && sc_it->second->is_delivery_expired()) {
             del.emplace_back(std::move(sc_it->second));
+
+            const auto* query_ctx = sc_it->second.get();
+            LOG(WARNING) << "[DEBUG] "
+                         << "_clean_slot_unlocked expired"
+                         << "[query_id=" << print_id(query_ctx->query_id()) << "] "
+
+                         << "[_total_fragments=" << query_ctx->_total_fragments << "]"
+                         << "[_num_fragments=" << query_ctx->_num_fragments << "]"
+                         << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
+
+                         << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count()
+                         << "] "
+                         << "[_query_deadline=" << query_ctx->_query_deadline << "]"
+                         << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
+                         << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
+
             sc_it = sc_map.erase(sc_it);
         } else {
             ++sc_it;
@@ -422,6 +439,8 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
                          << "[_num_fragments=" << query_ctx->_num_fragments << "]"
                          << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
 
+                         << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count()
+                         << "] "
                          << "[_query_deadline=" << query_ctx->_query_deadline << "]"
                          << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
                          << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
@@ -446,6 +465,8 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
                          << "[_num_fragments=" << query_ctx->_num_fragments << "]"
                          << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
 
+                         << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count()
+                         << "] "
                          << "[_query_deadline=" << query_ctx->_query_deadline << "]"
                          << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
                          << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
@@ -468,6 +489,8 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
                              << "[_num_fragments=" << query_ctx->_num_fragments << "]"
                              << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
 
+                             << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count()
+                             << "] "
                              << "[_query_deadline=" << query_ctx->_query_deadline << "]"
                              << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
                              << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
@@ -492,6 +515,7 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
                      << "[_num_fragments=" << query_ctx->_num_fragments << "]"
                      << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
 
+                     << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
                      << "[_query_deadline=" << query_ctx->_query_deadline << "]"
                      << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
                      << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
@@ -574,6 +598,7 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
                      << "[_num_fragments=" << query_ctx->_num_fragments << "]"
                      << "[_num_active_fragments=" << query_ctx->_num_active_fragments << "]"
 
+                     << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
                      << "[_query_deadline=" << query_ctx->_query_deadline << "]"
                      << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
                      << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
@@ -589,6 +614,7 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
                      << "[_num_fragments=" << raw_query_ctx->_num_fragments << "]"
                      << "[_num_active_fragments=" << raw_query_ctx->_num_active_fragments << "]"
 
+                     << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
                      << "[_query_deadline=" << raw_query_ctx->_query_deadline << "]"
                      << "[_cancelled_by_fe=" << raw_query_ctx->_cancelled_by_fe << "]"
                      << "[status=" << raw_query_ctx->get_cancelled_status().to_string() << "]";
@@ -613,6 +639,7 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
                  << "[_num_fragments=" << raw_query_ctx->_num_fragments << "]"
                  << "[_num_active_fragments=" << raw_query_ctx->_num_active_fragments << "]"
 
+                 << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
                  << "[_query_deadline=" << raw_query_ctx->_query_deadline << "]"
                  << "[_cancelled_by_fe=" << raw_query_ctx->_cancelled_by_fe << "]"
                  << "[status=" << raw_query_ctx->get_cancelled_status().to_string() << "]";
