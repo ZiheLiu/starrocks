@@ -518,7 +518,10 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
                      << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
                      << "[_query_deadline=" << query_ctx->_query_deadline << "]"
                      << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
-                     << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
+                     << "[status=" << query_ctx->get_cancelled_status().to_string() << "]"
+
+                     << "[sc_map_addr=" << (&sc_map) << "] "
+                     << "[src_map_contains=" << (sc_map.contains(query_id)) << "]";
 
         return ctx_raw_ptr;
     }
@@ -626,6 +629,22 @@ bool QueryContextManager::remove(const TUniqueId& query_id) {
         ctx->extend_delivery_lifetime();
         context_map.erase(it);
         sc_map.emplace(query_id, std::move(ctx));
+
+        LOG(WARNING) << "[DEBUG] "
+                     << "remove has_no_active_instances #1 "
+                     << "[query_id=" << print_id(query_id) << "] "
+
+                     << "[_total_fragments=" << raw_query_ctx->_total_fragments << "]"
+                     << "[_num_fragments=" << raw_query_ctx->_num_fragments << "]"
+                     << "[_num_active_fragments=" << raw_query_ctx->_num_active_fragments << "]"
+
+                     << "[now=" << duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count() << "] "
+                     << "[_query_deadline=" << raw_query_ctx->_query_deadline << "]"
+                     << "[_cancelled_by_fe=" << raw_query_ctx->_cancelled_by_fe << "]"
+                     << "[status=" << raw_query_ctx->get_cancelled_status().to_string() << "] "
+
+                     << "[sc_map_addr=" << (&sc_map) << "] "
+                     << "[src_map_contains=" << (sc_map.contains(query_id)) << "]";
 
         return false;
     }
