@@ -299,4 +299,47 @@ TEST(QueryContextManagerTest, testSetWorkgroup) {
     ASSERT_EQ(0, wg->num_running_queries());
 }
 
+TEST(QueryContextManagerTest, testGetAfterCancel) {
+    auto parent_mem_tracker = std::make_shared<MemTracker>(MemTrackerType::QUERY_POOL, 1073741824L, "parent", nullptr);
+    auto query_ctx_mgr = std::make_shared<QueryContextManager>(6);
+    ASSERT_TRUE(query_ctx_mgr->init().ok());
+
+    // Prepare 3 fragments.
+    TUniqueId query_id;
+    query_id.hi = 100;
+    query_id.lo = 1;
+    ASSIGN_OR_ASSERT_FAIL(auto* query_ctx, query_ctx_mgr->get_or_register(query_id));
+    query_ctx->set_total_fragments(8);
+    query_ctx->set_delivery_expire_seconds(60);
+    query_ctx->set_query_expire_seconds(300);
+    query_ctx->extend_delivery_lifetime();
+    query_ctx->extend_query_lifetime();
+    query_ctx->count_down_fragments();
+    query_ctx->init_mem_tracker(parent_mem_tracker->limit(), parent_mem_tracker.get());
+    query_ctx->mark_prepared();
+
+    int num_fragments = 1;
+    for (; num_fragments < 3; num_fragments++) {
+        ASSIGN_OR_ASSERT_FAIL(auto* tmp_query_ctx, query_ctx_mgr->get_or_register(query_id));
+        tmp_query_ctx->init_mem_tracker(parent_mem_tracker->limit(), parent_mem_tracker.get());
+        ASSERT_TRUE(tmp_query_ctx != nullptr);
+    }
+
+    // Cancel query_ctx and finish all the prepared fragments.
+    query_ctx->cancel(Status::Cancelled("mocked cancel"), false);
+    for (int i = 0; i < num_fragments; i++) {
+        query_ctx->count_down_fragments();
+    }
+
+    ASSERT_FALSE(query_ctx->is_dead());
+
+    for (int i = 0; i < 7; ++i) {
+        query_ctx->count_down_fragments();
+    }
+    ASSERT_TRUE(query_ctx->has_no_active_instances());
+    ASSERT_TRUE(query_ctx->is_dead());
+    query_ctx_mgr->remove(query_id);
+    ASSERT_TRUE(query_ctx_mgr->get(query_id) == nullptr);
+}
+
 } // namespace starrocks::pipeline
