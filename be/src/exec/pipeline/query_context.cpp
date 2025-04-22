@@ -351,8 +351,6 @@ void QueryContextManager::_clean_slot_unlocked(size_t i, std::vector<QueryContex
     auto sc_it = sc_map.begin();
     while (sc_it != sc_map.end()) {
         if (sc_it->second->has_no_active_instances() && sc_it->second->is_delivery_expired()) {
-            del.emplace_back(std::move(sc_it->second));
-
             const auto* query_ctx = sc_it->second.get();
             LOG(WARNING) << "[DEBUG] "
                          << "_clean_slot_unlocked expired"
@@ -368,6 +366,7 @@ void QueryContextManager::_clean_slot_unlocked(size_t i, std::vector<QueryContex
                          << "[_cancelled_by_fe=" << query_ctx->_cancelled_by_fe << "]"
                          << "[status=" << query_ctx->get_cancelled_status().to_string() << "]";
 
+            del.emplace_back(std::move(sc_it->second));
             sc_it = sc_map.erase(sc_it);
         } else {
             ++sc_it;
