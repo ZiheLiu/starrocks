@@ -475,8 +475,8 @@ StatusOr<QueryContext*> QueryContextManager::get_or_register(const TUniqueId& qu
             // lookup query context for the second chance in sc_map
             if (sc_it != sc_map.end()) {
                 auto ctx = std::move(sc_it->second);
-                sc_map.erase(sc_it);
                 RETURN_CANCELLED_STATUS_IF_CTX_CANCELLED(ctx);
+                sc_map.erase(sc_it);
                 auto* raw_ctx_ptr = ctx.get();
                 context_map.emplace(query_id, std::move(ctx));
 
