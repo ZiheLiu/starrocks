@@ -57,81 +57,197 @@ FROM __row_util;
 
 [UC]ANALYZE TABLE t2;
 
-select sum(x), sum(y)
+
+with w1 as (
+    select c_str1, c_str2, c_int1, c_int2 from t2 group by c_str1, c_str2, c_int1, c_int2
+)
+select /*+SET_VAR(cbo_cte_reuse=false)*/ sum(x), sum(y)
 from (
     select count(tt1.c_str1) as x , count(tt1.c_str2) as y
     from 
-        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
         t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
         t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
-        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
 )t;
 
 
 
-admin enable failpoint 'parquet_reader_returns_global_dict_not_match_status';
+admin enable failpoint 'parquet_reader_returns_global_dict_not_match_status' with 0.5 probability;
 
-select sum(x), sum(y)
+with w1 as (
+    select c_str1, c_str2, c_int1, c_int2 from t2 group by c_str1, c_str2, c_int1, c_int2
+)
+select /*+SET_VAR(cbo_cte_reuse=false)*/ sum(x), sum(y)
 from (
     select count(tt1.c_str1) as x , count(tt1.c_str2) as y
     from 
-        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
         t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
         t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+)t;
+
+with w1 as (
+    select c_str1, c_str2, c_int1, c_int2 from t2 group by c_str1, c_str2, c_int1, c_int2
+)
+select /*+SET_VAR(cbo_cte_reuse=false)*/ sum(x), sum(y)
+from (
+    select count(tt1.c_str1) as x , count(tt1.c_str2) as y
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
         t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+)t;
+
+
+admin enable failpoint 'parquet_reader_returns_global_dict_not_match_status';
+
+with w1 as (
+    select c_str1, c_str2, c_int1, c_int2 from t2 group by c_str1, c_str2, c_int1, c_int2
+)
+select /*+SET_VAR(cbo_cte_reuse=false)*/ sum(x), sum(y)
+from (
+    select count(tt1.c_str1) as x , count(tt1.c_str2) as y
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+)t;
+
+with w1 as (
+    select c_str1, c_str2, c_int1, c_int2 from t2 group by c_str1, c_str2, c_int1, c_int2
+)
+select /*+SET_VAR(cbo_cte_reuse=false)*/ sum(x), sum(y)
+from (
+    select count(tt1.c_str1) as x , count(tt1.c_str2) as y
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
 )t;
 
 
 admin disable failpoint 'parquet_reader_returns_global_dict_not_match_status';
 
-select sum(x), sum(y)
+with w1 as (
+    select c_str1, c_str2, c_int1, c_int2 from t2 group by c_str1, c_str2, c_int1, c_int2
+)
+select /*+SET_VAR(cbo_cte_reuse=false)*/ sum(x), sum(y)
 from (
     select count(tt1.c_str1) as x , count(tt1.c_str2) as y
     from 
-        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
         t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
         t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
     union all 
     select count(tt1.c_str1) , count(tt1.c_str2)
     from 
-        t2 tt1 join [shuffle] t2 tt2 on tt1.c_int1 = tt2.c_int1
-        join [shuffle] t2 tt3 on tt1.c_int2 = tt3.c_int2
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
+    union all 
+    select count(tt1.c_str1) , count(tt1.c_str2)
+    from 
+        w1 tt1 join [shuffle] w1 tt2 on tt1.c_int1 = tt2.c_int1
 )t;
+
 
 
 drop table t2 force;
