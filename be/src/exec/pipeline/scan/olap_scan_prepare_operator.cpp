@@ -20,7 +20,7 @@
 
 namespace starrocks::pipeline {
 
-DEFINE_FAIL_POINT(capture_olap_scan_prepare_sleep_5s);
+DEFINE_FAIL_POINT(capture_olap_scan_prepare_sleep_60s);
 
 /// OlapScanPrepareOperator
 OlapScanPrepareOperator::OlapScanPrepareOperator(OperatorFactory* factory, int32_t id, const string& name,
@@ -48,8 +48,8 @@ Status OlapScanPrepareOperator::prepare(RuntimeState* state) {
     auto* capture_tablet_rowsets_timer = ADD_TIMER(_unique_metrics, "CaptureTabletRowsetsTime");
     {
         SCOPED_TIMER(capture_tablet_rowsets_timer);
-        FAIL_POINT_TRIGGER_EXECUTE(capture_olap_scan_prepare_sleep_5s,
-                                   { std::this_thread::sleep_for(std::chrono::seconds(5)); });
+        FAIL_POINT_TRIGGER_EXECUTE(capture_olap_scan_prepare_sleep_60s,
+                                   { std::this_thread::sleep_for(std::chrono::seconds(60)); });
 
         RETURN_IF_ERROR(_ctx->capture_tablet_rowsets(_morsel_queue->prepare_olap_scan_ranges()));
     }
