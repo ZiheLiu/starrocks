@@ -1322,6 +1322,9 @@ CONF_Int64(local_exchange_buffer_mem_limit_per_driver, "134217728"); // 128MB
 CONF_mInt64(streaming_agg_limited_memory_size, "134217728");
 // mem limit for partition hash join probe side buffer
 CONF_mInt64(partition_hash_join_probe_limit_size, "134217728");
+
+CONF_mInt64(partition_hash_join_num, "0");
+
 // pipeline streaming aggregate chunk buffer size
 CONF_mInt32(streaming_agg_chunk_buffer_size, "1024");
 CONF_mInt64(wait_apply_time, "6000"); // 6s

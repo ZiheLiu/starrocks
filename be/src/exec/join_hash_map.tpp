@@ -1062,9 +1062,7 @@ void FixedSizeJoinProbeFunc<LT>::_probe_column(const JoinHashTableItems& table_i
     JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
                                                  table_items.log_bucket_size, data, 0, row_count);
     probe_state->null_array = nullptr;
-    for (uint32_t i = 0; i < row_count; i++) {
-        probe_state->next[i] = table_items.first[probe_state->buckets[i]];
-    }
+    SIMDGather::gather(probe_state->next.data(), table_items.first.data(), probe_state->buckets.data(), row_count);
 }
 
 template <LogicalType LT>
@@ -1089,13 +1087,8 @@ void FixedSizeJoinProbeFunc<LT>::_probe_nullable_column(const JoinHashTableItems
     JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size,
                                                  table_items.log_bucket_size, data, 0, row_count);
 
-    for (uint32_t i = 0; i < row_count; i++) {
-        if (probe_state->is_nulls[i] == 0) {
-            probe_state->next[i] = table_items.first[probe_state->buckets[i]];
-        } else {
-            probe_state->next[i] = 0;
-        }
-    }
+    SIMDGather::gather(probe_state->next.data(), table_items.first.data(), probe_state->buckets.data(),
+                       probe_state->is_nulls.data(), row_count);
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
