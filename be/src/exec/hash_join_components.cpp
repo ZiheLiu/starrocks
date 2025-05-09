@@ -292,15 +292,18 @@ StatusOr<ChunkPtr> PartitionedHashJoinProberImpl::probe_chunk(RuntimeState* stat
         }
     } else {
         for (size_t i = 0; i < num_partitions; ++i) {
-            if (probers[i]->probe_chunk_empty() && !_partition_input_channels[i].processing()) {
+            const size_t idx = _probe_partition_index;
+            if (probers[idx]->probe_chunk_empty() && !_partition_input_channels[idx].processing()) {
+                _probe_partition_index = (_probe_partition_index + 1) % num_partitions;
                 continue;
             }
-            if (probers[i]->probe_chunk_empty()) {
-                RETURN_IF_ERROR(probers[i]->push_probe_chunk(state, _partition_input_channels[i].pull()));
+
+            if (probers[idx]->probe_chunk_empty()) {
+                RETURN_IF_ERROR(probers[idx]->push_probe_chunk(state, _partition_input_channels[idx].pull()));
             }
-            _partition_input_channels[i].set_processing(_partition_input_channels[i].size() > 1);
+            _partition_input_channels[idx].set_processing(_partition_input_channels[idx].size() > 1);
             auto chunk = std::make_shared<Chunk>();
-            ASSIGN_OR_RETURN(chunk, probers[i]->probe_chunk(state))
+            ASSIGN_OR_RETURN(chunk, probers[idx]->probe_chunk(state))
             return chunk;
         }
     }
