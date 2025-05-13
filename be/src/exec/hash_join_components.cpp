@@ -494,7 +494,7 @@ size_t AdaptivePartitionHashJoinBuilder::_estimated_build_row_key_bytes(const Ha
     for (const auto& join_key : param.join_keys) {
         if (join_key.type != nullptr) {
             estimated_each_row += get_size_of_fixed_length_type(join_key.type->type);
-            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type);
+            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type) / 2;
         }
     }
 
