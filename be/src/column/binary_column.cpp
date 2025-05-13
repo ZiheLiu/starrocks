@@ -221,7 +221,7 @@ void append_fixed_length(const Slice* data, size_t data_size, Bytes* bytes,
     auto* bytes_data = bytes->data();
     for (size_t i = 0; i < data_size; i++) {
         const auto* const p = reinterpret_cast<const Bytes::value_type*>(data[i].data);
-        memcpy(bytes_data + offsets[i], p, copy_length);
+        memcpy(bytes_data + new_offsets[i], p, copy_length);
     }
 
     // size_t size = bytes->size();
