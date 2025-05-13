@@ -208,27 +208,42 @@ void append_fixed_length(const Slice* data, size_t data_size, Bytes* bytes,
 template <typename T, size_t copy_length>
 void append_fixed_length(const Slice* data, size_t data_size, Bytes* bytes,
                          typename BinaryColumnBase<T>::Offsets* offsets) {
-    size_t size = bytes->size();
+    const size_t prev_num_offsets = offsets->size();
+    raw::stl_vector_resize_uninitialized(offsets, prev_num_offsets + data_size);
+    // new_offsets[i] represents the beginning address (included) of the new `i`-th string.
+    // new_offsets[i + 1] represents the end address (excluded) of the new `i`-th string.
+    auto* new_offsets = offsets->data() + prev_num_offsets - 1;
     for (size_t i = 0; i < data_size; i++) {
-        const auto& s = data[i];
-        size += s.size;
+        new_offsets[i + 1] = new_offsets[i] + data[i].size;
     }
 
-    size_t offset = bytes->size();
-    // bytes->resize(size + copy_length);
-    raw::stl_vector_resize_uninitialized(bytes, size + copy_length);
-
-    size_t rows = data_size;
-    size_t length = offsets->size();
-    raw::stl_vector_resize_uninitialized(offsets, offsets->size() + rows);
-
-    for (size_t i = 0; i < rows; ++i) {
-        memcpy(&(*bytes)[offset], data[i].get_data(), copy_length);
-        offset += data[i].get_size();
-        (*offsets)[length++] = offset;
+    raw::stl_vector_resize_uninitialized(bytes, offsets->back() + copy_length);
+    auto* bytes_data = bytes->data();
+    for (size_t i = 0; i < data_size; i++) {
+        memcpy(bytes_data + offsets[i], data[i].data, copy_length);
     }
 
-    bytes->resize(offset);
+    // size_t size = bytes->size();
+    // for (size_t i = 0; i < data_size; i++) {
+    //     const auto& s = data[i];
+    //     size += s.size;
+    // }
+    //
+    // size_t offset = bytes->size();
+    // // bytes->resize(size + copy_length);
+    // raw::stl_vector_resize_uninitialized(bytes, size + copy_length);
+    //
+    // size_t rows = data_size;
+    // size_t length = offsets->size();
+    // raw::stl_vector_resize_uninitialized(offsets, offsets->size() + rows);
+    //
+    // for (size_t i = 0; i < rows; ++i) {
+    //     memcpy(&(*bytes)[offset], data[i].get_data(), copy_length);
+    //     offset += data[i].get_size();
+    //     (*offsets)[length++] = offset;
+    // }
+
+    bytes->resize(offsets->back());
 }
 
 template <typename T>
