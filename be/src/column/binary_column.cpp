@@ -215,7 +215,8 @@ void append_fixed_length(const Slice* data, size_t data_size, Bytes* bytes,
     }
 
     size_t offset = bytes->size();
-    bytes->resize(size + copy_length);
+    // bytes->resize(size + copy_length);
+    raw::stl_vector_resize_uninitialized(bytes, size + copy_length);
 
     size_t rows = data_size;
     size_t length = offsets->size();
