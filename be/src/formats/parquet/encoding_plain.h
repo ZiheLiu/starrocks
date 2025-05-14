@@ -245,9 +245,10 @@ public:
         };
         auto is_hit_filter = [&filter]<bool has_filter>(size_t row_i) {
             if constexpr (has_filter) {
-                return filter[row_i];
+                return filter[row_i] != 0;
+            } else {
+                return true;
             }
-            return true;
         };
         auto process = [&]<bool is_nullable, bool has_filter>() {
             std::vector<Slice> slices(count);
