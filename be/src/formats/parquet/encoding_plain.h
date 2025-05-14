@@ -239,12 +239,6 @@ public:
         }
 
         bool has_null = dst->has_null();
-        auto set_dst_is_null = [&dst_is_nulls, &has_null]<bool is_dst_nullable>(size_t row_i) {
-            if constexpr (is_dst_nullable) {
-                dst_is_nulls[row_i] = true;
-                has_null = true;
-            }
-        };
         auto is_hit_filter = [&filter]<bool has_filter>(size_t row_i) {
             if constexpr (has_filter) {
                 return filter[row_i] != 0;
@@ -256,26 +250,44 @@ public:
         auto process = [&]<bool is_dst_nullable, bool has_filter>() {
             std::vector<Slice> slices(count);
 
-            for (size_t i = 0; i < count; i++) {
-                if (is_nulls[i]) {
-                    set_dst_is_null.operator()<is_dst_nullable>(i);
+            size_t idx = 0;
+            while (idx < count) {
+                const size_t start_idx = idx;
+                const bool is_null = is_nulls[idx++];
+
+                size_t run = 1;
+                while (idx < count && is_nulls[idx] == is_null) {
+                    idx++;
+                    run++;
+                }
+
+                if (is_null) {
+                    if constexpr (is_dst_nullable) {
+                        std::memset(dst_is_nulls + start_idx, 1, run);
+                        has_null = true;
+                    }
                     continue;
                 }
 
-                if (_offset >= _data.size) {
-                    return Status::InternalError(
-                            strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset,
-                                                count, _data.size));
-                }
+                for (int i = start_idx; i < idx; i++) {
+                    if (_offset >= _data.size) {
+                        return Status::InternalError(
+                                strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2",
+                                                    _offset, count, _data.size));
+                    }
 
-                const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
-                _offset += sizeof(int32_t);
-                if (!is_hit_filter.operator()<has_filter>(i)) {
-                    set_dst_is_null.operator()<is_dst_nullable>(i);
-                } else {
-                    slices[i] = Slice(_data.data + _offset, length);
+                    const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
+                    _offset += sizeof(int32_t);
+                    if (is_hit_filter.operator()<has_filter>(i)) {
+                        slices[i] = Slice(_data.data + _offset, length);
+                    } else {
+                        if constexpr (is_dst_nullable) {
+                            dst_is_nulls[i] = true;
+                            has_null = true;
+                        }
+                    }
+                    _offset += length;
                 }
-                _offset += length;
             }
 
             ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
