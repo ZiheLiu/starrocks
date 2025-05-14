@@ -238,7 +238,6 @@ public:
             dst_is_nulls = dst_null_column->mutable_raw_data() + prev_num_row;
         }
 
-        bool has_null = dst->has_null();
         auto is_hit_filter = [&filter]<bool has_filter>(size_t row_i) {
             if constexpr (has_filter) {
                 return filter[row_i] != 0;
@@ -247,6 +246,8 @@ public:
             }
         };
 
+        bool has_null = false;
+        bool has_non_null = false;
         auto process = [&]<bool is_dst_nullable, bool has_filter>() {
             std::vector<Slice> slices(count);
 
@@ -280,6 +281,7 @@ public:
                     _offset += sizeof(int32_t);
                     if (is_hit_filter.operator()<has_filter>(i)) {
                         slices[i] = Slice(_data.data + _offset, length);
+                        has_non_null = true;
                     } else {
                         if constexpr (is_dst_nullable) {
                             dst_is_nulls[i] = true;
@@ -290,7 +292,11 @@ public:
                 }
             }
 
-            ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
+            if (has_non_null) {
+                ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
+            } else {
+                ColumnHelper::get_binary_column(dst)->append_default(count);
+            }
 
             if constexpr (is_dst_nullable) {
                 down_cast<NullableColumn*>(dst)->set_has_null(has_null);
