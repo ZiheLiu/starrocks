@@ -228,6 +228,72 @@ public:
         return Status::OK();
     }
 
+    Status next_batch(size_t count, const uint16_t* is_nulls, ColumnContentType content_type, Column* dst,
+                      const FilterData* filter) override {
+        uint8_t* dst_is_nulls = nullptr;
+        if (dst->is_nullable()) {
+            auto* dst_null_column = down_cast<NullableColumn*>(dst)->mutable_null_column();
+            const auto prev_num_row = dst_null_column->size();
+            dst_null_column->append_default(count);
+            dst_is_nulls = dst_null_column->mutable_raw_data() + prev_num_row;
+        }
+
+        auto set_dst_is_null = [&dst_is_nulls]<bool is_nullable>(size_t row_i) {
+            if constexpr (is_nullable) {
+                dst_is_nulls[row_i] = true;
+            }
+        };
+        auto is_hit_filter = [&filter]<bool has_filter>(size_t row_i) {
+            if constexpr (has_filter) {
+                return filter[row_i];
+            }
+            return true;
+        };
+        auto process = [&]<bool is_nullable, bool has_filter>() {
+            std::vector<Slice> slices(count);
+
+            for (size_t i = 0; i < count; i++) {
+                if (is_nulls[i]) {
+                    set_dst_is_null.operator()<is_nullable>(i);
+                    continue;
+                }
+
+                if (_offset >= _data.size) {
+                    return Status::InternalError(
+                            strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset,
+                                                count, _data.size));
+                }
+
+                const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
+                _offset += sizeof(int32_t);
+                if (!is_hit_filter.operator()<has_filter>(i)) {
+                    set_dst_is_null.operator()<is_nullable>(i);
+                } else {
+                    slices[i] = Slice(_data.data + _offset, length);
+                }
+                _offset += length;
+            }
+
+            ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
+
+            return Status::OK();
+        };
+
+        if (dst_is_nulls == nullptr) {
+            if (filter == nullptr) {
+                return process.operator()<false, false>();
+            } else {
+                return process.operator()<false, true>();
+            }
+        } else {
+            if (filter == nullptr) {
+                return process.operator()<true, false>();
+            } else {
+                return process.operator()<true, true>();
+            }
+        }
+    }
+
     Status skip(size_t values_to_skip) override {
         size_t num_decoded = 0;
         while (num_decoded < values_to_skip && _offset < _data.size) {

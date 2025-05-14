@@ -86,24 +86,25 @@ public:
         if (_current_row_group_no_null || _current_page_no_null) {
             return _cur_decoder->next_batch(n, content_type, dst, filter);
         }
-        size_t idx = 0;
-        size_t off = 0;
-        while (idx < n) {
-            bool is_null = is_nulls[idx++];
-            size_t run = 1;
-            while (idx < n && is_nulls[idx] == is_null) {
-                idx++;
-                run++;
-            }
-            if (is_null) {
-                dst->append_nulls(run);
-            } else {
-                const FilterData* forward_filter = filter ? filter + off : filter;
-                RETURN_IF_ERROR(_cur_decoder->next_batch(run, content_type, dst, forward_filter));
-            }
-            off += run;
-        }
-        return Status::OK();
+        return _cur_decoder->next_batch(n, is_nulls, content_type, dst, filter);
+        // size_t idx = 0;
+        // size_t off = 0;
+        // while (idx < n) {
+        //     bool is_null = is_nulls[idx++];
+        //     size_t run = 1;
+        //     while (idx < n && is_nulls[idx] == is_null) {
+        //         idx++;
+        //         run++;
+        //     }
+        //     if (is_null) {
+        //         dst->append_nulls(run);
+        //     } else {
+        //         const FilterData* forward_filter = filter ? filter + off : filter;
+        //         RETURN_IF_ERROR(_cur_decoder->next_batch(run, content_type, dst, forward_filter));
+        //     }
+        //     off += run;
+        // }
+        // return Status::OK();
     }
 
     Status decode_values(size_t n, ColumnContentType content_type, Column* dst, const FilterData* filter = nullptr) {

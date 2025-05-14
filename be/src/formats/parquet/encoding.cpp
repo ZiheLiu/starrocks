@@ -227,4 +227,26 @@ Status EncodingInfo::get(tparquet::Type::type type, tparquet::Encoding::type enc
     return s_encoding_info_resolver.get(type, encoding, out);
 }
 
+Status Decoder::next_batch(size_t count, const uint16_t* is_nulls, ColumnContentType content_type, Column* dst,
+                           const FilterData* filter) {
+    size_t idx = 0;
+    size_t off = 0;
+    while (idx < count) {
+        const bool is_null = is_nulls[idx++];
+        size_t run = 1;
+        while (idx < count && is_nulls[idx] == is_null) {
+            idx++;
+            run++;
+        }
+        if (is_null) {
+            dst->append_nulls(run);
+        } else {
+            const FilterData* forward_filter = filter ? filter + off : filter;
+            RETURN_IF_ERROR(next_batch(run, content_type, dst, forward_filter));
+        }
+        off += run;
+    }
+    return Status::OK();
+}
+
 } // namespace starrocks::parquet

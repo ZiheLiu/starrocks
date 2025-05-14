@@ -80,6 +80,9 @@ public:
     virtual Status next_batch(size_t count, ColumnContentType content_type, Column* dst,
                               const FilterData* filter = nullptr) = 0;
 
+    virtual Status next_batch(size_t count, const uint16_t* is_nulls, ColumnContentType content_type, Column* dst,
+                              const FilterData* filter = nullptr);
+
     virtual Status skip(size_t values_to_skip) = 0;
 
     // Currently, this function is only used to read dictionary values.
