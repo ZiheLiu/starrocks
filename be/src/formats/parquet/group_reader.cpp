@@ -183,7 +183,8 @@ Status GroupReader::get_next(ChunkPtr* chunk, size_t* row_count) {
         }
 
         // we really have predicate to run round by round
-        if (!_dict_column_indices.empty() || !_left_no_dict_filter_conjuncts_by_slot.empty()) {
+        if (!_dict_column_indices.empty() || !_left_no_dict_filter_conjuncts_by_slot.empty() ||
+            !_param.runtime_filter_preds.empty()) {
             has_filter = true;
             ASSIGN_OR_RETURN(size_t hit_count, _read_range_round_by_round(r, &chunk_filter, &active_chunk));
             if (hit_count == 0) {
