@@ -524,8 +524,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             continue;
         }
 
-        uint32_t row_id = get_row_id.operator()<with_bf>(first[i]);
-        first[i] = merge_bf.operator()<with_bf>(sort_len, first[i]);
+        uint32_t row_id = get_row_id.template operator()<with_bf>(first[i]);
+        first[i] = merge_bf.template operator()<with_bf>(sort_len, first[i]);
         do {
             sort_indexes[sort_len++] = row_id;
             row_id = next[row_id];
@@ -550,7 +550,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     uint32_t begin_row_id;
     for (; i < table_items->bucket_size; i++) {
         if (first[i] != 0) {
-            begin_row_id = get_row_id.operator()<with_bf>(first[i]);
+            begin_row_id = get_row_id.template operator()<with_bf>(first[i]);
             break;
         }
     }
@@ -561,7 +561,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             continue;
         }
 
-        const uint32_t end_row_id = get_row_id.operator()<with_bf>(first[i]);
+        const uint32_t end_row_id = get_row_id.template operator()<with_bf>(first[i]);
         for (int j = begin_row_id + 1; j < end_row_id; j++) {
             next[j - 1] = j;
         }
