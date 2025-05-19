@@ -492,12 +492,29 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
     const bool has_init = table_items->used_buckets != 0;
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
-    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || SIMD != 1) {
+    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0)) {
         return;
     }
 
     auto* first = table_items->first.data();
     auto* next = table_items->next.data();
+
+    auto get_row_id = []<bool with_bf>(uint32_t row_id) {
+        if constexpr (with_bf) {
+            return row_id & BLOOM_FILTER_MASK;
+        } else {
+            return row_id;
+        }
+    };
+    auto merge_bf = []<bool with_bf>(uint32_t row_id, uint32_t bf) {
+        if constexpr (with_bf) {
+            return row_id | (bf & (~BLOOM_FILTER_MASK));
+        } else {
+            return row_id;
+        }
+    };
+
+    constexpr bool with_bf = SIMD == 1;
 
     // build sort_indexes and rebuild first
     std::vector<uint32_t> sort_indexes(num_rows);
@@ -507,8 +524,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             continue;
         }
 
-        uint32_t row_id = first[i] & BLOOM_FILTER_MASK;
-        first[i] = sort_len | (first[i] & (~BLOOM_FILTER_MASK));
+        uint32_t row_id = get_row_id.operator()<with_bf>(first[i]);
+        first[i] = merge_bf.operator()<with_bf>(sort_len, first[i]);
         do {
             sort_indexes[sort_len++] = row_id;
             row_id = next[row_id];
@@ -533,7 +550,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     uint32_t begin_row_id;
     for (; i < table_items->bucket_size; i++) {
         if (first[i] != 0) {
-            begin_row_id = first[i] & BLOOM_FILTER_MASK;
+            begin_row_id = get_row_id.operator()<with_bf>(first[i]);
             break;
         }
     }
@@ -544,7 +561,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             continue;
         }
 
-        const uint32_t end_row_id = first[i] & BLOOM_FILTER_MASK;
+        const uint32_t end_row_id = get_row_id.operator()<with_bf>(first[i]);
         for (int j = begin_row_id + 1; j < end_row_id; j++) {
             next[j - 1] = j;
         }
