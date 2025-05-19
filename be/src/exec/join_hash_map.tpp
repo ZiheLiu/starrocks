@@ -14,6 +14,7 @@
 
 #include <simd/gather.h>
 
+#include "exprs/column_ref.h"
 #include "simd/simd.h"
 #include "util/runtime_profile.h"
 
@@ -489,7 +490,74 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     }
 
+    const bool has_init = table_items->used_buckets != 0;
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
+    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || SIMD != 1) {
+        return;
+    }
+
+    auto* first = table_items->first.data();
+    auto* next = table_items->next.data();
+
+    // build sort_indexes and rebuild first
+    std::vector<uint32_t> sort_indexes(num_rows);
+    uint32_t sort_len = 1;
+    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
+        if (first[i] == 0) {
+            continue;
+        }
+
+        uint32_t row_id = first[i] & BLOOM_FILTER_MASK;
+        first[i] = sort_len | (first[i] & (~BLOOM_FILTER_MASK));
+        do {
+            sort_indexes[sort_len++] = row_id;
+            row_id = next[row_id];
+        } while (row_id != 0);
+    }
+
+    // sort by append_selective
+    auto build_chunk = table_items->build_chunk->clone_empty();
+    build_chunk->append_selective(*table_items->build_chunk, sort_indexes.data(), 0, num_rows);
+    table_items->build_chunk = std::move(build_chunk);
+    if (table_items->join_keys[0].col_ref != nullptr) {
+        const SlotId slot_id = table_items->join_keys[0].col_ref->slot_id();
+        table_items->key_columns[0] = table_items->build_chunk->get_column_by_slot_id(slot_id);
+    } else {
+        auto key_column = table_items->key_columns[0]->clone_empty();
+        key_column->append_selective(*table_items->key_columns[0], sort_indexes.data(), 0, num_rows);
+        table_items->key_columns[0] = std::move(key_column);
+    }
+
+    // rebuild next by first
+    uint32_t i = 0;
+    uint32_t begin_row_id;
+    for (; i < table_items->bucket_size; i++) {
+        if (first[i] != 0) {
+            begin_row_id = first[i] & BLOOM_FILTER_MASK;
+            break;
+        }
+    }
+
+    std::memset(next, 0, sizeof(uint32_t) * num_rows);
+    for (i = i + 1; i < table_items->bucket_size; i++) {
+        if (first[i] == 0) {
+            continue;
+        }
+
+        const uint32_t end_row_id = first[i] & BLOOM_FILTER_MASK;
+        for (int j = begin_row_id + 1; j < end_row_id; j++) {
+            next[j - 1] = j;
+        }
+        // next[end_row_id - 1] = 0;
+
+        begin_row_id = end_row_id;
+    }
+
+    const uint32_t end_row_id = num_rows;
+    for (int j = begin_row_id + 1; j < end_row_id; j++) {
+        next[j - 1] = j;
+    }
+    // next[end_row_id - 1] = 0;
 }
 
 template <LogicalType LT>
