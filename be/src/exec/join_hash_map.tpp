@@ -492,8 +492,34 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
     const bool has_init = table_items->used_buckets != 0;
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
-    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0)) {
+
+    int64_t usage = 0;
+    if (table_items->build_chunk != nullptr) {
+        usage += table_items->build_chunk->memory_usage();
+    }
+    usage += table_items->first.capacity() * sizeof(uint32_t);
+    usage += table_items->next.capacity() * sizeof(uint32_t);
+    if (table_items->build_pool != nullptr) {
+        usage += table_items->build_pool->total_reserved_bytes();
+    }
+    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0) ||
+        usage <= CpuInfo::get_l3_cache_size()) {
         return;
+    }
+
+    if constexpr (lt_is_string<LT>) {
+        ColumnPtr data_column;
+        if (table_items->key_columns[0]->is_nullable()) {
+            auto* null_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
+            data_column = null_column->data_column();
+        } else {
+            data_column = table_items->key_columns[0];
+        }
+        if (UNLIKELY(data_column->is_large_binary())) {
+            ColumnHelper::as_raw_column<LargeBinaryColumn>(data_column)->invalidate_slice_cache();
+        } else {
+            ColumnHelper::as_raw_column<BinaryColumn>(data_column)->invalidate_slice_cache();
+        }
     }
 
     auto* first = table_items->first.data();
