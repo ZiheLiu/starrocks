@@ -318,7 +318,10 @@ public:
         _slices_cache = false;
     }
 
-    void invalidate_slice_cache() { _slices_cache = false; }
+    void invalidate_slice_cache() {
+        _slices_cache = false;
+        _slices.clear();
+    }
 
     std::string debug_item(size_t idx) const override;
 
