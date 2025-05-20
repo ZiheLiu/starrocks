@@ -477,6 +477,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
         table_items->key_columns[0] = std::move(key_column);
     }
 
+    std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
     return true;
 }
 
