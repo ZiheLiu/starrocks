@@ -502,10 +502,30 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     if (table_items->build_pool != nullptr) {
         usage += table_items->build_pool->total_reserved_bytes();
     }
+
+    static auto l3_cache_size = [] {
+        const auto size = CpuInfo::get_l3_cache_size();
+        return size == 0 ? 32 * 1024 * 1024 : size;
+    }();
+
     if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0) ||
-        usage <= CpuInfo::get_l3_cache_size()) {
+        usage <= l3_cache_size) {
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                      << "[mem_usage=" << usage << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
+                      << "[use_sort=NO]";
         return;
     }
+    VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                  << "[mem_usage=" << usage << "] "
+                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                  << "[bucket_size=" << table_items->bucket_size << "] "
+                  << "[SIMD=" << SIMD << "] "
+                  << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
+                  << "[use_sort=YES]";
 
     if constexpr (lt_is_string<LT>) {
         ColumnPtr data_column;
