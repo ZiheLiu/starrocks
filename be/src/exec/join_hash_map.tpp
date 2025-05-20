@@ -515,6 +515,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
     if (do_construct_hash_table_by_sort_opt_4<SIMD>(state, table_items, probe_state)) {
         data = &get_key_data(*table_items);
+        pdata = data->data();
     }
 
     if (table_items->key_columns[0]->is_nullable()) {
