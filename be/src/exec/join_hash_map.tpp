@@ -503,22 +503,22 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         usage += table_items->build_pool->total_reserved_bytes();
     }
 
-    static auto [l2_cache_size, l3_cache_size] = [] {
+    static auto l2_cache_size = [] {
         static constexpr size_t DEFAULT_L2_CACHE_SIZE = 1 * 1024 * 1024;
+
+        const auto& cache_sizes = CpuInfo::get_cache_sizes();
+        auto size = cache_sizes[CpuInfo::L2_CACHE];
+
+        return size > 0 ? size : DEFAULT_L2_CACHE_SIZE;
+    }();
+
+    static auto l3_cache_size = [] {
         static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
 
         const auto& cache_sizes = CpuInfo::get_cache_sizes();
-        auto l2_cache_size = cache_sizes[CpuInfo::L2_CACHE];
-        auto l3_cache_size = cache_sizes[CpuInfo::L3_CACHE];
+        auto size = cache_sizes[CpuInfo::L3_CACHE];
 
-        if (l2_cache_size == 0) {
-            l2_cache_size = DEFAULT_L2_CACHE_SIZE;
-        }
-        if (l3_cache_size == 0) {
-            l3_cache_size = DEFAULT_L3_CACHE_SIZE;
-        }
-
-        return std::make_pair(l2_cache_size, l3_cache_size);
+        return size > 0 ? size : DEFAULT_L3_CACHE_SIZE;
     }();
 
     if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0)) {
