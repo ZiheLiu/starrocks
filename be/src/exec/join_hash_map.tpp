@@ -386,6 +386,102 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
 template <LogicalType LT>
 template <uint8_t SIMD>
+bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* state, JoinHashTableItems* table_items,
+                                                              HashTableProbeState* probe_state) {
+    if constexpr (SIMD != 4) {
+        return false;
+    }
+
+    auto& data = get_key_data(*table_items);
+    auto* firsts = table_items->first.data();
+    const size_t num_rows = table_items->row_count + 1;
+
+    const int32_t min_value = table_items->min_value;
+    const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+    for (size_t i = 1; i < num_rows; i++) {
+        const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+        firsts[bucket_index]++;
+    }
+
+    // calculate num_rows_per_bucket and memory usage.
+    uint32_t num_used_buckets = 0;
+    for (size_t i = 0; i < table_items->bucket_size; i++) {
+        num_used_buckets += firsts[i] != 0;
+    }
+    const uint32_t num_rows_per_bucket = num_rows / num_used_buckets;
+
+    if (num_rows_per_bucket < 2) {
+        std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+        return false;
+    }
+
+    int64_t memory_usage = 0;
+    if (table_items->build_chunk != nullptr) {
+        memory_usage += table_items->build_chunk->memory_usage();
+    }
+    memory_usage += table_items->first.capacity() * sizeof(uint32_t);
+    memory_usage += table_items->next.capacity() * sizeof(uint32_t);
+    if (table_items->build_pool != nullptr) {
+        memory_usage += table_items->build_pool->total_reserved_bytes();
+    }
+
+    static auto l3_cache_size = [] {
+        static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
+
+        const auto& cache_sizes = CpuInfo::get_cache_sizes();
+        auto size = cache_sizes[CpuInfo::L3_CACHE];
+
+        return size > 0 ? size : DEFAULT_L3_CACHE_SIZE;
+    }();
+
+    // decide whether using sort opt by num_rows_per_bucket and memory_usage.
+    if (num_rows_per_bucket <= 2) {
+        if (memory_usage <= l3_cache_size) {
+            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+            return false;
+        }
+    } else {
+        if (memory_usage <= l3_cache_size / 4) {
+            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+            return false;
+        }
+    }
+
+    // make firsts[i] store the prefix sum of all the previous bucket (including i-th).
+    uint32_t cur_num_rows = 1;
+    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
+        if (firsts[i] != 0) {
+            cur_num_rows += firsts[i];
+            firsts[i] = cur_num_rows;
+        }
+    }
+
+    // build sort_indexes
+    std::vector<uint32_t> sort_indexes(num_rows);
+    for (size_t i = 1; i < num_rows; i++) {
+        const uint32_t bucket_idx = static_cast<int64_t>(keys[i]) - min_value;
+        const uint32_t sort_idx = --firsts[bucket_idx];
+        sort_indexes[sort_idx] = i;
+    }
+
+    // sort by append_selective with sort_indexes
+    auto build_chunk = table_items->build_chunk->clone_empty();
+    build_chunk->append_selective(*table_items->build_chunk, sort_indexes.data(), 0, num_rows);
+    table_items->build_chunk = std::move(build_chunk);
+    if (table_items->join_keys[0].col_ref != nullptr) {
+        const SlotId slot_id = table_items->join_keys[0].col_ref->slot_id();
+        table_items->key_columns[0] = table_items->build_chunk->get_column_by_slot_id(slot_id);
+    } else {
+        auto key_column = table_items->key_columns[0]->clone_empty();
+        key_column->append_selective(*table_items->key_columns[0], sort_indexes.data(), 0, num_rows);
+        table_items->key_columns[0] = std::move(key_column);
+    }
+
+    return true;
+}
+
+template <LogicalType LT>
+template <uint8_t SIMD>
 void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                                 HashTableProbeState* probe_state) {
     auto& data = get_key_data(*table_items);
@@ -416,6 +512,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
         return;
     }
+
+    do_construct_hash_table_by_sort_opt_4<SIMD>(state, table_items, probe_state);
 
     if (table_items->key_columns[0]->is_nullable()) {
         const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
