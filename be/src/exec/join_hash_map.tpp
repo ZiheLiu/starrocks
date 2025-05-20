@@ -503,27 +503,66 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         usage += table_items->build_pool->total_reserved_bytes();
     }
 
-    static auto l3_cache_size = [] {
-        const auto size = CpuInfo::get_l3_cache_size();
-        return size == 0 ? 32 * 1024 * 1024 : size;
+    static auto [l2_cache_size, l3_cache_size] = [] {
+        static constexpr size_t DEFAULT_L2_CACHE_SIZE = 1 * 1024 * 1024;
+        static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
+
+        const auto& cache_sizes = CpuInfo::get_cache_sizes();
+        auto l2_cache_size = cache_sizes[CpuInfo::L2_CACHE];
+        auto l3_cache_size = cache_sizes[CpuInfo::L3_CACHE];
+
+        if (l2_cache_size == 0) {
+            l2_cache_size = DEFAULT_L2_CACHE_SIZE;
+        }
+        if (l3_cache_size == 0) {
+            l3_cache_size = DEFAULT_L3_CACHE_SIZE;
+        }
+
+        return std::make_pair(l2_cache_size, l3_cache_size);
     }();
 
-    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0) ||
-        usage <= l3_cache_size) {
+    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0)) {
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                       << "[mem_usage=" << usage << "] "
                       << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                       << "[bucket_size=" << table_items->bucket_size << "] "
                       << "[SIMD=" << SIMD << "] "
+                      << "[l2_cache_size=" << l2_cache_size << "] "
                       << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
                       << "[use_sort=NO]";
         return;
     }
+
+    if (table_items->keys_per_bucket < 3 && usage <= l3_cache_size) {
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                      << "[mem_usage=" << usage << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[l2_cache_size=" << l2_cache_size << "] "
+                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
+                      << "[use_sort=NO]";
+        return;
+    }
+
+    if (usage <= l2_cache_size) {
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                      << "[mem_usage=" << usage << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[l2_cache_size=" << l2_cache_size << "] "
+                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
+                      << "[use_sort=NO]";
+        return;
+    }
+
     VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                   << "[mem_usage=" << usage << "] "
                   << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                   << "[bucket_size=" << table_items->bucket_size << "] "
                   << "[SIMD=" << SIMD << "] "
+                  << "[l2_cache_size=" << l2_cache_size << "] "
                   << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
                   << "[use_sort=YES]";
 
