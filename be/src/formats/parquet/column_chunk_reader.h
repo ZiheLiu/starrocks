@@ -80,13 +80,14 @@ public:
     LevelDecoder& def_level_decoder() { return _def_level_decoder; }
     LevelDecoder& rep_level_decoder() { return _rep_level_decoder; }
 
-    Status decode_values(size_t n, const uint16_t* is_nulls, ColumnContentType content_type, Column* dst,
+    Status decode_values(size_t n, const NullInfos& null_infos, ColumnContentType content_type, Column* dst,
                          const FilterData* filter = nullptr) {
         SCOPED_RAW_TIMER(&_opts.stats->value_decode_ns);
         if (_current_row_group_no_null || _current_page_no_null) {
             return _cur_decoder->next_batch(n, content_type, dst, filter);
         }
-        return _cur_decoder->next_batch(n, is_nulls, content_type, dst, filter);
+
+        return _cur_decoder->next_batch_with_nulls(n, null_infos, content_type, dst, filter);
         // size_t idx = 0;
         // size_t off = 0;
         // while (idx < n) {
