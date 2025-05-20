@@ -214,6 +214,178 @@ static size_t multiplicative_hash(auto key) {
 
 template <LogicalType LT>
 template <uint8_t SIMD>
+bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state, JoinHashTableItems* table_items,
+                                                            HashTableProbeState* probe_state) {
+    if constexpr (!(SIMD == 1 || SIMD == 0)) {
+        return false;
+    }
+
+    static constexpr bool with_bf = SIMD == 1;
+    auto get_bucket_num = []<bool WithBF>(uint32_t bucket_val) {
+        if constexpr (WithBF) {
+            return bucket_val >> 8;
+        } else {
+            return bucket_val;
+        }
+    };
+
+    [[maybe_unused]] auto* firsts = table_items->first.data();
+    [[maybe_unused]] auto* nexts = table_items->next.data();
+    const size_t num_rows = table_items->row_count + 1;
+
+    // calculate firsts, storing the number of rows in i-th bucket.
+    for (size_t i = 1; i < num_rows; i++) {
+        if constexpr (with_bf) {
+            const uint32_t hash = nexts[i];
+            const uint32_t bucket_idx = hash >> 8;
+            const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
+
+            const uint32_t prev_first = firsts[bucket_idx];
+            firsts[bucket_idx] = (prev_first + 1) | (fp << 24);
+        } else {
+            firsts[nexts[i]]++;
+        }
+    }
+
+    // calculate num_rows_per_bucket and memory usage.
+    uint32_t num_used_buckets = 0;
+    for (size_t i = 0; i < table_items->bucket_size; i++) {
+        num_used_buckets += firsts[i] != 0;
+    }
+    const uint32_t num_rows_per_bucket = num_rows / num_used_buckets;
+
+    if (num_rows_per_bucket < 2) {
+        std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+        return false;
+    }
+
+    int64_t memory_usage = 0;
+    if (table_items->build_chunk != nullptr) {
+        memory_usage += table_items->build_chunk->memory_usage();
+    }
+    memory_usage += table_items->first.capacity() * sizeof(uint32_t);
+    memory_usage += table_items->next.capacity() * sizeof(uint32_t);
+    if (table_items->build_pool != nullptr) {
+        memory_usage += table_items->build_pool->total_reserved_bytes();
+    }
+
+    static auto l3_cache_size = [] {
+        static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
+
+        const auto& cache_sizes = CpuInfo::get_cache_sizes();
+        auto size = cache_sizes[CpuInfo::L3_CACHE];
+
+        return size > 0 ? size : DEFAULT_L3_CACHE_SIZE;
+    }();
+
+    // decide whether using sort opt by num_rows_per_bucket and memory_usage.
+    if (num_rows_per_bucket <= 2) {
+        if (memory_usage <= l3_cache_size) {
+            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+            return false;
+        }
+    } else {
+        if (memory_usage <= l3_cache_size / 4) {
+            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+            return false;
+        }
+    }
+
+    if constexpr (lt_is_string<LT>) {
+        ColumnPtr data_column;
+        if (table_items->key_columns[0]->is_nullable()) {
+            auto* null_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
+            data_column = null_column->data_column();
+        } else {
+            data_column = table_items->key_columns[0];
+        }
+        if (UNLIKELY(data_column->is_large_binary())) {
+            ColumnHelper::as_raw_column<LargeBinaryColumn>(data_column)->invalidate_slice_cache();
+        } else {
+            ColumnHelper::as_raw_column<BinaryColumn>(data_column)->invalidate_slice_cache();
+        }
+    }
+
+    // make firsts[i] store the prefix sum of all the previous bucket (including i-th).
+    uint32_t cur_num_rows = 1;
+    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
+        if (firsts[i] != 0) {
+            if constexpr (with_bf) {
+                const uint32_t cur_first = firsts[i];
+                cur_num_rows += cur_first & BLOOM_FILTER_MASK;
+                firsts[i] = cur_num_rows | (cur_first & 0xFF000000);
+            } else {
+                cur_num_rows += firsts[i];
+                firsts[i] = cur_num_rows;
+            }
+        }
+    }
+
+    auto get_row_id = []<bool with_bf>(uint32_t row_id) {
+        if constexpr (with_bf) {
+            return row_id & BLOOM_FILTER_MASK;
+        } else {
+            return row_id;
+        }
+    };
+
+    // build sort_indexes
+    std::vector<uint32_t> sort_indexes(num_rows);
+    for (size_t i = 1; i < num_rows; i++) {
+        const uint32_t bucket_idx = get_bucket_num.template operator()<with_bf>(nexts[i]);
+        const uint32_t sort_idx = get_row_id.template operator()<with_bf>(--firsts[bucket_idx]);
+        sort_indexes[sort_idx] = i;
+    }
+
+    // sort by append_selective with sort_indexes
+    auto build_chunk = table_items->build_chunk->clone_empty();
+    build_chunk->append_selective(*table_items->build_chunk, sort_indexes.data(), 0, num_rows);
+    table_items->build_chunk = std::move(build_chunk);
+    if (table_items->join_keys[0].col_ref != nullptr) {
+        const SlotId slot_id = table_items->join_keys[0].col_ref->slot_id();
+        table_items->key_columns[0] = table_items->build_chunk->get_column_by_slot_id(slot_id);
+    } else {
+        auto key_column = table_items->key_columns[0]->clone_empty();
+        key_column->append_selective(*table_items->key_columns[0], sort_indexes.data(), 0, num_rows);
+        table_items->key_columns[0] = std::move(key_column);
+    }
+
+    // rebuild next by first
+    uint32_t i = 0;
+    uint32_t begin_row_id;
+    for (; i < table_items->bucket_size; i++) {
+        if (firsts[i] != 0) {
+            begin_row_id = get_row_id.template operator()<with_bf>(firsts[i]);
+            break;
+        }
+    }
+
+    std::memset(nexts, 0, sizeof(uint32_t) * num_rows);
+    for (i = i + 1; i < table_items->bucket_size; i++) {
+        if (firsts[i] == 0) {
+            continue;
+        }
+
+        const uint32_t end_row_id = get_row_id.template operator()<with_bf>(firsts[i]);
+        for (int j = begin_row_id + 1; j < end_row_id; j++) {
+            nexts[j - 1] = j;
+        }
+        // next[end_row_id - 1] = 0;
+
+        begin_row_id = end_row_id;
+    }
+
+    const uint32_t end_row_id = num_rows;
+    for (int j = begin_row_id + 1; j < end_row_id; j++) {
+        nexts[j - 1] = j;
+    }
+    // next[end_row_id - 1] = 0;
+
+    return true;
+}
+
+template <LogicalType LT>
+template <uint8_t SIMD>
 void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                                 HashTableProbeState* probe_state) {
     auto& data = get_key_data(*table_items);
@@ -231,13 +403,18 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size << 8,
                                                                   table_items->log_bucket_size + 8);
         }
-    } else if constexpr (SIMD == 2) {
+    } else if constexpr (SIMD == 2 || SIMD == 0) {
         auto* __restrict next = table_items->next.data();
         for (size_t i = 1; i < num_rows; i++) {
             // use next to cache bucket_num
             next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
                                                                   table_items->log_bucket_size);
         }
+    }
+
+    if (do_construct_hash_table_by_sort_opt<SIMD>(state, table_items, probe_state)) {
+        table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
+        return;
     }
 
     if (table_items->key_columns[0]->is_nullable()) {
@@ -323,8 +500,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             }
                             firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                         } else {
-                            uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                    data[i], table_items->bucket_size, table_items->log_bucket_size);
+                            uint32_t bucket_num = table_items->next[i];
                             table_items->next[i] = table_items->first[bucket_num];
                             table_items->first[bucket_num] = i;
                         }
@@ -402,8 +578,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         }
                         firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                     } else {
-                        uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                data[i], table_items->bucket_size, table_items->log_bucket_size);
+                        uint32_t bucket_num = table_items->next[i];
                         table_items->next[i] = table_items->first[bucket_num];
                         table_items->first[bucket_num] = i;
                     }
@@ -481,8 +656,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     }
                     firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                 } else {
-                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
-                                                                                      table_items->log_bucket_size);
+                    uint32_t bucket_num = table_items->next[i];
                     table_items->next[i] = table_items->first[bucket_num];
                     table_items->first[bucket_num] = i;
                 }
@@ -490,176 +664,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     }
 
-    const bool has_init = table_items->used_buckets != 0;
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
-
-    int64_t usage = 0;
-    if (table_items->build_chunk != nullptr) {
-        usage += table_items->build_chunk->memory_usage();
-    }
-    usage += table_items->first.capacity() * sizeof(uint32_t);
-    usage += table_items->next.capacity() * sizeof(uint32_t);
-    if (table_items->build_pool != nullptr) {
-        usage += table_items->build_pool->total_reserved_bytes();
-    }
-
-    static auto l2_cache_size = [] {
-        static constexpr size_t DEFAULT_L2_CACHE_SIZE = 1 * 1024 * 1024;
-
-        const auto& cache_sizes = CpuInfo::get_cache_sizes();
-        auto size = cache_sizes[CpuInfo::L2_CACHE];
-
-        return size > 0 ? size : DEFAULT_L2_CACHE_SIZE;
-    }();
-
-    static auto l3_cache_size = [] {
-        static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
-
-        const auto& cache_sizes = CpuInfo::get_cache_sizes();
-        auto size = cache_sizes[CpuInfo::L3_CACHE];
-
-        return size > 0 ? size : DEFAULT_L3_CACHE_SIZE;
-    }();
-
-    if (has_init || table_items->keys_per_bucket < 2 || table_items->bucket_size <= 0 || (SIMD != 1 && SIMD != 0)) {
-        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
-                      << "[mem_usage=" << usage << "] "
-                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
-                      << "[bucket_size=" << table_items->bucket_size << "] "
-                      << "[SIMD=" << SIMD << "] "
-                      << "[l2_cache_size=" << l2_cache_size << "] "
-                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
-                      << "[use_sort=NO]";
-        return;
-    }
-
-    if (table_items->keys_per_bucket < 3 && usage <= l3_cache_size) {
-        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
-                      << "[mem_usage=" << usage << "] "
-                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
-                      << "[bucket_size=" << table_items->bucket_size << "] "
-                      << "[SIMD=" << SIMD << "] "
-                      << "[l2_cache_size=" << l2_cache_size << "] "
-                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
-                      << "[use_sort=NO]";
-        return;
-    }
-
-    if (usage <= l2_cache_size) {
-        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
-                      << "[mem_usage=" << usage << "] "
-                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
-                      << "[bucket_size=" << table_items->bucket_size << "] "
-                      << "[SIMD=" << SIMD << "] "
-                      << "[l2_cache_size=" << l2_cache_size << "] "
-                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
-                      << "[use_sort=NO]";
-        return;
-    }
-
-    VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
-                  << "[mem_usage=" << usage << "] "
-                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
-                  << "[bucket_size=" << table_items->bucket_size << "] "
-                  << "[SIMD=" << SIMD << "] "
-                  << "[l2_cache_size=" << l2_cache_size << "] "
-                  << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
-                  << "[use_sort=YES]";
-
-    if constexpr (lt_is_string<LT>) {
-        ColumnPtr data_column;
-        if (table_items->key_columns[0]->is_nullable()) {
-            auto* null_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
-            data_column = null_column->data_column();
-        } else {
-            data_column = table_items->key_columns[0];
-        }
-        if (UNLIKELY(data_column->is_large_binary())) {
-            ColumnHelper::as_raw_column<LargeBinaryColumn>(data_column)->invalidate_slice_cache();
-        } else {
-            ColumnHelper::as_raw_column<BinaryColumn>(data_column)->invalidate_slice_cache();
-        }
-    }
-
-    auto* first = table_items->first.data();
-    auto* next = table_items->next.data();
-
-    auto get_row_id = []<bool with_bf>(uint32_t row_id) {
-        if constexpr (with_bf) {
-            return row_id & BLOOM_FILTER_MASK;
-        } else {
-            return row_id;
-        }
-    };
-    auto merge_bf = []<bool with_bf>(uint32_t row_id, uint32_t bf) {
-        if constexpr (with_bf) {
-            return row_id | (bf & (~BLOOM_FILTER_MASK));
-        } else {
-            return row_id;
-        }
-    };
-
-    constexpr bool with_bf = SIMD == 1;
-
-    // build sort_indexes and rebuild first
-    std::vector<uint32_t> sort_indexes(num_rows);
-    uint32_t sort_len = 1;
-    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
-        if (first[i] == 0) {
-            continue;
-        }
-
-        uint32_t row_id = get_row_id.template operator()<with_bf>(first[i]);
-        first[i] = merge_bf.template operator()<with_bf>(sort_len, first[i]);
-        do {
-            sort_indexes[sort_len++] = row_id;
-            row_id = next[row_id];
-        } while (row_id != 0);
-    }
-
-    // sort by append_selective
-    auto build_chunk = table_items->build_chunk->clone_empty();
-    build_chunk->append_selective(*table_items->build_chunk, sort_indexes.data(), 0, num_rows);
-    table_items->build_chunk = std::move(build_chunk);
-    if (table_items->join_keys[0].col_ref != nullptr) {
-        const SlotId slot_id = table_items->join_keys[0].col_ref->slot_id();
-        table_items->key_columns[0] = table_items->build_chunk->get_column_by_slot_id(slot_id);
-    } else {
-        auto key_column = table_items->key_columns[0]->clone_empty();
-        key_column->append_selective(*table_items->key_columns[0], sort_indexes.data(), 0, num_rows);
-        table_items->key_columns[0] = std::move(key_column);
-    }
-
-    // rebuild next by first
-    uint32_t i = 0;
-    uint32_t begin_row_id;
-    for (; i < table_items->bucket_size; i++) {
-        if (first[i] != 0) {
-            begin_row_id = get_row_id.template operator()<with_bf>(first[i]);
-            break;
-        }
-    }
-
-    std::memset(next, 0, sizeof(uint32_t) * num_rows);
-    for (i = i + 1; i < table_items->bucket_size; i++) {
-        if (first[i] == 0) {
-            continue;
-        }
-
-        const uint32_t end_row_id = get_row_id.template operator()<with_bf>(first[i]);
-        for (int j = begin_row_id + 1; j < end_row_id; j++) {
-            next[j - 1] = j;
-        }
-        // next[end_row_id - 1] = 0;
-
-        begin_row_id = end_row_id;
-    }
-
-    const uint32_t end_row_id = num_rows;
-    for (int j = begin_row_id + 1; j < end_row_id; j++) {
-        next[j - 1] = j;
-    }
-    // next[end_row_id - 1] = 0;
 }
 
 template <LogicalType LT>

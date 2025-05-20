@@ -426,6 +426,9 @@ public:
     template <uint8_t SIMD>
     static void do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                         HashTableProbeState* probe_state);
+    template <uint8_t SIMD>
+    static bool do_construct_hash_table_by_sort_opt(RuntimeState* state, JoinHashTableItems* table_items,
+                                                    HashTableProbeState* probe_state);
 };
 
 template <LogicalType LT>
