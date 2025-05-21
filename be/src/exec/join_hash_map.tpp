@@ -248,6 +248,17 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         memory_usage += table_items->build_pool->total_reserved_bytes();
     }
 
+    if (memory_usage > 1024 * 1024 * 1024ll) {
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                      << "[mem_usage=" << memory_usage << "] "
+                      << "[keys_per_bucket=" << table_items->bucket_size << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[use_sort=NO]";
+
+        return false;
+    }
+
     static auto l3_cache_size = [] {
         static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
 
@@ -260,8 +271,6 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
     // decide whether using sort opt by num_rows_per_bucket and memory_usage.
     if (table_items->bucket_size < 3) {
         if (memory_usage <= l3_cache_size) {
-            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
-
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
                           << "[keys_per_bucket=" << table_items->bucket_size << "] "
@@ -274,8 +283,6 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         }
     } else {
         if (memory_usage <= l3_cache_size / 8) {
-            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
-
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
                           << "[keys_per_bucket=" << table_items->bucket_size << "] "
