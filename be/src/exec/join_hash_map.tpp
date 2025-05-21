@@ -411,6 +411,19 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
     return true;
 }
 
+template <typename CppType>
+static const auto* get_probe_interval_keys(const Buffer<CppType>& probe_data) {
+    if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
+        if constexpr (sizeof(CppType) == 4) {
+            return reinterpret_cast<const int32_t*>(probe_data.data());
+        } else {
+            return reinterpret_cast<const int64_t*>(probe_data.data());
+        }
+    } else {
+        return static_cast<const int32_t*>(nullptr);
+    }
+}
+
 template <LogicalType LT>
 template <uint8_t SIMD>
 bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* state, JoinHashTableItems* table_items,
@@ -428,7 +441,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     const size_t num_rows = table_items->row_count + 1;
 
     const int64_t min_value = table_items->min_value;
-    const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+    const auto* keys = get_probe_interval_keys(data);
     for (size_t i = 1; i < num_rows; i++) {
         const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
         firsts[bucket_index]++;
@@ -2905,19 +2918,6 @@ static constexpr uint64_t bitmask_to_bytemask[256] = {
         72340172838076672ull,
         72340172838076673ull,
 };
-
-template <typename CppType>
-static const auto* get_probe_interval_keys(const Buffer<CppType>& probe_data) {
-    if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
-        if constexpr (sizeof(CppType) == 4) {
-            return reinterpret_cast<const int32_t*>(probe_data.data());
-        } else {
-            return reinterpret_cast<const int64_t*>(probe_data.data());
-        }
-    } else {
-        return static_cast<const int32_t*>(nullptr);
-    }
-}
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool no_conflicts, uint8_t MODE>
