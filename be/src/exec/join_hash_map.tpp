@@ -499,7 +499,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
             return false;
         }
     } else {
-        if (memory_usage <= l3_cache_size / 4) {
+        if (memory_usage <= l3_cache_size / 8) {
             std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
 
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
