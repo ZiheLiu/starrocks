@@ -220,6 +220,10 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         return false;
     }
 
+    if (config::enable_simd_hash_join <= 0) {
+        return false;
+    }
+
     static constexpr bool with_bf = SIMD == 1;
     auto get_bucket_num = []<bool WithBF>(uint32_t bucket_val) {
         if constexpr (WithBF) {
@@ -389,6 +393,10 @@ template <uint8_t SIMD>
 bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* state, JoinHashTableItems* table_items,
                                                               HashTableProbeState* probe_state) {
     if constexpr (SIMD != 4) {
+        return false;
+    }
+
+    if (config::enable_simd_hash_join <= 0) {
         return false;
     }
 
