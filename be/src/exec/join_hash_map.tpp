@@ -237,8 +237,8 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         return false;
     }
 
-    // distinct keys = bucket_size / keys_per_bucket > 10
-    if (table_items->keys_per_bucket < 2 || table_items->keys_per_bucket * 10 < table_items->bucket_size) {
+    // distinct keys = used_buckets <= 10
+    if (table_items->keys_per_bucket < 2 || table_items->used_buckets <= 10) {
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                       << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                       << "[bucket_size=" << table_items->bucket_size << "] "
@@ -455,7 +455,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     const uint32_t num_rows_per_bucket = num_rows / num_used_buckets;
 
     // distinct keys = bucket_size / keys_per_bucket > 10
-    if (table_items->keys_per_bucket < 2 || table_items->keys_per_bucket * 10 < table_items->bucket_size) {
+    if (table_items->keys_per_bucket < 2 || table_items->used_buckets <= 10) {
         std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
 
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
