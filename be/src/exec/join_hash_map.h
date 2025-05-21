@@ -123,8 +123,8 @@ struct JoinHashTableItems {
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
     Buffer<uint8_t> bytes_per_key;
-    int32_t min_value = 0;
-    int32_t max_value = 0;
+    int64_t min_value = 0;
+    int64_t max_value = 0;
     uint32_t bucket_size = 0;
     uint32_t log_bucket_size = 0;
     uint32_t row_count = 0; // real row count
@@ -423,6 +423,9 @@ public:
     static const Buffer<CppType>& get_key_data(const JoinHashTableItems& table_items);
     static void construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                      HashTableProbeState* probe_state);
+
+    static const auto* get_interval_keys(const JoinHashTableItems& table_items);
+
     template <uint8_t SIMD>
     static void do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                         HashTableProbeState* probe_state);

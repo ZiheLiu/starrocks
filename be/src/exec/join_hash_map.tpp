@@ -54,6 +54,19 @@ static uint32_t compute_min_ge_power2(uint32_t num) {
 }
 
 template <LogicalType LT>
+const auto* JoinBuildFunc<LT>::get_interval_keys(const JoinHashTableItems& table_items) {
+    if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
+        if (sizeof(CppType) == 4) {
+            return reinterpret_cast<const int32_t*>(get_key_data(table_items).data());
+        } else {
+            return reinterpret_cast<const int64_t*>(get_key_data(table_items).data());
+        }
+    } else {
+        return nullptr;
+    }
+}
+
+template <LogicalType LT>
 uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
     const int64_t conf_mode = abs(config::enable_simd_hash_join);
     const auto join_type = table_items->join_type;
@@ -72,11 +85,11 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
         (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
          join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) &&
         table_items->row_count > 0) {
-        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+        if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
             const size_t num_rows = table_items->row_count + 1;
-            const auto* keys = reinterpret_cast<const int32_t*>(get_key_data(*table_items).data());
-            const int32_t min_key = *std::min_element(keys + 1, keys + num_rows);
-            const int32_t max_key = *std::max_element(keys + 1, keys + num_rows);
+            const auto* keys = get_interval_keys(*table_items);
+            const int64_t min_key = *std::min_element(keys + 1, keys + num_rows);
+            const int64_t max_key = *std::max_element(keys + 1, keys + num_rows);
             const uint64_t key_interval = static_cast<int64_t>(max_key) - min_key + 1;
 
             if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
@@ -414,7 +427,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     auto* firsts = table_items->first.data();
     const size_t num_rows = table_items->row_count + 1;
 
-    const int32_t min_value = table_items->min_value;
+    const int64_t min_value = table_items->min_value;
     const auto* keys = reinterpret_cast<const int32_t*>(data.data());
     for (size_t i = 1; i < num_rows; i++) {
         const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -583,8 +596,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
         if (nullable_column->has_null()) {
             if constexpr (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = static_cast<int64_t>(keys[i]) - min_value;
@@ -593,8 +606,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     buckets[group] |= (null_array[i] == 0) << offset;
                 }
             } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 bool no_duplicated_build_keys = true;
                 for (size_t i = 1; i < num_rows; i++) {
                     if (null_array[i] != 0) {
@@ -606,8 +619,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
                 table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
 
                 for (size_t i = 1; i < num_rows; i++) {
                     if (null_array[i] != 0) {
@@ -669,8 +682,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             }
         } else {
             if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = static_cast<int64_t>(keys[i]) - min_value;
@@ -679,8 +692,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     buckets[group] |= 1 << offset;
                 }
             } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 bool no_duplicated_build_keys = true;
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -690,8 +703,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
                 table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
 
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -747,8 +760,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     } else {
         if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const int32_t min_value = table_items->min_value;
-            const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+            const int64_t min_value = table_items->min_value;
+            const auto* keys = get_interval_keys(*table_items);
             auto* __restrict buckets = table_items->set_has_value.data();
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket = static_cast<int64_t>(keys[i]) - min_value;
@@ -757,8 +770,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 buckets[group] |= 1 << offset;
             }
         } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const int32_t min_value = table_items->min_value;
-            const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+            const int64_t min_value = table_items->min_value;
+            const auto* keys = get_interval_keys(*table_items);
             bool no_duplicated_build_keys = true;
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -768,8 +781,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             }
             table_items->no_duplicated_build_keys = no_duplicated_build_keys;
         } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const int32_t min_value = table_items->min_value;
-            const auto* keys = reinterpret_cast<const int32_t*>(data->data());
+            const int64_t min_value = table_items->min_value;
+            const auto* keys = get_interval_keys(*table_items);
 
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -1107,11 +1120,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             const auto& null_array = nullable_column->null_column()->get_data();
 
             if constexpr (SIMD == 4) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
 
                     uint32_t matched_mask = (min_value <= value) & (value <= max_value) & (null_array[i] == 0);
                     matched_mask = ~(matched_mask - 1);
@@ -1120,11 +1133,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                     next[i] = first[bucket_index] & matched_mask;
                 }
             } else if constexpr (SIMD == 5) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
                     if ((min_value <= value) & (value <= max_value) & (null_array[i] == 0)) {
                         const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
                         next[i] = get_sparse_first(bucket_index, table_items);
@@ -1189,11 +1202,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             probe_state->null_array = &nullable_column->null_column()->get_data();
         } else {
             if constexpr (SIMD == 4) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
 
                     uint32_t matched_mask = (min_value <= value) & (value <= max_value);
                     matched_mask = ~(matched_mask - 1);
@@ -1202,11 +1215,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                     next[i] = first[bucket_index] & matched_mask;
                 }
             } else if constexpr (SIMD == 5) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
                     if ((min_value <= value) & (value <= max_value)) {
                         const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
                         next[i] = get_sparse_first(bucket_index, table_items);
@@ -1267,11 +1280,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
     }
 
     if constexpr (SIMD == 4) {
-        const int32_t min_value = table_items.min_value;
-        const int32_t max_value = table_items.max_value;
-        const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+        const int64_t min_value = table_items.min_value;
+        const int64_t max_value = table_items.max_value;
+        const auto* probe_keys = get_probe_interval_keys(data);
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const int32_t value = probe_keys[i];
+            const int64_t value = probe_keys[i];
 
             uint32_t matched_mask = (min_value <= value) & (value <= max_value);
             matched_mask = ~(matched_mask - 1);
@@ -1280,11 +1293,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             next[i] = first[bucket_index] & matched_mask;
         }
     } else if constexpr (SIMD == 5) {
-        const int32_t min_value = table_items.min_value;
-        const int32_t max_value = table_items.max_value;
-        const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+        const int64_t min_value = table_items.min_value;
+        const int64_t max_value = table_items.max_value;
+        const auto* probe_keys = get_probe_interval_keys(data);
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const int32_t value = probe_keys[i];
+            const int64_t value = probe_keys[i];
             if ((min_value <= value) & (value <= max_value)) {
                 const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
                 next[i] = get_sparse_first(bucket_index, table_items);
@@ -2893,6 +2906,19 @@ static constexpr uint64_t bitmask_to_bytemask[256] = {
         72340172838076673ull,
 };
 
+template <typename CppType>
+static const auto* get_probe_interval_keys(const Buffer<CppType>& probe_data) {
+    if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
+        if constexpr (sizeof(CppType) == 4) {
+            return reinterpret_cast<const int32_t*>(probe_data.data());
+        } else {
+            return reinterpret_cast<const int64_t*>(probe_data.data());
+        }
+    } else {
+        return nullptr;
+    }
+}
+
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool no_conflicts, uint8_t MODE>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join(RuntimeState* state,
@@ -2903,12 +2929,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
     uint32_t match_count = 0;
 
-    if constexpr (MODE == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-        const int32_t min_value = _table_items->min_value;
-        const int32_t max_value = _table_items->max_value;
+    if constexpr (MODE == 3 && std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
+        const int64_t min_value = _table_items->min_value;
+        const int64_t max_value = _table_items->max_value;
         const uint32_t group_mask = _table_items->bucket_size - 1;
 
-        const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
+        const auto* probe_values = get_probe_interval_keys(probe_data);
         const auto* build_buckets = _table_items->set_has_value.data();
 
         uint8_t* dst_matches = _probe_state->probe_match_filter.data();
@@ -2916,52 +2942,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
         uint32_t i = 0;
 
-#if defined(__AVX2__)
-        static constexpr uint32_t W = 8;
-
-        const __m256i vmin_value = _mm256_set1_epi32(min_value);
-        const __m256i vmax_value = _mm256_set1_epi32(max_value);
-
-        for (; i + W <= probe_row_count; i += W) {
-            __m256i vprobe_values = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_values + i));
-
-            // vprobe_values >= vmin_value  not -> vmin_value > vprobe_values
-            // vmax_value >= vprobe_values  not -> vprobe_values > vmax_value
-            __m256i vnot_in_range = _mm256_or_si256(_mm256_cmpgt_epi32(vmin_value, vprobe_values),
-                                                    _mm256_cmpgt_epi32(vprobe_values, vmax_value));
-            uint8_t not_in_range_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_in_range));
-
-            if (not_in_range_mask == 0xFF) {
-                continue;
-            }
-
-            __m256i vbucket_indexes = _mm256_sub_epi32(vprobe_values, vmin_value);
-            vbucket_indexes = _mm256_blendv_epi8(vbucket_indexes, _mm256_setzero_si256(), vnot_in_range);
-
-            __m256i voffsets = _mm256_and_si256(vbucket_indexes, _mm256_set1_epi32(7));
-            voffsets = _mm256_sllv_epi32(_mm256_set1_epi32(1), voffsets);
-
-            __m256i vgroups = _mm256_srli_epi32(vbucket_indexes, 3);
-            __m256i vbuckets = _mm256_set_epi32(build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 7))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 6))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 5))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 4))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 3))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 2))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 1))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 0))]);
-
-            __m256i vnot_match = _mm256_cmpeq_epi32(_mm256_and_si256(vbuckets, voffsets), _mm256_setzero_si256());
-            uint8_t not_match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_match));
-            uint8_t match_mask = ~(not_match_mask | not_in_range_mask);
-
-            *reinterpret_cast<uint64_t*>(dst_matches + i) = bitmask_to_bytemask[match_mask];
-            match_count += __builtin_popcount(match_mask);
-        }
-#endif
-
         for (; i < probe_row_count; i++) {
-            const int32_t value = probe_values[i];
+            const auto value = probe_values[i];
 
             const uint32_t bucket = value - min_value;
             const uint32_t group = (bucket / 8) & group_mask;
@@ -3222,18 +3204,18 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         }
     } else {
         if constexpr (SIMD == 3) {
-            const int32_t min_value = _table_items->min_value;
-            const int32_t max_value = _table_items->max_value;
+            const int64_t min_value = _table_items->min_value;
+            const int64_t max_value = _table_items->max_value;
             const uint32_t group_mask = _table_items->bucket_size - 1;
 
-            const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
+            const auto* probe_values = get_probe_interval_keys(probe_data);
             const auto* build_buckets = _table_items->set_has_value.data();
 
             uint8_t* dst_matches = _probe_state->probe_match_filter.data();
             memset(dst_matches, 0, sizeof(uint8_t) * probe_row_count);
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                const int32_t value = probe_values[i];
+                const int64_t value = probe_values[i];
 
                 const uint32_t bucket = value - min_value;
                 const uint32_t group = (bucket / 8) & group_mask;
