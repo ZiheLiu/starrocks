@@ -266,7 +266,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
     if (memory_usage > 1024 * 1024 * 1024ll) {
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                       << "[mem_usage=" << memory_usage << "] "
-                      << "[keys_per_bucket=" << table_items->bucket_size << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                       << "[bucket_size=" << table_items->bucket_size << "] "
                       << "[used_buckets=" << table_items->used_buckets << "] "
                       << "[SIMD=" << SIMD << "] "
@@ -289,7 +289,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         if (memory_usage <= l3_cache_size) {
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << table_items->bucket_size << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << SIMD << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -301,7 +301,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         if (memory_usage <= l3_cache_size / 8) {
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << table_items->bucket_size << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << SIMD << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -313,9 +313,10 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
     VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                   << "[mem_usage=" << memory_usage << "] "
-                  << "[keys_per_bucket=" << table_items->bucket_size << "] "
+                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                   << "[bucket_size=" << table_items->bucket_size << "] "
                   << "[used_buckets=" << table_items->used_buckets << "] "
+                  << "[used_buckets=" << table_items->row_count << "] "
                   << "[SIMD=" << SIMD << "] "
                   << "[l3_cache_size=" << l3_cache_size << "] "
                   << "[use_sort=YES]";
@@ -484,7 +485,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     if (memory_usage > 1024 * 1024 * 1024ll) {
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4] "
                       << "[mem_usage=" << memory_usage << "] "
-                      << "[keys_per_bucket=" << table_items->bucket_size << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                       << "[bucket_size=" << table_items->bucket_size << "] "
                       << "[SIMD=" << SIMD << "] "
                       << "[use_sort=NO]";
