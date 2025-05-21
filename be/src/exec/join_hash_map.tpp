@@ -220,56 +220,23 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         return false;
     }
 
-    if (config::enable_simd_hash_join <= 0) {
+    if (config::enable_simd_hash_join < 0) {
         return false;
     }
 
-    static constexpr bool with_bf = SIMD == 1;
-    auto get_bucket_num = []<bool WithBF>(uint32_t bucket_val) {
-        if constexpr (WithBF) {
-            return bucket_val >> 8;
-        } else {
-            return bucket_val;
-        }
-    };
-
-    [[maybe_unused]] auto* firsts = table_items->first.data();
-    [[maybe_unused]] auto* nexts = table_items->next.data();
-    const size_t num_rows = table_items->row_count + 1;
-
-    // calculate firsts, storing the number of rows in i-th bucket.
-    for (size_t i = 1; i < num_rows; i++) {
-        if constexpr (with_bf) {
-            const uint32_t hash = nexts[i];
-            const uint32_t bucket_idx = hash >> 8;
-            const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
-
-            const uint32_t prev_first = firsts[bucket_idx];
-            firsts[bucket_idx] = (prev_first + 1) | (fp << 24);
-        } else {
-            firsts[nexts[i]]++;
-        }
-    }
-
-    // calculate num_rows_per_bucket and memory usage.
-    uint32_t num_used_buckets = 0;
-    for (size_t i = 0; i < table_items->bucket_size; i++) {
-        num_used_buckets += firsts[i] != 0;
-    }
-    const uint32_t num_rows_per_bucket = num_rows / num_used_buckets;
-
-    if (num_rows_per_bucket < 2) {
-        std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
-
+    if (table_items->keys_per_bucket < 2) {
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
-                      << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
                       << "[bucket_size=" << table_items->bucket_size << "] "
                       << "[SIMD=" << static_cast<int>(SIMD) << "] "
                       << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
                       << "[use_sort=NO]";
-
         return false;
     }
+
+    [[maybe_unused]] auto* firsts = table_items->first.data();
+    [[maybe_unused]] auto* nexts = table_items->next.data();
+    const size_t num_rows = table_items->row_count + 1;
 
     int64_t memory_usage = 0;
     if (table_items->build_chunk != nullptr) {
@@ -291,13 +258,13 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
     }();
 
     // decide whether using sort opt by num_rows_per_bucket and memory_usage.
-    if (num_rows_per_bucket <= 2) {
+    if (table_items->bucket_size < 3) {
         if (memory_usage <= l3_cache_size) {
             std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
 
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                          << "[keys_per_bucket=" << table_items->bucket_size << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << SIMD << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -311,7 +278,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                          << "[keys_per_bucket=" << table_items->bucket_size << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << SIMD << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -323,7 +290,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
     VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                   << "[mem_usage=" << memory_usage << "] "
-                  << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                  << "[keys_per_bucket=" << table_items->bucket_size << "] "
                   << "[bucket_size=" << table_items->bucket_size << "] "
                   << "[SIMD=" << SIMD << "] "
                   << "[l3_cache_size=" << l3_cache_size << "] "
@@ -344,21 +311,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         }
     }
 
-    // make firsts[i] store the prefix sum of all the previous bucket (including i-th).
-    uint32_t cur_num_rows = 1;
-    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
-        if (firsts[i] != 0) {
-            if constexpr (with_bf) {
-                const uint32_t cur_first = firsts[i];
-                cur_num_rows += cur_first & BLOOM_FILTER_MASK;
-                firsts[i] = cur_num_rows | (cur_first & 0xFF000000);
-            } else {
-                cur_num_rows += firsts[i];
-                firsts[i] = cur_num_rows;
-            }
-        }
-    }
-
+    static constexpr bool with_bf = SIMD == 1;
     auto get_row_id = []<bool with_bf>(uint32_t row_id) {
         if constexpr (with_bf) {
             return row_id & BLOOM_FILTER_MASK;
@@ -366,16 +319,31 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
             return row_id;
         }
     };
+    auto merge_bf = []<bool with_bf>(uint32_t row_id, uint32_t bf) {
+        if constexpr (with_bf) {
+            return row_id | (bf & (~BLOOM_FILTER_MASK));
+        } else {
+            return row_id;
+        }
+    };
 
-    // build sort_indexes
+    // build sort_indexes and rebuild first
     std::vector<uint32_t> sort_indexes(num_rows);
-    for (size_t i = 1; i < num_rows; i++) {
-        const uint32_t bucket_idx = get_bucket_num.template operator()<with_bf>(nexts[i]);
-        const uint32_t sort_idx = get_row_id.template operator()<with_bf>(--firsts[bucket_idx]);
-        sort_indexes[sort_idx] = i;
+    uint32_t sort_len = 1;
+    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
+        if (firsts[i] == 0) {
+            continue;
+        }
+
+        uint32_t row_id = get_row_id.template operator()<with_bf>(firsts[i]);
+        firsts[i] = merge_bf.template operator()<with_bf>(sort_len, firsts[i]);
+        do {
+            sort_indexes[sort_len++] = row_id;
+            row_id = nexts[row_id];
+        } while (row_id != 0);
     }
 
-    // sort by append_selective with sort_indexes
+    // sort by append_selective
     auto build_chunk = table_items->build_chunk->clone_empty();
     build_chunk->append_selective(*table_items->build_chunk, sort_indexes.data(), 0, num_rows);
     table_items->build_chunk = std::move(build_chunk);
@@ -430,7 +398,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
         return false;
     }
 
-    if (config::enable_simd_hash_join <= 0) {
+    if (config::enable_simd_hash_join < 0) {
         return false;
     }
 
@@ -582,11 +550,6 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
                                                                   table_items->log_bucket_size);
         }
-    }
-
-    if (do_construct_hash_table_by_sort_opt<SIMD>(state, table_items, probe_state)) {
-        table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
-        return;
     }
 
     if (do_construct_hash_table_by_sort_opt_4<SIMD>(state, table_items, probe_state)) {
@@ -842,6 +805,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
     }
 
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
+
+    do_construct_hash_table_by_sort_opt<SIMD>(state, table_items, probe_state);
 }
 
 template <LogicalType LT>
