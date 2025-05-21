@@ -56,7 +56,7 @@ static uint32_t compute_min_ge_power2(uint32_t num) {
 template <LogicalType LT>
 const auto* JoinBuildFunc<LT>::get_interval_keys(const JoinHashTableItems& table_items) {
     if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
-        if (sizeof(CppType) == 4) {
+        if constexpr (sizeof(CppType) == 4) {
             return reinterpret_cast<const int32_t*>(get_key_data(table_items).data());
         } else {
             return reinterpret_cast<const int64_t*>(get_key_data(table_items).data());
