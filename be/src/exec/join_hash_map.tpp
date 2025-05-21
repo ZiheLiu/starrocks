@@ -260,6 +260,14 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
     if (num_rows_per_bucket < 2) {
         std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
+                      << "[use_sort=NO]";
+
         return false;
     }
 
@@ -286,14 +294,40 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
     if (num_rows_per_bucket <= 2) {
         if (memory_usage <= l3_cache_size) {
             std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << SIMD << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
             return false;
         }
     } else {
         if (memory_usage <= l3_cache_size / 4) {
             std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << SIMD << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
             return false;
         }
     }
+
+    VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                  << "[mem_usage=" << memory_usage << "] "
+                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                  << "[bucket_size=" << table_items->bucket_size << "] "
+                  << "[SIMD=" << SIMD << "] "
+                  << "[l3_cache_size=" << l3_cache_size << "] "
+                  << "[use_sort=YES]";
 
     if constexpr (lt_is_string<LT>) {
         ColumnPtr data_column;
@@ -420,6 +454,13 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
 
     if (num_rows_per_bucket < 2) {
         std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[use_sort=NO]";
+
         return false;
     }
 
@@ -446,14 +487,40 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     if (num_rows_per_bucket <= 2) {
         if (memory_usage <= l3_cache_size) {
             std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
             return false;
         }
     } else {
         if (memory_usage <= l3_cache_size / 4) {
             std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
             return false;
         }
     }
+
+    VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                  << "[mem_usage=" << memory_usage << "] "
+                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                  << "[bucket_size=" << table_items->bucket_size << "] "
+                  << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                  << "[l3_cache_size=" << l3_cache_size << "] "
+                  << "[use_sort=YES]";
 
     // make firsts[i] store the prefix sum of all the previous bucket (including i-th).
     uint32_t cur_num_rows = 1;
