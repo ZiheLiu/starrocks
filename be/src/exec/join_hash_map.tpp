@@ -62,7 +62,7 @@ const auto* JoinBuildFunc<LT>::get_interval_keys(const JoinHashTableItems& table
             return reinterpret_cast<const int64_t*>(get_key_data(table_items).data());
         }
     } else {
-        return nullptr;
+        return static_cast<const int32_t*>(nullptr);
     }
 }
 
@@ -2915,7 +2915,7 @@ static const auto* get_probe_interval_keys(const Buffer<CppType>& probe_data) {
             return reinterpret_cast<const int64_t*>(probe_data.data());
         }
     } else {
-        return nullptr;
+        return static_cast<const int32_t*>(nullptr);
     }
 }
 
