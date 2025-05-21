@@ -262,7 +262,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
 
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
-                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                       << "[bucket_size=" << table_items->bucket_size << "] "
                       << "[SIMD=" << static_cast<int>(SIMD) << "] "
                       << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
@@ -297,7 +297,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << SIMD << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -311,7 +311,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << SIMD << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -323,7 +323,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
 
     VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
                   << "[mem_usage=" << memory_usage << "] "
-                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                  << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                   << "[bucket_size=" << table_items->bucket_size << "] "
                   << "[SIMD=" << SIMD << "] "
                   << "[l3_cache_size=" << l3_cache_size << "] "
@@ -456,7 +456,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
         std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
 
         VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
-                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                       << "[bucket_size=" << table_items->bucket_size << "] "
                       << "[SIMD=" << SIMD << "] "
                       << "[use_sort=NO]";
@@ -490,7 +490,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
 
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << static_cast<int>(SIMD) << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -504,7 +504,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
 
             VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
                           << "[mem_usage=" << memory_usage << "] "
-                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                           << "[bucket_size=" << table_items->bucket_size << "] "
                           << "[SIMD=" << static_cast<int>(SIMD) << "] "
                           << "[l3_cache_size=" << l3_cache_size << "] "
@@ -516,7 +516,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
 
     VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
                   << "[mem_usage=" << memory_usage << "] "
-                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                  << "[keys_per_bucket=" << num_rows_per_bucket << "] "
                   << "[bucket_size=" << table_items->bucket_size << "] "
                   << "[SIMD=" << static_cast<int>(SIMD) << "] "
                   << "[l3_cache_size=" << l3_cache_size << "] "
