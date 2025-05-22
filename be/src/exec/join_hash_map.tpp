@@ -2351,10 +2351,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
         const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
         const auto* build_buckets = _table_items->first.data();
         const auto* probe_buckets = _probe_state->buckets.data();
-        const auto* probe_keys = reinterpret_cast<const uint32_t*>(probe_data.data());
 
         for (i = 0; i < probe_row_count; i++) {
-            const uint32_t probe_key = probe_keys[i];
+            const auto& probe_key = probe_data[i];
 
             uint32_t probe_bucket = probe_buckets[i];
             uint32_t probe_times = 1;
@@ -2632,10 +2631,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
         const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
         const auto* build_buckets = _table_items->first.data();
         const auto* probe_buckets = _probe_state->buckets.data();
-        const auto* probe_keys = reinterpret_cast<const uint32_t*>(probe_data.data());
 
         for (i = 0; i < probe_row_count; i++) {
-            const uint32_t probe_key = probe_keys[i];
+            const auto& probe_key = probe_data[i];
 
             uint32_t probe_bucket = probe_buckets[i];
             uint32_t probe_times = 1;
@@ -3307,10 +3305,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
         const auto* build_buckets = _table_items->first.data();
         const auto* probe_buckets = _probe_state->buckets.data();
-        const auto* probe_keys = reinterpret_cast<const uint32_t*>(probe_data.data());
-
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const uint32_t probe_key = probe_keys[i];
+            const auto& probe_key = probe_data[i];
 
             uint32_t probe_bucket = probe_buckets[i];
             uint32_t probe_times = 1;
@@ -3492,10 +3488,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
             const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
             const auto* buckets = _table_items->first.data();
             const auto* probe_buckets = _probe_state->buckets.data();
-            const auto* raw_probe_data = reinterpret_cast<const uint32_t*>(probe_data.data());
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                const auto probe_key = raw_probe_data[i];
+                const auto& probe_key = probe_data[i];
 
                 uint32_t bucket = probe_buckets[i];
                 uint32_t probe_times = 1;
