@@ -2352,7 +2352,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
         const auto* build_buckets = _table_items->first.data();
         const auto* probe_buckets = _probe_state->buckets.data();
 
-        for (i = 0; i < probe_row_count; i++) {
+        for (; i < probe_row_count; i++) {
             const auto& probe_key = probe_data[i];
 
             uint32_t probe_bucket = probe_buckets[i];
@@ -2377,10 +2377,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         RETURN_IF_CHUNK_FULL2();
 
                         build_index = _table_items->next[build_index];
-
-                        VLOG_OPERATOR << "[JOIN] [this=" << this << "] [build_index=" << build_index
-                                      << "] [probe_index=" << i << "] [match_count=" << match_count
-                                      << "] [cur_row_match_count=" << cur_row_match_count << "]";
                     } while (build_index != 0);
 
                     break;
@@ -2646,7 +2642,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
         const auto* build_buckets = _table_items->first.data();
         const auto* probe_buckets = _probe_state->buckets.data();
 
-        for (i = 0; i < probe_row_count; i++) {
+        for (; i < probe_row_count; i++) {
             const auto& probe_key = probe_data[i];
 
             uint32_t probe_bucket = probe_buckets[i];
