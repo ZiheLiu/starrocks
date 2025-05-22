@@ -2362,6 +2362,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                 if (build_index == 0) {
                     break;
                 }
+
                 if (build_data[build_index] == probe_key) {
                     do {
                         _probe_state->probe_index[match_count] = i;
@@ -2377,10 +2378,19 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
                         build_index = _table_items->next[build_index];
                     } while (build_index != 0);
+
                     break;
                 }
+
                 probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
                 probe_times++;
+            }
+
+            if constexpr (first_probe) {
+                if (cur_row_match_count > 1) {
+                    one_to_many = true;
+                }
+                cur_row_match_count = 0;
             }
         }
     } else {
