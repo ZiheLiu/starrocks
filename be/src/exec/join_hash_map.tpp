@@ -2377,6 +2377,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                         RETURN_IF_CHUNK_FULL2();
 
                         build_index = _table_items->next[build_index];
+
+                        VLOG_OPERATOR << "[JOIN] [this=" << this << "] [build_index=" << build_index
+                                      << "] [probe_index=" << i << "] [match_count=" << match_count
+                                      << "] [cur_row_match_count=" << cur_row_match_count << "]";
                     } while (build_index != 0);
 
                     break;
