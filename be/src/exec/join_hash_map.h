@@ -118,6 +118,7 @@ struct JoinHashTableItems {
     // about the bucket-chained hash table of this kind.
     Buffer<uint32_t> first;
     Buffer<uint32_t> next;
+    Buffer<uint32_t> linear_row_ids;
     Buffer<uint8_t> set_has_value;
     Buffer<DenseGroup> dense_groups;
     Buffer<Slice> build_slice;

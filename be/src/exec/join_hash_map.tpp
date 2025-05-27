@@ -166,10 +166,15 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
         table_items->set_has_value.resize(table_items->bucket_size, 0);
     } else {
         table_items->first.resize(table_items->bucket_size, 0);
-        table_items->next.resize(table_items->row_count + 1, 0);
         if (table_items->mode == 5) {
             const uint32_t key_interval = static_cast<int64_t>(table_items->max_value) - table_items->min_value + 1;
             table_items->dense_groups.resize((key_interval + 31) / 32, {0, 0});
+        } else if (table_items->mode == 6) {
+            table_items->linear_row_ids.resize(table_items->row_count + 1);
+            table_items->next.resize(table_items->bucket_size + 1, 0);
+        }
+        if (table_items->mode != 6) {
+            table_items->next.resize(table_items->row_count + 1, 0);
         }
     }
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
@@ -595,6 +600,84 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     return true;
 }
 
+static constexpr uint32_t RADIX_BITS = 8;
+static constexpr uint32_t RADIX_SIZE = static_cast<size_t>(1) << RADIX_BITS;
+static constexpr uint32_t RADIX_MASK = RADIX_SIZE - 1;
+static constexpr uint32_t RADIX_LEVELS = (31 / RADIX_BITS) + 1;
+using freq_array_type = uint32_t[RADIX_LEVELS][RADIX_SIZE];
+
+static void count_frequency(freq_array_type freqs, uint32_t* values, const uint32_t n) {
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t value = values[i];
+        for (uint32_t level = 0; level < RADIX_LEVELS; level++) {
+            freqs[level][value & RADIX_MASK]++;
+            value >>= RADIX_BITS;
+        }
+    }
+}
+
+static bool is_trivial(uint32_t freqs[RADIX_SIZE], uint32_t n) {
+    for (size_t i = 0; i < RADIX_SIZE; i++) {
+        if (const auto freq = freqs[i]; freq != 0) {
+            return freq == n;
+        }
+    }
+
+    // we only get here if count was zero
+    return true;
+}
+
+// result write to indexes and buf_values
+static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, uint32_t* buf_indexes,
+                       uint32_t* buf_values) {
+    freq_array_type freqs;
+    count_frequency(freqs, values, n);
+
+    uint32_t* from_indexes = indexes;
+    uint32_t* from_values = values;
+    uint32_t* to_indexes = buf_indexes;
+    uint32_t* to_values = buf_values;
+
+    for (uint32_t level = 0; level < RADIX_LEVELS; level++) {
+        if (is_trivial(freqs[level], n)) {
+            continue;
+        }
+
+        const uint32_t shift = level * RADIX_BITS;
+
+        uint32_t* res_value_ptrs[RADIX_SIZE];
+        uint32_t* next_value = to_values;
+        uint32_t* res_index_ptrs[RADIX_SIZE];
+        uint32_t* next_index = to_indexes;
+        for (size_t i = 0; i < RADIX_SIZE; i++) {
+            res_value_ptrs[i] = next_value;
+            next_value += freqs[level][i];
+
+            res_index_ptrs[i] = next_index;
+            next_index += freqs[level][i];
+        }
+
+        for (size_t i = 0; i < n; i++) {
+            const size_t value = from_values[i];
+            const size_t index = (value >> shift) & RADIX_MASK;
+
+            *res_value_ptrs[index]++ = value;
+            *res_index_ptrs[index]++ = from_indexes[i];
+        }
+
+        // swap from and to areas
+        std::swap(from_values, to_values);
+        std::swap(from_indexes, to_indexes);
+    }
+
+    // now: result stores in from_indexes and from_values
+    if (from_indexes != indexes) {
+        strings::memcpy_inlined(indexes, from_indexes, n * sizeof(uint32_t));
+    } else { // from_values == values -> from_values != buf_values
+        strings::memcpy_inlined(buf_values, from_values, n * sizeof(uint32_t));
+    }
+}
+
 template <LogicalType LT>
 template <uint8_t SIMD>
 void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
@@ -718,13 +801,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 probe_times++;
                             }
 
-                            if (firsts[bucket] == 0) {
-                                firsts[bucket] = i;
-                                nexts[i] = 0;
-                            } else {
-                                nexts[i] = firsts[bucket];
-                                firsts[bucket] = i;
-                            }
+                            nexts[i] = bucket;
                         } else if constexpr (SIMD == 7) {
                             uint32_t bucket = nexts[i];
                             uint32_t probe_times = 1;
@@ -823,13 +900,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             probe_times++;
                         }
 
-                        if (firsts[bucket] == 0) {
-                            firsts[bucket] = i;
-                            nexts[i] = 0;
-                        } else {
-                            nexts[i] = firsts[bucket];
-                            firsts[bucket] = i;
-                        }
+                        nexts[i] = bucket;
                     } else if constexpr (SIMD == 7) {
                         uint32_t bucket = nexts[i];
                         uint32_t probe_times = 1;
@@ -928,13 +999,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         probe_times++;
                     }
 
-                    if (firsts[bucket] == 0) {
-                        firsts[bucket] = i;
-                        nexts[i] = 0;
-                    } else {
-                        nexts[i] = firsts[bucket];
-                        firsts[bucket] = i;
-                    }
+                    nexts[i] = bucket;
                 } else if constexpr (SIMD == 7) {
                     uint32_t bucket = nexts[i];
                     uint32_t probe_times = 1;
@@ -954,6 +1019,35 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
             }
         }
+    }
+
+    if constexpr (SIMD == 6) {
+        auto* row_ids = table_items->linear_row_ids.data();
+        for (uint32_t i = 0; i < num_rows; i++) {
+            row_ids[i] = i;
+        }
+
+        std::unique_ptr<uint32_t[]> buf_values(new uint32_t[num_rows]);
+        std::unique_ptr<uint32_t[]> buf_indexes(new uint32_t[num_rows]);
+
+        radix_sort(row_ids + 1, nexts + 1, num_rows - 1, buf_indexes.get() + 1, buf_values.get() + 1);
+
+        const auto* buckets = buf_values.get();
+        uint32_t prev_bucket = buckets[1];
+        nexts[0] = prev_bucket;
+        for (uint32_t i = 2; i < num_rows; i++) {
+            const uint32_t cur_bucket = buckets[i];
+            if (cur_bucket == prev_bucket) {
+                continue;
+            }
+
+            for (uint32_t bucket = prev_bucket + 1; bucket <= cur_bucket; bucket++) {
+                nexts[bucket] = i;
+            }
+
+            prev_bucket = cur_bucket;
+        }
+        nexts[table_items->bucket_size + 1] = num_rows;
     }
 
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
@@ -2108,6 +2202,17 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_search_ht_impl(RuntimeState* state,
         return;                                                      \
     }
 
+#define RETURN_IF_CHUNK_FULL3()                                  \
+    if (UNLIKELY(match_count > state->chunk_size())) {           \
+        _probe_state->cur_probe_index = i;                       \
+        _probe_state->next[i] = probe_bucket;                    \
+        _probe_state->cur_build_index = j;                       \
+        _probe_state->has_remain = true;                         \
+        _probe_state->count = state->chunk_size();               \
+        _probe_state->cur_row_match_count = cur_row_match_count; \
+        return;                                                  \
+    }
+
 #define COWAIT_IF_CHUNK_FULL()                              \
     if (_probe_state->match_count == state->chunk_size()) { \
         _probe_state->has_remain = true;                    \
@@ -2269,9 +2374,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     bool one_to_many = false;
 
     uint32_t i = _probe_state->cur_probe_index;
+    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (!first_probe) { // chunk_size + 1 probe
-        if constexpr (SIMD == 4 || SIMD == 5 || SIMD == 6) {
+        if constexpr (SIMD == 4 || SIMD == 5) {
             uint32_t build_index = _probe_state->cur_build_index;
             do {
                 _probe_state->probe_index[match_count] = i;
@@ -2284,7 +2390,24 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             } while (build_index != 0);
 
             i++;
-            _probe_state->cur_row_match_count = 0;
+            cur_row_match_count = 0;
+        } else if constexpr (SIMD == 6) {
+            const uint32_t probe_bucket = _probe_state->next[i];
+            for (uint32_t j = _probe_state->cur_build_index; j < _table_items->next[probe_bucket + 1]; j++) {
+                _probe_state->probe_index[match_count] = i;
+                _probe_state->build_index[match_count] = _table_items->linear_row_ids[j];
+                match_count++;
+
+                if constexpr (first_probe) {
+                    cur_row_match_count++;
+                    _probe_state->probe_match_filter[i] = 1;
+                }
+
+                RETURN_IF_CHUNK_FULL3();
+            }
+
+            i++;
+            cur_row_match_count = 0;
         } else {
             _probe_state->probe_index[0] = i;
             _probe_state->build_index[0] = _probe_state->cur_build_index;
@@ -2303,7 +2426,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     const size_t probe_row_count = _probe_state->probe_row_count;
     const auto* probe_build_indexes = _probe_state->next.data();
-    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (SIMD == 4 || SIMD == 5) {
         if constexpr (no_duplicated_build_keys) {
@@ -2364,9 +2486,9 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                 }
 
                 if (build_data[build_index] == probe_key) {
-                    do {
+                    for (uint32_t j = _table_items->next[probe_bucket]; j < _table_items->next[probe_bucket + 1]; j++) {
                         _probe_state->probe_index[match_count] = i;
-                        _probe_state->build_index[match_count] = build_index;
+                        _probe_state->build_index[match_count] = _table_items->linear_row_ids[j];
                         match_count++;
 
                         if constexpr (first_probe) {
@@ -2374,10 +2496,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                             _probe_state->probe_match_filter[i] = 1;
                         }
 
-                        RETURN_IF_CHUNK_FULL2();
-
-                        build_index = _table_items->next[build_index];
-                    } while (build_index != 0);
+                        RETURN_IF_CHUNK_FULL3();
+                    }
 
                     break;
                 }
@@ -2581,9 +2701,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
     bool one_to_many = false;
 
     size_t i = _probe_state->cur_probe_index;
+    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (!first_probe) {
-        if constexpr (SIMD == 4 || SIMD == 5 || SIMD == 6) {
+        if constexpr (SIMD == 4 || SIMD == 5) {
             uint32_t build_index = _probe_state->cur_build_index;
             do {
                 _probe_state->probe_index[match_count] = i;
@@ -2596,7 +2717,31 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
             } while (build_index != 0);
 
             i++;
-            _probe_state->cur_row_match_count = 0;
+            cur_row_match_count = 0;
+        } else if constexpr (SIMD == 6) {
+            const uint32_t probe_bucket = _probe_state->next[i];
+            uint32_t j = _probe_state->cur_build_index;
+            if (j == 0) {
+                _probe_state->probe_index[match_count] = i;
+                _probe_state->build_index[match_count] = 0;
+                match_count++;
+            } else {
+                for (; j < _table_items->next[probe_bucket + 1]; j++) {
+                    _probe_state->probe_index[match_count] = i;
+                    _probe_state->build_index[match_count] = _table_items->linear_row_ids[j];
+                    match_count++;
+
+                    if constexpr (first_probe) {
+                        cur_row_match_count++;
+                        _probe_state->probe_match_filter[i] = 1;
+                    }
+
+                    RETURN_IF_CHUNK_FULL3();
+                }
+            }
+
+            i++;
+            cur_row_match_count = 0;
         } else {
             _probe_state->probe_index[0] = i;
             _probe_state->build_index[0] = _probe_state->cur_build_index;
@@ -2610,7 +2755,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
 
     const auto* probe_build_indexes = _probe_state->next.data();
     const size_t probe_row_count = _probe_state->probe_row_count;
-    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (SIMD == 4 || SIMD == 5) {
         if constexpr (no_duplicated_build_keys) {
@@ -2653,14 +2797,15 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
                     _probe_state->probe_index[match_count] = i;
                     _probe_state->build_index[match_count] = 0;
                     match_count++;
-
-                    RETURN_IF_CHUNK_FULL2()
+                    uint32_t j = 0;
+                    RETURN_IF_CHUNK_FULL3()
                     break;
                 }
+
                 if (build_data[build_index] == probe_key) {
-                    do {
+                    for (uint32_t j = _table_items->next[probe_bucket]; j < _table_items->next[probe_bucket + 1]; j++) {
                         _probe_state->probe_index[match_count] = i;
-                        _probe_state->build_index[match_count] = build_index;
+                        _probe_state->build_index[match_count] = _table_items->linear_row_ids[j];
                         match_count++;
 
                         if constexpr (first_probe) {
@@ -2668,14 +2813,21 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
                             _probe_state->probe_match_filter[i] = 1;
                         }
 
-                        RETURN_IF_CHUNK_FULL2();
+                        RETURN_IF_CHUNK_FULL3();
+                    }
 
-                        build_index = _table_items->next[build_index];
-                    } while (build_index != 0);
                     break;
                 }
+
                 probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
                 probe_times++;
+            }
+
+            if constexpr (first_probe) {
+                if (cur_row_match_count > 1) {
+                    one_to_many = true;
+                }
+                cur_row_match_count = 0;
             }
         }
     } else {
