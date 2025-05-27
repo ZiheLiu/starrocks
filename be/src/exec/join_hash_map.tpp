@@ -1033,8 +1033,12 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         radix_sort(row_ids + 1, nexts + 1, num_rows - 1, buf_indexes.get() + 1, buf_values.get() + 1);
 
         const auto* buckets = buf_values.get();
+
         uint32_t prev_bucket = buckets[1];
-        nexts[0] = prev_bucket;
+        for (uint32_t bucket = 0; bucket <= prev_bucket; bucket++) {
+            nexts[bucket] = 1;
+        }
+
         for (uint32_t i = 2; i < num_rows; i++) {
             const uint32_t cur_bucket = buckets[i];
             if (cur_bucket == prev_bucket) {
@@ -1047,7 +1051,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
 
             prev_bucket = cur_bucket;
         }
-        nexts[table_items->bucket_size + 1] = num_rows;
+
+        for (uint32_t bucket = prev_bucket + 1; bucket <= table_items->bucket_size; bucket++) {
+            nexts[bucket] = num_rows;
+        }
     }
 
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
