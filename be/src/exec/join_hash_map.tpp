@@ -600,7 +600,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     return true;
 }
 
-static constexpr uint32_t RADIX_BITS = 8;
+static constexpr uint32_t RADIX_BITS = 4;
 static constexpr uint32_t RADIX_SIZE = static_cast<size_t>(1) << RADIX_BITS;
 static constexpr uint32_t RADIX_MASK = RADIX_SIZE - 1;
 static constexpr uint32_t RADIX_LEVELS = (31 / RADIX_BITS) + 1;
