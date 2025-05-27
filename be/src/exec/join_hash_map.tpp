@@ -630,7 +630,7 @@ static bool is_trivial(uint32_t freqs[RADIX_SIZE], uint32_t n) {
 // result write to indexes and buf_values
 static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, uint32_t* buf_indexes,
                        uint32_t* buf_values) {
-    freq_array_type freqs;
+    freq_array_type freqs{};
     count_frequency(freqs, values, n);
 
     uint32_t* from_indexes = indexes;
@@ -649,7 +649,7 @@ static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, ui
         uint32_t* next_value = to_values;
         uint32_t* res_index_ptrs[RADIX_SIZE];
         uint32_t* next_index = to_indexes;
-        for (size_t i = 0; i < RADIX_SIZE; i++) {
+        for (uint32_t i = 0; i < RADIX_SIZE; i++) {
             res_value_ptrs[i] = next_value;
             next_value += freqs[level][i];
 
@@ -657,12 +657,12 @@ static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, ui
             next_index += freqs[level][i];
         }
 
-        for (size_t i = 0; i < n; i++) {
-            const size_t value = from_values[i];
-            const size_t index = (value >> shift) & RADIX_MASK;
+        for (uint32_t i = 0; i < n; i++) {
+            const uint32_t value = from_values[i];
+            const uint32_t index = (value >> shift) & RADIX_MASK;
 
-            *res_value_ptrs[index]++ = value;
-            *res_index_ptrs[index]++ = from_indexes[i];
+            *(res_value_ptrs[index]++) = value;
+            *(res_index_ptrs[index]++) = from_indexes[i];
         }
 
         // swap from and to areas
