@@ -801,6 +801,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 probe_times++;
                             }
 
+                            firsts[bucket] = i;
                             nexts[i] = bucket;
                         } else if constexpr (SIMD == 7) {
                             uint32_t bucket = nexts[i];
@@ -900,6 +901,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             probe_times++;
                         }
 
+                        firsts[bucket] = i;
                         nexts[i] = bucket;
                     } else if constexpr (SIMD == 7) {
                         uint32_t bucket = nexts[i];
@@ -999,6 +1001,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         probe_times++;
                     }
 
+                    firsts[bucket] = i;
                     nexts[i] = bucket;
                 } else if constexpr (SIMD == 7) {
                     uint32_t bucket = nexts[i];
