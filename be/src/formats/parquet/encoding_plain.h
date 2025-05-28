@@ -248,9 +248,15 @@ public:
             dst_nullable_column->set_has_null(null_infos.num_nulls > 0);
         }
 
+        if (null_infos.num_nulls == count) {
+            ColumnHelper::get_binary_column(dst)->append_default(count);
+            return Status::OK();
+        }
+
         if (filter != nullptr) {
             std::vector<Slice> slices(count);
 
+            bool has_non_null = false;
             size_t idx = 0;
             while (idx < count) {
                 const size_t start_idx = idx;
@@ -265,6 +271,8 @@ public:
                 if (is_null) {
                     continue;
                 }
+
+                has_non_null = true;
 
                 for (int i = start_idx; i < idx; i++) {
                     if (_offset >= _data.size) {
@@ -281,7 +289,11 @@ public:
                 }
             }
 
-            ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
+            if (has_non_null) {
+                ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
+            } else {
+                ColumnHelper::get_binary_column(dst)->append_default(count);
+            }
         } else {
             std::vector<Slice> slices(count);
 
