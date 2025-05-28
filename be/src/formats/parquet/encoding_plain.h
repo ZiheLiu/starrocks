@@ -272,9 +272,58 @@ public:
                     continue;
                 }
 
-                has_non_null = true;
+                int i = start_idx;
 
-                for (int i = start_idx; i < idx; i++) {
+#ifdef __AVX2__
+                constexpr int W = 256 / (8 * sizeof(uint8_t));
+                const __m256i all0 = _mm256_setzero_si256();
+                uint32_t vlength[W];
+                size_t voffset[W];
+                for (; i + W <= idx; i += W) {
+                    const auto start_offset = _offset;
+                    for (int j = 0; j < W; j++) {
+                        if (_offset >= _data.size) {
+                            return Status::InternalError(
+                                    strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2",
+                                                        _offset, count, _data.size));
+                        }
+                        const uint32_t length =
+                                decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
+                        vlength[j] = length;
+                        _offset += sizeof(int32_t) + length;
+                    }
+
+                    __m256i vfilter = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(filter + i));
+                    const int used_mask = _mm256_movemask_epi8(_mm256_cmpgt_epi8(vfilter, all0));
+                    if (used_mask == 0) {                  // all not used.
+                    } else if (used_mask == 0xffff'ffff) { // all used.
+                        has_non_null = true;
+
+                        voffset[0] = sizeof(int32_t);
+                        for (int j = 1; j < W; j++) {
+                            voffset[j] = voffset[j - 1] + vlength[j - 1] + sizeof(int32_t);
+                        }
+
+                        for (int j = 0; j < W; j++) {
+                            slices[i + j] = Slice(_data.data + start_offset + voffset[j], vlength[j]);
+                        }
+                    } else {
+                        has_non_null = true;
+
+                        voffset[0] = sizeof(int32_t);
+                        for (int j = 1; j < W; j++) {
+                            voffset[j] = voffset[j - 1] + vlength[j - 1] + sizeof(int32_t);
+                        }
+
+                        phmap::priv::BitMask<uint32_t, 32> bitmask(used_mask);
+                        for (auto j : bitmask) {
+                            slices[i + j] = Slice(_data.data + start_offset + voffset[j], vlength[j]);
+                        }
+                    }
+                }
+#endif
+
+                for (; i < idx; i++) {
                     if (_offset >= _data.size) {
                         return Status::InternalError(
                                 strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2",
@@ -283,6 +332,7 @@ public:
 
                     const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
                     if (filter[i]) {
+                        has_non_null = true;
                         slices[i] = Slice(_data.data + _offset + sizeof(int32_t), length);
                     }
                     _offset += sizeof(int32_t) + length;
