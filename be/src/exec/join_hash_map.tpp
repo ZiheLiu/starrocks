@@ -675,27 +675,24 @@ static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, ui
 
             for (uint32_t j = 0; j < W; j++) {
                 const uint32_t index = vindexes[j];
-                buffer_values[index][buffer_lens[index]] = from_values[i + j];
+                const uint32_t buffer_idx = buffer_lens[index]++;
+                buffer_indexes[index][buffer_idx] = from_indexes[i + j];
+                buffer_values[index][buffer_idx] = from_values[i + j];
             }
 
             for (uint32_t j = 0; j < W; j++) {
                 const uint32_t index = vindexes[j];
-                buffer_indexes[index][buffer_lens[index]] = from_indexes[i + j];
-            }
-
-            for (uint32_t j = 0; j < W; j++) {
-                const uint32_t index = vindexes[j];
-                const uint32_t buffer_idx = ++buffer_lens[index];
-                if (buffer_idx >= W) {
+                const uint32_t buffer_len = buffer_lens[index];
+                if (buffer_len >= W) {
                     std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
                     std::memcpy(res_value_ptrs[index] + W, buffer_values[index] + W,
-                                (buffer_idx - W) * sizeof(uint32_t));
+                                (buffer_len - W) * sizeof(uint32_t));
                     std::memcpy(res_index_ptrs[index], buffer_indexes[index], W * sizeof(uint32_t));
                     std::memcpy(res_index_ptrs[index] + W, buffer_indexes[index] + W,
-                                (buffer_idx - W) * sizeof(uint32_t));
+                                (buffer_len - W) * sizeof(uint32_t));
 
-                    res_value_ptrs[index] += buffer_idx;
-                    res_index_ptrs[index] += buffer_idx;
+                    res_value_ptrs[index] += buffer_len;
+                    res_index_ptrs[index] += buffer_len;
                     buffer_lens[index] = 0;
                 }
             }
