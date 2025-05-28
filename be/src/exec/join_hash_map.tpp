@@ -600,7 +600,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
     return true;
 }
 
-static constexpr uint32_t RADIX_BITS = 4;
+static constexpr uint32_t RADIX_BITS = 5;
 static constexpr uint32_t RADIX_SIZE = static_cast<size_t>(1) << RADIX_BITS;
 static constexpr uint32_t RADIX_MASK = RADIX_SIZE - 1;
 static constexpr uint32_t RADIX_LEVELS = (31 / RADIX_BITS) + 1;
@@ -683,7 +683,15 @@ static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, ui
             for (uint32_t j = 0; j < W; j++) {
                 const uint32_t index = vindexes[j];
                 const uint32_t buffer_len = buffer_lens[index];
-                if (buffer_len >= W) {
+
+                if (buffer_len == W) {
+                    std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
+                    std::memcpy(res_index_ptrs[index], buffer_indexes[index], W * sizeof(uint32_t));
+
+                    res_value_ptrs[index] += W;
+                    res_index_ptrs[index] += W;
+                    buffer_lens[index] = 0;
+                } else if (buffer_len > W) {
                     std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
                     std::memcpy(res_value_ptrs[index] + W, buffer_values[index] + W,
                                 (buffer_len - W) * sizeof(uint32_t));
