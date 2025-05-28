@@ -674,17 +674,17 @@ static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, ui
             }
 
             for (uint32_t j = 0; j < W; j++) {
-                const uint32_t index = vindexes[i + j];
+                const uint32_t index = vindexes[j];
                 buffer_values[index][buffer_lens[index]] = from_values[i + j];
             }
 
             for (uint32_t j = 0; j < W; j++) {
-                const uint32_t index = vindexes[i + j];
+                const uint32_t index = vindexes[j];
                 buffer_indexes[index][buffer_lens[index]] = from_indexes[i + j];
             }
 
             for (uint32_t j = 0; j < W; j++) {
-                const uint32_t index = vindexes[i + j];
+                const uint32_t index = vindexes[j];
                 const uint32_t buffer_idx = ++buffer_lens[index];
                 if (buffer_idx >= W) {
                     std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
