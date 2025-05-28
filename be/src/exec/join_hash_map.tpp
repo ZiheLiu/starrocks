@@ -658,11 +658,50 @@ static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, ui
         }
 
         static constexpr uint32_t W = 8;
-        uint32_t buffer_values[RADIX_SIZE][W];
-        uint32_t buffer_indexes[RADIX_SIZE][W];
+        static constexpr uint32_t W2 = W * 2;
+        uint32_t buffer_values[RADIX_SIZE][W2];
+        uint32_t buffer_indexes[RADIX_SIZE][W2];
         uint32_t buffer_lens[RADIX_SIZE]{};
 
-        for (uint32_t i = 0; i < n; i++) {
+        uint32_t vindexes[W];
+        uint32_t i = 0;
+
+        for (; i + W <= n; i += W) {
+            for (uint32_t j = 0; j < W; j++) {
+                const uint32_t value = from_values[i + j];
+                const uint32_t index = (value >> shift) & RADIX_MASK;
+                vindexes[j] = index;
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                const uint32_t index = vindexes[i + j];
+                buffer_values[index][buffer_lens[index]] = from_values[i + j];
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                const uint32_t index = vindexes[i + j];
+                buffer_indexes[index][buffer_lens[index]] = from_indexes[i + j];
+            }
+
+            for (uint32_t j = 0; j < W; j++) {
+                const uint32_t index = vindexes[i + j];
+                const uint32_t buffer_idx = ++buffer_lens[index];
+                if (buffer_idx >= W) {
+                    std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
+                    std::memcpy(res_value_ptrs[index] + W, buffer_values[index] + W,
+                                (buffer_idx - W) * sizeof(uint32_t));
+                    std::memcpy(res_index_ptrs[index], buffer_indexes[index], W * sizeof(uint32_t));
+                    std::memcpy(res_index_ptrs[index] + W, buffer_indexes[index] + W,
+                                (buffer_idx - W) * sizeof(uint32_t));
+
+                    res_value_ptrs[index] += buffer_idx;
+                    res_index_ptrs[index] += buffer_idx;
+                    buffer_lens[index] = 0;
+                }
+            }
+        }
+
+        for (; i < n; i++) {
             const uint32_t value = from_values[i];
             const uint32_t index = (value >> shift) & RADIX_MASK;
 
