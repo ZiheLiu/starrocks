@@ -232,27 +232,23 @@ public:
         return Status::OK();
     }
 
-    Status next_batch(size_t count, const uint16_t* is_nulls, ColumnContentType content_type, Column* dst,
-                      const FilterData* filter) override {
-        uint8_t* dst_is_nulls = nullptr;
+    Status next_batch_with_nulls(size_t count, const NullInfos& null_infos, ColumnContentType content_type, Column* dst,
+                                 const FilterData* filter) override {
+        const uint8_t* __restrict is_nulls = null_infos.nulls_data();
+
         if (dst->is_nullable()) {
-            auto* dst_null_column = down_cast<NullableColumn*>(dst)->mutable_null_column();
-            const auto prev_num_row = dst_null_column->size();
-            dst_null_column->append_default(count);
-            dst_is_nulls = dst_null_column->mutable_raw_data() + prev_num_row;
+            auto* dst_nullable_column = down_cast<NullableColumn*>(dst);
+            const auto prev_num_row = dst_nullable_column->size();
+
+            auto* null_column = dst_nullable_column->mutable_null_column();
+            auto& null_data = null_column->get_data();
+            raw::stl_vector_resize_uninitialized(&null_data, count + prev_num_row);
+
+            std::memcpy(null_data.data() + prev_num_row, is_nulls, count);
+            dst_nullable_column->set_has_null(null_infos.num_nulls > 0);
         }
 
-        auto is_hit_filter = [&filter]<bool has_filter>(size_t row_i) {
-            if constexpr (has_filter) {
-                return filter[row_i] != 0;
-            } else {
-                return true;
-            }
-        };
-
-        bool has_null = false;
-        bool has_non_null = false;
-        auto process = [&]<bool is_dst_nullable, bool has_filter>() {
+        if (filter != nullptr) {
             std::vector<Slice> slices(count);
 
             size_t idx = 0;
@@ -267,10 +263,6 @@ public:
                 }
 
                 if (is_null) {
-                    if constexpr (is_dst_nullable) {
-                        std::memset(dst_is_nulls + start_idx, 1, run);
-                        has_null = true;
-                    }
                     continue;
                 }
 
@@ -282,46 +274,49 @@ public:
                     }
 
                     const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
-                    _offset += sizeof(int32_t);
-                    if (is_hit_filter.operator()<has_filter>(i)) {
-                        slices[i] = Slice(_data.data + _offset, length);
-                        has_non_null = true;
-                    } else {
-                        if constexpr (is_dst_nullable) {
-                            dst_is_nulls[i] = true;
-                            has_null = true;
-                        }
+                    if (filter[i]) {
+                        slices[i] = Slice(_data.data + _offset + sizeof(int32_t), length);
                     }
-                    _offset += length;
+                    _offset += sizeof(int32_t) + length;
                 }
             }
 
-            if (has_non_null) {
-                ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
-            } else {
-                ColumnHelper::get_binary_column(dst)->append_default(count);
-            }
-
-            if constexpr (is_dst_nullable) {
-                down_cast<NullableColumn*>(dst)->set_has_null(has_null);
-            }
-
-            return Status::OK();
-        };
-
-        if (dst_is_nulls == nullptr) {
-            if (filter == nullptr) {
-                return process.operator()<false, false>();
-            } else {
-                return process.operator()<false, true>();
-            }
+            ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
         } else {
-            if (filter == nullptr) {
-                return process.operator()<true, false>();
-            } else {
-                return process.operator()<true, true>();
+            std::vector<Slice> slices(count);
+
+            size_t idx = 0;
+            while (idx < count) {
+                const size_t start_idx = idx;
+                const bool is_null = is_nulls[idx++];
+
+                size_t run = 1;
+                while (idx < count && is_nulls[idx] == is_null) {
+                    idx++;
+                    run++;
+                }
+
+                if (is_null) {
+                    continue;
+                }
+
+                for (int i = start_idx; i < idx; i++) {
+                    if (_offset >= _data.size) {
+                        return Status::InternalError(
+                                strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2",
+                                                    _offset, count, _data.size));
+                    }
+
+                    const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
+                    slices[i] = Slice(_data.data + _offset + sizeof(int32_t), length);
+                    _offset += sizeof(int32_t) + length;
+                }
             }
+
+            ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
         }
+
+        return Status::OK();
     }
 
     Status skip(size_t values_to_skip) override {
