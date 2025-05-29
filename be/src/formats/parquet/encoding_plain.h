@@ -258,60 +258,104 @@ public:
         raw::stl_vector_resize_uninitialized(&non_null_lengths, num_non_nulls + 1);
 
         {
+            const auto size = _data.size;
+            const auto* __restrict__ data = _data.data;
             size_t cur_offset = _offset;
             for (size_t i = 0; i < num_non_nulls; i++) {
-                if (cur_offset >= _data.size) {
+                if (cur_offset >= size) {
                     _offset = cur_offset;
-                    return Status::InternalError(
-                            strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset,
-                                                count, _data.size));
+                    return Status::InternalError(strings::Substitute(
+                            "going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset, count, size));
                 }
-                const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + cur_offset);
+                const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(data) + cur_offset);
                 non_null_lengths[i] = length;
                 cur_offset += sizeof(int32_t) + length;
             }
         }
 
-        if (filter == nullptr) {
-            std::vector<Slice> slices;
-            raw::stl_vector_resize_uninitialized(&slices, count);
-
-            auto* data = _data.data;
-            size_t cur_offset = _offset;
-            size_t non_null_idx = 0;
-            for (size_t i = 0; i < count; i++) {
-                // is_nulls[i] == 0: 0xFFFF'FFFF : 0
-                const size_t non_null_mask = (~static_cast<size_t>(is_nulls[i] == 0)) + 1;
-
-                slices[i].data = data + cur_offset + sizeof(int32_t);
-                slices[i].size = non_null_lengths[non_null_idx] & non_null_mask;
-
-                cur_offset += (sizeof(int32_t) + non_null_lengths[non_null_idx]) & non_null_mask;
-                non_null_idx += is_nulls[i] == 0;
-            }
-
-            _offset = cur_offset;
-            ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
-        } else {
-            std::vector<Slice> slices;
-            raw::stl_vector_resize_uninitialized(&slices, count);
+        auto process = [&]<bool with_filter>() {
+            std::vector<Slice> slices(count);
 
             auto* data = _data.data;
             size_t cur_offset = _offset;
             size_t non_null_idx = 0;
             bool has_non_null = false;
-            for (size_t i = 0; i < count; i++) {
-                // is_nulls[i] == 0: 0xFFFF'FFFF : 0
-                const size_t non_null_mask = (~static_cast<size_t>(is_nulls[i] == 0)) + 1;
-                const size_t filter_mask = (~static_cast<size_t>(filter[i] != 0)) + 1;
 
-                has_non_null |= (non_null_mask & filter_mask);
+            size_t idx = 0;
+            while (idx < count) {
+                const size_t start_idx = idx;
 
-                slices[i].data = data + cur_offset + sizeof(int32_t);
-                slices[i].size = non_null_lengths[non_null_idx] & non_null_mask & filter_mask;
+                const bool is_null = is_nulls[idx++];
+                while (idx < count && is_nulls[idx] == is_null) {
+                    idx++;
+                }
 
-                cur_offset += (sizeof(int32_t) + non_null_lengths[non_null_idx]) & non_null_mask;
-                non_null_idx += is_nulls[i] == 0;
+                if (is_null) {
+                    continue;
+                }
+
+                if constexpr (!with_filter) {
+                    for (int i = start_idx; i < idx; i++) {
+                        const uint32_t length = non_null_lengths[non_null_idx++];
+                        slices[i] = Slice(data + cur_offset + sizeof(int32_t), length);
+                        cur_offset += sizeof(int32_t) + length;
+                    }
+                } else {
+                    int i = start_idx;
+
+#ifdef __AVX2__
+                    constexpr int kBatchNums = 256 / (8 * sizeof(uint8_t));
+                    const __m256i all0 = _mm256_setzero_si256();
+                    size_t voffset[kBatchNums];
+
+                    for (; i + kBatchNums <= idx; i += kBatchNums) {
+                        const __m256i vfilter = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(filter + i));
+                        const uint32_t used_mask = _mm256_movemask_epi8(_mm256_cmpgt_epi8(vfilter, all0));
+
+                        if (used_mask == 0) { // all not used.
+                            for (uint32_t j = 0; j < kBatchNums; j++) {
+                                const uint32_t length = non_null_lengths[non_null_idx + j];
+                                cur_offset += length;
+                            }
+                            cur_offset += sizeof(int32_t) * kBatchNums;
+                        } else if (used_mask == 0xffff'ffff) { // all used.
+                            has_non_null = true;
+                            for (uint32_t j = 0; j < kBatchNums; j++) {
+                                const uint32_t length = non_null_lengths[non_null_idx + j];
+                                slices[i] = Slice(data + cur_offset + sizeof(int32_t), length);
+                                cur_offset += sizeof(int32_t) + length;
+                            }
+                        } else {
+                            has_non_null = true;
+
+                            voffset[0] = cur_offset;
+                            for (uint32_t j = 0; j + 1 < kBatchNums; j++) {
+                                const uint32_t length = non_null_lengths[non_null_idx + j];
+                                cur_offset += sizeof(int32_t) + length;
+                                voffset[j + 1] = cur_offset;
+                            }
+                            cur_offset += non_null_lengths[non_null_idx + kBatchNums - 1] + sizeof(int32_t);
+
+                            phmap::priv::BitMask<uint32_t, 32> bitmask(used_mask);
+                            for (auto j : bitmask) {
+                                const uint32_t length = non_null_lengths[non_null_idx + j];
+                                slices[i + j] = Slice(data + voffset[j] + sizeof(int32_t), length);
+                            }
+                        }
+
+                        non_null_idx += kBatchNums;
+                    }
+#endif
+
+                    for (; i < idx; i++) {
+                        const uint32_t length = non_null_lengths[non_null_idx++];
+                        if (filter[i]) {
+                            has_non_null = true;
+                            slices[i] = Slice(data + cur_offset + sizeof(int32_t), length);
+                        }
+                        cur_offset += sizeof(int32_t) + length;
+                    }
+                }
             }
 
             _offset = cur_offset;
@@ -320,9 +364,15 @@ public:
             } else {
                 ColumnHelper::get_binary_column(dst)->append_default(count);
             }
-        }
 
-        return Status::OK();
+            return Status::OK();
+        };
+
+        if (filter == nullptr) {
+            return process.operator()<false>();
+        } else {
+            return process.operator()<true>();
+        }
     }
 
     Status skip(size_t values_to_skip) override {
