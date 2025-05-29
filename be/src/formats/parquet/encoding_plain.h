@@ -253,121 +253,76 @@ public:
             return Status::OK();
         }
 
-        auto process = [&]<bool with_filter>() {
-            std::vector<Slice> slices(count);
+        const size_t num_non_nulls = count - null_infos.num_nulls;
+        std::vector<uint32_t> non_null_lengths;
+        raw::stl_vector_resize_uninitialized(&non_null_lengths, num_non_nulls + 1);
 
-            bool has_non_null = false;
-            size_t idx = 0;
-            while (idx < count) {
-                const size_t start_idx = idx;
-                const bool is_null = is_nulls[idx++];
-
-                size_t run = 1;
-                while (idx < count && is_nulls[idx] == is_null) {
-                    idx++;
-                    run++;
+        {
+            size_t cur_offset = _offset;
+            for (size_t i = 0; i < num_non_nulls; i++) {
+                if (cur_offset >= _data.size) {
+                    _offset = cur_offset;
+                    return Status::InternalError(
+                            strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset,
+                                                count, _data.size));
                 }
+                const uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + cur_offset);
+                non_null_lengths[i] = length;
+                cur_offset += sizeof(int32_t) + length;
+            }
+        }
 
-                if (is_null) {
-                    continue;
-                }
+        if (filter == nullptr) {
+            std::vector<Slice> slices;
+            raw::stl_vector_resize_uninitialized(&slices, count);
 
-                if constexpr (with_filter) {
-                    int i = start_idx;
-#ifdef __AVX2__
-                    constexpr int W = 256 / (8 * sizeof(uint8_t));
-                    const __m256i all0 = _mm256_setzero_si256();
-                    uint32_t vlength[W];
-                    size_t voffset[W];
-                    for (; i + W <= idx; i += W) {
-                        const auto start_offset = _offset;
-                        for (int j = 0; j < W; j++) {
-                            if (_offset >= _data.size) {
-                                return Status::InternalError(strings::Substitute(
-                                        "going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset, count,
-                                        _data.size));
-                            }
-                            const uint32_t length =
-                                    decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
-                            vlength[j] = length;
-                            _offset += sizeof(int32_t) + length;
-                        }
+            auto* data = _data.data;
+            size_t cur_offset = _offset;
+            size_t non_null_idx = 0;
+            for (size_t i = 0; i < count; i++) {
+                // is_nulls[i] == 0: 0xFFFF'FFFF : 0
+                const size_t non_null_mask = (~static_cast<size_t>(is_nulls[i] == 0)) + 1;
 
-                        __m256i vfilter = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(filter + i));
-                        const int used_mask = _mm256_movemask_epi8(_mm256_cmpgt_epi8(vfilter, all0));
-                        if (used_mask == 0) {                  // all not used.
-                        } else if (used_mask == 0xffff'ffff) { // all used.
-                            has_non_null = true;
+                slices[i].data = data + cur_offset + sizeof(int32_t);
+                slices[i].size = non_null_lengths[non_null_idx] & non_null_mask;
 
-                            voffset[0] = sizeof(int32_t);
-                            for (int j = 1; j < W; j++) {
-                                voffset[j] = voffset[j - 1] + vlength[j - 1] + sizeof(int32_t);
-                            }
-
-                            for (int j = 0; j < W; j++) {
-                                slices[i + j] = Slice(_data.data + start_offset + voffset[j], vlength[j]);
-                            }
-                        } else {
-                            has_non_null = true;
-
-                            voffset[0] = sizeof(int32_t);
-                            for (int j = 1; j < W; j++) {
-                                voffset[j] = voffset[j - 1] + vlength[j - 1] + sizeof(int32_t);
-                            }
-
-                            phmap::priv::BitMask<uint32_t, 32> bitmask(used_mask);
-                            for (auto j : bitmask) {
-                                slices[i + j] = Slice(_data.data + start_offset + voffset[j], vlength[j]);
-                            }
-                        }
-                    }
-
-                    for (; i < idx; i++) {
-                        if (_offset >= _data.size) {
-                            return Status::InternalError(
-                                    strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2",
-                                                        _offset, count, _data.size));
-                        }
-
-                        const uint32_t length =
-                                decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
-                        if (filter[i]) {
-                            has_non_null = true;
-                            slices[i] = Slice(_data.data + _offset + sizeof(int32_t), length);
-                        }
-                        _offset += sizeof(int32_t) + length;
-                    }
-#endif
-                } else {
-                    for (int i = start_idx; i < idx; i++) {
-                        if (_offset >= _data.size) {
-                            return Status::InternalError(
-                                    strings::Substitute("going to read out-of-bounds data, offset=$0,count=$1,size=$2",
-                                                        _offset, count, _data.size));
-                        }
-
-                        const uint32_t length =
-                                decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
-                        slices[i] = Slice(_data.data + _offset + sizeof(int32_t), length);
-                        _offset += sizeof(int32_t) + length;
-                    }
-                }
+                cur_offset += (sizeof(int32_t) + non_null_lengths[non_null_idx]) & non_null_mask;
+                non_null_idx += is_nulls[i] == 0;
             }
 
+            _offset = cur_offset;
+            ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
+        } else {
+            std::vector<Slice> slices;
+            raw::stl_vector_resize_uninitialized(&slices, count);
+
+            auto* data = _data.data;
+            size_t cur_offset = _offset;
+            size_t non_null_idx = 0;
+            bool has_non_null = false;
+            for (size_t i = 0; i < count; i++) {
+                // is_nulls[i] == 0: 0xFFFF'FFFF : 0
+                const size_t non_null_mask = (~static_cast<size_t>(is_nulls[i] == 0)) + 1;
+                const size_t filter_mask = (~static_cast<size_t>(filter[i] != 0)) + 1;
+
+                has_non_null |= (non_null_mask & filter_mask);
+
+                slices[i].data = data + cur_offset + sizeof(int32_t);
+                slices[i].size = non_null_lengths[non_null_idx] & non_null_mask & filter_mask;
+
+                cur_offset += (sizeof(int32_t) + non_null_lengths[non_null_idx]) & non_null_mask;
+                non_null_idx += is_nulls[i] == 0;
+            }
+
+            _offset = cur_offset;
             if (has_non_null) {
                 ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
             } else {
                 ColumnHelper::get_binary_column(dst)->append_default(count);
             }
-
-            return Status::OK();
-        };
-
-        if (filter == nullptr) {
-            return process.operator()<false>();
-        } else {
-            return process.operator()<true>();
         }
+
+        return Status::OK();
     }
 
     Status skip(size_t values_to_skip) override {
