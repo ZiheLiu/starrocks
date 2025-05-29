@@ -807,11 +807,37 @@ public:
         if constexpr (!IsSlice<CppType>) {
             const auto* data = values.data();
             uint16_t new_size = 0;
-            for (int i = 0; i < sel_size; i++) {
-                uint16_t idx = sel[i];
-                dst_sel[new_size] = idx;
-                new_size += evaluate_min_max(data[idx]);
+
+            if (_left_close_interval) {
+                if (_right_close_interval) {
+                    for (int i = 0; i < sel_size; i++) {
+                        uint16_t idx = sel[i];
+                        dst_sel[new_size] = idx;
+                        new_size += (data[idx] >= _min && data[idx] <= _max);
+                    }
+                } else {
+                    for (int i = 0; i < sel_size; i++) {
+                        uint16_t idx = sel[i];
+                        dst_sel[new_size] = idx;
+                        new_size += (data[idx] >= _min && data[idx] < _max);
+                    }
+                }
+            } else {
+                if (_right_close_interval) {
+                    for (int i = 0; i < sel_size; i++) {
+                        uint16_t idx = sel[i];
+                        dst_sel[new_size] = idx;
+                        new_size += (data[idx] > _min && data[idx] <= _max);
+                    }
+                } else {
+                    for (int i = 0; i < sel_size; i++) {
+                        uint16_t idx = sel[i];
+                        dst_sel[new_size] = idx;
+                        new_size += (data[idx] > _min && data[idx] < _max);
+                    }
+                }
             }
+
             return new_size;
         } else {
             if (sel != dst_sel) {
