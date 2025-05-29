@@ -767,26 +767,42 @@ public:
     void evaluate_min_max(const ContainerType& values, uint8_t* selection, size_t size) const {
         DCHECK(_has_min_max);
         if constexpr (!IsSlice<CppType>) {
-            const auto* data = values.data();
-            if (_left_close_interval) {
-                if (_right_close_interval) {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] >= _min && data[i] <= _max);
+            auto process = [&]<bool is_left_close_interval, bool is_right_close_interval>() {
+                const auto* data = values.data();
+                if constexpr (is_left_close_interval) {
+                    if constexpr (is_right_close_interval) {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] >= _min && data[i] <= _max);
+                        }
+                    } else {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] >= _min && data[i] < _max);
+                        }
                     }
                 } else {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] >= _min && data[i] < _max);
+                    if constexpr (is_right_close_interval) {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] > _min && data[i] <= _max);
+                        }
+                    } else {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] > _min && data[i] < _max);
+                        }
                     }
+                }
+            };
+
+            if (_left_close_interval) {
+                if (_right_close_interval) {
+                    process.template operator()<true, true>();
+                } else {
+                    process.template operator()<true, false>();
                 }
             } else {
                 if (_right_close_interval) {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] > _min && data[i] <= _max);
-                    }
+                    process.template operator()<false, true>();
                 } else {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] > _min && data[i] < _max);
-                    }
+                    process.template operator()<false, false>();
                 }
             }
         } else {
@@ -805,40 +821,56 @@ public:
 
     uint16_t evaluate_min_max(const ContainerType& values, uint16_t* sel, uint16_t sel_size, uint16_t* dst_sel) const {
         if constexpr (!IsSlice<CppType>) {
-            const auto* data = values.data();
-            uint16_t new_size = 0;
+            auto process = [&]<bool is_left_close_interval, bool is_right_close_interval>() {
+                const auto* data = values.data();
+                uint16_t new_size = 0;
+
+                if constexpr (is_left_close_interval) {
+                    if constexpr (is_right_close_interval) {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] >= _min && data[idx] <= _max);
+                        }
+                    } else {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] >= _min && data[idx] < _max);
+                        }
+                    }
+                } else {
+                    if constexpr (is_right_close_interval) {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] > _min && data[idx] <= _max);
+                        }
+                    } else {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] > _min && data[idx] < _max);
+                        }
+                    }
+                }
+
+                return new_size;
+            };
 
             if (_left_close_interval) {
                 if (_right_close_interval) {
-                    for (int i = 0; i < sel_size; i++) {
-                        uint16_t idx = sel[i];
-                        dst_sel[new_size] = idx;
-                        new_size += (data[idx] >= _min && data[idx] <= _max);
-                    }
+                    return process.template operator()<true, true>();
                 } else {
-                    for (int i = 0; i < sel_size; i++) {
-                        uint16_t idx = sel[i];
-                        dst_sel[new_size] = idx;
-                        new_size += (data[idx] >= _min && data[idx] < _max);
-                    }
+                    return process.template operator()<true, false>();
                 }
             } else {
                 if (_right_close_interval) {
-                    for (int i = 0; i < sel_size; i++) {
-                        uint16_t idx = sel[i];
-                        dst_sel[new_size] = idx;
-                        new_size += (data[idx] > _min && data[idx] <= _max);
-                    }
+                    return process.template operator()<false, true>();
                 } else {
-                    for (int i = 0; i < sel_size; i++) {
-                        uint16_t idx = sel[i];
-                        dst_sel[new_size] = idx;
-                        new_size += (data[idx] > _min && data[idx] < _max);
-                    }
+                    return process.template operator()<false, false>();
                 }
             }
-
-            return new_size;
         } else {
             if (sel != dst_sel) {
                 memcpy(dst_sel, sel, sel_size * sizeof(uint16_t));
