@@ -360,8 +360,6 @@ private:
             for (int j = 0; j < NUM_BATCH_VALUES; j++) {
                 if (is_filtered[i + j] == 0) {
                     buffer[j] = src[indexes[i + j]];
-                } else {
-                    buffer[j] = 0;
                 }
             }
 
