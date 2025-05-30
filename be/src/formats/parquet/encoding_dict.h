@@ -371,10 +371,8 @@ private:
         }
 
         for (; i < num_rows; i++) {
-            if (is_filtered[i] != 0) {
+            if (is_filtered[i]) {
                 dest[i] = src[indexes[i]];
-            } else {
-                dest[i] = 0;
             }
         }
     }
