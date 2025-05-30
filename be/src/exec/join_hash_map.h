@@ -120,6 +120,7 @@ struct JoinHashTableItems {
     Buffer<uint32_t> next;
     Buffer<uint32_t> linear_row_ids;
     Buffer<uint8_t> set_has_value;
+    Buffer<int64_t> set_buckets;
     Buffer<DenseGroup> dense_groups;
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
