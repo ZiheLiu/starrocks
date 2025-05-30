@@ -335,6 +335,50 @@ public:
 private:
     size_t _get_dict_size() const override { return _dict.size() * SIZE_OF_TYPE; }
 
+    static constexpr uint32_t _simd_register_bitwidth() {
+#ifdef __AVX2__
+        return 256;
+#elif defined(__ARM_NEON) && defined(__aarch64__)
+        return 128;
+#else
+        return 128;
+#endif
+    }
+
+    /// dest[i] = is_filtered[i] != 0 ? src[indexes[i]] : 0
+    template <typename DataType, typename IndexType, typename CondType>
+    static void _gather(DataType* dest, const DataType* src, const IndexType* indexes, const CondType* is_filtered,
+                        size_t num_rows) {
+        static_assert(std::is_integral_v<IndexType>);
+
+        static constexpr uint32_t SIMD_WIDTH = _simd_register_bitwidth();
+        static constexpr uint32_t NUM_BATCH_VALUES = SIMD_WIDTH / (8 * sizeof(DataType));
+        DataType buffer[NUM_BATCH_VALUES];
+
+        size_t i = 0;
+        for (; i + NUM_BATCH_VALUES <= num_rows; i += NUM_BATCH_VALUES) {
+            for (int j = 0; j < NUM_BATCH_VALUES; j++) {
+                if (is_filtered[i + j] == 0) {
+                    buffer[j] = src[indexes[i + j]];
+                } else {
+                    buffer[j] = 0;
+                }
+            }
+
+            for (int j = 0; j < NUM_BATCH_VALUES; j++) {
+                dest[i + j] = buffer[j];
+            }
+        }
+
+        for (; i < num_rows; i++) {
+            if (is_filtered[i] != 0) {
+                dest[i] = src[indexes[i]];
+            } else {
+                dest[i] = 0;
+            }
+        }
+    }
+
     Status _next_batch_value(size_t count, Column* dst, const FilterData* filter) override {
         FixedLengthColumn<T>* data_column /* = nullptr */;
         if (dst->is_nullable()) {
@@ -365,11 +409,13 @@ private:
                 return Status::InternalError("Index not in dictionary bounds");
             }
 
-            for (int i = 0; i < count; i++) {
-                if (filter[i]) {
-                    data[i] = _dict[_indexes[i]];
-                }
-            }
+            _gather(data, _dict.data(), _indexes.data(), filter, count);
+
+            // for (int i = 0; i < count; i++) {
+            //     if (filter[i]) {
+            //         data[i] = _dict[_indexes[i]];
+            //     }
+            // }
         } else {
             auto ret = _rle_batch_reader.GetBatchWithDict(_dict.data(), _dict.size(), data, count);
             if (UNLIKELY(ret <= 0)) {
