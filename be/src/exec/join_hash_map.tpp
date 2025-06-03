@@ -27,6 +27,7 @@
 namespace starrocks {
 
 static constexpr uint32_t BLOOM_FILTER_MASK = 0x00FF'FFFFul;
+static constexpr uint64_t BLOOM_FILTER_MASK64 = 0x00FF'FFFF'FFFF'FFFFul;
 
 static constexpr uint8_t BLOOM_FILTERS[256] = {
         1,  3,   5,  9,   17, 33,  65,  129, 3,   3,   7,   11,  19,  35,  67,  131, 5,   7,   5,   13,  21,  37,
@@ -82,8 +83,8 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
         return 2;
     }
 
-    if (conf_mode == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8 &&
-        (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+    if (conf_mode == 8 && table_items->bucket_size <= BLOOM_FILTER_MASK && std::is_integral_v<CppType> &&
+        sizeof(CppType) == 8 && (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         return 8;
     }
 
@@ -805,21 +806,28 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 for (; i + N <= num_rows; i += N) {
                     for (size_t j = 0; j < N; j++) {
                         probe_buckets_data[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                pdata[i + j], table_items->bucket_size, table_items->log_bucket_size);
+                                pdata[i + j], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
                     }
                     for (size_t j = 0; j < N; j++) {
                         if (null_array[i + j] != 0) {
                             continue;
                         }
 
-                        const auto value = pdata[i + j] | 0x8000'0000'0000'0000ull;
-                        uint32_t bucket = probe_buckets_data[j];
+                        const auto value = pdata[i + j];
+
+                        const uint32_t hash = probe_buckets_data[j];
+                        const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                        const uint32_t start_bucket = hash >> 8;
+                        uint32_t bucket = start_bucket;
+
                         uint32_t probe_times = 1;
-                        while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
+                        while (table_items->set_buckets[bucket] != 0 &&
+                               (table_items->set_buckets[bucket] & BLOOM_FILTER_MASK64) != value) {
                             bucket = (bucket + probe_times) & bucket_size_mask;
                             probe_times++;
                         }
                         table_items->set_buckets[bucket] = value;
+                        table_items->set_buckets[start_bucket] |= (fp << 56);
                     }
                 }
 
@@ -828,15 +836,22 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         continue;
                     }
 
-                    uint32_t bucket = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
-                                                                                  table_items->log_bucket_size);
+                    const auto value = pdata[i];
+
+                    const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            pdata[i], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                    const uint32_t start_bucket = hash >> 8;
+                    uint32_t bucket = start_bucket;
+
                     uint32_t probe_times = 1;
-                    const auto value = pdata[i] | 0x8000'0000'0000'0000ull;
-                    while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
+                    while (table_items->set_buckets[bucket] != 0 &&
+                           (table_items->set_buckets[bucket] & BLOOM_FILTER_MASK64) != value) {
                         bucket = (bucket + probe_times) & bucket_size_mask;
                         probe_times++;
                     }
                     table_items->set_buckets[bucket] = value;
+                    table_items->set_buckets[start_bucket] |= (fp << 56);
                 }
             } else if constexpr (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                 const int64_t min_value = table_items->min_value;
@@ -956,30 +971,44 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 for (; i + N <= num_rows; i += N) {
                     for (size_t j = 0; j < N; j++) {
                         probe_buckets_data[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                pdata[i + j], table_items->bucket_size, table_items->log_bucket_size);
+                                pdata[i + j], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
                     }
                     for (size_t j = 0; j < N; j++) {
-                        const auto value = pdata[i + j] | 0x8000'0000'0000'0000ull;
-                        uint32_t bucket = probe_buckets_data[j];
+                        const auto value = pdata[i + j];
+
+                        const uint32_t hash = probe_buckets_data[j];
+                        const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                        const uint32_t start_bucket = hash >> 8;
+                        uint32_t bucket = start_bucket;
+
                         uint32_t probe_times = 1;
-                        while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
+                        while (table_items->set_buckets[bucket] != 0 &&
+                               (table_items->set_buckets[bucket] & BLOOM_FILTER_MASK64) != value) {
                             bucket = (bucket + probe_times) & bucket_size_mask;
                             probe_times++;
                         }
                         table_items->set_buckets[bucket] = value;
+                        table_items->set_buckets[start_bucket] |= (fp << 56);
                     }
                 }
 
                 for (; i < num_rows; i++) {
-                    uint32_t bucket = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
-                                                                                  table_items->log_bucket_size);
+                    const auto value = pdata[i];
+
+                    const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            pdata[i], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                    const uint32_t start_bucket = hash >> 8;
+                    uint32_t bucket = start_bucket;
+
                     uint32_t probe_times = 1;
-                    const auto value = pdata[i] | 0x8000'0000'0000'0000ull;
-                    while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
+                    while (table_items->set_buckets[bucket] != 0 &&
+                           (table_items->set_buckets[bucket] & BLOOM_FILTER_MASK64) != value) {
                         bucket = (bucket + probe_times) & bucket_size_mask;
                         probe_times++;
                     }
                     table_items->set_buckets[bucket] = value;
+                    table_items->set_buckets[start_bucket] |= (fp << 56);
                 }
             } else if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
                 const int64_t min_value = table_items->min_value;
@@ -1088,34 +1117,48 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             auto* __restrict probe_buckets_data = probe_buckets.data();
 
             size_t i = 1;
-            for (; i + N <= num_rows; i += N) {
-                for (size_t j = 0; j < N; j++) {
-                    probe_buckets_data[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
-                            pdata[i + j], table_items->bucket_size, table_items->log_bucket_size);
+                for (; i + N <= num_rows; i += N) {
+                    for (size_t j = 0; j < N; j++) {
+                        probe_buckets_data[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                                pdata[i + j], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    }
+                    for (size_t j = 0; j < N; j++) {
+                        const auto value = pdata[i + j];
+
+                        const uint32_t hash = probe_buckets_data[j];
+                        const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                        const uint32_t start_bucket = hash >> 8;
+                        uint32_t bucket = start_bucket;
+
+                        uint32_t probe_times = 1;
+                        while (table_items->set_buckets[bucket] != 0 &&
+                               (table_items->set_buckets[bucket] & BLOOM_FILTER_MASK64) != value) {
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
+                        table_items->set_buckets[bucket] = value;
+                        table_items->set_buckets[start_bucket] |= (fp << 56);
+                    }
                 }
-                for (size_t j = 0; j < N; j++) {
-                    const auto value = pdata[i + j] | 0x8000'0000'0000'0000ull;
-                    uint32_t bucket = probe_buckets_data[j];
+
+                for (; i < num_rows; i++) {
+                    const auto value = pdata[i];
+
+                    const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            pdata[i], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                    const uint32_t start_bucket = hash >> 8;
+                    uint32_t bucket = start_bucket;
+
                     uint32_t probe_times = 1;
-                    while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
+                    while (table_items->set_buckets[bucket] != 0 &&
+                           (table_items->set_buckets[bucket] & BLOOM_FILTER_MASK64) != value) {
                         bucket = (bucket + probe_times) & bucket_size_mask;
                         probe_times++;
                     }
                     table_items->set_buckets[bucket] = value;
+                    table_items->set_buckets[start_bucket] |= (fp << 56);
                 }
-            }
-
-            for (; i < num_rows; i++) {
-                uint32_t bucket = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
-                                                                              table_items->log_bucket_size);
-                uint32_t probe_times = 1;
-                const auto value = pdata[i] | 0x8000'0000'0000'0000ull;
-                while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
-                    bucket = (bucket + probe_times) & bucket_size_mask;
-                    probe_times++;
-                }
-                table_items->set_buckets[bucket] = value;
-            }
         } else if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
             const int64_t min_value = table_items->min_value;
             const auto* keys = get_interval_keys(*table_items);
@@ -1509,7 +1552,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
     const auto& data = get_key_data(*probe_state);
 
-    if constexpr (SIMD == 1) {
+    if constexpr (SIMD == 1 || SIMD == 8) {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size << 8,
                                                      table_items.log_bucket_size + 8, data, 0, data.size());
     } else if constexpr (SIMD != 4) {
@@ -3675,16 +3718,22 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         const auto* probe_buckets = _probe_state->buckets.data();
 
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const auto probe_key = probe_data[i] | 0x8000'0000'0000'0000ull;
+            const uint32_t hash = probe_buckets[i];
+            uint32_t bucket = hash >> 8;
 
-            uint32_t bucket = probe_buckets[i];
+            const uint64_t cur_bf = BLOOM_FILTERS[hash & 0xFF];
+            if (const bool matched = ((~(buckets[bucket] >> 56)) & cur_bf) == 0; !matched) {
+                continue;
+            }
+
+            const auto probe_key = probe_data[i];
             uint32_t probe_times = 1;
             while (true) {
                 const auto build_bucket = buckets[bucket];
                 if (build_bucket == 0) {
                     break;
                 }
-                if (build_bucket == probe_key) {
+                if ((build_bucket & BLOOM_FILTER_MASK64) == probe_key) {
                     dst_probe_indexes[match_count] = i;
                     match_count++;
                     break;
@@ -3908,9 +3957,17 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
             const auto* probe_buckets = _probe_state->buckets.data();
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                const auto probe_key = probe_data[i] | 0x8000'0000'0000'0000ull;
+                const uint32_t hash = probe_buckets[i];
+                uint32_t bucket = hash >> 8;
 
-                uint32_t bucket = probe_buckets[i];
+                const uint64_t cur_bf = BLOOM_FILTERS[hash & 0xFF];
+                if (const bool matched = ((~(buckets[bucket] >> 56)) & cur_bf) == 0; !matched) {
+                    probe_indexes[match_count] = i;
+                    match_count++;
+                    continue;
+                }
+
+                const auto probe_key = probe_data[i];
                 uint32_t probe_times = 1;
                 while (true) {
                     const auto build_bucket = buckets[bucket];
@@ -3919,7 +3976,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         match_count++;
                         break;
                     }
-                    if (build_bucket == probe_key) {
+                    if ((build_bucket & BLOOM_FILTER_MASK64) == probe_key) {
                         break;
                     }
                     bucket = (bucket + probe_times) & bucket_size_mask;
