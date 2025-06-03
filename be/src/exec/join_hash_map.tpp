@@ -776,7 +776,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size << 8,
                                                                   table_items->log_bucket_size + 8);
         }
-    } else if constexpr (SIMD == 2 || SIMD == 0 || SIMD == 6 || SIMD == 7) {
+    } else if constexpr (SIMD == 2 || SIMD == 0 || SIMD == 6 || SIMD == 7 || SIMD == 8) {
         auto* __restrict next = table_items->next.data();
         for (size_t i = 1; i < num_rows; i++) {
             // use next to cache bucket_num
