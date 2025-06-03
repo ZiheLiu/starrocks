@@ -875,7 +875,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         } else if constexpr (SIMD == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
                             uint32_t bucket = nexts[i];
                             uint32_t probe_times = 1;
-                            const auto value = pdata[i] | 0x8fff'ffff'ffff'ffffull;
+                            const auto value = pdata[i] | 0x8000'0000'0000'0000ull;
                             while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
                                 bucket = (bucket + probe_times) & bucket_size_mask;
                                 probe_times++;
@@ -984,7 +984,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     } else if constexpr (SIMD == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
                         uint32_t bucket = nexts[i];
                         uint32_t probe_times = 1;
-                        const auto value = pdata[i] | 0x8fff'ffff'ffff'ffffull;
+                        const auto value = pdata[i] | 0x8000'0000'0000'0000ull;
                         while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
                             bucket = (bucket + probe_times) & bucket_size_mask;
                             probe_times++;
@@ -1093,7 +1093,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 } else if constexpr (SIMD == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
                     uint32_t bucket = nexts[i];
                     uint32_t probe_times = 1;
-                    const auto value = pdata[i] | 0x8fff'ffff'ffff'ffffull;
+                    const auto value = pdata[i] | 0x8000'0000'0000'0000ull;
                     while (table_items->set_buckets[bucket] != 0 && table_items->set_buckets[bucket] != value) {
                         bucket = (bucket + probe_times) & bucket_size_mask;
                         probe_times++;
@@ -3589,7 +3589,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
         const auto* probe_buckets = _probe_state->buckets.data();
 
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const auto probe_key = probe_data[i] | 0x8FFF'FFFF'FFFF'FFFFull;
+            const auto probe_key = probe_data[i] | 0x8000'0000'0000'0000ull;
 
             uint32_t bucket = probe_buckets[i];
             uint32_t probe_times = 1;
@@ -3822,7 +3822,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
             const auto* probe_buckets = _probe_state->buckets.data();
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                const auto probe_key = probe_data[i] | 0x8FFF'FFFF'FFFF'FFFFull;
+                const auto probe_key = probe_data[i] | 0x8000'0000'0000'0000ull;
 
                 uint32_t bucket = probe_buckets[i];
                 uint32_t probe_times = 1;
