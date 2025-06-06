@@ -949,7 +949,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                     nexts[i] = 0;
                                     break;
                                 }
-                                if (pdata[firsts[bucket] & 0xFF00'0000ul] == pdata[i]) {
+                                if (pdata[firsts[bucket] & BLOOM_FILTER_MASK] == pdata[i]) {
                                     nexts[i] = firsts[bucket] & BLOOM_FILTER_MASK;
                                     firsts[bucket] = i | (firsts[bucket] & 0xFF00'0000ul);
                                     break;
@@ -1120,7 +1120,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 nexts[i] = 0;
                                 break;
                             }
-                            if (pdata[firsts[bucket] & 0xFF00'0000ul] == pdata[i]) {
+                            if (pdata[firsts[bucket] & BLOOM_FILTER_MASK] == pdata[i]) {
                                 nexts[i] = firsts[bucket] & BLOOM_FILTER_MASK;
                                 firsts[bucket] = i | (firsts[bucket] & 0xFF00'0000ul);
                                 break;
@@ -1291,7 +1291,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             nexts[i] = 0;
                             break;
                         }
-                        if (pdata[firsts[bucket] & 0xFF00'0000ul] == pdata[i]) {
+                        if (pdata[firsts[bucket] & BLOOM_FILTER_MASK] == pdata[i]) {
                             nexts[i] = firsts[bucket] & BLOOM_FILTER_MASK;
                             firsts[bucket] = i | (firsts[bucket] & 0xFF00'0000ul);
                             break;
