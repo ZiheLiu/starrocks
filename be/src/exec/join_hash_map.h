@@ -192,6 +192,13 @@ struct HashTableProbeState {
     Buffer<uint32_t>& build_index;
     Buffer<uint32_t>& probe_index;
 
+    struct ProbeBucketResult {
+        uint32_t probe_row_id;
+        uint32_t build_row_id;
+    };
+    Buffer<ProbeBucketResult> probe_buckets;
+    uint32_t probe_buckets_len = 0;
+
     // when exec right join
     // record the build items is matched or not
     // 0: not matched, 1: matched
@@ -268,6 +275,8 @@ struct HashTableProbeState {
                                                                    : rhs.probe_index_column->clone()),
               build_index(down_cast<UInt32Column*>(build_index_column.get())->get_data()),
               probe_index(down_cast<UInt32Column*>(probe_index_column.get())->get_data()),
+              probe_buckets(rhs.probe_buckets),
+              probe_buckets_len(rhs.probe_buckets_len),
               build_match_index(rhs.build_match_index),
               probe_match_index(rhs.probe_match_index),
               probe_match_filter(rhs.probe_match_filter),
@@ -750,6 +759,9 @@ private:
     void _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
     template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
     void _do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
+    template <bool first_probe>
+    void _do_probe_from_ht_mode6(RuntimeState* state, const Buffer<CppType>& build_data,
+                                 const Buffer<CppType>& probe_data);
 
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                        const Buffer<CppType>& probe_data);
