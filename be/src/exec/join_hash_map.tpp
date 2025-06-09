@@ -181,6 +181,9 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
             table_items->dense_groups.resize((key_interval + 31) / 32, {0, 0});
         }
         table_items->next.resize(table_items->row_count + 1, 0);
+        if (table_items->mode == 6) {
+            table_items->cached_nexts.resize(table_items->row_count + 8, 0);
+        }
     }
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
 }
@@ -2785,6 +2788,38 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
         i = _probe_state->cur_probe_index;
     }
 
+    if constexpr (!first_probe) {
+        if (_probe_state->use_cached) {
+            const uint32_t start_match_count = match_count;
+            auto [probe_index, cached_idx] = _probe_state->probe_buckets[i];
+
+            const auto* cached_nexts = _table_items->cached_nexts.data();
+            const auto num_cached_nexts = _table_items->num_cached_nexts;
+
+            _probe_state->build_index[match_count] = cached_nexts[cached_idx];
+            match_count++;
+
+            for (cached_idx++; cached_idx < num_cached_nexts && (cached_nexts[cached_idx] & 0x8000'0000ull) == 0;
+                 cached_idx++) {
+                _probe_state->build_index[match_count] = cached_nexts[cached_idx];
+                match_count++;
+
+                if (UNLIKELY(match_count > state->chunk_size())) {
+                    for (uint32_t j = start_match_count; j < match_count; j++) {
+                        _probe_state->probe_index[j] = probe_index;
+                    }
+                    _probe_state->cur_probe_index = i;
+                    _probe_state->probe_buckets[i].build_row_id = cached_idx;
+                    _probe_state->use_cached = true;
+                    _probe_state->has_remain = true;
+                    _probe_state->count = state->chunk_size();
+                    return;
+                }
+            }
+            i++;
+        }
+    }
+
     for (; i < res_buckets_len; i++) {
         const uint32_t start_match_count = match_count;
         auto [probe_index, build_index] = _probe_state->probe_buckets[i];
@@ -2793,8 +2828,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
             _probe_state->probe_match_filter[probe_index] = 1;
         }
 
-        do {
-            _probe_state->build_index[match_count] = build_index;
+        if (_table_items->next[build_index] & 0x8000'0000ull) {
+            const auto* cached_nexts = _table_items->cached_nexts.data();
+            const auto num_cached_nexts = _table_items->num_cached_nexts;
+
+            auto cached_idx = _table_items->next[build_index] & 0x7FFF'FFFFull;
+            _probe_state->build_index[match_count] = cached_nexts[cached_idx];
             match_count++;
 
             if (UNLIKELY(match_count > state->chunk_size())) {
@@ -2802,14 +2841,59 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                     _probe_state->probe_index[j] = probe_index;
                 }
                 _probe_state->cur_probe_index = i;
-                _probe_state->probe_buckets[i].build_row_id = build_index;
+                _probe_state->probe_buckets[i].build_row_id = cached_idx;
+                _probe_state->use_cached = true;
                 _probe_state->has_remain = true;
                 _probe_state->count = state->chunk_size();
                 return;
             }
 
-            build_index = _table_items->next[build_index];
-        } while (build_index != 0);
+            for (cached_idx++; cached_idx < num_cached_nexts && (cached_nexts[cached_idx] & 0x8000'0000ull) == 0;
+                 cached_idx++) {
+                _probe_state->build_index[match_count] = cached_nexts[cached_idx];
+                match_count++;
+
+                if (UNLIKELY(match_count > state->chunk_size())) {
+                    for (uint32_t j = start_match_count; j < match_count; j++) {
+                        _probe_state->probe_index[j] = probe_index;
+                    }
+                    _probe_state->cur_probe_index = i;
+                    _probe_state->probe_buckets[i].build_row_id = cached_idx;
+                    _probe_state->use_cached = true;
+                    _probe_state->has_remain = true;
+                    _probe_state->count = state->chunk_size();
+                    return;
+                }
+            }
+        } else {
+            const auto start_build_index = build_index;
+            do {
+                _probe_state->build_index[match_count] = build_index;
+                match_count++;
+
+                if (UNLIKELY(match_count > state->chunk_size())) {
+                    for (uint32_t j = start_match_count; j < match_count; j++) {
+                        _probe_state->probe_index[j] = probe_index;
+                    }
+                    _probe_state->cur_probe_index = i;
+                    _probe_state->probe_buckets[i].build_row_id = build_index;
+                    _probe_state->has_remain = true;
+                    _probe_state->count = state->chunk_size();
+                    return;
+                }
+
+                build_index = _table_items->next[build_index];
+            } while (build_index != 0);
+
+            for (uint32_t j = 0; j < match_count - start_match_count; j++) {
+                _table_items->cached_nexts[_table_items->num_cached_nexts + j] =
+                        _probe_state->build_index[start_match_count + j];
+            }
+            _table_items->next[start_build_index] = _table_items->num_cached_nexts | 0x8000'0000ull;
+            _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
+            _table_items->num_cached_nexts += match_count - start_match_count;
+            _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
+        }
 
         for (uint32_t j = start_match_count; j < match_count; j++) {
             _probe_state->probe_index[j] = probe_index;
@@ -2823,6 +2907,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
         CHECK_MATCH()
     }
     _probe_state->probe_buckets_len = 0;
+    _probe_state->use_cached = false;
     PROBE_OVER()
 }
 

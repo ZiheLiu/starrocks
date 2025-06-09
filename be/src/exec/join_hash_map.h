@@ -118,13 +118,14 @@ struct JoinHashTableItems {
     // about the bucket-chained hash table of this kind.
     Buffer<uint32_t> first;
     Buffer<uint32_t> next;
-    Buffer<uint32_t> linear_row_ids;
+    Buffer<uint32_t> cached_nexts;
     Buffer<uint8_t> set_has_value;
     Buffer<int64_t> set_buckets;
     Buffer<DenseGroup> dense_groups;
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
     Buffer<uint8_t> bytes_per_key;
+    uint32_t num_cached_nexts = 0;
     int64_t min_value = 0;
     int64_t max_value = 0;
     uint32_t bucket_size = 0;
@@ -214,6 +215,7 @@ struct HashTableProbeState {
     JoinMatchFlag match_flag = JoinMatchFlag::NORMAL; // all match one
 
     bool has_remain = false;
+    bool use_cached = false;
     // When one-to-many, one probe may not be able to probe all the data,
     // cur_probe_index records the position of the last probe
     uint32_t cur_probe_times = 0;
