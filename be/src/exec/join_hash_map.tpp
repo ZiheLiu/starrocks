@@ -2816,6 +2816,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                     return;
                 }
             }
+
+            for (uint32_t j = start_match_count; j < match_count; j++) {
+                _probe_state->probe_index[j] = probe_index;
+            }
             i++;
         }
     }
