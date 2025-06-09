@@ -2833,7 +2833,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
             const auto num_cached_nexts = _table_items->num_cached_nexts;
 
             auto cached_idx = _table_items->next[build_index] & 0x7FFF'FFFFull;
-            _probe_state->build_index[match_count] = cached_nexts[cached_idx];
+            _probe_state->build_index[match_count] = cached_nexts[cached_idx] & 0x7FFF'FFFFull;
             match_count++;
 
             if (UNLIKELY(match_count > state->chunk_size())) {
@@ -2885,14 +2885,16 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                 build_index = _table_items->next[build_index];
             } while (build_index != 0);
 
-            for (uint32_t j = 0; j < match_count - start_match_count; j++) {
-                _table_items->cached_nexts[_table_items->num_cached_nexts + j] =
-                        _probe_state->build_index[start_match_count + j];
+            if (match_count - start_match_count >= 2) {
+                for (uint32_t j = 0; j < match_count - start_match_count; j++) {
+                    _table_items->cached_nexts[_table_items->num_cached_nexts + j] =
+                            _probe_state->build_index[start_match_count + j];
+                }
+                _table_items->next[start_build_index] = _table_items->num_cached_nexts | 0x8000'0000ull;
+                _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
+                _table_items->num_cached_nexts += match_count - start_match_count;
+                _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
             }
-            _table_items->next[start_build_index] = _table_items->num_cached_nexts | 0x8000'0000ull;
-            _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
-            _table_items->num_cached_nexts += match_count - start_match_count;
-            _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
         }
 
         for (uint32_t j = start_match_count; j < match_count; j++) {
