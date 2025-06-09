@@ -2796,7 +2796,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
             const auto* cached_nexts = _table_items->cached_nexts.data();
             const auto num_cached_nexts = _table_items->num_cached_nexts;
 
-            _probe_state->build_index[match_count] = cached_nexts[cached_idx];
+            _probe_state->build_index[match_count] = cached_nexts[cached_idx] & 0x7FFF'FFFFull;
             match_count++;
 
             for (cached_idx++; cached_idx < num_cached_nexts && (cached_nexts[cached_idx] & 0x8000'0000ull) == 0;
