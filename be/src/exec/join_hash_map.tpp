@@ -2886,7 +2886,19 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                 build_index = _table_items->next[build_index];
             } while (build_index != 0);
 
-            if (match_count - start_match_count >= 2) {
+            auto write_cached = [&] {
+                if (match_count - start_match_count <= 2) {
+                    return false;
+                }
+                if constexpr (!first_probe) {
+                    if (_probe_state->cur_probe_index == i) {
+                        return false;
+                    }
+                }
+
+                return true;
+            };
+            if (write_cached()) {
                 for (uint32_t j = 0; j < match_count - start_match_count; j++) {
                     _table_items->cached_nexts[_table_items->num_cached_nexts + j] =
                             _probe_state->build_index[start_match_count + j];
