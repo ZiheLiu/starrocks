@@ -2877,6 +2877,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                     }
                     _probe_state->cur_probe_index = i;
                     _probe_state->probe_buckets[i].build_row_id = build_index;
+                    _probe_state->use_cached = false;
                     _probe_state->has_remain = true;
                     _probe_state->count = state->chunk_size();
                     return;
