@@ -3412,6 +3412,11 @@ template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, ui
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                                   const Buffer<CppType>& build_data,
                                                                                   const Buffer<CppType>& probe_data) {
+    if constexpr (SIMD == 6) {
+        _do_probe_from_ht_for_left_outer_join_mode6<first_probe>(state, build_data, probe_data);
+        return;
+    }
+
     _probe_state->match_flag = JoinMatchFlag::NORMAL;
     size_t match_count = 0;
     bool one_to_many = false;
