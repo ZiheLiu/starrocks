@@ -196,6 +196,7 @@ struct HashTableProbeState {
     struct ProbeBucketResult {
         uint32_t probe_row_id;
         uint32_t build_row_id;
+        uint32_t first_next;
     };
     Buffer<ProbeBucketResult> probe_buckets;
     uint32_t probe_buckets_len = 0;
@@ -761,9 +762,12 @@ private:
     void _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
     template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
     void _do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
+
     template <bool first_probe>
     void _do_probe_from_ht_mode6(RuntimeState* state, const Buffer<CppType>& build_data,
                                  const Buffer<CppType>& probe_data);
+    void _do_probe_from_ht_mode6_first(RuntimeState* state, const Buffer<CppType>& build_data,
+                                       const Buffer<CppType>& probe_data);
 
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                        const Buffer<CppType>& probe_data);

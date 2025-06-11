@@ -2727,20 +2727,18 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
-template <bool first_probe>
-void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState* state,
-                                                                    const Buffer<CppType>& build_data,
-                                                                    const Buffer<CppType>& probe_data) {
-    _probe_state->match_flag = JoinMatchFlag::NORMAL;
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6_first(RuntimeState* state,
+                                                                          const Buffer<CppType>& build_data,
+                                                                          const Buffer<CppType>& probe_data) {
+    const size_t num_probe_rows = _probe_state->probe_row_count;
+    const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
 
-    if constexpr (first_probe) {
-        const size_t num_probe_rows = _probe_state->probe_row_count;
-        const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
-        const auto* build_buckets = _table_items->first.data();
-        const auto* probe_buckets = _probe_state->buckets.data();
+    auto* __restrict res_buckets = _probe_state->probe_buckets.data();
+    uint32_t res_buckets_len = 0;
 
-        auto* res_buckets = _probe_state->probe_buckets.data();
-        auto& res_buckets_len = _probe_state->probe_buckets_len;
+    {
+        const auto* __restrict build_buckets = _table_items->first.data();
+        const auto* __restrict probe_buckets = _probe_state->buckets.data();
 
         for (size_t i = 0; i < num_probe_rows; i++) {
             const auto& probe_key = probe_data[i];
@@ -2750,7 +2748,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
             uint32_t probe_bucket = hash >> 8;
             uint32_t build_index = build_buckets[probe_bucket];
 
-            if (const bool matched = ((~(build_index >> 24)) & bf) == 0; !matched) {
+            if (const bool bf_matched = ((~(build_index >> 24)) & bf) == 0; !bf_matched) {
                 continue;
             }
 
@@ -2760,7 +2758,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
 
                 if (build_data[build_index] == probe_key) {
                     res_buckets[res_buckets_len].probe_row_id = i;
-                    res_buckets[res_buckets_len++].build_row_id = build_index;
+                    res_buckets[res_buckets_len].build_row_id = build_index;
+                    res_buckets_len++;
                     break;
                 }
 
@@ -2773,11 +2772,38 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                 }
             }
         }
-
-        memset(_probe_state->probe_match_filter.data(), 0, _probe_state->probe_row_count * sizeof(uint8_t));
     }
 
-    const auto res_buckets_len = _probe_state->probe_buckets_len;
+    {
+        auto* __restrict probe_match_filter = _probe_state->probe_match_filter.data();
+        memset(probe_match_filter, 0, num_probe_rows * sizeof(uint8_t));
+        for (uint32_t i = 0; i < res_buckets_len; i++) {
+            probe_match_filter[res_buckets[i].probe_row_id] = 1;
+        }
+    }
+
+    {
+        const auto* __restrict nexts = _table_items->next.data();
+        for (uint32_t i = 0; i < res_buckets_len; i++) {
+            res_buckets[i].first_next = nexts[res_buckets[i].build_row_id];
+        }
+    }
+
+    _probe_state->probe_buckets_len = res_buckets_len;
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
+template <bool first_probe>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState* state,
+                                                                    const Buffer<CppType>& build_data,
+                                                                    const Buffer<CppType>& probe_data) {
+    _probe_state->match_flag = JoinMatchFlag::NORMAL;
+
+    if constexpr (first_probe) {
+        _do_probe_from_ht_mode6_first(state, build_data, probe_data);
+    }
+
+    const uint32_t res_buckets_len = _probe_state->probe_buckets_len;
     uint32_t match_count = 0;
     bool one_to_many = false;
 
@@ -2788,56 +2814,27 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
         i = _probe_state->cur_probe_index;
     }
 
-    if constexpr (!first_probe) {
-        if (_probe_state->use_cached) {
-            const uint32_t start_match_count = match_count;
-            auto [probe_index, cached_idx] = _probe_state->probe_buckets[i];
+    auto process_opt = [&](const uint32_t start_match_count, uint32_t probe_index, uint32_t cached_idx) {
+        const auto* __restrict cached_nexts = _table_items->cached_nexts.data();
 
-            const auto* cached_nexts = _table_items->cached_nexts.data();
-            const auto num_cached_nexts = _table_items->num_cached_nexts;
+        cached_idx &= 0x7FFF'FFFFull;
+        _probe_state->build_index[match_count] = cached_nexts[cached_idx] & 0x7FFF'FFFFull;
+        match_count++;
 
-            _probe_state->build_index[match_count] = cached_nexts[cached_idx] & 0x7FFF'FFFFull;
-            match_count++;
-
-            for (cached_idx++; cached_idx < num_cached_nexts && (cached_nexts[cached_idx] & 0x8000'0000ull) == 0;
-                 cached_idx++) {
-                _probe_state->build_index[match_count] = cached_nexts[cached_idx];
-                match_count++;
-
-                if (UNLIKELY(match_count > state->chunk_size())) {
-                    for (uint32_t j = start_match_count; j < match_count; j++) {
-                        _probe_state->probe_index[j] = probe_index;
-                    }
-                    _probe_state->cur_probe_index = i;
-                    _probe_state->probe_buckets[i].build_row_id = cached_idx;
-                    _probe_state->use_cached = true;
-                    _probe_state->has_remain = true;
-                    _probe_state->count = state->chunk_size();
-                    return;
-                }
-            }
-
+        if (UNLIKELY(match_count > state->chunk_size())) {
             for (uint32_t j = start_match_count; j < match_count; j++) {
                 _probe_state->probe_index[j] = probe_index;
             }
-            i++;
-        }
-    }
-
-    for (; i < res_buckets_len; i++) {
-        const uint32_t start_match_count = match_count;
-        auto [probe_index, build_index] = _probe_state->probe_buckets[i];
-
-        if constexpr (first_probe) {
-            _probe_state->probe_match_filter[probe_index] = 1;
+            _probe_state->cur_probe_index = i;
+            _probe_state->probe_buckets[i].build_row_id = cached_idx;
+            _probe_state->use_cached = true;
+            _probe_state->has_remain = true;
+            _probe_state->count = state->chunk_size();
+            return true;
         }
 
-        if (_table_items->next[build_index] & 0x8000'0000ull) {
-            const auto* cached_nexts = _table_items->cached_nexts.data();
-            const auto num_cached_nexts = _table_items->num_cached_nexts;
-
-            auto cached_idx = _table_items->next[build_index] & 0x7FFF'FFFFull;
-            _probe_state->build_index[match_count] = cached_nexts[cached_idx] & 0x7FFF'FFFFull;
+        for (cached_idx++; (cached_nexts[cached_idx] & 0x8000'0000ull) == 0; cached_idx++) {
+            _probe_state->build_index[match_count] = cached_nexts[cached_idx];
             match_count++;
 
             if (UNLIKELY(match_count > state->chunk_size())) {
@@ -2849,68 +2846,72 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                 _probe_state->use_cached = true;
                 _probe_state->has_remain = true;
                 _probe_state->count = state->chunk_size();
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    if constexpr (!first_probe) {
+        if (_probe_state->use_cached) {
+            const uint32_t start_match_count = match_count;
+
+            auto [probe_index, cached_idx, _] = _probe_state->probe_buckets[i];
+            if (process_opt(start_match_count, probe_index, cached_idx)) {
                 return;
             }
 
-            for (cached_idx++; cached_idx < num_cached_nexts && (cached_nexts[cached_idx] & 0x8000'0000ull) == 0;
-                 cached_idx++) {
-                _probe_state->build_index[match_count] = cached_nexts[cached_idx];
-                match_count++;
+            for (uint32_t j = start_match_count; j < match_count; j++) {
+                _probe_state->probe_index[j] = probe_index;
+            }
+            i++;
+        }
+    }
 
-                if (UNLIKELY(match_count > state->chunk_size())) {
-                    for (uint32_t j = start_match_count; j < match_count; j++) {
-                        _probe_state->probe_index[j] = probe_index;
-                    }
-                    _probe_state->cur_probe_index = i;
-                    _probe_state->probe_buckets[i].build_row_id = cached_idx;
-                    _probe_state->use_cached = true;
-                    _probe_state->has_remain = true;
-                    _probe_state->count = state->chunk_size();
-                    return;
-                }
+    for (; i < res_buckets_len; i++) {
+        const uint32_t start_match_count = match_count;
+        auto [probe_index, build_index, first_next] = _probe_state->probe_buckets[i];
+
+        if (first_next & 0x8000'0000ull) {
+            if (process_opt(start_match_count, probe_index, first_next)) {
+                return;
             }
         } else {
-            const auto start_build_index = build_index;
-            do {
+            if (first_next == 0) {
                 _probe_state->build_index[match_count] = build_index;
                 match_count++;
 
                 if (UNLIKELY(match_count > state->chunk_size())) {
-                    for (uint32_t j = start_match_count; j < match_count; j++) {
-                        _probe_state->probe_index[j] = probe_index;
-                    }
+                    _probe_state->probe_index[start_match_count] = probe_index;
                     _probe_state->cur_probe_index = i;
-                    _probe_state->probe_buckets[i].build_row_id = build_index;
                     _probe_state->use_cached = false;
                     _probe_state->has_remain = true;
                     _probe_state->count = state->chunk_size();
                     return;
                 }
+            } else {
+                uint32_t num_cached_nexts = _table_items->num_cached_nexts;
+                auto* cached_nexts = _table_items->cached_nexts.data();
 
-                build_index = _table_items->next[build_index];
-            } while (build_index != 0);
+                const uint32_t new_first_next = num_cached_nexts | 0x8000'0000ull;
+                _table_items->next[build_index] = new_first_next;
+                cached_nexts[num_cached_nexts] = build_index | 0x8000'0000ull;
+                num_cached_nexts++;
 
-            auto write_cached = [&] {
-                if (match_count - start_match_count <= 2) {
-                    return false;
-                }
-                if constexpr (!first_probe) {
-                    if (_probe_state->cur_probe_index == i) {
-                        return false;
-                    }
-                }
+                uint32_t cur_build_index = first_next;
+                do {
+                    cached_nexts[num_cached_nexts] = cur_build_index;
+                    num_cached_nexts++;
+                    cur_build_index = _table_items->next[cur_build_index];
+                } while (cur_build_index != 0);
 
-                return true;
-            };
-            if (write_cached()) {
-                for (uint32_t j = 0; j < match_count - start_match_count; j++) {
-                    _table_items->cached_nexts[_table_items->num_cached_nexts + j] =
-                            _probe_state->build_index[start_match_count + j];
+                cached_nexts[num_cached_nexts] |= 0x8000'0000ull;
+                _table_items->num_cached_nexts = num_cached_nexts;
+
+                if (process_opt(start_match_count, probe_index, new_first_next)) {
+                    return;
                 }
-                _table_items->next[start_build_index] = _table_items->num_cached_nexts | 0x8000'0000ull;
-                _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
-                _table_items->num_cached_nexts += match_count - start_match_count;
-                _table_items->cached_nexts[_table_items->num_cached_nexts] |= 0x8000'0000ull;
             }
         }
 
