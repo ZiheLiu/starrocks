@@ -3269,7 +3269,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
     if constexpr (!first_probe) {
         if (_probe_state->use_cached) {
             const uint32_t start_match_count = match_count;
-            auto [probe_index, cached_idx] = _probe_state->probe_buckets[i];
+            auto [probe_index, cached_idx, _] = _probe_state->probe_buckets[i];
 
             const auto* cached_nexts = _table_items->cached_nexts.data();
             const auto num_cached_nexts = _table_items->num_cached_nexts;
@@ -3304,7 +3304,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
 
     for (; i < res_buckets_len; i++) {
         const uint32_t start_match_count = match_count;
-        auto [probe_index, build_index] = _probe_state->probe_buckets[i];
+        auto [probe_index, build_index, _] = _probe_state->probe_buckets[i];
 
         if constexpr (first_probe) {
             _probe_state->probe_match_filter[probe_index] = 1;
