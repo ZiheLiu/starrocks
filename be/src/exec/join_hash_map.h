@@ -785,6 +785,8 @@ private:
     template <bool first_probe>
     void _do_probe_from_ht_for_left_outer_join_mode6(RuntimeState* state, const Buffer<CppType>& build_data,
                                                      const Buffer<CppType>& probe_data);
+    void _do_probe_from_ht_for_left_outer_join_mode6_first(RuntimeState* state, const Buffer<CppType>& build_data,
+                                                           const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                            const Buffer<CppType>& build_data,
                                                                            const Buffer<CppType>& probe_data);
