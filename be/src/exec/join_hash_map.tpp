@@ -2782,12 +2782,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6_first(Runtim
         }
     }
 
-    {
-        const auto* __restrict nexts = _table_items->next.data();
-        for (uint32_t i = 0; i < res_buckets_len; i++) {
-            res_buckets[i].first_next = nexts[res_buckets[i].build_row_id];
-        }
-    }
+    // {
+    //     const auto* __restrict nexts = _table_items->next.data();
+    //     for (uint32_t i = 0; i < res_buckets_len; i++) {
+    //         res_buckets[i].first_next = nexts[res_buckets[i].build_row_id];
+    //     }
+    // }
 
     _probe_state->probe_buckets_len = res_buckets_len;
 }
@@ -2857,7 +2857,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
         if (_probe_state->use_cached) {
             const uint32_t start_match_count = match_count;
 
-            auto [probe_index, cached_idx, _] = _probe_state->probe_buckets[i];
+            auto [probe_index, cached_idx] = _probe_state->probe_buckets[i];
             if (process_opt(start_match_count, probe_index, cached_idx)) {
                 return;
             }
@@ -2871,7 +2871,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
 
     for (; i < res_buckets_len; i++) {
         const uint32_t start_match_count = match_count;
-        auto [probe_index, build_index, first_next] = _probe_state->probe_buckets[i];
+        auto [probe_index, build_index] = _probe_state->probe_buckets[i];
+        const auto first_next = _table_items->next[build_index];
 
         if (first_next & 0x8000'0000ull) {
             if (process_opt(start_match_count, probe_index, first_next)) {
@@ -3262,12 +3263,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
         }
     }
 
-    {
-        const auto* __restrict nexts = _table_items->next.data();
-        for (uint32_t i = 0; i < res_buckets_len; i++) {
-            res_buckets[i].first_next = res_buckets[i].build_row_id == 0 ? 0 : nexts[res_buckets[i].build_row_id];
-        }
-    }
+    // {
+    //     const auto* __restrict nexts = _table_items->next.data();
+    //     for (uint32_t i = 0; i < res_buckets_len; i++) {
+    //         res_buckets[i].first_next = res_buckets[i].build_row_id == 0 ? 0 : nexts[res_buckets[i].build_row_id];
+    //     }
+    // }
 
     _probe_state->probe_buckets_len = res_buckets_len;
 }
@@ -3336,7 +3337,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
         if (_probe_state->use_cached) {
             const uint32_t start_match_count = match_count;
 
-            auto [probe_index, cached_idx, _] = _probe_state->probe_buckets[i];
+            auto [probe_index, cached_idx] = _probe_state->probe_buckets[i];
             if (process_opt(start_match_count, probe_index, cached_idx)) {
                 return;
             }
@@ -3350,7 +3351,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
 
     for (; i < res_buckets_len; i++) {
         const uint32_t start_match_count = match_count;
-        auto [probe_index, build_index, first_next] = _probe_state->probe_buckets[i];
+        auto [probe_index, build_index] = _probe_state->probe_buckets[i];
+        const auto first_next = build_index == 0 ? 0 : _table_items->next[build_index];
 
         if (first_next & 0x8000'0000ull) {
             if (process_opt(start_match_count, probe_index, first_next)) {

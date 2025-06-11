@@ -196,7 +196,7 @@ struct HashTableProbeState {
     struct ProbeBucketResult {
         uint32_t probe_row_id;
         uint32_t build_row_id;
-        uint32_t first_next;
+        // uint32_t first_next;
     };
     Buffer<ProbeBucketResult> probe_buckets;
     uint32_t probe_buckets_len = 0;
