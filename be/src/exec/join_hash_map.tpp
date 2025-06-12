@@ -267,7 +267,7 @@ template <LogicalType LT>
 template <uint8_t SIMD>
 bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state, JoinHashTableItems* table_items,
                                                             HashTableProbeState* probe_state) {
-    if constexpr (!(SIMD == 1 || SIMD == 0)) {
+    if constexpr (SIMD != 1) {
         return false;
     }
 
