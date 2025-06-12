@@ -302,7 +302,6 @@ public:
                     }
                 } else {
                     int i = start_idx;
-
 #ifdef __AVX2__
                     constexpr int kBatchNums = 256 / (8 * sizeof(uint8_t));
                     const __m256i all0 = _mm256_setzero_si256();
@@ -359,10 +358,14 @@ public:
             }
 
             _offset = cur_offset;
-            if (has_non_null) {
+            if constexpr (!with_filter) {
                 ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
             } else {
-                ColumnHelper::get_binary_column(dst)->append_default(count);
+                if (has_non_null) {
+                    ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), count);
+                } else {
+                    ColumnHelper::get_binary_column(dst)->append_default(count);
+                }
             }
 
             return Status::OK();
