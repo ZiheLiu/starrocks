@@ -991,7 +991,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             }
                         } else {
                             uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                    data[i], table_items->bucket_size, table_items->log_bucket_size);
+                                    pdata[i], table_items->bucket_size, table_items->log_bucket_size);
                             table_items->next[i] = table_items->first[bucket_num];
                             table_items->first[bucket_num] = i;
                         }
@@ -1179,7 +1179,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         }
                     } else {
                         uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                data[i], table_items->bucket_size, table_items->log_bucket_size);
+                                pdata[i], table_items->bucket_size, table_items->log_bucket_size);
                         table_items->next[i] = table_items->first[bucket_num];
                         table_items->first[bucket_num] = i;
                     }
@@ -1366,7 +1366,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         nexts[i] = 0;
                     }
                 } else {
-                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
+                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
                     table_items->next[i] = table_items->first[bucket_num];
                     table_items->first[bucket_num] = i;
@@ -2973,7 +2973,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
             if (_probe_state->next[i] == 0) {
                 i++;
-                _probe_state->cur_row_match_count = 0;
+                cur_row_match_count = 0;
             }
         }
     }
@@ -3453,7 +3453,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
             match_count = 1;
             if (_probe_state->next[i] == 0) {
                 i++;
-                _probe_state->cur_row_match_count = 0;
+                cur_row_match_count = 0;
             }
         }
     }
