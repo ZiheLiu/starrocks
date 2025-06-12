@@ -89,16 +89,7 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
         return 8;
     }
 
-    if (conf_mode == 6 && table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
-        (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
-         join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
-        if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
-            return 7;
-        }
-        return 6;
-    }
-
-    if (conf_mode == 3 &&
+    if ((conf_mode == 3 || config::enable_simd_hash_join == 6) &&
         (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
          join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) &&
         table_items->row_count > 0) {
@@ -155,12 +146,30 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
             }
         }
 
+        if (conf_mode == 6 && table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
+            (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
+             join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+            if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
+                return 7;
+            }
+            return 6;
+        }
+
         // fallback to mode 1
         if (table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
             (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
              join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
             return 1;
         }
+    }
+
+    if (conf_mode == 6 && table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
+        (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
+         join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+        if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
+            return 7;
+        }
+        return 6;
     }
 
     return 0;
