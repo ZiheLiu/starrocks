@@ -776,7 +776,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size << 8,
                                                                   table_items->log_bucket_size + 8);
         }
-    } else if constexpr (SIMD == 2 || SIMD == 0 || SIMD == 7) {
+    } else if constexpr (SIMD == 2 || SIMD == 7) {
         auto* __restrict next = table_items->next.data();
         for (size_t i = 1; i < num_rows; i++) {
             // use next to cache bucket_num
@@ -990,7 +990,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 nexts[i] = 0;
                             }
                         } else {
-                            uint32_t bucket_num = table_items->next[i];
+                            uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
+                                    data[i], table_items->bucket_size, table_items->log_bucket_size);
                             table_items->next[i] = table_items->first[bucket_num];
                             table_items->first[bucket_num] = i;
                         }
@@ -1177,7 +1178,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             nexts[i] = 0;
                         }
                     } else {
-                        uint32_t bucket_num = table_items->next[i];
+                        uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
+                                data[i], table_items->bucket_size, table_items->log_bucket_size);
                         table_items->next[i] = table_items->first[bucket_num];
                         table_items->first[bucket_num] = i;
                     }
@@ -1364,7 +1366,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         nexts[i] = 0;
                     }
                 } else {
-                    uint32_t bucket_num = table_items->next[i];
+                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
+                                                                                      table_items->log_bucket_size);
                     table_items->next[i] = table_items->first[bucket_num];
                     table_items->first[bucket_num] = i;
                 }
