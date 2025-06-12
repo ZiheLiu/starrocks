@@ -2949,7 +2949,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
     bool one_to_many = false;
 
     uint32_t i = _probe_state->cur_probe_index;
-    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (!first_probe) { // chunk_size + 1 probe
         if constexpr (SIMD == 4 || SIMD == 5) {
@@ -2965,7 +2964,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
             } while (build_index != 0);
 
             i++;
-            cur_row_match_count = 0;
+            _probe_state->cur_row_match_count = 0;
         } else {
             _probe_state->probe_index[0] = i;
             _probe_state->build_index[0] = _probe_state->cur_build_index;
@@ -2973,7 +2972,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
             if (_probe_state->next[i] == 0) {
                 i++;
-                cur_row_match_count = 0;
+                _probe_state->cur_row_match_count = 0;
             }
         }
     }
@@ -2984,6 +2983,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
 
     const size_t probe_row_count = _probe_state->probe_row_count;
     const auto* probe_build_indexes = _probe_state->next.data();
+    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (SIMD == 4 || SIMD == 5) {
         if constexpr (no_duplicated_build_keys) {
@@ -3430,7 +3430,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
     bool one_to_many = false;
 
     size_t i = _probe_state->cur_probe_index;
-    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (!first_probe) {
         if constexpr (SIMD == 4 || SIMD == 5) {
@@ -3446,20 +3445,21 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
             } while (build_index != 0);
 
             i++;
-            cur_row_match_count = 0;
+            _probe_state->cur_row_match_count = 0;
         } else {
             _probe_state->probe_index[0] = i;
             _probe_state->build_index[0] = _probe_state->cur_build_index;
             match_count = 1;
             if (_probe_state->next[i] == 0) {
                 i++;
-                cur_row_match_count = 0;
+                _probe_state->cur_row_match_count = 0;
             }
         }
     }
 
     const auto* probe_build_indexes = _probe_state->next.data();
     const size_t probe_row_count = _probe_state->probe_row_count;
+    uint32_t cur_row_match_count = _probe_state->cur_row_match_count;
 
     if constexpr (SIMD == 4 || SIMD == 5) {
         if constexpr (no_duplicated_build_keys) {
