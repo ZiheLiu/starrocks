@@ -281,7 +281,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state,
         return false;
     }
 
-    if (config::enable_simd_hash_join < 0) {
+    if (config::enable_simd_hash_join < 100) {
         return false;
     }
 
@@ -483,7 +483,7 @@ bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* stat
         return false;
     }
 
-    if (config::enable_simd_hash_join < 0) {
+    if (config::enable_simd_hash_join < 100) {
         return false;
     }
 
