@@ -764,29 +764,45 @@ public:
         }
     }
 
-    void evaluate_min_max(const ContainerType& values, uint8_t* selection, size_t size) const {
+    void evaluate_min_max(const ContainerType& values, uint8_t* __restrict__ selection, size_t size) const {
         DCHECK(_has_min_max);
         if constexpr (!IsSlice<CppType>) {
-            const auto* data = values.data();
-            if (_left_close_interval) {
-                if (_right_close_interval) {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] >= _min && data[i] <= _max);
+            auto process = [&]<bool is_left_close_interval, bool is_right_close_interval>() {
+                const auto* __restrict__ data = values.data();
+                if constexpr (is_left_close_interval) {
+                    if constexpr (is_right_close_interval) {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] >= _min && data[i] <= _max);
+                        }
+                    } else {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] >= _min && data[i] < _max);
+                        }
                     }
                 } else {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] >= _min && data[i] < _max);
+                    if constexpr (is_right_close_interval) {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] > _min && data[i] <= _max);
+                        }
+                    } else {
+                        for (size_t i = 0; i < size; i++) {
+                            selection[i] = (data[i] > _min && data[i] < _max);
+                        }
                     }
+                }
+            };
+
+            if (_left_close_interval) {
+                if (_right_close_interval) {
+                    process.template operator()<true, true>();
+                } else {
+                    process.template operator()<true, false>();
                 }
             } else {
                 if (_right_close_interval) {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] > _min && data[i] <= _max);
-                    }
+                    process.template operator()<false, true>();
                 } else {
-                    for (size_t i = 0; i < size; i++) {
-                        selection[i] = (data[i] > _min && data[i] < _max);
-                    }
+                    process.template operator()<false, false>();
                 }
             }
         } else {
@@ -803,16 +819,59 @@ public:
         return true;
     }
 
-    uint16_t evaluate_min_max(const ContainerType& values, uint16_t* sel, uint16_t sel_size, uint16_t* dst_sel) const {
+    uint16_t evaluate_min_max(const ContainerType& values, uint16_t* __restrict__ sel, uint16_t sel_size,
+                              uint16_t* dst_sel) const {
         if constexpr (!IsSlice<CppType>) {
-            const auto* data = values.data();
-            uint16_t new_size = 0;
-            for (int i = 0; i < sel_size; i++) {
-                uint16_t idx = sel[i];
-                dst_sel[new_size] = idx;
-                new_size += evaluate_min_max(data[idx]);
+            auto process = [&]<bool is_left_close_interval, bool is_right_close_interval>() {
+                const auto* __restrict__ data = values.data();
+                uint16_t new_size = 0;
+
+                if constexpr (is_left_close_interval) {
+                    if constexpr (is_right_close_interval) {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] >= _min && data[idx] <= _max);
+                        }
+                    } else {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] >= _min && data[idx] < _max);
+                        }
+                    }
+                } else {
+                    if constexpr (is_right_close_interval) {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] > _min && data[idx] <= _max);
+                        }
+                    } else {
+                        for (int i = 0; i < sel_size; i++) {
+                            uint16_t idx = sel[i];
+                            dst_sel[new_size] = idx;
+                            new_size += (data[idx] > _min && data[idx] < _max);
+                        }
+                    }
+                }
+
+                return new_size;
+            };
+
+            if (_left_close_interval) {
+                if (_right_close_interval) {
+                    return process.template operator()<true, true>();
+                } else {
+                    return process.template operator()<true, false>();
+                }
+            } else {
+                if (_right_close_interval) {
+                    return process.template operator()<false, true>();
+                } else {
+                    return process.template operator()<false, false>();
+                }
             }
-            return new_size;
         } else {
             if (sel != dst_sel) {
                 memcpy(dst_sel, sel, sel_size * sizeof(uint16_t));
@@ -821,12 +880,68 @@ public:
         }
     }
 
-    void evaluate_min_max(const ContainerType& values, uint8_t* selection, uint16_t from, uint16_t to) const {
+    void evaluate_min_max(const ContainerType& values, uint8_t* __restrict__ selection, uint16_t from,
+                          uint16_t to) const {
         if constexpr (!IsSlice<CppType>) {
-            const auto* data = values.data();
-            for (uint16_t i = from; i < to; i++) {
-                if (selection[i]) {
-                    selection[i] = evaluate_min_max(data[i]);
+            auto is_in_range = [&]<bool left_close, bool right_close>(const auto& value) {
+                if constexpr (left_close) {
+                    if constexpr (right_close) {
+                        return value >= _min && value <= _max;
+                    } else {
+                        return value >= _min && value < _max;
+                    }
+                } else {
+                    if constexpr (right_close) {
+                        return value > _min && value <= _max;
+                    } else {
+                        return value > _min && value < _max;
+                    }
+                }
+            };
+
+            auto process = [&]<bool left_close, bool right_close>() {
+                const auto* __restrict__ data = values.data();
+
+                uint16_t i = from;
+
+#ifdef __AVX2__
+                constexpr size_t kBatchNums = 256 / (8 * sizeof(uint8_t));
+                const __m256i all0 = _mm256_setzero_si256();
+                for (; i + kBatchNums <= to; i += kBatchNums) {
+                    __m256i vselection = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(selection + i));
+                    const uint32_t selection_mask = _mm256_movemask_epi8(_mm256_cmpgt_epi8(vselection, all0));
+                    if (selection_mask == 0) {                  // all not selected.
+                    } else if (selection_mask == 0xffff'ffff) { // all selected.
+                        for (uint16_t j = 0; j < kBatchNums; j++) {
+                            selection[i + j] = is_in_range.template operator()<left_close, right_close>(data[i + j]);
+                        }
+                    } else { // some selected
+                        phmap::priv::BitMask<uint32_t, 32> bitmask(selection_mask);
+                        for (auto j : bitmask) {
+                            selection[i + j] = is_in_range.template operator()<left_close, right_close>(data[i + j]);
+                        }
+                    }
+                }
+#endif
+
+                for (; i < to; i++) {
+                    if (selection[i]) {
+                        selection[i] = is_in_range.template operator()<left_close, right_close>(data[i]);
+                    }
+                }
+            };
+
+            if (_left_close_interval) {
+                if (_right_close_interval) {
+                    process.template operator()<true, true>();
+                } else {
+                    process.template operator()<true, false>();
+                }
+            } else {
+                if (_right_close_interval) {
+                    process.template operator()<false, true>();
+                } else {
+                    process.template operator()<false, false>();
                 }
             }
         }

@@ -23,6 +23,8 @@
 
 #include "cache/object_cache/object_cache.h"
 #include "common/compiler_util.h"
+#include "common/config.h"
+#include "common/status.h"
 #include "exec/hdfs_scanner.h"
 #include "formats/parquet/column_reader.h"
 #include "formats/parquet/utils.h"
@@ -57,6 +59,8 @@ PageReader::PageReader(io::SeekableInputStream* stream, uint64_t start_offset, u
 Status PageReader::next_page() {
     if (_opts.use_file_pagecache) {
         _cache_buf.reset();
+        _hit_cache = false;
+        _skip_page_cache = false;
     }
     return seek_to_offset(_next_header_pos);
 }
@@ -66,6 +70,7 @@ Status PageReader::_deal_page_with_cache() {
     ObjectCacheHandle* cache_handle = nullptr;
     Status st = _cache->lookup(page_cache_key, &cache_handle);
     if (st.ok()) {
+        _hit_cache = true;
         _opts.stats->page_cache_read_counter += 1;
         _cache_buf = *(static_cast<const BufferPtr*>(_cache->value(cache_handle)));
         _cache->release(cache_handle);
@@ -77,6 +82,10 @@ Status PageReader::_deal_page_with_cache() {
     } else {
         _cache_buf = std::make_shared<std::vector<uint8_t>>();
         RETURN_IF_ERROR(_read_and_deserialize_header(true));
+        if (config::enable_adjustment_page_cache_skip && !_cache_decompressed_data()) {
+            _skip_page_cache = true;
+            return Status::OK();
+        }
         RETURN_IF_ERROR(_read_and_decompress_internal(true));
         BufferPtr* capture = new BufferPtr(_cache_buf);
         Status st = Status::InternalError("write file page cache failed");
@@ -238,15 +247,19 @@ std::string& PageReader::_current_page_cache_key() {
 
 StatusOr<Slice> PageReader::read_and_decompress_page_data() {
     _opts.stats->page_read_counter += 1;
-    if (!_opts.use_file_pagecache) {
+    if (!_opts.use_file_pagecache || _skip_page_cache) {
         RETURN_IF_ERROR(_read_and_decompress_internal(false));
         return _uncompressed_data;
     } else {
         if (_cache_decompressed_data()) {
-            _opts.stats->page_cache_read_decompressed_counter += 1;
+            if (_hit_cache) {
+                _opts.stats->page_cache_read_decompressed_counter += 1;
+            }
             _uncompressed_data = Slice(_cache_buf->data() + _header_length, _cache_buf->size() - _header_length);
         } else {
-            _opts.stats->page_cache_read_compressed_counter += 1;
+            if (_hit_cache) {
+                _opts.stats->page_cache_read_compressed_counter += 1;
+            }
             Slice input = Slice(_cache_buf->data() + _header_length, _cache_buf->size() - _header_length);
             TRY_CATCH_BAD_ALLOC(
                     raw::stl_vector_resize_uninitialized(_uncompressed_buf.get(), _cur_header.uncompressed_page_size));
@@ -336,16 +349,18 @@ Status PageReader::_read_and_decompress_internal(bool need_fill_cache) {
     // if it's compressed, we have to uncompress page
     // otherwise we just assign slice.
     if (is_compressed) {
-        if (need_fill_cache && _cache_decompressed_data()) {
+        if (!need_fill_cache) {
+            TRY_CATCH_BAD_ALLOC(raw::stl_vector_resize_uninitialized(_uncompressed_buf.get(), uncompressed_size));
+            _uncompressed_data = Slice(_uncompressed_buf->data(), uncompressed_size);
+            return _decompress_page(read_data, &_uncompressed_data);
+        } else if (_cache_decompressed_data()) {
             auto original_size = _cache_buf->size();
             TRY_CATCH_BAD_ALLOC(
                     raw::stl_vector_resize_uninitialized(_cache_buf.get(), uncompressed_size + original_size));
             _uncompressed_data = Slice(_cache_buf->data() + original_size, uncompressed_size);
-        } else {
-            TRY_CATCH_BAD_ALLOC(raw::stl_vector_resize_uninitialized(_uncompressed_buf.get(), uncompressed_size));
-            _uncompressed_data = Slice(_uncompressed_buf->data(), uncompressed_size);
+            return _decompress_page(read_data, &_uncompressed_data);
         }
-        return _decompress_page(read_data, &_uncompressed_data);
+        // if we cache compressed data, we can decompress it later.
     } else {
         _uncompressed_data = read_data;
     }

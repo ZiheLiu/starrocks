@@ -183,7 +183,8 @@ Status GroupReader::get_next(ChunkPtr* chunk, size_t* row_count) {
         }
 
         // we really have predicate to run round by round
-        if (!_dict_column_indices.empty() || !_left_no_dict_filter_conjuncts_by_slot.empty()) {
+        if (!_dict_column_indices.empty() || !_left_no_dict_filter_conjuncts_by_slot.empty() ||
+            !_param.runtime_filter_preds.empty()) {
             has_filter = true;
             ASSIGN_OR_RETURN(size_t hit_count, _read_range_round_by_round(r, &chunk_filter, &active_chunk));
             if (hit_count == 0) {
@@ -289,7 +290,19 @@ StatusOr<size_t> GroupReader::_read_range_round_by_round(const Range<uint64_t>& 
         }
         first_selectivity = first_selectivity < 0 ? hit_count * 1.0 / filter->size() : first_selectivity;
     }
-
+    if (!_param.runtime_filter_preds.empty()) {
+        // @TODO ensure runtime filter column in early read stage
+        if (hit_count > 0) {
+            [[maybe_unused]] size_t origin_count = hit_count;
+            RETURN_IF_ERROR(
+                    _param.runtime_filter_preds.evaluate(chunk->get(), filter->data(), 0, (*chunk)->num_rows()));
+            hit_count = SIMD::count_nonzero(*filter);
+            // if (origin_count != hit_count) {
+            //     LOG(INFO) << "evaluate runtiem filter predicates, before: " << origin_count << ", after: " << hit_count
+            //         << ", active_columns: " << _active_column_indices.size() << ", lazy_columns:" << _lazy_column_indices.size();
+            // }
+        }
+    }
     return hit_count;
 }
 
@@ -378,6 +391,9 @@ Status GroupReader::_prepare_column_readers() const {
 void GroupReader::_process_columns_and_conjunct_ctxs() {
     const auto& conjunct_ctxs_by_slot = _param.conjunct_ctxs_by_slot;
     int read_col_idx = 0;
+    std::unordered_set<ColumnId> rf_used_columns = _param.runtime_filter_preds.get_column_ids();
+
+    // TODO: find all slot_id that rf used and use dict filter , remove them from rf or avoid lazy decode
 
     for (auto& column : _param.read_cols) {
         SlotId slot_id = column.slot_id();
@@ -386,6 +402,10 @@ void GroupReader::_process_columns_and_conjunct_ctxs() {
                 std::vector<std::string> sub_field_path;
                 if (_try_to_use_dict_filter(column, ctx, sub_field_path, column.decode_needed)) {
                     _use_as_dict_filter_column(read_col_idx, slot_id, sub_field_path);
+                    LOG(INFO) << "use slot_id: " << slot_id << " as dict filter column, " << (void*)this;
+                    // @TODO should make scan operator can eval this rf?
+                    _param.runtime_filter_preds.remove_predicate(slot_id);
+                    // rm predicate
                 } else {
                     _left_conjunct_ctxs.emplace_back(ctx);
                     // used for struct col, some dict filter conjunct pushed down to leaf some left
@@ -397,6 +417,11 @@ void GroupReader::_process_columns_and_conjunct_ctxs() {
                     }
                 }
             }
+            _active_column_indices.emplace_back(read_col_idx);
+        } else if (rf_used_columns.contains(slot_id)) {
+            // @TODO for dict column, we should avoid pushdown rf?
+            // @TODO if dict column?
+            // LOG(INFO) << "add slot_id: " << slot_id << " to active column indices, " << (void*)this;
             _active_column_indices.emplace_back(read_col_idx);
         } else {
             if (config::parquet_late_materialization_enable) {

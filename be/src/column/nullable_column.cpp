@@ -196,7 +196,7 @@ bool NullableColumn::append_continuous_fixed_length_strings(const char* data, si
 size_t NullableColumn::append_numbers(const void* buff, size_t length) {
     size_t n;
     if ((n = _data_column->append_numbers(buff, length)) > 0) {
-        null_column_data().insert(null_column_data().end(), n, 0);
+        _null_column->append_default(n);
     }
     DCHECK_EQ(_null_column->size(), _data_column->size());
     return n;

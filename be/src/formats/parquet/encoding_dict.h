@@ -20,6 +20,7 @@
 #include "column/column.h"
 #include "column/column_helper.h"
 #include "column/nullable_column.h"
+#include "column/vectorized_fwd.h"
 #include "common/config.h"
 #include "common/status.h"
 #include "formats/parquet/encoding.h"
@@ -125,9 +126,33 @@ public:
         return Status::OK();
     }
 
+    Status next_batch_with_nulls(size_t count, const NullInfos& null_infos, ColumnContentType content_type, Column* dst,
+                                 const FilterData* filter) override {
+        if (_get_dict_size() > _dict_size_threshold && config::parquet_cache_aware_dict_decoder_enable) {
+            return _do_next_batch_with_nulls(count, null_infos, content_type, dst, filter);
+        } else {
+            return _do_next_batch_with_nulls(count, null_infos, content_type, dst, nullptr);
+        }
+        return Status::OK();
+    }
+
 protected:
+    void _next_null_column(size_t count, const NullInfos& null_infos, NullableColumn* dst) {
+        size_t null_cnt = null_infos.num_nulls;
+        NullColumn* null_column = down_cast<NullableColumn*>(dst)->mutable_null_column();
+        const uint8_t* __restrict is_nulls = null_infos.nulls_data();
+        auto& null_data = null_column->get_data();
+        size_t prev_num_rows = null_data.size();
+        raw::stl_vector_resize_uninitialized(&null_data, count + prev_num_rows);
+        uint8_t* __restrict__ dst_nulls = null_data.data() + prev_num_rows;
+        memcpy(dst_nulls, is_nulls, count);
+        down_cast<NullableColumn*>(dst)->set_has_null(null_cnt > 0);
+    }
+
     virtual size_t _get_dict_size() const = 0;
     virtual Status _next_batch_value(size_t count, Column* dst, const FilterData* filter) = 0;
+    virtual Status _do_next_batch_with_nulls(size_t count, const NullInfos& null_infos, ColumnContentType content_type,
+                                             Column* dst, const FilterData* filter) = 0;
     RleBatchDecoder<uint32_t> _rle_batch_reader;
 
 private:
@@ -173,8 +198,182 @@ public:
         return Status::OK();
     }
 
+    Status _do_next_batch_with_nulls(size_t count, const NullInfos& null_infos, ColumnContentType content_type,
+                                     Column* dst, const FilterData* filter) override {
+        CHECK(dst->is_nullable());
+        if (null_infos.num_ranges <= 2) {
+            return Decoder::next_batch_with_nulls(count, null_infos, content_type, dst, filter);
+        }
+        size_t cur_size = dst->size();
+        _next_null_column(count, null_infos, down_cast<NullableColumn*>(dst));
+
+        switch (content_type) {
+        case DICT_CODE: {
+            return next_dict_code_batch_with_nulls(count, cur_size, null_infos, dst);
+        }
+        case VALUE: {
+            return next_value_batch_with_nulls(count, cur_size, null_infos, dst, filter);
+        }
+        default:
+            return Status::NotSupported("read type not supported");
+        }
+        return Status::OK();
+    }
+
+    template <class DataType>
+    void assign_data_with_nulls(size_t count, size_t num_non_nulls, const uint8_t* nulls, const DataType* src_data,
+                                DataType* dst_data) {
+        // opt branch for process sparse column
+        if (num_non_nulls < count / 10) {
+            size_t cnt = 0;
+            size_t i = 0;
+#ifdef __AVX2__
+            for (i = 0; i + 32 <= count; i += 32) {
+                // Load the next 32 elements of is_nulls into a mask
+                __m256i loaded = _mm256_loadu_si256((__m256i*)&nulls[i]);
+                int mask = _mm256_movemask_epi8(_mm256_cmpeq_epi8(loaded, _mm256_setzero_si256()));
+                phmap::priv::BitMask<uint32_t, 32> bitmask(mask);
+                for (auto idx : bitmask) {
+                    dst_data[i + idx] = src_data[cnt++];
+                }
+            }
+#endif
+            // process tail elements
+            for (; i < count; ++i) {
+                dst_data[i] = src_data[cnt];
+                cnt += !nulls[i];
+            }
+            CHECK_EQ(cnt, num_non_nulls) << "count:" << count << " null_cnt:" << count - num_non_nulls;
+        } else {
+            size_t cnt = 0;
+            for (size_t i = 0; i < count; ++i) {
+                dst_data[i] = src_data[cnt];
+                cnt += !nulls[i];
+            }
+            CHECK_EQ(cnt, num_non_nulls) << "count:" << count << " null_cnt:" << count - num_non_nulls;
+        }
+    }
+
+    Status next_dict_code_batch_with_nulls(size_t count, size_t cur_size, const NullInfos& null_infos, Column* dst) {
+        size_t null_cnt = null_infos.num_nulls;
+        auto nullable_column = down_cast<NullableColumn*>(dst);
+
+        size_t read_count = count - null_cnt;
+        Int32Column* data_column = down_cast<Int32Column*>(nullable_column->data_column().get());
+        // resize data
+        data_column->resize_uninitialized(cur_size + count);
+        int32_t* __restrict__ data = data_column->get_data().data() + cur_size;
+
+        uint32_t read_dict_data[read_count + 1];
+        if (read_count == 0) {
+            return Status::OK();
+        }
+        auto decoded_num = _rle_batch_reader.GetBatch(read_dict_data, read_count);
+        if (decoded_num < read_count) {
+            return Status::InternalError("didn't get enough data from dict-decoder");
+        }
+
+        assign_data_with_nulls(count, read_count, null_infos.nulls_data(), (int32_t*)read_dict_data, data);
+
+        return Status::OK();
+    }
+
+    Status next_value_batch_with_nulls(size_t count, size_t cur_size, const NullInfos& null_infos, Column* dst,
+                                       const FilterData* filter) {
+        CHECK(dst->is_nullable());
+        const uint8_t* __restrict is_nulls = null_infos.nulls_data();
+        // assign null infos
+        size_t null_cnt = null_infos.num_nulls;
+        auto nullable_column = down_cast<NullableColumn*>(dst);
+        FixedLengthColumn<T>* data_column = down_cast<FixedLengthColumn<T>*>(nullable_column->data_column().get());
+        // resize data
+        data_column->resize_uninitialized(cur_size + count);
+        T* __restrict__ data = data_column->get_data().data() + cur_size;
+
+        size_t read_count = count - null_cnt;
+
+        if (read_count == 0) {
+            return Status::OK();
+        }
+
+        if (filter) {
+            _indexes.reserve(read_count);
+            auto decoded_num = _rle_batch_reader.GetBatch(&_indexes[0], read_count);
+            if (decoded_num < read_count) {
+                return Status::InternalError("didn't get enough data from dict-decoder");
+            }
+
+            auto flag = 0;
+            size_t size = _dict.size();
+            for (int i = 0; i < read_count; i++) {
+                flag |= _indexes[i] >= size;
+            }
+            if (UNLIKELY(flag)) {
+                return Status::InternalError("Index not in dictionary bounds");
+            }
+
+            size_t cnt = 0;
+            for (int i = 0; i < count; i++) {
+                if (filter[i] & !is_nulls[i]) {
+                    data[i] = _dict[_indexes[cnt]];
+                }
+                cnt += !is_nulls[i];
+            }
+        } else {
+            T read_data[read_count + 1];
+            auto ret = _rle_batch_reader.GetBatchWithDict(_dict.data(), _dict.size(), read_data, read_count);
+            if (UNLIKELY(ret <= 0)) {
+                return Status::InternalError("DictDecoder GetBatchWithDict failed");
+            }
+
+            assign_data_with_nulls(count, read_count, null_infos.nulls_data(), read_data, data);
+        }
+
+        return Status::OK();
+    }
+
 private:
     size_t _get_dict_size() const override { return _dict.size() * SIZE_OF_TYPE; }
+
+    static constexpr uint32_t _simd_register_bitwidth() {
+#ifdef __AVX2__
+        return 256;
+#elif defined(__ARM_NEON) && defined(__aarch64__)
+        return 128;
+#else
+        return 128;
+#endif
+    }
+
+    /// dest[i] = is_filtered[i] != 0 ? src[indexes[i]] : 0
+    template <typename DataType, typename IndexType, typename CondType>
+    static void _gather(DataType* dest, const DataType* src, const IndexType* indexes, const CondType* is_filtered,
+                        size_t num_rows) {
+        static_assert(std::is_integral_v<IndexType>);
+
+        static constexpr uint32_t SIMD_WIDTH = _simd_register_bitwidth();
+        static constexpr uint32_t NUM_BATCH_VALUES = SIMD_WIDTH / (8 * sizeof(DataType));
+        DataType buffer[NUM_BATCH_VALUES];
+
+        size_t i = 0;
+        for (; i + NUM_BATCH_VALUES <= num_rows; i += NUM_BATCH_VALUES) {
+            for (int j = 0; j < NUM_BATCH_VALUES; j++) {
+                if (is_filtered[i + j] == 0) {
+                    buffer[j] = src[indexes[i + j]];
+                }
+            }
+
+            for (int j = 0; j < NUM_BATCH_VALUES; j++) {
+                dest[i + j] = buffer[j];
+            }
+        }
+
+        for (; i < num_rows; i++) {
+            if (is_filtered[i]) {
+                dest[i] = src[indexes[i]];
+            }
+        }
+    }
 
     Status _next_batch_value(size_t count, Column* dst, const FilterData* filter) override {
         FixedLengthColumn<T>* data_column /* = nullptr */;
@@ -206,11 +405,13 @@ private:
                 return Status::InternalError("Index not in dictionary bounds");
             }
 
-            for (int i = 0; i < count; i++) {
-                if (filter[i]) {
-                    data[i] = _dict[_indexes[i]];
-                }
-            }
+            _gather(data, _dict.data(), _indexes.data(), filter, count);
+
+            // for (int i = 0; i < count; i++) {
+            //     if (filter[i]) {
+            //         data[i] = _dict[_indexes[i]];
+            //     }
+            // }
         } else {
             auto ret = _rle_batch_reader.GetBatchWithDict(_dict.data(), _dict.size(), data, count);
             if (UNLIKELY(ret <= 0)) {
@@ -234,8 +435,9 @@ public:
     ~DictDecoder() override = default;
 
     Status set_dict(int chunk_size, size_t num_values, Decoder* decoder) override {
-        std::vector<Slice> slices(num_values);
-        RETURN_IF_ERROR(decoder->next_batch(num_values, (uint8_t*)&slices[0]));
+        auto slices_data = std::make_unique_for_overwrite<uint8_t[]>(num_values * sizeof(Slice));
+        Slice* slices = reinterpret_cast<Slice*>(slices_data.get());
+        RETURN_IF_ERROR(decoder->next_batch(num_values, (uint8_t*)slices));
 
         size_t total_length = 0;
         for (int i = 0; i < num_values; ++i) {
@@ -245,7 +447,8 @@ public:
         _dict.resize(num_values);
 
         // reserve enough memory to use append_strings_overflow
-        _dict_data.resize(total_length + Column::APPEND_OVERFLOW_MAX_SIZE);
+        raw::stl_vector_resize_uninitialized(&_dict_data, total_length + Column::APPEND_OVERFLOW_MAX_SIZE);
+
         size_t offset = 0;
         _max_value_length = 0;
         for (int i = 0; i < num_values; ++i) {
@@ -293,9 +496,10 @@ public:
                 // if null, we assign dict code 0(there should be at least one value?)
                 // null = 0, mask = 0xffffffff
                 // null = 1, mask = 0x00000000
-                uint32_t mask = ~(static_cast<uint32_t>(-null_data_ptr[i]));
-                int32_t code = mask & dict_codes[i];
+                const size_t non_null_mask = ~(static_cast<size_t>(-null_data_ptr[i]));
+                const int32_t code = non_null_mask & dict_codes[i];
                 slices[i] = _dict[code];
+                slices[i].size &= non_null_mask; // if null, set size to 0
             }
         }
 
@@ -341,6 +545,10 @@ public:
 private:
     size_t _get_dict_size() const override { return _dict_data.size(); }
 
+    Status _do_next_batch_with_nulls(size_t count, const NullInfos& null_infos, ColumnContentType content_type,
+                                     Column* dst, const FilterData* filter) override {
+        return Decoder::next_batch_with_nulls(count, null_infos, content_type, dst, filter);
+    }
     Status _next_batch_value(size_t count, Column* dst, const FilterData* filter) override {
         if (filter) {
             _indexes.reserve(count);

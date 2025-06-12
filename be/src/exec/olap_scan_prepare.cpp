@@ -1363,7 +1363,7 @@ StatusOr<RuntimeFilterPredicates> ScanConjunctsManager::get_runtime_filter_predi
             continue;
         }
         auto column_id = parser->column_id(*slot_desc);
-        desc->set_has_push_down_to_storage(_opts.is_olap_scan);
+        desc->set_has_push_down_to_storage(true);
         predicates.add_predicate(obj_pool->add(new RuntimeFilterPredicate(desc, column_id)));
     }
     return predicates;

@@ -293,6 +293,8 @@ Status FileReader::_init_group_readers() {
     _group_reader_param.file_size = _file_size;
     _group_reader_param.datacache_options = &_datacache_options;
 
+    _group_reader_param.runtime_filter_preds = _scanner_ctx->runtime_filter_preds;
+
     int64_t row_group_first_row = 0;
     // select and create row group readers.
     for (size_t i = 0; i < _file_metadata->t_metadata().row_groups.size(); i++) {

@@ -36,6 +36,7 @@
 #include <glog/logging.h>
 
 #include "gutil/port.h"
+#include "simd/gather.h"
 #include "util/bit_stream_utils.inline.h"
 #include "util/bit_util.h"
 
@@ -975,6 +976,41 @@ static inline bool IndicesInRange(const T* values, int32_t length, int32_t dicti
     return IndexInRange(min_index, dictionary_length) && IndexInRange(max_index, dictionary_length);
 }
 
+static constexpr uint32_t _simd_register_bitwidth() {
+#ifdef __AVX2__
+    return 256;
+#elif defined(__ARM_NEON) && defined(__aarch64__)
+    return 128;
+#else
+    return 128;
+#endif
+}
+
+/// dest[i] = src[indexes[i]]
+template <typename DataType, typename IndexType>
+static void _gather(DataType* dest, const DataType* src, const IndexType* indexes, size_t num_rows) {
+    static_assert(std::is_integral_v<IndexType>);
+
+    static constexpr uint32_t SIMD_WIDTH = _simd_register_bitwidth();
+    static constexpr uint32_t NUM_BATCH_VALUES = SIMD_WIDTH / (8 * sizeof(DataType));
+    DataType buffer[NUM_BATCH_VALUES];
+
+    size_t i = 0;
+    for (; i + NUM_BATCH_VALUES <= num_rows; i += NUM_BATCH_VALUES) {
+        for (int j = 0; j < NUM_BATCH_VALUES; j++) {
+            buffer[j] = src[indexes[i + j]];
+        }
+
+        for (int j = 0; j < NUM_BATCH_VALUES; j++) {
+            dest[i + j] = buffer[j];
+        }
+    }
+
+    for (; i < num_rows; i++) {
+        dest[i] = src[indexes[i]];
+    }
+}
+
 template <typename T>
 template <typename TV>
 inline int RleBatchDecoder<T>::GetBatchWithDict(const TV* dictionary, int32_t dictionary_length, TV* values,
@@ -1014,9 +1050,9 @@ inline int RleBatchDecoder<T>::GetBatchWithDict(const TV* dictionary, int32_t di
         if (UNLIKELY(!IndicesInRange(indices, num_literals_to_set, dictionary_length))) {
             return -1;
         }
-        for (int i = 0; i < num_literals_to_set; ++i) {
-            values[num_consumed + i] = dictionary[indices[i]];
-        }
+
+        _gather(values + num_consumed, dictionary, indices, num_literals_to_set);
+
         num_consumed += num_literals_to_set;
     }
     return num_consumed;

@@ -501,18 +501,19 @@ Status ScalarColumnReader::_read_range_impl(const Range<uint64_t>& range, const 
         }
         _ori_column = dst;
         dst = _tmp_code_column;
-        dst->reserve(range.span_size());
+        dst->reserve(dst->size() + range.span_size());
         SCOPED_RAW_TIMER(&_opts.stats->column_read_ns);
         return _reader->read_range(range, filter, content_type, dst.get());
     } else {
         if (!_converter->need_convert) {
             SCOPED_RAW_TIMER(&_opts.stats->column_read_ns);
+            dst->reserve(dst->size() + range.span_size());
             return _reader->read_range(range, filter, content_type, dst.get());
         } else {
             if (_tmp_intermediate_column == nullptr) {
                 _tmp_intermediate_column = _converter->create_src_column();
             }
-            _tmp_intermediate_column->reserve(range.span_size());
+            _tmp_intermediate_column->reserve(_tmp_intermediate_column->size() + range.span_size());
             {
                 SCOPED_RAW_TIMER(&_opts.stats->column_read_ns);
                 RETURN_IF_ERROR(_reader->read_range(range, filter, content_type, _tmp_intermediate_column.get()));

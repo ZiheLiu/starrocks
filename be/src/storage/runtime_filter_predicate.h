@@ -35,6 +35,7 @@ public:
     bool init(int32_t driver_sequence);
 
 protected:
+    ColumnPtr get_column(Chunk* chunk);
     RuntimeFilterProbeDescriptor* _rf_desc;
     const RuntimeFilter* _rf = nullptr;
     ColumnId _column_id;
@@ -78,7 +79,19 @@ public:
     RuntimeFilterPredicates(int32_t driver_sequence) : _driver_sequence(driver_sequence) {}
 
     void add_predicate(RuntimeFilterPredicate* pred) { _rf_predicates.emplace_back(pred); }
+    void remove_predicate(ColumnId column_id) {
+        _rf_predicates.erase(std::remove_if(_rf_predicates.begin(), _rf_predicates.end(),
+                                            [column_id](auto pred) { return pred->get_column_id() == column_id; }),
+                             _rf_predicates.end());
+    }
     bool empty() const { return _rf_predicates.empty(); }
+    std::unordered_set<ColumnId> get_column_ids() const {
+        std::unordered_set<ColumnId> result;
+        for (auto pred : _rf_predicates) {
+            result.insert(pred->get_column_id());
+        }
+        return result;
+    }
 
     Status evaluate(Chunk* chunk, uint8_t* selection, uint16_t from, uint16_t to);
 

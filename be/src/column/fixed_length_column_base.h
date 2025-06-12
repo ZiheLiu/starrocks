@@ -140,7 +140,7 @@ public:
         size_t dst_offset = _data.size();
         raw::stl_vector_resize_uninitialized(&_data, _data.size() + count);
         T* dst = _data.data() + dst_offset;
-        memcpy(dst, buff, length);
+        strings::memcpy_inlined(dst, buff, length);
         return count;
     }
 

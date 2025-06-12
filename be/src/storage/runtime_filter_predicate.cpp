@@ -32,8 +32,23 @@ bool RuntimeFilterPredicate::init(int32_t driver_sequence) {
     return _rf != nullptr;
 }
 
+ColumnPtr RuntimeFilterPredicate::get_column(Chunk* chunk) {
+    if (chunk->is_cid_exist(_column_id)) {
+        return chunk->get_column_by_id(_column_id);
+    }
+    if (chunk->is_slot_exist(_column_id)) {
+        return chunk->get_column_by_slot_id(_column_id);
+    }
+    return nullptr;
+}
+
 Status RuntimeFilterPredicate::evaluate(Chunk* chunk, uint8_t* selection, uint16_t from, uint16_t to) {
-    auto column = chunk->get_column_by_id(_column_id);
+    // auto column = chunk->get_column_by_id(_column_id);
+    ColumnPtr column = get_column(chunk);
+    if (column == nullptr) {
+        return Status::OK();
+    }
+    // auto column = chunk->is_cid_exist(_column_id) ? chunk->get_column_by_id(_column_id) : chunk->get_column_by_slot_id(_column_id);
     if (_rf->num_hash_partitions() > 0) {
         hash_values.resize(column->size());
         _rf->compute_partition_index(_rf_desc->layout(), {column.get()}, selection, from, to, hash_values);
@@ -47,7 +62,12 @@ StatusOr<uint16_t> RuntimeFilterPredicate::evaluate(Chunk* chunk, uint16_t* sel,
     if (sel_size == 0) {
         return sel_size;
     }
-    auto column = chunk->get_column_by_id(_column_id);
+    // auto column = chunk->get_column_by_id(_column_id);
+    // auto column = chunk->is_cid_exist(_column_id) ? chunk->get_column_by_id(_column_id) : chunk->get_column_by_slot_id(_column_id);
+    auto column = get_column(chunk);
+    if (column == nullptr) {
+        return sel_size;
+    }
     if (_rf->num_hash_partitions() > 0) {
         hash_values.resize(column->size());
         _rf->compute_partition_index(_rf_desc->layout(), {column.get()}, sel, sel_size, hash_values);
@@ -57,8 +77,15 @@ StatusOr<uint16_t> RuntimeFilterPredicate::evaluate(Chunk* chunk, uint16_t* sel,
 }
 
 Status DictColumnRuntimeFilterPredicate::evaluate(Chunk* chunk, uint8_t* selection, uint16_t from, uint16_t to) {
+    auto column_ptr = get_column(chunk);
+    if (column_ptr == nullptr) {
+        return Status::OK();
+    }
+    auto column = column_ptr.get();
     RETURN_IF_ERROR(prepare());
-    auto column = chunk->get_column_by_id(_column_id).get();
+    // auto column = chunk->get_column_by_id(_column_id).get();
+    // auto column = chunk->is_cid_exist(_column_id) ? chunk->get_column_by_id(_column_id).get() : chunk->get_column_by_slot_id(_column_id).get();
+
     if (column->is_nullable()) {
         const auto* nullable_column = down_cast<const NullableColumn*>(column);
         // dict code column must be int column
@@ -94,8 +121,15 @@ StatusOr<uint16_t> DictColumnRuntimeFilterPredicate::evaluate(Chunk* chunk, uint
     if (sel_size == 0) {
         return sel_size;
     }
+    auto column_ptr = get_column(chunk);
+    if (column_ptr == nullptr) {
+        return sel_size;
+    }
+    auto column = column_ptr.get();
     RETURN_IF_ERROR(prepare());
-    auto column = chunk->get_column_by_id(_column_id).get();
+    // auto column = chunk->get_column_by_id(_column_id).get();
+    // auto column = chunk->is_cid_exist(_column_id) ? chunk->get_column_by_id(_column_id).get() : chunk->get_column_by_slot_id(_column_id).get();
+
     uint16_t new_size = 0;
     if (column->is_nullable()) {
         const auto* nullable_column = down_cast<const NullableColumn*>(column);
