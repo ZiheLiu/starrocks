@@ -118,13 +118,16 @@ struct JoinHashTableItems {
     // about the bucket-chained hash table of this kind.
     Buffer<uint32_t> first;
     Buffer<uint32_t> next;
+    Buffer<uint32_t> cached_nexts;
     Buffer<uint8_t> set_has_value;
+    Buffer<int64_t> set_buckets;
     Buffer<DenseGroup> dense_groups;
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;
     Buffer<uint8_t> bytes_per_key;
-    int32_t min_value = 0;
-    int32_t max_value = 0;
+    uint32_t num_cached_nexts = 0;
+    int64_t min_value = 0;
+    int64_t max_value = 0;
     uint32_t bucket_size = 0;
     uint32_t log_bucket_size = 0;
     uint32_t row_count = 0; // real row count
@@ -190,6 +193,14 @@ struct HashTableProbeState {
     Buffer<uint32_t>& build_index;
     Buffer<uint32_t>& probe_index;
 
+    struct ProbeBucketResult {
+        uint32_t probe_row_id;
+        uint32_t build_row_id;
+        // uint32_t first_next;
+    };
+    Buffer<ProbeBucketResult> probe_buckets;
+    uint32_t probe_buckets_len = 0;
+
     // when exec right join
     // record the build items is matched or not
     // 0: not matched, 1: matched
@@ -205,6 +216,7 @@ struct HashTableProbeState {
     JoinMatchFlag match_flag = JoinMatchFlag::NORMAL; // all match one
 
     bool has_remain = false;
+    bool use_cached = false;
     // When one-to-many, one probe may not be able to probe all the data,
     // cur_probe_index records the position of the last probe
     uint32_t cur_probe_times = 0;
@@ -266,6 +278,8 @@ struct HashTableProbeState {
                                                                    : rhs.probe_index_column->clone()),
               build_index(down_cast<UInt32Column*>(build_index_column.get())->get_data()),
               probe_index(down_cast<UInt32Column*>(probe_index_column.get())->get_data()),
+              probe_buckets(rhs.probe_buckets),
+              probe_buckets_len(rhs.probe_buckets_len),
               build_match_index(rhs.build_match_index),
               probe_match_index(rhs.probe_match_index),
               probe_match_filter(rhs.probe_match_filter),
@@ -423,9 +437,18 @@ public:
     static const Buffer<CppType>& get_key_data(const JoinHashTableItems& table_items);
     static void construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                      HashTableProbeState* probe_state);
+
+    static const auto* get_interval_keys(const JoinHashTableItems& table_items);
+
     template <uint8_t SIMD>
     static void do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                         HashTableProbeState* probe_state);
+    template <uint8_t SIMD>
+    static bool do_construct_hash_table_by_sort_opt(RuntimeState* state, JoinHashTableItems* table_items,
+                                                    HashTableProbeState* probe_state);
+    template <uint8_t SIMD>
+    static bool do_construct_hash_table_by_sort_opt_4(RuntimeState* state, JoinHashTableItems* table_items,
+                                                      HashTableProbeState* probe_state);
 };
 
 template <LogicalType LT>
@@ -740,6 +763,12 @@ private:
     template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
     void _do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
+    template <bool first_probe>
+    void _do_probe_from_ht_mode6(RuntimeState* state, const Buffer<CppType>& build_data,
+                                 const Buffer<CppType>& probe_data);
+    void _do_probe_from_ht_mode6_first(RuntimeState* state, const Buffer<CppType>& build_data,
+                                       const Buffer<CppType>& probe_data);
+
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                        const Buffer<CppType>& probe_data);
 
@@ -753,6 +782,11 @@ private:
     template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
     void _do_probe_from_ht_for_left_outer_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                                const Buffer<CppType>& probe_data);
+    template <bool first_probe>
+    void _do_probe_from_ht_for_left_outer_join_mode6(RuntimeState* state, const Buffer<CppType>& build_data,
+                                                     const Buffer<CppType>& probe_data);
+    void _do_probe_from_ht_for_left_outer_join_mode6_first(RuntimeState* state, const Buffer<CppType>& build_data,
+                                                           const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                            const Buffer<CppType>& build_data,
                                                                            const Buffer<CppType>& probe_data);

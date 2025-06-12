@@ -14,6 +14,7 @@
 
 #include <simd/gather.h>
 
+#include "exprs/column_ref.h"
 #include "simd/simd.h"
 #include "util/runtime_profile.h"
 
@@ -25,7 +26,9 @@
 
 namespace starrocks {
 
-static constexpr uint32_t BLOOM_FILTER_MASK = 0x00FF'FFFFul;
+static constexpr uint32_t BLOOM_FILTER_DATA_MASK = 0x00FF'FFFFul;
+static constexpr uint32_t BLOOM_FILTER_BF_MASK = 0xFF00'0000ul;
+static constexpr uint64_t BLOOM_FILTER_DATA_MASK64 = 0x00FF'FFFF'FFFF'FFFFul;
 
 static constexpr uint8_t BLOOM_FILTERS[256] = {
         1,  3,   5,  9,   17, 33,  65,  129, 3,   3,   7,   11,  19,  35,  67,  131, 5,   7,   5,   13,  21,  37,
@@ -53,10 +56,24 @@ static uint32_t compute_min_ge_power2(uint32_t num) {
 }
 
 template <LogicalType LT>
+const auto* JoinBuildFunc<LT>::get_interval_keys(const JoinHashTableItems& table_items) {
+    if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
+        if constexpr (sizeof(CppType) == 4) {
+            return reinterpret_cast<const int32_t*>(get_key_data(table_items).data());
+        } else {
+            return reinterpret_cast<const int64_t*>(get_key_data(table_items).data());
+        }
+    } else {
+        return static_cast<const int32_t*>(nullptr);
+    }
+}
+
+template <LogicalType LT>
 uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
     const int64_t conf_mode = abs(config::enable_simd_hash_join);
     const auto join_type = table_items->join_type;
-    if (conf_mode == 1 && table_items->bucket_size <= BLOOM_FILTER_MASK &&
+
+    if (conf_mode == 1 && table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
         (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
          join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         return 1;
@@ -67,15 +84,28 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
         return 2;
     }
 
+    if (conf_mode == 8 && table_items->bucket_size <= BLOOM_FILTER_DATA_MASK && std::is_integral_v<CppType> &&
+        sizeof(CppType) == 8 && (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+        return 8;
+    }
+
+    if (conf_mode == 6 && (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
+                           join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+        if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
+            return 7;
+        }
+        return 6;
+    }
+
     if (conf_mode == 3 &&
         (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
          join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) &&
         table_items->row_count > 0) {
-        if constexpr (std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+        if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
             const size_t num_rows = table_items->row_count + 1;
-            const auto* keys = reinterpret_cast<const int32_t*>(get_key_data(*table_items).data());
-            const int32_t min_key = *std::min_element(keys + 1, keys + num_rows);
-            const int32_t max_key = *std::max_element(keys + 1, keys + num_rows);
+            const auto* keys = get_interval_keys(*table_items);
+            const int64_t min_key = *std::min_element(keys + 1, keys + num_rows);
+            const int64_t max_key = *std::max_element(keys + 1, keys + num_rows);
             const uint64_t key_interval = static_cast<int64_t>(max_key) - min_key + 1;
 
             if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
@@ -125,7 +155,7 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
         }
 
         // fallback to mode 1
-        if (table_items->bucket_size <= BLOOM_FILTER_MASK &&
+        if (table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
             (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
              join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
             return 1;
@@ -139,14 +169,20 @@ template <LogicalType LT>
 void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table_items) {
     table_items->bucket_size = JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1);
     table_items->mode = decide_mode(table_items);
-    if (table_items->mode == 3) {
+    if (table_items->mode == 8) {
+        table_items->set_buckets.resize(table_items->bucket_size);
+        // table_items->next.resize(table_items->row_count + 1, 0);
+    } else if (table_items->mode == 3) {
         table_items->set_has_value.resize(table_items->bucket_size, 0);
     } else {
         table_items->first.resize(table_items->bucket_size, 0);
-        table_items->next.resize(table_items->row_count + 1, 0);
         if (table_items->mode == 5) {
             const uint32_t key_interval = static_cast<int64_t>(table_items->max_value) - table_items->min_value + 1;
             table_items->dense_groups.resize((key_interval + 31) / 32, {0, 0});
+        }
+        table_items->next.resize(table_items->row_count + 1, 0);
+        if (table_items->mode == 6) {
+            table_items->cached_nexts.resize(table_items->row_count + 8, 0);
         }
     }
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
@@ -202,6 +238,22 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
         return;
     }
 
+    if (table_items->mode == 6) {
+        do_construct_hash_table<6>(state, table_items, probe_state);
+        return;
+    }
+
+    // left semi/anti join
+    if (table_items->mode == 7) {
+        do_construct_hash_table<7>(state, table_items, probe_state);
+        return;
+    }
+
+    if (table_items->mode == 8) {
+        do_construct_hash_table<8>(state, table_items, probe_state);
+        return;
+    }
+
     do_construct_hash_table<0>(state, table_items, probe_state);
 }
 
@@ -213,24 +265,518 @@ static size_t multiplicative_hash(auto key) {
 
 template <LogicalType LT>
 template <uint8_t SIMD>
+bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt(RuntimeState* state, JoinHashTableItems* table_items,
+                                                            HashTableProbeState* probe_state) {
+    if constexpr (SIMD != 1) {
+        return false;
+    }
+
+    if (config::enable_simd_hash_join < 0) {
+        return false;
+    }
+
+    if (table_items->keys_per_bucket < 2) {
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[used_buckets=" << table_items->used_buckets << "] "
+                      << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                      << "[l3_cache_size=" << CpuInfo::get_l3_cache_size() << "] "
+                      << "[use_sort=NO]";
+        return false;
+    }
+
+    [[maybe_unused]] auto* firsts = table_items->first.data();
+    [[maybe_unused]] auto* nexts = table_items->next.data();
+    const size_t num_rows = table_items->row_count + 1;
+
+    int64_t memory_usage = 0;
+    if (table_items->build_chunk != nullptr) {
+        memory_usage += table_items->build_chunk->memory_usage();
+    }
+    memory_usage += table_items->first.capacity() * sizeof(uint32_t);
+    memory_usage += table_items->next.capacity() * sizeof(uint32_t);
+    if (table_items->build_pool != nullptr) {
+        memory_usage += table_items->build_pool->total_reserved_bytes();
+    }
+
+    if (memory_usage > 1024 * 1024 * 1024ll) {
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                      << "[mem_usage=" << memory_usage << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[used_buckets=" << table_items->used_buckets << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[use_sort=NO]";
+
+        return false;
+    }
+
+    static auto l3_cache_size = [] {
+        static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
+
+        const auto& cache_sizes = CpuInfo::get_cache_sizes();
+        auto size = cache_sizes[CpuInfo::L3_CACHE];
+
+        return size > 0 ? size : DEFAULT_L3_CACHE_SIZE;
+    }();
+
+    // decide whether using sort opt by num_rows_per_bucket and memory_usage.
+    if (table_items->bucket_size < 3) {
+        if (memory_usage <= l3_cache_size) {
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << SIMD << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
+            return false;
+        }
+    } else {
+        if (memory_usage <= l3_cache_size / 8) {
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << SIMD << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
+            return false;
+        }
+    }
+
+    VLOG_OPERATOR << "TRACE: [SORT_JOIN] "
+                  << "[mem_usage=" << memory_usage << "] "
+                  << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                  << "[bucket_size=" << table_items->bucket_size << "] "
+                  << "[used_buckets=" << table_items->used_buckets << "] "
+                  << "[row_count=" << table_items->row_count << "] "
+                  << "[SIMD=" << SIMD << "] "
+                  << "[l3_cache_size=" << l3_cache_size << "] "
+                  << "[use_sort=YES]";
+
+    if constexpr (lt_is_string<LT>) {
+        ColumnPtr data_column;
+        if (table_items->key_columns[0]->is_nullable()) {
+            auto* null_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
+            data_column = null_column->data_column();
+        } else {
+            data_column = table_items->key_columns[0];
+        }
+        if (UNLIKELY(data_column->is_large_binary())) {
+            ColumnHelper::as_raw_column<LargeBinaryColumn>(data_column)->invalidate_slice_cache();
+        } else {
+            ColumnHelper::as_raw_column<BinaryColumn>(data_column)->invalidate_slice_cache();
+        }
+    }
+
+    static constexpr bool with_bf = SIMD == 1;
+    auto get_row_id = []<bool with_bf>(uint32_t row_id) {
+        if constexpr (with_bf) {
+            return row_id & BLOOM_FILTER_DATA_MASK;
+        } else {
+            return row_id;
+        }
+    };
+    auto merge_bf = []<bool with_bf>(uint32_t row_id, uint32_t bf) {
+        if constexpr (with_bf) {
+            return row_id | (bf & (~BLOOM_FILTER_DATA_MASK));
+        } else {
+            return row_id;
+        }
+    };
+
+    // build sort_indexes and rebuild first
+    std::vector<uint32_t> sort_indexes(num_rows);
+    uint32_t sort_len = 1;
+    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
+        if (firsts[i] == 0) {
+            continue;
+        }
+
+        uint32_t row_id = get_row_id.template operator()<with_bf>(firsts[i]);
+        firsts[i] = merge_bf.template operator()<with_bf>(sort_len, firsts[i]);
+        do {
+            sort_indexes[sort_len++] = row_id;
+            row_id = nexts[row_id];
+        } while (row_id != 0);
+    }
+
+    // sort by append_selective
+    auto build_chunk = table_items->build_chunk->clone_empty();
+    build_chunk->append_selective(*table_items->build_chunk, sort_indexes.data(), 0, num_rows);
+    table_items->build_chunk = std::move(build_chunk);
+    if (table_items->join_keys[0].col_ref != nullptr) {
+        const SlotId slot_id = table_items->join_keys[0].col_ref->slot_id();
+        table_items->key_columns[0] = table_items->build_chunk->get_column_by_slot_id(slot_id);
+    } else {
+        auto key_column = table_items->key_columns[0]->clone_empty();
+        key_column->append_selective(*table_items->key_columns[0], sort_indexes.data(), 0, num_rows);
+        table_items->key_columns[0] = std::move(key_column);
+    }
+
+    // rebuild next by first
+    uint32_t i = 0;
+    uint32_t begin_row_id;
+    for (; i < table_items->bucket_size; i++) {
+        if (firsts[i] != 0) {
+            begin_row_id = get_row_id.template operator()<with_bf>(firsts[i]);
+            break;
+        }
+    }
+
+    std::memset(nexts, 0, sizeof(uint32_t) * num_rows);
+    for (i = i + 1; i < table_items->bucket_size; i++) {
+        if (firsts[i] == 0) {
+            continue;
+        }
+
+        const uint32_t end_row_id = get_row_id.template operator()<with_bf>(firsts[i]);
+        for (int j = begin_row_id + 1; j < end_row_id; j++) {
+            nexts[j - 1] = j;
+        }
+        // next[end_row_id - 1] = 0;
+
+        begin_row_id = end_row_id;
+    }
+
+    const uint32_t end_row_id = num_rows;
+    for (int j = begin_row_id + 1; j < end_row_id; j++) {
+        nexts[j - 1] = j;
+    }
+    // next[end_row_id - 1] = 0;
+
+    return true;
+}
+
+template <typename CppType>
+static const auto* get_probe_interval_keys(const Buffer<CppType>& probe_data) {
+    if constexpr (std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
+        if constexpr (sizeof(CppType) == 4) {
+            return reinterpret_cast<const int32_t*>(probe_data.data());
+        } else {
+            return reinterpret_cast<const int64_t*>(probe_data.data());
+        }
+    } else {
+        return static_cast<const int32_t*>(nullptr);
+    }
+}
+
+template <LogicalType LT>
+template <uint8_t SIMD>
+bool JoinBuildFunc<LT>::do_construct_hash_table_by_sort_opt_4(RuntimeState* state, JoinHashTableItems* table_items,
+                                                              HashTableProbeState* probe_state) {
+    if constexpr (SIMD != 4) {
+        return false;
+    }
+
+    if (config::enable_simd_hash_join < 0) {
+        return false;
+    }
+
+    auto& data = get_key_data(*table_items);
+    auto* firsts = table_items->first.data();
+    const size_t num_rows = table_items->row_count + 1;
+
+    const int64_t min_value = table_items->min_value;
+    const auto* keys = get_probe_interval_keys(data);
+    for (size_t i = 1; i < num_rows; i++) {
+        const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
+        firsts[bucket_index]++;
+    }
+
+    // calculate num_rows_per_bucket and memory usage.
+    uint32_t num_used_buckets = 0;
+    for (size_t i = 0; i < table_items->bucket_size; i++) {
+        num_used_buckets += firsts[i] != 0;
+    }
+    const uint32_t num_rows_per_bucket = num_rows / num_used_buckets;
+
+    // distinct keys = bucket_size / keys_per_bucket > 10
+    if (num_rows_per_bucket < 2) {
+        std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                      << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                      << "[num_used_buckets=" << num_used_buckets << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[use_sort=NO]";
+
+        return false;
+    }
+
+    int64_t memory_usage = 0;
+    if (table_items->build_chunk != nullptr) {
+        memory_usage += table_items->build_chunk->memory_usage();
+    }
+    memory_usage += table_items->first.capacity() * sizeof(uint32_t);
+    memory_usage += table_items->next.capacity() * sizeof(uint32_t);
+    if (table_items->build_pool != nullptr) {
+        memory_usage += table_items->build_pool->total_reserved_bytes();
+    }
+
+    if (memory_usage > 1024 * 1024 * 1024ll) {
+        VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4] "
+                      << "[mem_usage=" << memory_usage << "] "
+                      << "[keys_per_bucket=" << table_items->keys_per_bucket << "] "
+                      << "[bucket_size=" << table_items->bucket_size << "] "
+                      << "[SIMD=" << SIMD << "] "
+                      << "[use_sort=NO]";
+
+        return false;
+    }
+
+    static auto l3_cache_size = [] {
+        static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
+
+        const auto& cache_sizes = CpuInfo::get_cache_sizes();
+        auto size = cache_sizes[CpuInfo::L3_CACHE];
+
+        return size > 0 ? size : DEFAULT_L3_CACHE_SIZE;
+    }();
+
+    // decide whether using sort opt by num_rows_per_bucket and memory_usage.
+    if (num_rows_per_bucket <= 2) {
+        if (memory_usage <= l3_cache_size) {
+            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
+            return false;
+        }
+    } else {
+        if (memory_usage <= l3_cache_size / 8) {
+            std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+
+            VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                          << "[mem_usage=" << memory_usage << "] "
+                          << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                          << "[bucket_size=" << table_items->bucket_size << "] "
+                          << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                          << "[l3_cache_size=" << l3_cache_size << "] "
+                          << "[use_sort=NO]";
+
+            return false;
+        }
+    }
+
+    VLOG_OPERATOR << "TRACE: [SORT_JOIN] [SIMD=4]"
+                  << "[mem_usage=" << memory_usage << "] "
+                  << "[keys_per_bucket=" << num_rows_per_bucket << "] "
+                  << "[num_used_buckets=" << num_used_buckets << "] "
+                  << "[bucket_size=" << table_items->bucket_size << "] "
+                  << "[SIMD=" << static_cast<int>(SIMD) << "] "
+                  << "[l3_cache_size=" << l3_cache_size << "] "
+                  << "[use_sort=YES]";
+
+    // make firsts[i] store the prefix sum of all the previous bucket (including i-th).
+    uint32_t cur_num_rows = 1;
+    for (uint32_t i = 0; i < table_items->bucket_size; i++) {
+        if (firsts[i] != 0) {
+            cur_num_rows += firsts[i];
+            firsts[i] = cur_num_rows;
+        }
+    }
+
+    // build sort_indexes
+    std::vector<uint32_t> sort_indexes(num_rows);
+    for (size_t i = 1; i < num_rows; i++) {
+        const uint32_t bucket_idx = static_cast<int64_t>(keys[i]) - min_value;
+        const uint32_t sort_idx = --firsts[bucket_idx];
+        sort_indexes[sort_idx] = i;
+    }
+
+    // sort by append_selective with sort_indexes
+    auto build_chunk = table_items->build_chunk->clone_empty();
+    build_chunk->append_selective(*table_items->build_chunk, sort_indexes.data(), 0, num_rows);
+    table_items->build_chunk = std::move(build_chunk);
+    if (table_items->join_keys[0].col_ref != nullptr) {
+        const SlotId slot_id = table_items->join_keys[0].col_ref->slot_id();
+        table_items->key_columns[0] = table_items->build_chunk->get_column_by_slot_id(slot_id);
+    } else {
+        auto key_column = table_items->key_columns[0]->clone_empty();
+        key_column->append_selective(*table_items->key_columns[0], sort_indexes.data(), 0, num_rows);
+        table_items->key_columns[0] = std::move(key_column);
+    }
+
+    std::memset(firsts, 0, sizeof(uint32_t) * table_items->bucket_size);
+    return true;
+}
+
+static constexpr uint32_t RADIX_BITS = 5;
+static constexpr uint32_t RADIX_SIZE = static_cast<size_t>(1) << RADIX_BITS;
+static constexpr uint32_t RADIX_MASK = RADIX_SIZE - 1;
+static constexpr uint32_t RADIX_LEVELS = (31 / RADIX_BITS) + 1;
+using freq_array_type = uint32_t[RADIX_LEVELS][RADIX_SIZE];
+
+static void count_frequency(freq_array_type freqs, uint32_t* values, const uint32_t n) {
+    for (uint32_t i = 0; i < n; i++) {
+        uint32_t value = values[i];
+        for (uint32_t level = 0; level < RADIX_LEVELS; level++) {
+            freqs[level][value & RADIX_MASK]++;
+            value >>= RADIX_BITS;
+        }
+    }
+}
+
+static bool is_trivial(uint32_t freqs[RADIX_SIZE], uint32_t n) {
+    for (size_t i = 0; i < RADIX_SIZE; i++) {
+        if (const auto freq = freqs[i]; freq != 0) {
+            return freq == n;
+        }
+    }
+
+    // we only get here if count was zero
+    return true;
+}
+
+// result write to indexes and buf_values
+static void radix_sort(uint32_t* indexes, uint32_t* values, const uint32_t n, uint32_t* buf_indexes,
+                       uint32_t* buf_values) {
+    freq_array_type freqs{};
+    count_frequency(freqs, values, n);
+
+    uint32_t* from_indexes = indexes;
+    uint32_t* from_values = values;
+    uint32_t* to_indexes = buf_indexes;
+    uint32_t* to_values = buf_values;
+
+    for (uint32_t level = 0; level < RADIX_LEVELS; level++) {
+        if (is_trivial(freqs[level], n)) {
+            continue;
+        }
+
+        const uint32_t shift = level * RADIX_BITS;
+
+        uint32_t* res_value_ptrs[RADIX_SIZE];
+        uint32_t* next_value = to_values;
+        uint32_t* res_index_ptrs[RADIX_SIZE];
+        uint32_t* next_index = to_indexes;
+        for (uint32_t i = 0; i < RADIX_SIZE; i++) {
+            res_value_ptrs[i] = next_value;
+            next_value += freqs[level][i];
+
+            res_index_ptrs[i] = next_index;
+            next_index += freqs[level][i];
+        }
+
+        static constexpr uint32_t W = 8;
+        static constexpr uint32_t W2 = W * 2;
+        uint32_t buffer_values[RADIX_SIZE][W2];
+        uint32_t buffer_indexes[RADIX_SIZE][W2];
+        uint32_t buffer_lens[RADIX_SIZE]{};
+
+        // uint32_t vindexes[W];
+        uint32_t i = 0;
+
+        // for (; i + W <= n; i += W) {
+        //     for (uint32_t j = 0; j < W; j++) {
+        //         const uint32_t value = from_values[i + j];
+        //         const uint32_t index = (value >> shift) & RADIX_MASK;
+        //         vindexes[j] = index;
+        //     }
+        //
+        //     for (uint32_t j = 0; j < W; j++) {
+        //         const uint32_t index = vindexes[j];
+        //         const uint32_t buffer_idx = buffer_lens[index]++;
+        //         buffer_indexes[index][buffer_idx] = from_indexes[i + j];
+        //         buffer_values[index][buffer_idx] = from_values[i + j];
+        //     }
+        //
+        //     for (uint32_t j = 0; j < W; j++) {
+        //         const uint32_t index = vindexes[j];
+        //         const uint32_t buffer_len = buffer_lens[index];
+        //
+        //         if (buffer_len == W) {
+        //             std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
+        //             std::memcpy(res_index_ptrs[index], buffer_indexes[index], W * sizeof(uint32_t));
+        //
+        //             res_value_ptrs[index] += W;
+        //             res_index_ptrs[index] += W;
+        //             buffer_lens[index] = 0;
+        //         } else if (buffer_len > W) {
+        //             std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
+        //             std::memcpy(res_value_ptrs[index] + W, buffer_values[index] + W,
+        //                         (buffer_len - W) * sizeof(uint32_t));
+        //             std::memcpy(res_index_ptrs[index], buffer_indexes[index], W * sizeof(uint32_t));
+        //             std::memcpy(res_index_ptrs[index] + W, buffer_indexes[index] + W,
+        //                         (buffer_len - W) * sizeof(uint32_t));
+        //
+        //             res_value_ptrs[index] += buffer_len;
+        //             res_index_ptrs[index] += buffer_len;
+        //             buffer_lens[index] = 0;
+        //         }
+        //     }
+        // }
+
+        for (; i < n; i++) {
+            const uint32_t value = from_values[i];
+            const uint32_t index = (value >> shift) & RADIX_MASK;
+
+            const uint32_t buffer_idx = buffer_lens[index]++;
+            buffer_values[index][buffer_idx] = value;
+            buffer_indexes[index][buffer_idx] = from_indexes[i];
+            if (buffer_idx == W - 1) {
+                std::memcpy(res_value_ptrs[index], buffer_values[index], W * sizeof(uint32_t));
+                std::memcpy(res_index_ptrs[index], buffer_indexes[index], W * sizeof(uint32_t));
+
+                res_value_ptrs[index] += W;
+                res_index_ptrs[index] += W;
+                buffer_lens[index] = 0;
+            }
+        }
+
+        for (uint32_t i = 0; i < RADIX_SIZE; i++) {
+            if (buffer_lens[i] > 0) {
+                const uint32_t len = buffer_lens[i];
+                std::memcpy(res_value_ptrs[i], buffer_values[i], len * sizeof(uint32_t));
+                std::memcpy(res_index_ptrs[i], buffer_indexes[i], len * sizeof(uint32_t));
+            }
+        }
+
+        // swap from and to areas
+        std::swap(from_values, to_values);
+        std::swap(from_indexes, to_indexes);
+    }
+
+    // now: result stores in from_indexes and from_values
+    if (from_indexes != indexes) {
+        strings::memcpy_inlined(indexes, from_indexes, n * sizeof(uint32_t));
+    } else { // from_values == values -> from_values != buf_values
+        strings::memcpy_inlined(buf_values, from_values, n * sizeof(uint32_t));
+    }
+}
+
+template <LogicalType LT>
+template <uint8_t SIMD>
 void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                                 HashTableProbeState* probe_state) {
-    auto& data = get_key_data(*table_items);
+    const auto* data = &get_key_data(*table_items);
     const size_t num_rows = table_items->row_count + 1;
 
     [[maybe_unused]] auto* firsts = table_items->first.data();
     [[maybe_unused]] auto* nexts = table_items->next.data();
     [[maybe_unused]] const uint32_t bucket_size_mask = table_items->bucket_size - 1;
-    [[maybe_unused]] const auto* __restrict pdata = data.data();
+    [[maybe_unused]] const auto* __restrict pdata = data->data();
 
-    if constexpr (SIMD == 1) {
+    if constexpr (SIMD == 1 || SIMD == 6) {
         auto* __restrict next = table_items->next.data();
         for (size_t i = 1; i < num_rows; i++) {
             // use next to cache bucket_num
             next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size << 8,
                                                                   table_items->log_bucket_size + 8);
         }
-    } else if constexpr (SIMD == 2) {
+    } else if constexpr (SIMD == 2 || SIMD == 7) {
         auto* __restrict next = table_items->next.data();
         for (size_t i = 1; i < num_rows; i++) {
             // use next to cache bucket_num
@@ -239,14 +785,86 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     }
 
+    if (do_construct_hash_table_by_sort_opt_4<SIMD>(state, table_items, probe_state)) {
+        data = &get_key_data(*table_items);
+        pdata = data->data();
+    }
+
     if (table_items->key_columns[0]->is_nullable()) {
         const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>(table_items->key_columns[0]);
         const auto& null_array = nullable_column->null_column()->get_data();
 
         if (nullable_column->has_null()) {
-            if constexpr (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+            if constexpr (SIMD == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
+                static constexpr uint32_t N = 4096;
+
+                std::vector<uint32_t> probe_buckets(N);
+                auto* __restrict probe_buckets_data = probe_buckets.data();
+
+                size_t i = 1;
+                for (; i + N <= num_rows; i += N) {
+                    for (size_t j = 0; j < N; j++) {
+                        probe_buckets_data[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                                pdata[i + j], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    }
+                    for (size_t j = 0; j < N; j++) {
+                        if (null_array[i + j] != 0) {
+                            continue;
+                        }
+
+                        const auto value = pdata[i + j];
+
+                        const uint32_t hash = probe_buckets_data[j];
+                        const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                        const uint32_t start_bucket = hash >> 8;
+                        uint32_t bucket = start_bucket;
+
+                        uint32_t probe_times = 1;
+                        while (true) {
+                            if (table_items->set_buckets[bucket] == 0) {
+                                table_items->set_buckets[bucket] = value;
+                                table_items->set_buckets[start_bucket] |= (fp << 56);
+                                break;
+                            }
+                            if ((table_items->set_buckets[bucket] & BLOOM_FILTER_DATA_MASK64) == value) {
+                                break;
+                            }
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
+                    }
+                }
+
+                for (; i < num_rows; i++) {
+                    if (null_array[i] != 0) {
+                        continue;
+                    }
+
+                    const auto value = pdata[i];
+
+                    const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            pdata[i], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                    const uint32_t start_bucket = hash >> 8;
+                    uint32_t bucket = start_bucket;
+
+                    uint32_t probe_times = 1;
+                    while (true) {
+                        if (table_items->set_buckets[bucket] == 0) {
+                            table_items->set_buckets[bucket] = value;
+                            table_items->set_buckets[start_bucket] |= (fp << 56);
+                            break;
+                        }
+                        if ((table_items->set_buckets[bucket] & BLOOM_FILTER_DATA_MASK64) == value) {
+                            break;
+                        }
+                        bucket = (bucket + probe_times) & bucket_size_mask;
+                        probe_times++;
+                    }
+                }
+            } else if constexpr (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = static_cast<int64_t>(keys[i]) - min_value;
@@ -255,8 +873,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     buckets[group] |= (null_array[i] == 0) << offset;
                 }
             } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 bool no_duplicated_build_keys = true;
                 for (size_t i = 1; i < num_rows; i++) {
                     if (null_array[i] != 0) {
@@ -268,8 +886,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
                 table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
 
                 for (size_t i = 1; i < num_rows; i++) {
                     if (null_array[i] != 0) {
@@ -311,9 +929,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
 
                             const uint32_t prev_first = table_items->first[bucket_num];
-                            table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
+                            table_items->next[i] = prev_first & BLOOM_FILTER_DATA_MASK;
                             table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | (fp << 24);
-                        } else if (SIMD == 2) {
+                        } else if constexpr (SIMD == 2) {
                             uint32_t bucket = nexts[i];
                             uint32_t probe_times = 1;
                             while (firsts[bucket] != 0) {
@@ -321,9 +939,59 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 probe_times++;
                             }
                             firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
+                        } else if constexpr (SIMD == 6) {
+                            const uint32_t hash = nexts[i];
+                            const uint32_t start_bucket = hash >> 8;
+                            const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
+                            uint32_t bucket = start_bucket;
+
+                            uint32_t probe_times = 1;
+
+                            if (const bool bf_matched = ((~(firsts[start_bucket] >> 24)) & fp) == 0; !bf_matched) {
+                                while (true) {
+                                    if (firsts[bucket] == 0) {
+                                        firsts[bucket] = i;
+                                        firsts[start_bucket] |= (fp << 24);
+                                        nexts[i] = 0;
+                                        break;
+                                    }
+
+                                    bucket = (bucket + probe_times) & bucket_size_mask;
+                                    probe_times++;
+                                }
+                            } else {
+                                while (true) {
+                                    if (firsts[bucket] == 0) {
+                                        firsts[bucket] = i;
+                                        firsts[start_bucket] |= (fp << 24);
+                                        nexts[i] = 0;
+                                        break;
+                                    }
+
+                                    if (pdata[firsts[bucket] & BLOOM_FILTER_DATA_MASK] == pdata[i]) {
+                                        nexts[i] = firsts[bucket] & BLOOM_FILTER_DATA_MASK;
+                                        firsts[bucket] = i | (firsts[bucket] & BLOOM_FILTER_BF_MASK);
+                                        break;
+                                    }
+                                    bucket = (bucket + probe_times) & bucket_size_mask;
+                                    probe_times++;
+                                }
+                            }
+                        } else if constexpr (SIMD == 7) {
+                            uint32_t bucket = nexts[i];
+                            uint32_t probe_times = 1;
+                            while (firsts[bucket] != 0 && pdata[firsts[bucket]] != pdata[i]) {
+                                bucket = (bucket + probe_times) & bucket_size_mask;
+                                probe_times++;
+                            }
+
+                            if (firsts[bucket] == 0) {
+                                firsts[bucket] = i;
+                                nexts[i] = 0;
+                            }
                         } else {
                             uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                    data[i], table_items->bucket_size, table_items->log_bucket_size);
+                                    pdata[i], table_items->bucket_size, table_items->log_bucket_size);
                             table_items->next[i] = table_items->first[bucket_num];
                             table_items->first[bucket_num] = i;
                         }
@@ -331,9 +999,68 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
             }
         } else {
-            if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+            if constexpr (SIMD == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
+                static constexpr uint32_t N = 4096;
+
+                std::vector<uint32_t> probe_buckets(N);
+                auto* __restrict probe_buckets_data = probe_buckets.data();
+
+                size_t i = 1;
+                for (; i + N <= num_rows; i += N) {
+                    for (size_t j = 0; j < N; j++) {
+                        probe_buckets_data[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                                pdata[i + j], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    }
+                    for (size_t j = 0; j < N; j++) {
+                        const auto value = pdata[i + j];
+
+                        const uint32_t hash = probe_buckets_data[j];
+                        const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                        const uint32_t start_bucket = hash >> 8;
+                        uint32_t bucket = start_bucket;
+
+                        uint32_t probe_times = 1;
+                        while (true) {
+                            if (table_items->set_buckets[bucket] == 0) {
+                                table_items->set_buckets[bucket] = value;
+                                table_items->set_buckets[start_bucket] |= (fp << 56);
+                                break;
+                            }
+                            if ((table_items->set_buckets[bucket] & BLOOM_FILTER_DATA_MASK64) == value) {
+                                break;
+                            }
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
+                    }
+                }
+
+                for (; i < num_rows; i++) {
+                    const auto value = pdata[i];
+
+                    const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            pdata[i], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                    const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                    const uint32_t start_bucket = hash >> 8;
+                    uint32_t bucket = start_bucket;
+
+                    uint32_t probe_times = 1;
+                    while (true) {
+                        if (table_items->set_buckets[bucket] == 0) {
+                            table_items->set_buckets[bucket] = value;
+                            table_items->set_buckets[start_bucket] |= (fp << 56);
+                            break;
+                        }
+                        if ((table_items->set_buckets[bucket] & BLOOM_FILTER_DATA_MASK64) == value) {
+                            break;
+                        }
+                        bucket = (bucket + probe_times) & bucket_size_mask;
+                        probe_times++;
+                    }
+                }
+            } else if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 auto* __restrict buckets = table_items->set_has_value.data();
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket = static_cast<int64_t>(keys[i]) - min_value;
@@ -342,8 +1069,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     buckets[group] |= 1 << offset;
                 }
             } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
                 bool no_duplicated_build_keys = true;
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -353,8 +1080,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 }
                 table_items->no_duplicated_build_keys = no_duplicated_build_keys;
             } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-                const int32_t min_value = table_items->min_value;
-                const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items->min_value;
+                const auto* keys = get_interval_keys(*table_items);
 
                 for (size_t i = 1; i < num_rows; i++) {
                     const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -390,9 +1117,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
 
                         const uint32_t prev_first = table_items->first[bucket_num];
-                        table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
+                        table_items->next[i] = prev_first & BLOOM_FILTER_DATA_MASK;
                         table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | (fp << 24);
-                    } else if (SIMD == 2) {
+                    } else if constexpr (SIMD == 2) {
                         uint32_t bucket = nexts[i];
                         uint32_t probe_times = 1;
                         while (firsts[bucket] != 0) {
@@ -400,9 +1127,59 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             probe_times++;
                         }
                         firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
+                    } else if constexpr (SIMD == 6) {
+                        const uint32_t hash = nexts[i];
+                        const uint32_t start_bucket = hash >> 8;
+                        const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
+                        uint32_t bucket = start_bucket;
+
+                        uint32_t probe_times = 1;
+
+                        if (const bool bf_matched = ((~(firsts[start_bucket] >> 24)) & fp) == 0; !bf_matched) {
+                            while (true) {
+                                if (firsts[bucket] == 0) {
+                                    firsts[bucket] = i;
+                                    firsts[start_bucket] |= (fp << 24);
+                                    nexts[i] = 0;
+                                    break;
+                                }
+
+                                bucket = (bucket + probe_times) & bucket_size_mask;
+                                probe_times++;
+                            }
+                        } else {
+                            while (true) {
+                                if (firsts[bucket] == 0) {
+                                    firsts[bucket] = i;
+                                    firsts[start_bucket] |= (fp << 24);
+                                    nexts[i] = 0;
+                                    break;
+                                }
+
+                                if (pdata[firsts[bucket] & BLOOM_FILTER_DATA_MASK] == pdata[i]) {
+                                    nexts[i] = firsts[bucket] & BLOOM_FILTER_DATA_MASK;
+                                    firsts[bucket] = i | (firsts[bucket] & BLOOM_FILTER_BF_MASK);
+                                    break;
+                                }
+                                bucket = (bucket + probe_times) & bucket_size_mask;
+                                probe_times++;
+                            }
+                        }
+                    } else if constexpr (SIMD == 7) {
+                        uint32_t bucket = nexts[i];
+                        uint32_t probe_times = 1;
+                        while (firsts[bucket] != 0 && pdata[firsts[bucket]] != pdata[i]) {
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
+
+                        if (firsts[bucket] == 0) {
+                            firsts[bucket] = i;
+                            nexts[i] = 0;
+                        }
                     } else {
                         uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
-                                data[i], table_items->bucket_size, table_items->log_bucket_size);
+                                pdata[i], table_items->bucket_size, table_items->log_bucket_size);
                         table_items->next[i] = table_items->first[bucket_num];
                         table_items->first[bucket_num] = i;
                     }
@@ -410,9 +1187,68 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             }
         }
     } else {
-        if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const int32_t min_value = table_items->min_value;
-            const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+        if constexpr (SIMD == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
+            static constexpr uint32_t N = 4096;
+
+            std::vector<uint32_t> probe_buckets(N);
+            auto* __restrict probe_buckets_data = probe_buckets.data();
+
+            size_t i = 1;
+            for (; i + N <= num_rows; i += N) {
+                for (size_t j = 0; j < N; j++) {
+                    probe_buckets_data[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            pdata[i + j], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                }
+                for (size_t j = 0; j < N; j++) {
+                    const auto value = pdata[i + j];
+
+                    const uint32_t hash = probe_buckets_data[j];
+                    const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                    const uint32_t start_bucket = hash >> 8;
+                    uint32_t bucket = start_bucket;
+
+                    uint32_t probe_times = 1;
+                    while (true) {
+                        if (table_items->set_buckets[bucket] == 0) {
+                            table_items->set_buckets[bucket] = value;
+                            table_items->set_buckets[start_bucket] |= (fp << 56);
+                            break;
+                        }
+                        if ((table_items->set_buckets[bucket] & BLOOM_FILTER_DATA_MASK64) == value) {
+                            break;
+                        }
+                        bucket = (bucket + probe_times) & bucket_size_mask;
+                        probe_times++;
+                    }
+                }
+            }
+
+            for (; i < num_rows; i++) {
+                const auto value = pdata[i];
+
+                const uint32_t hash = JoinHashMapHelper::calc_bucket_num<CppType>(
+                        pdata[i], table_items->bucket_size << 8, table_items->log_bucket_size + 8);
+                const uint64_t fp = BLOOM_FILTERS[hash & 0xFF];
+                const uint32_t start_bucket = hash >> 8;
+                uint32_t bucket = start_bucket;
+
+                uint32_t probe_times = 1;
+                while (true) {
+                    if (table_items->set_buckets[bucket] == 0) {
+                        table_items->set_buckets[bucket] = value;
+                        table_items->set_buckets[start_bucket] |= (fp << 56);
+                        break;
+                    }
+                    if ((table_items->set_buckets[bucket] & BLOOM_FILTER_DATA_MASK64) == value) {
+                        break;
+                    }
+                    bucket = (bucket + probe_times) & bucket_size_mask;
+                    probe_times++;
+                }
+            }
+        } else if (SIMD == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
+            const int64_t min_value = table_items->min_value;
+            const auto* keys = get_interval_keys(*table_items);
             auto* __restrict buckets = table_items->set_has_value.data();
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket = static_cast<int64_t>(keys[i]) - min_value;
@@ -421,8 +1257,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                 buckets[group] |= 1 << offset;
             }
         } else if constexpr (SIMD == 4 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const int32_t min_value = table_items->min_value;
-            const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+            const int64_t min_value = table_items->min_value;
+            const auto* keys = get_interval_keys(*table_items);
             bool no_duplicated_build_keys = true;
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -432,8 +1268,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             }
             table_items->no_duplicated_build_keys = no_duplicated_build_keys;
         } else if constexpr (SIMD == 5 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-            const int32_t min_value = table_items->min_value;
-            const auto* keys = reinterpret_cast<const int32_t*>(data.data());
+            const int64_t min_value = table_items->min_value;
+            const auto* keys = get_interval_keys(*table_items);
 
             for (size_t i = 1; i < num_rows; i++) {
                 const uint32_t bucket_index = static_cast<int64_t>(keys[i]) - min_value;
@@ -469,9 +1305,9 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
 
                     const uint32_t prev_first = table_items->first[bucket_num];
-                    table_items->next[i] = prev_first & BLOOM_FILTER_MASK;
+                    table_items->next[i] = prev_first & BLOOM_FILTER_DATA_MASK;
                     table_items->first[bucket_num] = i | (prev_first & 0xFF00'0000ul) | (fp << 24);
-                } else if (SIMD == 2) {
+                } else if constexpr (SIMD == 2) {
                     uint32_t bucket = nexts[i];
                     uint32_t probe_times = 1;
                     while (firsts[bucket] != 0) {
@@ -479,8 +1315,58 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         probe_times++;
                     }
                     firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
+                } else if constexpr (SIMD == 6) {
+                    const uint32_t hash = nexts[i];
+                    const uint32_t start_bucket = hash >> 8;
+                    const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
+                    uint32_t bucket = start_bucket;
+
+                    uint32_t probe_times = 1;
+
+                    if (const bool bf_matched = ((~(firsts[start_bucket] >> 24)) & fp) == 0; !bf_matched) {
+                        while (true) {
+                            if (firsts[bucket] == 0) {
+                                firsts[bucket] = i;
+                                firsts[start_bucket] |= (fp << 24);
+                                nexts[i] = 0;
+                                break;
+                            }
+
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
+                    } else {
+                        while (true) {
+                            if (firsts[bucket] == 0) {
+                                firsts[bucket] = i;
+                                firsts[start_bucket] |= (fp << 24);
+                                nexts[i] = 0;
+                                break;
+                            }
+
+                            if (pdata[firsts[bucket] & BLOOM_FILTER_DATA_MASK] == pdata[i]) {
+                                nexts[i] = firsts[bucket] & BLOOM_FILTER_DATA_MASK;
+                                firsts[bucket] = i | (firsts[bucket] & BLOOM_FILTER_BF_MASK);
+                                break;
+                            }
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
+                    }
+                } else if constexpr (SIMD == 7) {
+                    uint32_t bucket = nexts[i];
+                    uint32_t probe_times = 1;
+                    while (firsts[bucket] != 0 && pdata[firsts[bucket]] != pdata[i]) {
+                        bucket = (bucket + probe_times) & bucket_size_mask;
+                        probe_times++;
+                    }
+
+                    if (firsts[bucket] == 0) {
+                        firsts[bucket] = i;
+                        nexts[i] = 0;
+                    }
                 } else {
-                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
+                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
                                                                                       table_items->log_bucket_size);
                     table_items->next[i] = table_items->first[bucket_num];
                     table_items->first[bucket_num] = i;
@@ -489,7 +1375,45 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
         }
     }
 
+    // if constexpr (SIMD == 6) {
+    //     auto* row_ids = table_items->linear_row_ids.data();
+    //     for (uint32_t i = 0; i < num_rows; i++) {
+    //         row_ids[i] = i;
+    //     }
+    //
+    //     std::unique_ptr<uint32_t[]> buf_values(new uint32_t[num_rows]);
+    //     std::unique_ptr<uint32_t[]> buf_indexes(new uint32_t[num_rows]);
+    //
+    //     radix_sort(row_ids + 1, nexts + 1, num_rows - 1, buf_indexes.get() + 1, buf_values.get() + 1);
+    //
+    //     const auto* buckets = buf_values.get();
+    //
+    //     uint32_t prev_bucket = buckets[1];
+    //     for (uint32_t bucket = 0; bucket <= prev_bucket; bucket++) {
+    //         nexts[bucket] = 1;
+    //     }
+    //
+    //     for (uint32_t i = 2; i < num_rows; i++) {
+    //         const uint32_t cur_bucket = buckets[i];
+    //         if (cur_bucket == prev_bucket) {
+    //             continue;
+    //         }
+    //
+    //         for (uint32_t bucket = prev_bucket + 1; bucket <= cur_bucket; bucket++) {
+    //             nexts[bucket] = i;
+    //         }
+    //
+    //         prev_bucket = cur_bucket;
+    //     }
+    //
+    //     for (uint32_t bucket = prev_bucket + 1; bucket <= table_items->bucket_size; bucket++) {
+    //         nexts[bucket] = num_rows;
+    //     }
+    // }
+
     table_items->calculate_ht_info(table_items->key_columns[0]->byte_size());
+
+    do_construct_hash_table_by_sort_opt<SIMD>(state, table_items, probe_state);
 }
 
 template <LogicalType LT>
@@ -693,6 +1617,12 @@ void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashT
         do_lookup_init<4>(table_items, probe_state);
     } else if (table_items.mode == 5) {
         do_lookup_init<5>(table_items, probe_state);
+    } else if (table_items.mode == 6) {
+        do_lookup_init<6>(table_items, probe_state);
+    } else if (table_items.mode == 7) {
+        do_lookup_init<7>(table_items, probe_state);
+    } else if (table_items.mode == 8) {
+        do_lookup_init<8>(table_items, probe_state);
     } else {
         do_lookup_init<0>(table_items, probe_state);
     }
@@ -738,7 +1668,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
 
     const auto& data = get_key_data(*probe_state);
 
-    if constexpr (SIMD == 1) {
+    if constexpr (SIMD == 1 || SIMD == 8 || SIMD == 6) {
         JoinHashMapHelper::calc_bucket_nums<CppType>(&probe_state->buckets, table_items.bucket_size << 8,
                                                      table_items.log_bucket_size + 8, data, 0, data.size());
     } else if constexpr (SIMD != 4) {
@@ -746,7 +1676,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                                                      table_items.log_bucket_size, data, 0, data.size());
     }
 
-    if constexpr (SIMD == 2) {
+    if constexpr (SIMD == 2 || SIMD == 6 || SIMD == 7 || SIMD == 8) {
         if ((*probe_state->key_columns)[0]->is_nullable()) {
             const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>((*probe_state->key_columns)[0]);
             if (nullable_column->has_null()) {
@@ -770,11 +1700,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             const auto& null_array = nullable_column->null_column()->get_data();
 
             if constexpr (SIMD == 4) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
 
                     uint32_t matched_mask = (min_value <= value) & (value <= max_value) & (null_array[i] == 0);
                     matched_mask = ~(matched_mask - 1);
@@ -783,11 +1713,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                     next[i] = first[bucket_index] & matched_mask;
                 }
             } else if constexpr (SIMD == 5) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
                     if ((min_value <= value) & (value <= max_value) & (null_array[i] == 0)) {
                         const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
                         next[i] = get_sparse_first(bucket_index, table_items);
@@ -821,7 +1751,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                         for (uint32_t j = 0; j < W; j++) {
                             const uint32_t matched = (~(buffer[j] >> 24) & bf[j]) == 0;
                             const uint32_t mask = ~matched + 1;
-                            buffer[j] &= mask & BLOOM_FILTER_MASK;
+                            buffer[j] &= mask & BLOOM_FILTER_DATA_MASK;
                         }
                     }
 
@@ -837,7 +1767,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                             const uint32_t cur_bf = BLOOM_FILTERS[buckets[i] & 0xFF];
                             const uint32_t matched = (~(index >> 24) & cur_bf) == 0;
                             const uint32_t mask = ~matched + 1;
-                            index &= mask & BLOOM_FILTER_MASK;
+                            index &= mask & BLOOM_FILTER_DATA_MASK;
 
                             next[i] = index;
                         } else {
@@ -852,11 +1782,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             probe_state->null_array = &nullable_column->null_column()->get_data();
         } else {
             if constexpr (SIMD == 4) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
 
                     uint32_t matched_mask = (min_value <= value) & (value <= max_value);
                     matched_mask = ~(matched_mask - 1);
@@ -865,11 +1795,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                     next[i] = first[bucket_index] & matched_mask;
                 }
             } else if constexpr (SIMD == 5) {
-                const int32_t min_value = table_items.min_value;
-                const int32_t max_value = table_items.max_value;
-                const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+                const int64_t min_value = table_items.min_value;
+                const int64_t max_value = table_items.max_value;
+                const auto* probe_keys = get_probe_interval_keys(data);
                 for (uint32_t i = 0; i < probe_row_count; i++) {
-                    const int32_t value = probe_keys[i];
+                    const int64_t value = probe_keys[i];
                     if ((min_value <= value) & (value <= max_value)) {
                         const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
                         next[i] = get_sparse_first(bucket_index, table_items);
@@ -899,7 +1829,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                         for (uint32_t j = 0; j < W; j++) {
                             const uint32_t matched = (~(buffer[j] >> 24) & bf[j]) == 0;
                             const uint32_t mask = ~matched + 1;
-                            buffer[j] &= mask & BLOOM_FILTER_MASK;
+                            buffer[j] &= mask & BLOOM_FILTER_DATA_MASK;
                         }
                     }
 
@@ -914,7 +1844,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                         const uint32_t cur_bf = BLOOM_FILTERS[buckets[i] & 0xFF];
                         const uint32_t matched = (~(index >> 24) & cur_bf) == 0;
                         const uint32_t mask = ~matched + 1;
-                        index &= mask & BLOOM_FILTER_MASK;
+                        index &= mask & BLOOM_FILTER_DATA_MASK;
 
                         next[i] = index;
                     } else {
@@ -930,11 +1860,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
     }
 
     if constexpr (SIMD == 4) {
-        const int32_t min_value = table_items.min_value;
-        const int32_t max_value = table_items.max_value;
-        const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+        const int64_t min_value = table_items.min_value;
+        const int64_t max_value = table_items.max_value;
+        const auto* probe_keys = get_probe_interval_keys(data);
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const int32_t value = probe_keys[i];
+            const int64_t value = probe_keys[i];
 
             uint32_t matched_mask = (min_value <= value) & (value <= max_value);
             matched_mask = ~(matched_mask - 1);
@@ -943,11 +1873,11 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
             next[i] = first[bucket_index] & matched_mask;
         }
     } else if constexpr (SIMD == 5) {
-        const int32_t min_value = table_items.min_value;
-        const int32_t max_value = table_items.max_value;
-        const auto* probe_keys = reinterpret_cast<const int32_t*>(data.data());
+        const int64_t min_value = table_items.min_value;
+        const int64_t max_value = table_items.max_value;
+        const auto* probe_keys = get_probe_interval_keys(data);
         for (uint32_t i = 0; i < probe_row_count; i++) {
-            const int32_t value = probe_keys[i];
+            const int64_t value = probe_keys[i];
             if ((min_value <= value) & (value <= max_value)) {
                 const uint32_t bucket_index = (static_cast<int64_t>(value) - min_value);
                 next[i] = get_sparse_first(bucket_index, table_items);
@@ -977,7 +1907,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                 for (uint32_t j = 0; j < W; j++) {
                     const uint32_t matched = (~(buffer[j] >> 24) & bf[j]) == 0;
                     const uint32_t mask = ~matched + 1;
-                    buffer[j] &= mask & BLOOM_FILTER_MASK;
+                    buffer[j] &= mask & BLOOM_FILTER_DATA_MASK;
                 }
             }
 
@@ -992,7 +1922,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                 const uint32_t cur_bf = BLOOM_FILTERS[buckets[i] & 0xFF];
                 const uint32_t matched = (~(index >> 24) & cur_bf) == 0;
                 const uint32_t mask = ~matched + 1;
-                index &= mask & BLOOM_FILTER_MASK;
+                index &= mask & BLOOM_FILTER_DATA_MASK;
 
                 next[i] = index;
             } else {
@@ -1100,6 +2030,7 @@ template <LogicalType LT, class BuildFunc, class ProbeFunc>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_prepare(RuntimeState* state) {
     size_t chunk_size = state->chunk_size();
     _probe_state->build_index.resize(chunk_size + 8);
+    _probe_state->probe_buckets.resize(chunk_size + 8);
     _probe_state->probe_index.resize(chunk_size + 8);
     _probe_state->next.resize(chunk_size);
     _probe_state->probe_match_index.resize(chunk_size);
@@ -1635,6 +2566,17 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_search_ht_impl(RuntimeState* state,
         return;                                                      \
     }
 
+#define RETURN_IF_CHUNK_FULL3()                                  \
+    if (UNLIKELY(match_count > state->chunk_size())) {           \
+        _probe_state->cur_probe_index = i;                       \
+        _probe_state->next[i] = probe_bucket;                    \
+        _probe_state->cur_build_index = j;                       \
+        _probe_state->has_remain = true;                         \
+        _probe_state->count = state->chunk_size();               \
+        _probe_state->cur_row_match_count = cur_row_match_count; \
+        return;                                                  \
+    }
+
 #define COWAIT_IF_CHUNK_FULL()                              \
     if (_probe_state->match_count == state->chunk_size()) { \
         _probe_state->has_remain = true;                    \
@@ -1775,6 +2717,11 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
         return;
     }
 
+    if (_table_items->mode == 6) {
+        _do_probe_from_ht<first_probe, false, false, 6>(state, build_data, probe_data);
+        return;
+    }
+
     if (_table_items->no_conflicts) {
         _do_probe_from_ht<first_probe, true, false, 0>(state, build_data, probe_data);
     } else {
@@ -1783,9 +2730,220 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6_first(RuntimeState* state,
+                                                                          const Buffer<CppType>& build_data,
+                                                                          const Buffer<CppType>& probe_data) {
+    const size_t num_probe_rows = _probe_state->probe_row_count;
+    const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+
+    auto* __restrict res_buckets = _probe_state->probe_buckets.data();
+    uint32_t res_buckets_len = 0;
+
+    {
+        const auto* __restrict build_buckets = _table_items->first.data();
+        const auto* __restrict probe_buckets = _probe_state->buckets.data();
+
+        for (size_t i = 0; i < num_probe_rows; i++) {
+            const auto& probe_key = probe_data[i];
+
+            const uint32_t hash = probe_buckets[i];
+            const uint32_t bf = BLOOM_FILTERS[hash & 0xFF];
+            uint32_t probe_bucket = hash >> 8;
+            uint32_t build_index = build_buckets[probe_bucket];
+
+            if (const bool bf_matched = ((~(build_index >> 24)) & bf) == 0; !bf_matched) {
+                continue;
+            }
+
+            uint32_t probe_times = 1;
+            while (true) {
+                build_index &= BLOOM_FILTER_DATA_MASK; // clear the first 8 bits
+
+                if (build_data[build_index] == probe_key) {
+                    res_buckets[res_buckets_len].probe_row_id = i;
+                    res_buckets[res_buckets_len].build_row_id = build_index;
+                    res_buckets_len++;
+                    break;
+                }
+
+                probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                probe_times++;
+
+                build_index = build_buckets[probe_bucket];
+                if (build_index == 0) {
+                    break;
+                }
+            }
+        }
+    }
+
+    {
+        auto* __restrict probe_match_filter = _probe_state->probe_match_filter.data();
+        memset(probe_match_filter, 0, num_probe_rows * sizeof(uint8_t));
+        for (uint32_t i = 0; i < res_buckets_len; i++) {
+            probe_match_filter[res_buckets[i].probe_row_id] = 1;
+        }
+    }
+
+    // {
+    //     const auto* __restrict nexts = _table_items->next.data();
+    //     for (uint32_t i = 0; i < res_buckets_len; i++) {
+    //         res_buckets[i].first_next = nexts[res_buckets[i].build_row_id];
+    //     }
+    // }
+
+    _probe_state->probe_buckets_len = res_buckets_len;
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
+template <bool first_probe>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState* state,
+                                                                    const Buffer<CppType>& build_data,
+                                                                    const Buffer<CppType>& probe_data) {
+    _probe_state->match_flag = JoinMatchFlag::NORMAL;
+
+    if constexpr (first_probe) {
+        _do_probe_from_ht_mode6_first(state, build_data, probe_data);
+    }
+
+    const uint32_t res_buckets_len = _probe_state->probe_buckets_len;
+    uint32_t match_count = 0;
+    bool one_to_many = false;
+
+    size_t i;
+    if constexpr (first_probe) {
+        i = 0;
+    } else {
+        i = _probe_state->cur_probe_index;
+    }
+
+    auto process_opt = [&](const uint32_t start_match_count, uint32_t probe_index, uint32_t cached_idx) {
+        const auto* __restrict cached_nexts = _table_items->cached_nexts.data();
+
+        cached_idx &= 0x7FFF'FFFFull;
+        _probe_state->build_index[match_count] = cached_nexts[cached_idx] & 0x7FFF'FFFFull;
+        match_count++;
+
+        if (UNLIKELY(match_count > state->chunk_size())) {
+            for (uint32_t j = start_match_count; j < match_count; j++) {
+                _probe_state->probe_index[j] = probe_index;
+            }
+            _probe_state->cur_probe_index = i;
+            _probe_state->probe_buckets[i].build_row_id = cached_idx;
+            _probe_state->use_cached = true;
+            _probe_state->has_remain = true;
+            _probe_state->count = state->chunk_size();
+            return true;
+        }
+
+        for (cached_idx++; (cached_nexts[cached_idx] & 0x8000'0000ull) == 0; cached_idx++) {
+            _probe_state->build_index[match_count] = cached_nexts[cached_idx];
+            match_count++;
+
+            if (UNLIKELY(match_count > state->chunk_size())) {
+                for (uint32_t j = start_match_count; j < match_count; j++) {
+                    _probe_state->probe_index[j] = probe_index;
+                }
+                _probe_state->cur_probe_index = i;
+                _probe_state->probe_buckets[i].build_row_id = cached_idx;
+                _probe_state->use_cached = true;
+                _probe_state->has_remain = true;
+                _probe_state->count = state->chunk_size();
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    if constexpr (!first_probe) {
+        if (_probe_state->use_cached) {
+            const uint32_t start_match_count = match_count;
+
+            auto [probe_index, cached_idx] = _probe_state->probe_buckets[i];
+            if (process_opt(start_match_count, probe_index, cached_idx)) {
+                return;
+            }
+
+            for (uint32_t j = start_match_count; j < match_count; j++) {
+                _probe_state->probe_index[j] = probe_index;
+            }
+            i++;
+        }
+    }
+
+    for (; i < res_buckets_len; i++) {
+        const uint32_t start_match_count = match_count;
+        auto [probe_index, build_index] = _probe_state->probe_buckets[i];
+        const auto first_next = _table_items->next[build_index];
+
+        if (first_next & 0x8000'0000ull) {
+            if (process_opt(start_match_count, probe_index, first_next)) {
+                return;
+            }
+        } else {
+            if (first_next == 0) {
+                _probe_state->build_index[match_count] = build_index;
+                match_count++;
+
+                if (UNLIKELY(match_count > state->chunk_size())) {
+                    _probe_state->probe_index[start_match_count] = probe_index;
+                    _probe_state->cur_probe_index = i;
+                    _probe_state->use_cached = false;
+                    _probe_state->has_remain = true;
+                    _probe_state->count = state->chunk_size();
+                    return;
+                }
+            } else {
+                uint32_t num_cached_nexts = _table_items->num_cached_nexts;
+                auto* cached_nexts = _table_items->cached_nexts.data();
+
+                const uint32_t new_first_next = num_cached_nexts | 0x8000'0000ull;
+                _table_items->next[build_index] = new_first_next;
+                cached_nexts[num_cached_nexts] = build_index | 0x8000'0000ull;
+                num_cached_nexts++;
+
+                uint32_t cur_build_index = first_next;
+                do {
+                    cached_nexts[num_cached_nexts] = cur_build_index;
+                    num_cached_nexts++;
+                    cur_build_index = _table_items->next[cur_build_index];
+                } while (cur_build_index != 0);
+
+                cached_nexts[num_cached_nexts] |= 0x8000'0000ull;
+                _table_items->num_cached_nexts = num_cached_nexts;
+
+                if (process_opt(start_match_count, probe_index, new_first_next)) {
+                    return;
+                }
+            }
+        }
+
+        for (uint32_t j = start_match_count; j < match_count; j++) {
+            _probe_state->probe_index[j] = probe_index;
+        }
+        if constexpr (first_probe) {
+            one_to_many |= start_match_count + 1 < match_count;
+        }
+    }
+
+    if constexpr (first_probe) {
+        CHECK_MATCH()
+    }
+    _probe_state->probe_buckets_len = 0;
+    _probe_state->use_cached = false;
+    PROBE_OVER()
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                               const Buffer<CppType>& probe_data) {
+    if constexpr (SIMD == 6) {
+        _do_probe_from_ht_mode6<first_probe>(state, build_data, probe_data);
+        return;
+    }
+
     _probe_state->match_flag = JoinMatchFlag::NORMAL;
     size_t match_count = 0;
     bool one_to_many = false;
@@ -1869,7 +3027,6 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* stat
                 }
             }
         }
-
     } else {
         for (; i < probe_row_count; i++) {
             uint32_t build_index = probe_build_indexes[i];
@@ -2036,6 +3193,11 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
         return;
     }
 
+    if (_table_items->mode == 6) {
+        _do_probe_from_ht_for_left_outer_join<first_probe, false, false, 6>(state, build_data, probe_data);
+        return;
+    }
+
     if (_table_items->no_conflicts) {
         _do_probe_from_ht_for_left_outer_join<first_probe, true, false, 0>(state, build_data, probe_data);
     } else {
@@ -2044,10 +3206,225 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_join_mode6_first(
+        RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data) {
+    const size_t num_probe_rows = _probe_state->probe_row_count;
+    const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+
+    auto* __restrict res_buckets = _probe_state->probe_buckets.data();
+    uint32_t res_buckets_len = 0;
+
+    {
+        const auto* __restrict build_buckets = _table_items->first.data();
+        const auto* __restrict probe_buckets = _probe_state->buckets.data();
+
+        for (size_t i = 0; i < num_probe_rows; i++) {
+            const auto& probe_key = probe_data[i];
+
+            const uint32_t hash = probe_buckets[i];
+            const uint32_t bf = BLOOM_FILTERS[hash & 0xFF];
+            uint32_t probe_bucket = hash >> 8;
+            uint32_t build_index = build_buckets[probe_bucket];
+
+            if (const bool bf_matched = ((~(build_index >> 24)) & bf) == 0; !bf_matched) {
+                res_buckets[res_buckets_len].probe_row_id = i;
+                res_buckets[res_buckets_len].build_row_id = 0;
+                res_buckets_len++;
+                continue;
+            }
+
+            uint32_t probe_times = 1;
+            while (true) {
+                build_index &= BLOOM_FILTER_DATA_MASK; // clear the first 8 bits
+
+                if (build_data[build_index] == probe_key) {
+                    res_buckets[res_buckets_len].probe_row_id = i;
+                    res_buckets[res_buckets_len].build_row_id = build_index;
+                    res_buckets_len++;
+                    break;
+                }
+
+                probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                probe_times++;
+
+                build_index = build_buckets[probe_bucket];
+                if (build_index == 0) {
+                    res_buckets[res_buckets_len].probe_row_id = i;
+                    res_buckets[res_buckets_len].build_row_id = 0;
+                    res_buckets_len++;
+                    break;
+                }
+            }
+        }
+    }
+
+    {
+        auto* __restrict probe_match_filter = _probe_state->probe_match_filter.data();
+        memset(probe_match_filter, 0, num_probe_rows * sizeof(uint8_t));
+        for (uint32_t i = 0; i < res_buckets_len; i++) {
+            probe_match_filter[res_buckets[i].probe_row_id] = 1;
+        }
+    }
+
+    // {
+    //     const auto* __restrict nexts = _table_items->next.data();
+    //     for (uint32_t i = 0; i < res_buckets_len; i++) {
+    //         res_buckets[i].first_next = res_buckets[i].build_row_id == 0 ? 0 : nexts[res_buckets[i].build_row_id];
+    //     }
+    // }
+
+    _probe_state->probe_buckets_len = res_buckets_len;
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
+template <bool first_probe>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_join_mode6(
+        RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data) {
+    _probe_state->match_flag = JoinMatchFlag::NORMAL;
+
+    if constexpr (first_probe) {
+        _do_probe_from_ht_for_left_outer_join_mode6_first(state, build_data, probe_data);
+    }
+
+    const uint32_t res_buckets_len = _probe_state->probe_buckets_len;
+    uint32_t match_count = 0;
+    bool one_to_many = false;
+
+    size_t i;
+    if constexpr (first_probe) {
+        i = 0;
+    } else {
+        i = _probe_state->cur_probe_index;
+    }
+
+    auto process_opt = [&](const uint32_t start_match_count, uint32_t probe_index, uint32_t cached_idx) {
+        const auto* __restrict cached_nexts = _table_items->cached_nexts.data();
+
+        cached_idx &= 0x7FFF'FFFFull;
+        _probe_state->build_index[match_count] = cached_nexts[cached_idx] & 0x7FFF'FFFFull;
+        match_count++;
+
+        if (UNLIKELY(match_count > state->chunk_size())) {
+            for (uint32_t j = start_match_count; j < match_count; j++) {
+                _probe_state->probe_index[j] = probe_index;
+            }
+            _probe_state->cur_probe_index = i;
+            _probe_state->probe_buckets[i].build_row_id = cached_idx;
+            _probe_state->use_cached = true;
+            _probe_state->has_remain = true;
+            _probe_state->count = state->chunk_size();
+            return true;
+        }
+
+        for (cached_idx++; (cached_nexts[cached_idx] & 0x8000'0000ull) == 0; cached_idx++) {
+            _probe_state->build_index[match_count] = cached_nexts[cached_idx];
+            match_count++;
+
+            if (UNLIKELY(match_count > state->chunk_size())) {
+                for (uint32_t j = start_match_count; j < match_count; j++) {
+                    _probe_state->probe_index[j] = probe_index;
+                }
+                _probe_state->cur_probe_index = i;
+                _probe_state->probe_buckets[i].build_row_id = cached_idx;
+                _probe_state->use_cached = true;
+                _probe_state->has_remain = true;
+                _probe_state->count = state->chunk_size();
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    if constexpr (!first_probe) {
+        if (_probe_state->use_cached) {
+            const uint32_t start_match_count = match_count;
+
+            auto [probe_index, cached_idx] = _probe_state->probe_buckets[i];
+            if (process_opt(start_match_count, probe_index, cached_idx)) {
+                return;
+            }
+
+            for (uint32_t j = start_match_count; j < match_count; j++) {
+                _probe_state->probe_index[j] = probe_index;
+            }
+            i++;
+        }
+    }
+
+    for (; i < res_buckets_len; i++) {
+        const uint32_t start_match_count = match_count;
+        auto [probe_index, build_index] = _probe_state->probe_buckets[i];
+        const auto first_next = build_index == 0 ? 0 : _table_items->next[build_index];
+
+        if (first_next & 0x8000'0000ull) {
+            if (process_opt(start_match_count, probe_index, first_next)) {
+                return;
+            }
+        } else {
+            if (first_next == 0) {
+                _probe_state->build_index[match_count] = build_index;
+                match_count++;
+
+                if (UNLIKELY(match_count > state->chunk_size())) {
+                    _probe_state->probe_index[start_match_count] = probe_index;
+                    _probe_state->cur_probe_index = i;
+                    _probe_state->use_cached = false;
+                    _probe_state->has_remain = true;
+                    _probe_state->count = state->chunk_size();
+                    return;
+                }
+            } else {
+                uint32_t num_cached_nexts = _table_items->num_cached_nexts;
+                auto* cached_nexts = _table_items->cached_nexts.data();
+
+                const uint32_t new_first_next = num_cached_nexts | 0x8000'0000ull;
+                _table_items->next[build_index] = new_first_next;
+                cached_nexts[num_cached_nexts] = build_index | 0x8000'0000ull;
+                num_cached_nexts++;
+
+                uint32_t cur_build_index = first_next;
+                do {
+                    cached_nexts[num_cached_nexts] = cur_build_index;
+                    num_cached_nexts++;
+                    cur_build_index = _table_items->next[cur_build_index];
+                } while (cur_build_index != 0);
+
+                cached_nexts[num_cached_nexts] |= 0x8000'0000ull;
+                _table_items->num_cached_nexts = num_cached_nexts;
+
+                if (process_opt(start_match_count, probe_index, new_first_next)) {
+                    return;
+                }
+            }
+        }
+
+        for (uint32_t j = start_match_count; j < match_count; j++) {
+            _probe_state->probe_index[j] = probe_index;
+        }
+        if constexpr (first_probe) {
+            one_to_many |= start_match_count + 1 < match_count;
+        }
+    }
+
+    if constexpr (first_probe) {
+        CHECK_MATCH()
+    }
+    _probe_state->probe_buckets_len = 0;
+    _probe_state->use_cached = false;
+    PROBE_OVER()
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                                   const Buffer<CppType>& build_data,
                                                                                   const Buffer<CppType>& probe_data) {
+    if constexpr (SIMD == 6) {
+        _do_probe_from_ht_for_left_outer_join_mode6<first_probe>(state, build_data, probe_data);
+        return;
+    }
+
     _probe_state->match_flag = JoinMatchFlag::NORMAL;
     size_t match_count = 0;
     bool one_to_many = false;
@@ -2106,6 +3483,57 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
 
                     build_index = _table_items->next[build_index];
                 } while (build_index != 0);
+                cur_row_match_count = 0;
+            }
+        }
+    } else if constexpr (SIMD == 6) {
+        const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+        const auto* build_buckets = _table_items->first.data();
+        const auto* probe_buckets = _probe_state->buckets.data();
+
+        for (; i < probe_row_count; i++) {
+            const auto& probe_key = probe_data[i];
+
+            uint32_t probe_bucket = probe_buckets[i];
+            uint32_t probe_times = 1;
+            while (true) {
+                uint32_t build_index = build_buckets[probe_bucket];
+                if (build_index == 0) {
+                    _probe_state->probe_index[match_count] = i;
+                    _probe_state->build_index[match_count] = 0;
+                    match_count++;
+                    uint32_t j = 0;
+                    RETURN_IF_CHUNK_FULL3()
+                    break;
+                }
+
+                if (build_data[build_index] == probe_key) {
+                    do {
+                        _probe_state->probe_index[match_count] = i;
+                        _probe_state->build_index[match_count] = build_index;
+                        match_count++;
+
+                        if constexpr (first_probe) {
+                            cur_row_match_count++;
+                            _probe_state->probe_match_filter[i] = 1;
+                        }
+
+                        RETURN_IF_CHUNK_FULL2();
+
+                        build_index = _table_items->next[build_index];
+                    } while (build_index != 0);
+
+                    break;
+                }
+
+                probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                probe_times++;
+            }
+
+            if constexpr (first_probe) {
+                if (cur_row_match_count > 1) {
+                    one_to_many = true;
+                }
                 cur_row_match_count = 0;
             }
         }
@@ -2211,6 +3639,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_semi_join(Ru
                                                                               const Buffer<CppType>& probe_data) {
     if (_table_items->mode == 2) {
         _do_probe_from_ht_for_left_semi_join<first_probe, false, 2>(state, build_data, probe_data);
+    } else if (_table_items->mode == 7) {
+        _do_probe_from_ht_for_left_semi_join<first_probe, false, 7>(state, build_data, probe_data);
+    } else if (_table_items->mode == 8) {
+        _do_probe_from_ht_for_left_semi_join<first_probe, false, 8>(state, build_data, probe_data);
     } else if (_table_items->mode == 3) {
         _do_probe_from_ht_for_left_semi_join<first_probe, false, 3>(state, build_data, probe_data);
     } else if (_table_items->mode == 1) {
@@ -2566,12 +3998,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
     uint32_t match_count = 0;
 
-    if constexpr (MODE == 3 && std::is_integral_v<CppType> && sizeof(CppType) == 4) {
-        const int32_t min_value = _table_items->min_value;
-        const int32_t max_value = _table_items->max_value;
+    if constexpr (MODE == 3 && std::is_integral_v<CppType> && (sizeof(CppType) == 4 || sizeof(CppType) == 8)) {
+        const int64_t min_value = _table_items->min_value;
+        const int64_t max_value = _table_items->max_value;
         const uint32_t group_mask = _table_items->bucket_size - 1;
 
-        const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
+        const auto* probe_values = get_probe_interval_keys(probe_data);
         const auto* build_buckets = _table_items->set_has_value.data();
 
         uint8_t* dst_matches = _probe_state->probe_match_filter.data();
@@ -2579,52 +4011,8 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
 
         uint32_t i = 0;
 
-#if defined(__AVX2__)
-        static constexpr uint32_t W = 8;
-
-        const __m256i vmin_value = _mm256_set1_epi32(min_value);
-        const __m256i vmax_value = _mm256_set1_epi32(max_value);
-
-        for (; i + W <= probe_row_count; i += W) {
-            __m256i vprobe_values = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(probe_values + i));
-
-            // vprobe_values >= vmin_value  not -> vmin_value > vprobe_values
-            // vmax_value >= vprobe_values  not -> vprobe_values > vmax_value
-            __m256i vnot_in_range = _mm256_or_si256(_mm256_cmpgt_epi32(vmin_value, vprobe_values),
-                                                    _mm256_cmpgt_epi32(vprobe_values, vmax_value));
-            uint8_t not_in_range_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_in_range));
-
-            if (not_in_range_mask == 0xFF) {
-                continue;
-            }
-
-            __m256i vbucket_indexes = _mm256_sub_epi32(vprobe_values, vmin_value);
-            vbucket_indexes = _mm256_blendv_epi8(vbucket_indexes, _mm256_setzero_si256(), vnot_in_range);
-
-            __m256i voffsets = _mm256_and_si256(vbucket_indexes, _mm256_set1_epi32(7));
-            voffsets = _mm256_sllv_epi32(_mm256_set1_epi32(1), voffsets);
-
-            __m256i vgroups = _mm256_srli_epi32(vbucket_indexes, 3);
-            __m256i vbuckets = _mm256_set_epi32(build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 7))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 6))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 5))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 4))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 3))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 2))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 1))],
-                                                build_buckets[static_cast<uint32_t>(_mm256_extract_epi32(vgroups, 0))]);
-
-            __m256i vnot_match = _mm256_cmpeq_epi32(_mm256_and_si256(vbuckets, voffsets), _mm256_setzero_si256());
-            uint8_t not_match_mask = _mm256_movemask_ps(_mm256_castsi256_ps(vnot_match));
-            uint8_t match_mask = ~(not_match_mask | not_in_range_mask);
-
-            *reinterpret_cast<uint64_t*>(dst_matches + i) = bitmask_to_bytemask[match_mask];
-            match_count += __builtin_popcount(match_mask);
-        }
-#endif
-
         for (; i < probe_row_count; i++) {
-            const int32_t value = probe_values[i];
+            const auto value = probe_values[i];
 
             const uint32_t bucket = value - min_value;
             const uint32_t group = (bucket / 8) & group_mask;
@@ -2784,6 +4172,59 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_semi_join
                 probe_times++;
             }
         }
+    } else if constexpr (MODE == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
+        const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+        const auto* buckets = _table_items->set_buckets.data();
+        const auto* probe_buckets = _probe_state->buckets.data();
+
+        for (uint32_t i = 0; i < probe_row_count; i++) {
+            const uint32_t hash = probe_buckets[i];
+            uint32_t bucket = hash >> 8;
+
+            const uint64_t cur_bf = BLOOM_FILTERS[hash & 0xFF];
+            if (const bool matched = ((~(buckets[bucket] >> 56)) & cur_bf) == 0; !matched) {
+                continue;
+            }
+
+            const auto probe_key = probe_data[i];
+            uint32_t probe_times = 1;
+            while (true) {
+                const auto build_bucket = buckets[bucket];
+                if (build_bucket == 0) {
+                    break;
+                }
+                if ((build_bucket & BLOOM_FILTER_DATA_MASK64) == probe_key) {
+                    dst_probe_indexes[match_count] = i;
+                    match_count++;
+                    break;
+                }
+                bucket = (bucket + probe_times) & bucket_size_mask;
+                probe_times++;
+            }
+        }
+    } else if constexpr (MODE == 7) {
+        const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+        const auto* build_buckets = _table_items->first.data();
+        const auto* probe_buckets = _probe_state->buckets.data();
+        for (uint32_t i = 0; i < probe_row_count; i++) {
+            const auto& probe_key = probe_data[i];
+
+            uint32_t probe_bucket = probe_buckets[i];
+            uint32_t probe_times = 1;
+            while (true) {
+                const uint32_t build_idx = build_buckets[probe_bucket];
+                if (build_idx == 0) {
+                    break;
+                }
+                if (build_data[build_idx] == probe_key) {
+                    dst_probe_indexes[match_count] = i;
+                    match_count++;
+                    break;
+                }
+                probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                probe_times++;
+            }
+        }
     } else {
         const auto* nexts = _probe_state->next.data();
         const auto* build_nexts = _table_items->next.data();
@@ -2828,6 +4269,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
         _do_probe_from_ht_for_left_anti_join<first_probe, false, 3>(state, build_data, probe_data);
     } else if (_table_items->mode == 2) {
         _do_probe_from_ht_for_left_anti_join<first_probe, false, 2>(state, build_data, probe_data);
+    } else if (_table_items->mode == 7) {
+        _do_probe_from_ht_for_left_anti_join<first_probe, false, 7>(state, build_data, probe_data);
+    } else if (_table_items->mode == 8) {
+        _do_probe_from_ht_for_left_anti_join<first_probe, false, 8>(state, build_data, probe_data);
     } else if (_table_items->mode == 1) {
         if (_table_items->no_conflicts) {
             _do_probe_from_ht_for_left_anti_join<first_probe, true, 1>(state, build_data, probe_data);
@@ -2885,18 +4330,18 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
         }
     } else {
         if constexpr (SIMD == 3) {
-            const int32_t min_value = _table_items->min_value;
-            const int32_t max_value = _table_items->max_value;
+            const int64_t min_value = _table_items->min_value;
+            const int64_t max_value = _table_items->max_value;
             const uint32_t group_mask = _table_items->bucket_size - 1;
 
-            const auto* probe_values = reinterpret_cast<const int32_t*>(probe_data.data());
+            const auto* probe_values = get_probe_interval_keys(probe_data);
             const auto* build_buckets = _table_items->set_has_value.data();
 
             uint8_t* dst_matches = _probe_state->probe_match_filter.data();
             memset(dst_matches, 0, sizeof(uint8_t) * probe_row_count);
 
             for (uint32_t i = 0; i < probe_row_count; i++) {
-                const int32_t value = probe_values[i];
+                const int64_t value = probe_values[i];
 
                 const uint32_t bucket = value - min_value;
                 const uint32_t group = (bucket / 8) & group_mask;
@@ -2936,6 +4381,62 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_anti_join
                         break;
                     }
                     if ((build_key & 0x7FFF'FFFFul) == probe_key) {
+                        break;
+                    }
+                    bucket = (bucket + probe_times) & bucket_size_mask;
+                    probe_times++;
+                }
+            }
+        } else if constexpr (SIMD == 7) {
+            const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+            const auto* buckets = _table_items->first.data();
+            const auto* probe_buckets = _probe_state->buckets.data();
+
+            for (uint32_t i = 0; i < probe_row_count; i++) {
+                const auto& probe_key = probe_data[i];
+
+                uint32_t bucket = probe_buckets[i];
+                uint32_t probe_times = 1;
+                while (true) {
+                    const auto build_idx = buckets[bucket];
+                    if (build_idx == 0) {
+                        probe_indexes[match_count] = i;
+                        match_count++;
+                        break;
+                    }
+                    if (build_data[build_idx] == probe_key) {
+                        break;
+                    }
+                    bucket = (bucket + probe_times) & bucket_size_mask;
+                    probe_times++;
+                }
+            }
+        } else if constexpr (SIMD == 8 && std::is_integral_v<CppType> && sizeof(CppType) == 8) {
+            const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+            const auto* buckets = _table_items->set_buckets.data();
+            const auto* probe_buckets = _probe_state->buckets.data();
+
+            for (uint32_t i = 0; i < probe_row_count; i++) {
+                const uint32_t hash = probe_buckets[i];
+                uint32_t bucket = hash >> 8;
+
+                const uint64_t cur_bf = BLOOM_FILTERS[hash & 0xFF];
+                if (const bool matched = ((~(buckets[bucket] >> 56)) & cur_bf) == 0; !matched) {
+                    probe_indexes[match_count] = i;
+                    match_count++;
+                    continue;
+                }
+
+                const auto probe_key = probe_data[i];
+                uint32_t probe_times = 1;
+                while (true) {
+                    const auto build_bucket = buckets[bucket];
+                    if (build_bucket == 0) {
+                        probe_indexes[match_count] = i;
+                        match_count++;
+                        break;
+                    }
+                    if ((build_bucket & BLOOM_FILTER_DATA_MASK64) == probe_key) {
                         break;
                     }
                     bucket = (bucket + probe_times) & bucket_size_mask;
