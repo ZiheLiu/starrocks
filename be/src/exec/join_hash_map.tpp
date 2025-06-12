@@ -89,8 +89,9 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
         return 8;
     }
 
-    if (conf_mode == 6 && (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
-                           join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
+    if (conf_mode == 6 && table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
+        (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
+         join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN)) {
         if (join_type == TJoinOp::LEFT_ANTI_JOIN || join_type == TJoinOp::LEFT_SEMI_JOIN) {
             return 7;
         }
@@ -1366,8 +1367,8 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         nexts[i] = 0;
                     }
                 } else {
-                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
-                                                                                      table_items->log_bucket_size);
+                    uint32_t bucket_num = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            pdata[i], table_items->bucket_size, table_items->log_bucket_size);
                     table_items->next[i] = table_items->first[bucket_num];
                     table_items->first[bucket_num] = i;
                 }
