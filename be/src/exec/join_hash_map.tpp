@@ -187,12 +187,97 @@ template <LogicalType LT>
 void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table_items) {
     table_items->bucket_size = JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1);
     table_items->mode = decide_mode(table_items);
+    table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     if (table_items->mode == 8) {
         table_items->set_buckets.resize(table_items->bucket_size);
         // table_items->next.resize(table_items->row_count + 1, 0);
     } else if (table_items->mode == 3) {
         table_items->set_has_value.resize(table_items->bucket_size, 0);
     } else {
+        table_items->next.resize(table_items->row_count + 1, 0);
+
+        auto calc_hash = [&]<uint8_t SIMD>() {
+            const auto& data = [&]() -> const auto& {
+                if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                    return get_key_data(*table_items);
+                } else {
+                    return get_raw_key_data(*table_items);
+                }
+            }();
+            [[maybe_unused]] const auto* __restrict pdata = [&] {
+                if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                    return static_cast<const Slice*>(nullptr);
+                } else {
+                    return data.data();
+                }
+            }();
+
+            const size_t num_rows = table_items->row_count + 1;
+            [[maybe_unused]] auto* nexts = table_items->next.data();
+            if constexpr (SIMD == 1 || SIMD == 6) {
+                auto* __restrict next = table_items->next.data();
+                for (size_t i = 1; i < num_rows; i++) {
+                    // use next to cache bucket_num
+                    next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size << 8,
+                                                                          table_items->log_bucket_size + 8);
+                }
+            } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                auto* __restrict next = table_items->next.data();
+                for (size_t i = 1; i < num_rows; i++) {
+                    // use next to cache bucket_num
+                    next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size << 8,
+                                                                          table_items->log_bucket_size + 8);
+                }
+            } else if constexpr (SIMD == 2 || SIMD == 7) {
+                auto* __restrict next = table_items->next.data();
+                for (size_t i = 1; i < num_rows; i++) {
+                    // use next to cache bucket_num
+                    next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
+                                                                          table_items->log_bucket_size);
+                }
+            }
+
+            if constexpr (SIMD == 6 || (SIMD == 16 && LT == TYPE_VARCHAR)) {
+                const auto* __restrict next = table_items->next.data();
+                HyperLogLog hll;
+                for (size_t i = 1; i < num_rows; i++) {
+                    hll.update(next[i]);
+                }
+                const size_t ndv = hll.estimate_cardinality();
+
+                const bool can_use = [&] {
+                    if constexpr (LT == TYPE_VARCHAR) {
+                        return ndv * 2 <= num_rows;
+                    } else {
+                        return ndv * 3 < num_rows;
+                    }
+                }();
+                if (!can_use) {
+                    table_items->mode = 1;
+                }
+            }
+        };
+
+        if (table_items->mode == 1) {
+            calc_hash.template operator()<1>();
+        } else if (table_items->mode == 2) {
+            calc_hash.template operator()<2>();
+        } else if (table_items->mode == 3) {
+            calc_hash.template operator()<3>();
+        } else if (table_items->mode == 4) {
+            calc_hash.template operator()<4>();
+        } else if (table_items->mode == 5) {
+            calc_hash.template operator()<5>();
+        } else if (table_items->mode == 6) {
+            calc_hash.template operator()<6>();
+        } else if (table_items->mode == 16) {
+            calc_hash.template operator()<16>();
+        } else if (table_items->mode == 7) {
+            calc_hash.template operator()<7>();
+        } else if (table_items->mode == 8) {
+            calc_hash.template operator()<8>();
+        }
+
         if (table_items->mode == 5) {
             const uint32_t key_interval = static_cast<int64_t>(table_items->max_value) - table_items->min_value + 1;
             table_items->dense_groups.resize((key_interval + 31) / 32, {0, 0});
@@ -204,13 +289,10 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
             table_items->first.resize(table_items->bucket_size, 0);
         }
 
-        table_items->next.resize(table_items->row_count + 1, 0);
-
         if (table_items->mode == 6 || table_items->mode == 16) {
             table_items->cached_nexts.resize(table_items->row_count + 8, 0);
         }
     }
-    table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
 }
 
 template <LogicalType LT>
@@ -665,12 +747,6 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             return get_raw_key_data(*table_items);
         }
     }();
-    const size_t num_rows = table_items->row_count + 1;
-
-    [[maybe_unused]] auto* firsts = table_items->first.data();
-    [[maybe_unused]] auto* str_firsts = table_items->str_first.data();
-    [[maybe_unused]] auto* nexts = table_items->next.data();
-    [[maybe_unused]] const uint32_t bucket_size_mask = table_items->bucket_size - 1;
     [[maybe_unused]] const auto* __restrict pdata = [&] {
         if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
             return static_cast<const Slice*>(nullptr);
@@ -678,29 +754,12 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
             return data.data();
         }
     }();
+    const size_t num_rows = table_items->row_count + 1;
 
-    if constexpr (SIMD == 1 || SIMD == 6) {
-        auto* __restrict next = table_items->next.data();
-        for (size_t i = 1; i < num_rows; i++) {
-            // use next to cache bucket_num
-            next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size << 8,
-                                                                  table_items->log_bucket_size + 8);
-        }
-    } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
-        auto* __restrict next = table_items->next.data();
-        for (size_t i = 1; i < num_rows; i++) {
-            // use next to cache bucket_num
-            next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size << 8,
-                                                                  table_items->log_bucket_size + 8);
-        }
-    } else if constexpr (SIMD == 2 || SIMD == 7) {
-        auto* __restrict next = table_items->next.data();
-        for (size_t i = 1; i < num_rows; i++) {
-            // use next to cache bucket_num
-            next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
-                                                                  table_items->log_bucket_size);
-        }
-    }
+    [[maybe_unused]] auto* firsts = table_items->first.data();
+    [[maybe_unused]] auto* str_firsts = table_items->str_first.data();
+    [[maybe_unused]] auto* nexts = table_items->next.data();
+    [[maybe_unused]] const uint32_t bucket_size_mask = table_items->bucket_size - 1;
 
     // if (do_construct_hash_table_by_sort_opt_4<SIMD>(state, table_items, probe_state)) {
     //     data = &get_key_data(*table_items);
