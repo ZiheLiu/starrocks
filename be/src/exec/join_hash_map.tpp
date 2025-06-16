@@ -791,14 +791,14 @@ template <uint8_t SIMD>
 void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTableItems* table_items,
                                                 HashTableProbeState* probe_state) {
     const auto& data = [&]() -> const auto& {
-        if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+        if constexpr ((SIMD == 16 || SIMD == 36) && LT == TYPE_VARCHAR) {
             return get_key_data(*table_items);
         } else {
             return get_raw_key_data(*table_items);
         }
     }();
     [[maybe_unused]] const auto* __restrict pdata = [&] {
-        if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+        if constexpr ((SIMD == 16 || SIMD == 36) && LT == TYPE_VARCHAR) {
             return static_cast<const Slice*>(nullptr);
         } else {
             return data.data();
