@@ -159,6 +159,14 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
             }
         }
 
+        if (conf_mode == 6 && table_items->row_count + 1 <= 0x7FFF'FFFFul && (join_type == TJoinOp::INNER_JOIN)) {
+            if constexpr (LT == LogicalType::TYPE_VARCHAR) {
+                return 36;
+            } else {
+                return 26;
+            }
+        }
+
         // fallback to mode 1
         if (table_items->bucket_size <= BLOOM_FILTER_DATA_MASK &&
             (join_type == TJoinOp::INNER_JOIN || join_type == TJoinOp::LEFT_OUTER_JOIN ||
@@ -177,6 +185,14 @@ uint8_t JoinBuildFunc<LT>::decide_mode(JoinHashTableItems* table_items) {
             return 16;
         } else {
             return 6;
+        }
+    }
+
+    if (conf_mode == 6 && table_items->row_count + 1 <= 0x7FFF'FFFFul && (join_type == TJoinOp::INNER_JOIN)) {
+        if constexpr (LT == LogicalType::TYPE_VARCHAR) {
+            return 36;
+        } else {
+            return 26;
         }
     }
 
@@ -228,6 +244,20 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
                     next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size << 8,
                                                                           table_items->log_bucket_size + 8);
                 }
+            } else if constexpr (SIMD == 26) {
+                auto* __restrict next = table_items->next.data();
+                for (size_t i = 1; i < num_rows; i++) {
+                    // use next to cache bucket_num
+                    next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(pdata[i], table_items->bucket_size,
+                                                                          table_items->log_bucket_size);
+                }
+            } else if constexpr (SIMD == 36 && LT == TYPE_VARCHAR) {
+                auto* __restrict next = table_items->next.data();
+                for (size_t i = 1; i < num_rows; i++) {
+                    // use next to cache bucket_num
+                    next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(data[i], table_items->bucket_size,
+                                                                          table_items->log_bucket_size);
+                }
             } else if constexpr (SIMD == 2 || SIMD == 7) {
                 auto* __restrict next = table_items->next.data();
                 for (size_t i = 1; i < num_rows; i++) {
@@ -237,7 +267,8 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
                 }
             }
 
-            if constexpr (SIMD == 6 || (SIMD == 16 && LT == TYPE_VARCHAR)) {
+            if constexpr (SIMD == 6 || SIMD == 26 || (SIMD == 16 && LT == TYPE_VARCHAR) ||
+                          (SIMD == 36 && LT == TYPE_VARCHAR)) {
                 const auto* __restrict next = table_items->next.data();
                 HyperLogLog hll;
                 for (size_t i = 1; i < num_rows; i++) {
@@ -253,7 +284,12 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
                     }
                 }();
                 if (!can_use) {
-                    table_items->mode = 1;
+                    if constexpr (SIMD == 26 || SIMD == 36) {
+                        table_items->mode = 0;
+                        std::memset(nexts, 0, sizeof(uint8_t) * num_rows);
+                    } else {
+                        table_items->mode = 1;
+                    }
                 }
             }
         };
@@ -272,6 +308,10 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
             calc_hash.template operator()<6>();
         } else if (table_items->mode == 16) {
             calc_hash.template operator()<16>();
+        } else if (table_items->mode == 26) {
+            calc_hash.template operator()<26>();
+        } else if (table_items->mode == 36) {
+            calc_hash.template operator()<36>();
         } else if (table_items->mode == 7) {
             calc_hash.template operator()<7>();
         } else if (table_items->mode == 8) {
@@ -363,6 +403,16 @@ void JoinBuildFunc<LT>::construct_hash_table(RuntimeState* state, JoinHashTableI
 
     if (table_items->mode == 16) {
         do_construct_hash_table<16>(state, table_items, probe_state);
+        return;
+    }
+
+    if (table_items->mode == 26) {
+        do_construct_hash_table<26>(state, table_items, probe_state);
+        return;
+    }
+
+    if (table_items->mode == 36) {
+        do_construct_hash_table<36>(state, table_items, probe_state);
         return;
     }
 
@@ -999,6 +1049,47 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                     probe_times++;
                                 }
                             }
+                        } else if constexpr (SIMD == 26) {
+                            uint32_t bucket = nexts[i];
+
+                            uint32_t probe_times = 1;
+                            while (true) {
+                                if (firsts[bucket] == 0) {
+                                    firsts[bucket] = i;
+                                    nexts[i] = 0;
+                                    break;
+                                }
+
+                                if (pdata[firsts[bucket]] == pdata[i]) {
+                                    nexts[i] = firsts[bucket];
+                                    firsts[bucket] = i;
+                                    break;
+                                }
+                                bucket = (bucket + probe_times) & bucket_size_mask;
+                                probe_times++;
+                            }
+                        } else if constexpr (SIMD == 36 && LT == TYPE_VARCHAR) {
+                            uint32_t bucket = nexts[i];
+                            Slice slice = data[i];
+
+                            uint32_t probe_times = 1;
+                            while (true) {
+                                if (str_firsts[bucket].index == 0) {
+                                    str_firsts[bucket].index = i;
+                                    str_firsts[bucket].size = slice.size;
+                                    str_firsts[bucket].data = slice.data;
+                                    nexts[i] = 0;
+                                    break;
+                                }
+
+                                if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                                    nexts[i] = str_firsts[bucket].index;
+                                    str_firsts[bucket].index = i;
+                                    break;
+                                }
+                                bucket = (bucket + probe_times) & bucket_size_mask;
+                                probe_times++;
+                            }
                         } else if constexpr (SIMD == 7) {
                             uint32_t bucket = nexts[i];
                             uint32_t probe_times = 1;
@@ -1232,6 +1323,47 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 probe_times++;
                             }
                         }
+                    } else if constexpr (SIMD == 26) {
+                        uint32_t bucket = nexts[i];
+
+                        uint32_t probe_times = 1;
+                        while (true) {
+                            if (firsts[bucket] == 0) {
+                                firsts[bucket] = i;
+                                nexts[i] = 0;
+                                break;
+                            }
+
+                            if (pdata[firsts[bucket]] == pdata[i]) {
+                                nexts[i] = firsts[bucket];
+                                firsts[bucket] = i;
+                                break;
+                            }
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
+                    } else if constexpr (SIMD == 36 && LT == TYPE_VARCHAR) {
+                        uint32_t bucket = nexts[i];
+                        Slice slice = data[i];
+
+                        uint32_t probe_times = 1;
+                        while (true) {
+                            if (str_firsts[bucket].index == 0) {
+                                str_firsts[bucket].index = i;
+                                str_firsts[bucket].size = slice.size;
+                                str_firsts[bucket].data = slice.data;
+                                nexts[i] = 0;
+                                break;
+                            }
+
+                            if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                                nexts[i] = str_firsts[bucket].index;
+                                str_firsts[bucket].index = i;
+                                break;
+                            }
+                            bucket = (bucket + probe_times) & bucket_size_mask;
+                            probe_times++;
+                        }
                     } else if constexpr (SIMD == 7) {
                         uint32_t bucket = nexts[i];
                         uint32_t probe_times = 1;
@@ -1463,6 +1595,47 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             bucket = (bucket + probe_times) & bucket_size_mask;
                             probe_times++;
                         }
+                    }
+                } else if constexpr (SIMD == 26) {
+                    uint32_t bucket = nexts[i];
+
+                    uint32_t probe_times = 1;
+                    while (true) {
+                        if (firsts[bucket] == 0) {
+                            firsts[bucket] = i;
+                            nexts[i] = 0;
+                            break;
+                        }
+
+                        if (pdata[firsts[bucket]] == pdata[i]) {
+                            nexts[i] = firsts[bucket];
+                            firsts[bucket] = i;
+                            break;
+                        }
+                        bucket = (bucket + probe_times) & bucket_size_mask;
+                        probe_times++;
+                    }
+                } else if constexpr (SIMD == 36 && LT == TYPE_VARCHAR) {
+                    uint32_t bucket = nexts[i];
+                    Slice slice = data[i];
+
+                    uint32_t probe_times = 1;
+                    while (true) {
+                        if (str_firsts[bucket].index == 0) {
+                            str_firsts[bucket].index = i;
+                            str_firsts[bucket].size = slice.size;
+                            str_firsts[bucket].data = slice.data;
+                            nexts[i] = 0;
+                            break;
+                        }
+
+                        if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                            nexts[i] = str_firsts[bucket].index;
+                            str_firsts[bucket].index = i;
+                            break;
+                        }
+                        bucket = (bucket + probe_times) & bucket_size_mask;
+                        probe_times++;
                     }
                 } else if constexpr (SIMD == 7) {
                     uint32_t bucket = nexts[i];
@@ -1730,6 +1903,10 @@ void JoinProbeFunc<LT>::lookup_init(const JoinHashTableItems& table_items, HashT
         do_lookup_init<6>(table_items, probe_state);
     } else if (table_items.mode == 16) {
         do_lookup_init<16>(table_items, probe_state);
+    } else if (table_items.mode == 26) {
+        do_lookup_init<26>(table_items, probe_state);
+    } else if (table_items.mode == 36) {
+        do_lookup_init<36>(table_items, probe_state);
     } else if (table_items.mode == 7) {
         do_lookup_init<7>(table_items, probe_state);
     } else if (table_items.mode == 8) {
@@ -1787,7 +1964,7 @@ void JoinProbeFunc<LT>::do_lookup_init(const JoinHashTableItems& table_items, Ha
                                                      table_items.log_bucket_size, data, 0, data.size());
     }
 
-    if constexpr (SIMD == 2 || SIMD == 6 || SIMD == 16 || SIMD == 7 || SIMD == 8) {
+    if constexpr (SIMD == 2 || SIMD == 6 || SIMD == 16 || SIMD == 26 || SIMD == 36 || SIMD == 7 || SIMD == 8) {
         if ((*probe_state->key_columns)[0]->is_nullable()) {
             const auto* nullable_column = ColumnHelper::as_raw_column<NullableColumn>((*probe_state->key_columns)[0]);
             if (nullable_column->has_null()) {
@@ -2836,6 +3013,16 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
         return;
     }
 
+    if (_table_items->mode == 26) {
+        _do_probe_from_ht<first_probe, false, false, 6>(state, build_data, probe_data);
+        return;
+    }
+
+    if (_table_items->mode == 36) {
+        _do_probe_from_ht<first_probe, false, false, 16>(state, build_data, probe_data);
+        return;
+    }
+
     if (_table_items->no_conflicts) {
         _do_probe_from_ht<first_probe, true, false, 0>(state, build_data, probe_data);
     } else {
@@ -2907,6 +3094,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6_first(Runtim
 
     _probe_state->probe_buckets_len = res_buckets_len;
 }
+
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode16_first(RuntimeState* state, const auto& build_data,
                                                                            const Buffer<CppType>& probe_data) {
@@ -2975,6 +3163,108 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode16_first(Runti
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode26_first(RuntimeState* state, const auto& build_data,
+                                                                           const Buffer<CppType>& probe_data) {
+    const size_t num_probe_rows = _probe_state->probe_row_count;
+    const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+
+    auto* __restrict res_buckets = _probe_state->probe_buckets.data();
+    uint32_t res_buckets_len = 0;
+
+    {
+        const auto* __restrict build_buckets = _table_items->first.data();
+        const auto* __restrict probe_buckets = _probe_state->buckets.data();
+
+        for (size_t i = 0; i < num_probe_rows; i++) {
+            const auto& probe_key = probe_data[i];
+
+            uint32_t probe_bucket = probe_buckets[i];
+            uint32_t build_index = build_buckets[probe_bucket];
+
+            uint32_t probe_times = 1;
+            while (true) {
+                if (build_data[build_index] == probe_key) {
+                    res_buckets[res_buckets_len].probe_row_id = i;
+                    res_buckets[res_buckets_len].build_row_id = build_index;
+                    res_buckets_len++;
+                    break;
+                }
+
+                probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                probe_times++;
+
+                build_index = build_buckets[probe_bucket];
+                if (build_index == 0) {
+                    break;
+                }
+            }
+        }
+    }
+
+    {
+        auto* __restrict probe_match_filter = _probe_state->probe_match_filter.data();
+        memset(probe_match_filter, 0, num_probe_rows * sizeof(uint8_t));
+        for (uint32_t i = 0; i < res_buckets_len; i++) {
+            probe_match_filter[res_buckets[i].probe_row_id] = 1;
+        }
+    }
+
+    _probe_state->probe_buckets_len = res_buckets_len;
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
+void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode36_first(RuntimeState* state, const auto& build_data,
+                                                                           const Buffer<CppType>& probe_data) {
+    if constexpr (LT == TYPE_VARCHAR) {
+        const size_t num_probe_rows = _probe_state->probe_row_count;
+        const uint32_t bucket_size_mask = _table_items->bucket_size - 1;
+
+        auto* __restrict res_buckets = _probe_state->probe_buckets.data();
+        uint32_t res_buckets_len = 0;
+
+        {
+            const auto* __restrict build_buckets = _table_items->str_first.data();
+            const auto* __restrict probe_buckets = _probe_state->buckets.data();
+
+            for (size_t i = 0; i < num_probe_rows; i++) {
+                const auto& probe_key = probe_data[i];
+
+                uint32_t probe_bucket = probe_buckets[i];
+                auto build_bucket = build_buckets[probe_bucket];
+
+                uint32_t probe_times = 1;
+                while (true) {
+                    if (Slice(build_bucket.data, build_bucket.size) == probe_key) {
+                        res_buckets[res_buckets_len].probe_row_id = i;
+                        res_buckets[res_buckets_len].build_row_id = build_bucket.index;
+                        res_buckets_len++;
+                        break;
+                    }
+
+                    probe_bucket = (probe_bucket + probe_times) & bucket_size_mask;
+                    probe_times++;
+
+                    build_bucket = build_buckets[probe_bucket];
+                    if (build_bucket.index == 0) {
+                        break;
+                    }
+                }
+            }
+        }
+
+        {
+            auto* __restrict probe_match_filter = _probe_state->probe_match_filter.data();
+            memset(probe_match_filter, 0, num_probe_rows * sizeof(uint8_t));
+            for (uint32_t i = 0; i < res_buckets_len; i++) {
+                probe_match_filter[res_buckets[i].probe_row_id] = 1;
+            }
+        }
+
+        _probe_state->probe_buckets_len = res_buckets_len;
+    }
+}
+
+template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, uint8_t SIMD>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState* state, const auto& build_data,
                                                                     const Buffer<CppType>& probe_data) {
@@ -2985,6 +3275,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
             _do_probe_from_ht_mode6_first(state, build_data, probe_data);
         } else if constexpr (SIMD == 16) {
             _do_probe_from_ht_mode16_first(state, build_data, probe_data);
+        } else if constexpr (SIMD == 26) {
+            _do_probe_from_ht_mode26_first(state, build_data, probe_data);
+        } else if constexpr (SIMD == 36) {
+            _do_probe_from_ht_mode36_first(state, build_data, probe_data);
         }
     }
 
@@ -3121,7 +3415,7 @@ template <LogicalType LT, class BuildFunc, class ProbeFunc>
 template <bool first_probe, bool no_conflicts, bool no_duplicated_build_keys, uint8_t SIMD>
 void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht(RuntimeState* state, const auto& build_data,
                                                               const Buffer<CppType>& probe_data) {
-    if constexpr (SIMD == 6 || SIMD == 16) {
+    if constexpr (SIMD == 6 || SIMD == 16 || SIMD == 26 || SIMD == 36) {
         _do_probe_from_ht_mode6<first_probe, SIMD>(state, build_data, probe_data);
         return;
     }

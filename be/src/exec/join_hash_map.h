@@ -774,6 +774,8 @@ private:
     void _do_probe_from_ht_mode6(RuntimeState* state, const auto& build_data, const Buffer<CppType>& probe_data);
     void _do_probe_from_ht_mode6_first(RuntimeState* state, const auto& build_data, const Buffer<CppType>& probe_data);
     void _do_probe_from_ht_mode16_first(RuntimeState* state, const auto& build_data, const Buffer<CppType>& probe_data);
+    void _do_probe_from_ht_mode26_first(RuntimeState* state, const auto& build_data, const Buffer<CppType>& probe_data);
+    void _do_probe_from_ht_mode36_first(RuntimeState* state, const auto& build_data, const Buffer<CppType>& probe_data);
 
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const auto& build_data,
                                                        const Buffer<CppType>& probe_data);
