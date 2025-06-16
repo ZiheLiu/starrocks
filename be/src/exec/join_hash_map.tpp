@@ -3014,12 +3014,12 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht(RuntimeState* state, 
     }
 
     if (_table_items->mode == 26) {
-        _do_probe_from_ht<first_probe, false, false, 6>(state, build_data, probe_data);
+        _do_probe_from_ht<first_probe, false, false, 26>(state, build_data, probe_data);
         return;
     }
 
     if (_table_items->mode == 36) {
-        _do_probe_from_ht<first_probe, false, false, 16>(state, build_data, probe_data);
+        _do_probe_from_ht<first_probe, false, false, 36>(state, build_data, probe_data);
         return;
     }
 
