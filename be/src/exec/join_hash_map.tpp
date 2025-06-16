@@ -323,13 +323,13 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
             table_items->dense_groups.resize((key_interval + 31) / 32, {0, 0});
         }
 
-        if (table_items->mode == 16) {
+        if (table_items->mode == 16 || table_items->mode == 36) {
             table_items->str_first.resize(table_items->bucket_size);
         } else {
             table_items->first.resize(table_items->bucket_size, 0);
         }
 
-        if (table_items->mode == 6 || table_items->mode == 16) {
+        if (table_items->mode == 6 || table_items->mode == 16 || table_items->mode == 26 || table_items->mode == 36) {
             table_items->cached_nexts.resize(table_items->row_count + 8, 0);
         }
     }
