@@ -214,14 +214,14 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
 
         auto calc_hash = [&]<uint8_t SIMD>() {
             const auto& data = [&]() -> const auto& {
-                if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                if constexpr ((SIMD == 16 || SIMD == 36) && LT == TYPE_VARCHAR) {
                     return get_key_data(*table_items);
                 } else {
                     return get_raw_key_data(*table_items);
                 }
             }();
             [[maybe_unused]] const auto* __restrict pdata = [&] {
-                if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                if constexpr ((SIMD == 16 || SIMD == 36) && LT == TYPE_VARCHAR) {
                     return static_cast<const Slice*>(nullptr);
                 } else {
                     return data.data();
