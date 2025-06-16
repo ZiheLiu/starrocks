@@ -135,7 +135,7 @@ void BinaryColumnBase<T>::append_selective(const Column& src, const uint32_t* in
     for (size_t i = 0; i < size; i++) {
         const uint32_t src_idx = indexes[i];
         const T str_size = new_offsets[i * 2 + 1] - new_offsets[i * 2];
-        strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + src_offsets[src_idx], str_size);
+        strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
         cur_offset += str_size;
     }
 
