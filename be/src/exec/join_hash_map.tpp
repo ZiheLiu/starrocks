@@ -3377,7 +3377,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                 const uint32_t new_first_next = num_cached_nexts | 0x8000'0000ull;
                 _table_items->next[build_index] = new_first_next;
                 // cached_nexts[num_cached_nexts] = build_index | 0x8000'0000ull;
-                cached_nexts[num_cached_nexts] = build_index | 0x8000'0000ull;
+                cached_nexts[num_cached_nexts] = build_index;
                 num_cached_nexts++;
 
                 uint32_t cur_build_index = first_next;
