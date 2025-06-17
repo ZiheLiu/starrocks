@@ -3376,6 +3376,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
 
                 const uint32_t new_first_next = num_cached_nexts | 0x8000'0000ull;
                 _table_items->next[build_index] = new_first_next;
+                // cached_nexts[num_cached_nexts] = build_index | 0x8000'0000ull;
                 cached_nexts[num_cached_nexts] = build_index | 0x8000'0000ull;
                 num_cached_nexts++;
 
@@ -3386,6 +3387,14 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
                     cur_build_index = _table_items->next[cur_build_index];
                 } while (cur_build_index != 0);
 
+                // revert cached_nexts from _table_items->num_cached_nexts to num_cached_nexts-1
+
+                const uint32_t prev_num_cached_nexts = _table_items->num_cached_nexts;
+                for (uint32_t j = 0; j < (num_cached_nexts - prev_num_cached_nexts) / 2; j++) {
+                    std::swap(cached_nexts[prev_num_cached_nexts + j], cached_nexts[num_cached_nexts - 1 - j]);
+                }
+
+                cached_nexts[prev_num_cached_nexts] |= 0x8000'0000ull;
                 cached_nexts[num_cached_nexts] |= 0x8000'0000ull;
                 _table_items->num_cached_nexts = num_cached_nexts;
 
