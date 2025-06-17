@@ -121,8 +121,30 @@ struct JoinHashTableItems {
     Buffer<uint32_t> cached_nexts;
     struct StringBucket {
         uint32_t index = 0;
-        uint32_t size = 0;
-        char* data = nullptr;
+
+        union String {
+            struct Ref {
+                uint32_t size = 0;
+                char* data = nullptr;
+            };
+            struct InPlace {
+                uint8_t size;
+                char data[11];
+            };
+            Ref ref;
+            InPlace in_place;
+
+            String() : ref() {}
+        };
+        String str;
+
+        friend bool operator==(const String& x, const Slice& y) {
+            if (x.in_place.size > 0) {
+                return Slice(x.in_place.data, x.in_place.size - 1) == y;
+            } else {
+                return Slice(x.ref.data, x.ref.size) == y;
+            }
+        }
     };
     Buffer<StringBucket> str_first;
     Buffer<uint8_t> set_has_value;

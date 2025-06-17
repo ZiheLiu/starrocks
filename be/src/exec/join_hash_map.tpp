@@ -1018,8 +1018,13 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 while (true) {
                                     if (str_firsts[bucket].index == 0) {
                                         str_firsts[bucket].index = i;
-                                        str_firsts[bucket].size = slice.size;
-                                        str_firsts[bucket].data = slice.data;
+                                        if (slice.size < 12) {
+                                            str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                            std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                        } else {
+                                            str_firsts[bucket].str.ref.size = slice.size;
+                                            str_firsts[bucket].str.ref.data = slice.data;
+                                        }
                                         str_firsts[start_bucket].index |= (fp << 24);
                                         nexts[i] = 0;
                                         break;
@@ -1032,14 +1037,19 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 while (true) {
                                     if (str_firsts[bucket].index == 0) {
                                         str_firsts[bucket].index = i;
-                                        str_firsts[bucket].size = slice.size;
-                                        str_firsts[bucket].data = slice.data;
+                                        if (slice.size < 12) {
+                                            str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                            std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                        } else {
+                                            str_firsts[bucket].str.ref.size = slice.size;
+                                            str_firsts[bucket].str.ref.data = slice.data;
+                                        }
                                         str_firsts[start_bucket].index |= (fp << 24);
                                         nexts[i] = 0;
                                         break;
                                     }
 
-                                    if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                                    if (str_firsts[bucket].str == data[i]) {
                                         nexts[i] = str_firsts[bucket].index & BLOOM_FILTER_DATA_MASK;
                                         str_firsts[bucket].index =
                                                 i | (str_firsts[bucket].index & BLOOM_FILTER_BF_MASK);
@@ -1076,13 +1086,20 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             while (true) {
                                 if (str_firsts[bucket].index == 0) {
                                     str_firsts[bucket].index = i;
-                                    str_firsts[bucket].size = slice.size;
-                                    str_firsts[bucket].data = slice.data;
+
+                                    if (slice.size < 12) {
+                                        str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                        std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                    } else {
+                                        str_firsts[bucket].str.ref.size = slice.size;
+                                        str_firsts[bucket].str.ref.data = slice.data;
+                                    }
+
                                     nexts[i] = 0;
                                     break;
                                 }
 
-                                if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                                if (str_firsts[bucket].str == data[i]) {
                                     nexts[i] = str_firsts[bucket].index;
                                     str_firsts[bucket].index = i;
                                     break;
@@ -1293,8 +1310,13 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             while (true) {
                                 if (str_firsts[bucket].index == 0) {
                                     str_firsts[bucket].index = i;
-                                    str_firsts[bucket].size = slice.size;
-                                    str_firsts[bucket].data = slice.data;
+                                    if (slice.size < 12) {
+                                        str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                        std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                    } else {
+                                        str_firsts[bucket].str.ref.size = slice.size;
+                                        str_firsts[bucket].str.ref.data = slice.data;
+                                    }
                                     str_firsts[start_bucket].index |= (fp << 24);
                                     nexts[i] = 0;
                                     break;
@@ -1307,14 +1329,19 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             while (true) {
                                 if (str_firsts[bucket].index == 0) {
                                     str_firsts[bucket].index = i;
-                                    str_firsts[bucket].size = slice.size;
-                                    str_firsts[bucket].data = slice.data;
+                                    if (slice.size < 12) {
+                                        str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                        std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                    } else {
+                                        str_firsts[bucket].str.ref.size = slice.size;
+                                        str_firsts[bucket].str.ref.data = slice.data;
+                                    }
                                     str_firsts[start_bucket].index |= (fp << 24);
                                     nexts[i] = 0;
                                     break;
                                 }
 
-                                if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                                if (str_firsts[bucket].str == data[i]) {
                                     nexts[i] = str_firsts[bucket].index & BLOOM_FILTER_DATA_MASK;
                                     str_firsts[bucket].index = i | (str_firsts[bucket].index & BLOOM_FILTER_BF_MASK);
                                     break;
@@ -1350,13 +1377,20 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         while (true) {
                             if (str_firsts[bucket].index == 0) {
                                 str_firsts[bucket].index = i;
-                                str_firsts[bucket].size = slice.size;
-                                str_firsts[bucket].data = slice.data;
+
+                                if (slice.size < 12) {
+                                    str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                    std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                } else {
+                                    str_firsts[bucket].str.ref.size = slice.size;
+                                    str_firsts[bucket].str.ref.data = slice.data;
+                                }
+
                                 nexts[i] = 0;
                                 break;
                             }
 
-                            if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                            if (str_firsts[bucket].str == data[i]) {
                                 nexts[i] = str_firsts[bucket].index;
                                 str_firsts[bucket].index = i;
                                 break;
@@ -1566,8 +1600,13 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         while (true) {
                             if (str_firsts[bucket].index == 0) {
                                 str_firsts[bucket].index = i;
-                                str_firsts[bucket].size = slice.size;
-                                str_firsts[bucket].data = slice.data;
+                                if (slice.size < 12) {
+                                    str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                    std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                } else {
+                                    str_firsts[bucket].str.ref.size = slice.size;
+                                    str_firsts[bucket].str.ref.data = slice.data;
+                                }
                                 str_firsts[start_bucket].index |= (fp << 24);
                                 nexts[i] = 0;
                                 break;
@@ -1580,14 +1619,19 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         while (true) {
                             if (str_firsts[bucket].index == 0) {
                                 str_firsts[bucket].index = i;
-                                str_firsts[bucket].size = slice.size;
-                                str_firsts[bucket].data = slice.data;
+                                if (slice.size < 12) {
+                                    str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                    std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                                } else {
+                                    str_firsts[bucket].str.ref.size = slice.size;
+                                    str_firsts[bucket].str.ref.data = slice.data;
+                                }
                                 str_firsts[start_bucket].index |= (fp << 24);
                                 nexts[i] = 0;
                                 break;
                             }
 
-                            if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                            if (str_firsts[bucket].str == data[i]) {
                                 nexts[i] = str_firsts[bucket].index & BLOOM_FILTER_DATA_MASK;
                                 str_firsts[bucket].index = i | (str_firsts[bucket].index & BLOOM_FILTER_BF_MASK);
                                 break;
@@ -1623,13 +1667,20 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     while (true) {
                         if (str_firsts[bucket].index == 0) {
                             str_firsts[bucket].index = i;
-                            str_firsts[bucket].size = slice.size;
-                            str_firsts[bucket].data = slice.data;
+
+                            if (slice.size < 12) {
+                                str_firsts[bucket].str.in_place.size = slice.size + 1;
+                                std::memcpy(str_firsts[bucket].str.in_place.data, slice.data, slice.size);
+                            } else {
+                                str_firsts[bucket].str.ref.size = slice.size;
+                                str_firsts[bucket].str.ref.data = slice.data;
+                            }
+
                             nexts[i] = 0;
                             break;
                         }
 
-                        if (Slice(str_firsts[bucket].data, str_firsts[bucket].size) == data[i]) {
+                        if (str_firsts[bucket].str == data[i]) {
                             nexts[i] = str_firsts[bucket].index;
                             str_firsts[bucket].index = i;
                             break;
@@ -3125,7 +3176,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode16_first(Runti
                 while (true) {
                     build_bucket.index &= BLOOM_FILTER_DATA_MASK; // clear the first 8 bits
 
-                    if (Slice(build_bucket.data, build_bucket.size) == probe_key) {
+                    if (build_bucket.str == probe_key) {
                         res_buckets[res_buckets_len].probe_row_id = i;
                         res_buckets[res_buckets_len].build_row_id = build_bucket.index;
                         res_buckets_len++;
@@ -3234,7 +3285,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode36_first(Runti
 
                 uint32_t probe_times = 1;
                 while (true) {
-                    if (Slice(build_bucket.data, build_bucket.size) == probe_key) {
+                    if (build_bucket.str == probe_key) {
                         res_buckets[res_buckets_len].probe_row_id = i;
                         res_buckets[res_buckets_len].build_row_id = build_bucket.index;
                         res_buckets_len++;
@@ -3799,7 +3850,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
                 while (true) {
                     build_bucket.index &= BLOOM_FILTER_DATA_MASK; // clear the first 8 bits
 
-                    if (Slice(build_bucket.data, build_bucket.size) == probe_key) {
+                    if (build_bucket.str == probe_key) {
                         res_buckets[res_buckets_len].probe_row_id = i;
                         res_buckets[res_buckets_len].build_row_id = build_bucket.index;
                         res_buckets_len++;
