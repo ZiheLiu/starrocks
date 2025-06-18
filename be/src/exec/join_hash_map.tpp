@@ -269,7 +269,7 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
 
             if constexpr (SIMD == 6 || SIMD == 26 || (SIMD == 16 && LT == TYPE_VARCHAR) ||
                           (SIMD == 36 && LT == TYPE_VARCHAR)) {
-                const auto* __restrict next = table_items->next.data();
+                auto* __restrict next = table_items->next.data();
                 HyperLogLog hll;
                 for (size_t i = 1; i < num_rows; i++) {
                     hll.update(next[i]);
@@ -289,6 +289,18 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
                         std::memset(nexts, 0, sizeof(uint8_t) * num_rows);
                     } else {
                         table_items->mode = 1;
+                    }
+                } else {
+                    const uint32_t new_bucket_size = JoinHashMapHelper::calc_bucket_size(ndv + ndv / 8 + 1);
+                    if (ndv + 1 < num_rows && new_bucket_size < table_items->bucket_size / 128) {
+                        const uint32_t new_log_bucket_size = __builtin_ctz(new_bucket_size);
+                        const uint32_t left_shift = table_items->log_bucket_size - new_log_bucket_size;
+                        for (size_t i = 1; i < num_rows; i++) {
+                            next[i] >>= left_shift;
+                        }
+
+                        table_items->bucket_size = new_bucket_size;
+                        table_items->log_bucket_size = new_log_bucket_size;
                     }
                 }
             }
