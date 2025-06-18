@@ -324,7 +324,10 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
         }
 
         if (table_items->mode == 16 || table_items->mode == 36) {
-            table_items->str_first.resize(table_items->bucket_size);
+            raw::stl_vector_resize_uninitialized(&table_items->str_first, table_items->bucket_size);
+            std::memset(table_items->str_first.data(), 0,
+                        sizeof(JoinHashTableItems::StringBucket) * table_items->bucket_size);
+            // table_items->str_first.resize(table_items->bucket_size);
         } else {
             table_items->first.resize(table_items->bucket_size, 0);
         }
