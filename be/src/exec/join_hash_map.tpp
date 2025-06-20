@@ -3478,10 +3478,16 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6(RuntimeState
         }
     }
 
+    const auto* build_nexts = _table_items->next.data();
+
     for (; i < res_buckets_len; i++) {
+        if (i + 16 < res_buckets_len) {
+            __builtin_prefetch(build_nexts + _probe_state->probe_buckets[i + 16].build_row_id);
+        }
+
         const uint32_t start_match_count = match_count;
         auto [probe_index, build_index] = _probe_state->probe_buckets[i];
-        const auto first_next = _table_items->next[build_index];
+        const auto first_next = build_nexts[build_index];
 
         if (first_next & 0x8000'0000ull) {
             if (process_opt(start_match_count, probe_index, first_next)) {
