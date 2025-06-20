@@ -4085,7 +4085,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_for_left_outer_joi
 
     for (; i < res_buckets_len; i++) {
         if (i + 16 < res_buckets_len) {
-            __builtin_prefetch(build_nexts + (_probe_state->probe_buckets[i].build_row_id));
+            __builtin_prefetch(build_nexts + (_probe_state->probe_buckets[i + 16].build_row_id));
         }
 
         const uint32_t start_match_count = match_count;
