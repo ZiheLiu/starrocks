@@ -982,7 +982,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                         } else if constexpr (SIMD == 6) {
                             if (i + 16 < num_rows) {
-                                __builtin_prefetch(firsts + nexts[i + 16]);
+                                __builtin_prefetch(firsts + (nexts[i + 16] >> 8));
                             }
 
                             const uint32_t hash = nexts[i];
@@ -1024,7 +1024,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             }
                         } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
                             if (i + 16 < num_rows) {
-                                __builtin_prefetch(str_firsts + nexts[i + 16]);
+                                __builtin_prefetch(str_firsts + (nexts[i + 16] >> 8));
                             }
 
                             const uint32_t hash = nexts[i];
@@ -1290,7 +1290,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                     } else if constexpr (SIMD == 6) {
                         if (i + 16 < num_rows) {
-                            __builtin_prefetch(firsts + nexts[i + 16]);
+                            __builtin_prefetch(firsts + (nexts[i + 16] >> 8));
                         }
 
                         const uint32_t hash = nexts[i];
@@ -1332,7 +1332,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         }
                     } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
                         if (i + 16 < num_rows) {
-                            __builtin_prefetch(str_firsts + nexts[i + 16]);
+                            __builtin_prefetch(str_firsts + (nexts[i + 16] >> 8));
                         }
 
                         const uint32_t hash = nexts[i];
@@ -1597,7 +1597,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                 } else if constexpr (SIMD == 6) {
                     if (i + 16 < num_rows) {
-                        __builtin_prefetch(firsts + nexts[i + 16]);
+                        __builtin_prefetch(firsts + (nexts[i + 16] >> 8));
                     }
 
                     const uint32_t hash = nexts[i];
@@ -1639,7 +1639,7 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     }
                 } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
                     if (i + 16 < num_rows) {
-                        __builtin_prefetch(str_firsts + nexts[i + 16]);
+                        __builtin_prefetch(str_firsts + (nexts[i + 16] >> 8));
                     }
 
                     const uint32_t hash = nexts[i];
