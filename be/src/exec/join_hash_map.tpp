@@ -280,10 +280,10 @@ void JoinBuildFunc<LT>::prepare(RuntimeState* runtime, JoinHashTableItems* table
                     if constexpr (LT == TYPE_VARCHAR) {
                         return ndv * 2 <= num_rows;
                     } else {
-                        return ndv * 3 < num_rows;
+                        return ndv * 2 + ndv / 2 <= num_rows;
                     }
                 }();
-                if (!can_use) {
+                if (!can_use && config::enable_simd_hash_join > 0) {
                     if constexpr (SIMD == 26 || SIMD == 36) {
                         table_items->mode = 0;
                         std::memset(nexts, 0, sizeof(uint8_t) * num_rows);
