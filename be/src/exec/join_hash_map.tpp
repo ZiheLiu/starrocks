@@ -3158,6 +3158,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode6_first(Runtim
         const auto* __restrict probe_buckets = _probe_state->buckets.data();
 
         for (size_t i = 0; i < num_probe_rows; i++) {
+            if (i + 16 < num_probe_rows) {
+                __builtin_prefetch(build_buckets + (probe_buckets[i + 16] >> 8));
+            }
+
             const auto& probe_key = probe_data[i];
 
             const uint32_t hash = probe_buckets[i];
@@ -3224,6 +3228,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode16_first(Runti
             const auto* __restrict probe_buckets = _probe_state->buckets.data();
 
             for (size_t i = 0; i < num_probe_rows; i++) {
+                if (i + 16 < num_probe_rows) {
+                    __builtin_prefetch(build_buckets + (probe_buckets[i + 16] >> 8));
+                }
+
                 const auto& probe_key = probe_data[i];
 
                 const uint32_t hash = probe_buckets[i];
@@ -3290,6 +3298,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode26_first(Runti
         const auto* __restrict probe_buckets = _probe_state->buckets.data();
 
         for (size_t i = 0; i < num_probe_rows; i++) {
+            if (i + 16 < num_probe_rows) {
+                __builtin_prefetch(build_buckets + (probe_buckets[i + 16]));
+            }
+
             const auto& probe_key = probe_data[i];
 
             uint32_t probe_bucket = probe_buckets[i];
@@ -3341,6 +3353,10 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_do_probe_from_ht_mode36_first(Runti
             const auto* __restrict probe_buckets = _probe_state->buckets.data();
 
             for (size_t i = 0; i < num_probe_rows; i++) {
+                if (i + 16 < num_probe_rows) {
+                    __builtin_prefetch(build_buckets + (probe_buckets[i + 16]));
+                }
+
                 const auto& probe_key = probe_data[i];
 
                 uint32_t probe_bucket = probe_buckets[i];
