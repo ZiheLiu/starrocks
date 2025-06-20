@@ -819,10 +819,10 @@ private:
     template <bool first_probe, uint8_t SIMD>
     void _do_probe_from_ht_for_left_outer_join_mode6(RuntimeState* state, const auto& build_data,
                                                      const Buffer<CppType>& probe_data);
-    void _do_probe_from_ht_for_left_outer_join_mode6_first(RuntimeState* state, const auto& build_data,
-                                                           const Buffer<CppType>& probe_data);
-    void _do_probe_from_ht_for_left_outer_join_mode16_first(RuntimeState* state, const auto& build_data,
-                                                            const Buffer<CppType>& probe_data);
+    uint32_t _do_probe_from_ht_for_left_outer_join_mode6_first(RuntimeState* state, const auto& build_data,
+                                                               const Buffer<CppType>& probe_data);
+    uint32_t _do_probe_from_ht_for_left_outer_join_mode16_first(RuntimeState* state, const auto& build_data,
+                                                                const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_outer_join(RuntimeState* state, const auto& build_data,
                                                                            const Buffer<CppType>& probe_data);
     // for one key left semi join
