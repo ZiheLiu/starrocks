@@ -163,7 +163,7 @@ void BinaryColumnBase<T>::append_selective(const Column& src, const uint32_t* in
                 buffer[7 * 2 + 1] = src_offsets[src_idx + 1];
             }
 
-            std::memcpy(new_offsets, buffer, W * 2 * sizeof(T));
+            std::memcpy(new_offsets + i, buffer, W * 2 * sizeof(T));
         }
 
         for (; i < size; i++) {
