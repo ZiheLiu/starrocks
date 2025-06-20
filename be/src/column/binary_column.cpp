@@ -187,84 +187,14 @@ void BinaryColumnBase<T>::append_selective(const Column& src, const uint32_t* in
 
     {
         // write bytes
+        _bytes.resize(num_bytes);
+        auto* __restrict dest_bytes = _bytes.data();
+        size_t cur_offset = _offsets[prev_num_rows];
 
-        auto process_batch = [&]<uint32_t MaxLen>() {
-            _bytes.resize(num_bytes + MaxLen);
-            auto* __restrict dest_bytes = _bytes.data();
-            size_t cur_offset = _offsets[prev_num_rows];
-
-            size_t i = 0;
-
-            static constexpr uint32_t W = 8;
-            uint8_t buffer[W * MaxLen + MaxLen];
-
-            for (; i + W <= size; i += W) {
-                {
-                    const T str_size = new_offsets[(i + 0) * 2 + 1] - new_offsets[(i + 0) * 2];
-                    strings::memcpy_inlined(buffer + 0 * MaxLen, src_bytes + new_offsets[(i + 0) * 2], str_size);
-                }
-                {
-                    const T str_size = new_offsets[(i + 1) * 2 + 1] - new_offsets[(i + 1) * 2];
-                    strings::memcpy_inlined(buffer + 1 * MaxLen, src_bytes + new_offsets[(i + 1) * 2], str_size);
-                }
-                {
-                    const T str_size = new_offsets[(i + 2) * 2 + 1] - new_offsets[(i + 2) * 2];
-                    strings::memcpy_inlined(buffer + 2 * MaxLen, src_bytes + new_offsets[(i + 2) * 2], str_size);
-                }
-                {
-                    const T str_size = new_offsets[(i + 3) * 2 + 1] - new_offsets[(i + 3) * 2];
-                    strings::memcpy_inlined(buffer + 3 * MaxLen, src_bytes + new_offsets[(i + 3) * 2], str_size);
-                }
-                {
-                    const T str_size = new_offsets[(i + 4) * 2 + 1] - new_offsets[(i + 4) * 2];
-                    strings::memcpy_inlined(buffer + 4 * MaxLen, src_bytes + new_offsets[(i + 4) * 2], str_size);
-                }
-                {
-                    const T str_size = new_offsets[(i + 5) * 2 + 1] - new_offsets[(i + 5) * 2];
-                    strings::memcpy_inlined(buffer + 5 * MaxLen, src_bytes + new_offsets[(i + 5) * 2], str_size);
-                }
-                {
-                    const T str_size = new_offsets[(i + 6) * 2 + 1] - new_offsets[(i + 6) * 2];
-                    strings::memcpy_inlined(buffer + 6 * MaxLen, src_bytes + new_offsets[(i + 6) * 2], str_size);
-                }
-                {
-                    const T str_size = new_offsets[(i + 7) * 2 + 1] - new_offsets[(i + 7) * 2];
-                    strings::memcpy_inlined(buffer + 7 * MaxLen, src_bytes + new_offsets[(i + 7) * 2], str_size);
-                }
-
-                for (size_t j = 0; j < W; j++) {
-                    strings::memcpy_inlined(dest_bytes + cur_offset, buffer + j * MaxLen, MaxLen);
-                    cur_offset += new_offsets[(i + j) * 2 + 1] - new_offsets[(i + j) * 2];
-                }
-            }
-
-            for (; i < size; i++) {
-                const T str_size = new_offsets[i * 2 + 1] - new_offsets[i * 2];
-                strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
-                cur_offset += str_size;
-            }
-
-            _bytes.resize(num_bytes);
-        };
-
-        if (max_len <= 8) {
-            process_batch.template operator()<8>();
-        } else if (max_len <= 16) {
-            process_batch.template operator()<16>();
-        } else if (max_len <= 32) {
-            process_batch.template operator()<32>();
-        } else if (max_len <= 64) {
-            process_batch.template operator()<64>();
-        } else {
-            _bytes.resize(num_bytes);
-            auto* __restrict dest_bytes = _bytes.data();
-            size_t cur_offset = _offsets[prev_num_rows];
-
-            for (size_t i = 0; i < size; i++) {
-                const T str_size = new_offsets[i * 2 + 1] - new_offsets[i * 2];
-                strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
-                cur_offset += str_size;
-            }
+        for (uint32_t i = 0; i < size; i++) {
+            const T str_size = new_offsets[i * 2 + 1] - new_offsets[i * 2];
+            strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
+            cur_offset += str_size;
         }
     }
 
