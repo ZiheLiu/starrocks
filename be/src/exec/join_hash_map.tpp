@@ -981,6 +981,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             }
                             firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                         } else if constexpr (SIMD == 6) {
+                            if (i + 16 < num_rows) {
+                                __builtin_prefetch(firsts + nexts[i + 16]);
+                            }
+
                             const uint32_t hash = nexts[i];
                             const uint32_t start_bucket = hash >> 8;
                             const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
@@ -1019,6 +1023,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 }
                             }
                         } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                            if (i + 16 < num_rows) {
+                                __builtin_prefetch(str_firsts + nexts[i + 16]);
+                            }
+
                             const uint32_t hash = nexts[i];
                             const uint32_t start_bucket = hash >> 8;
                             const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
@@ -1075,6 +1083,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 }
                             }
                         } else if constexpr (SIMD == 26) {
+                            if (i + 16 < num_rows) {
+                                __builtin_prefetch(firsts + nexts[i + 16]);
+                            }
+
                             uint32_t bucket = nexts[i];
 
                             uint32_t probe_times = 1;
@@ -1094,6 +1106,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                                 probe_times++;
                             }
                         } else if constexpr (SIMD == 36 && LT == TYPE_VARCHAR) {
+                            if (i + 16 < num_rows) {
+                                __builtin_prefetch(str_firsts + nexts[i + 16]);
+                            }
+
                             uint32_t bucket = nexts[i];
                             Slice slice = data[i];
 
@@ -1273,6 +1289,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         }
                         firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                     } else if constexpr (SIMD == 6) {
+                        if (i + 16 < num_rows) {
+                            __builtin_prefetch(firsts + nexts[i + 16]);
+                        }
+
                         const uint32_t hash = nexts[i];
                         const uint32_t start_bucket = hash >> 8;
                         const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
@@ -1311,6 +1331,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             }
                         }
                     } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                        if (i + 16 < num_rows) {
+                            __builtin_prefetch(str_firsts + nexts[i + 16]);
+                        }
+
                         const uint32_t hash = nexts[i];
                         const uint32_t start_bucket = hash >> 8;
                         const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
@@ -1366,6 +1390,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             }
                         }
                     } else if constexpr (SIMD == 26) {
+                        if (i + 16 < num_rows) {
+                            __builtin_prefetch(firsts + nexts[i + 16]);
+                        }
+
                         uint32_t bucket = nexts[i];
 
                         uint32_t probe_times = 1;
@@ -1385,6 +1413,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                             probe_times++;
                         }
                     } else if constexpr (SIMD == 36 && LT == TYPE_VARCHAR) {
+                        if (i + 16 < num_rows) {
+                            __builtin_prefetch(str_firsts + nexts[i + 16]);
+                        }
+
                         uint32_t bucket = nexts[i];
                         Slice slice = data[i];
 
@@ -1564,6 +1596,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                     }
                     firsts[bucket] = (*reinterpret_cast<const uint32_t*>(pdata + i)) | (1 << 31);
                 } else if constexpr (SIMD == 6) {
+                    if (i + 16 < num_rows) {
+                        __builtin_prefetch(firsts + nexts[i + 16]);
+                    }
+
                     const uint32_t hash = nexts[i];
                     const uint32_t start_bucket = hash >> 8;
                     const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
@@ -1602,6 +1638,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         }
                     }
                 } else if constexpr (SIMD == 16 && LT == TYPE_VARCHAR) {
+                    if (i + 16 < num_rows) {
+                        __builtin_prefetch(str_firsts + nexts[i + 16]);
+                    }
+
                     const uint32_t hash = nexts[i];
                     const uint32_t start_bucket = hash >> 8;
                     const uint32_t fp = BLOOM_FILTERS[hash & 0xFF];
@@ -1656,6 +1696,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         }
                     }
                 } else if constexpr (SIMD == 26) {
+                    if (i + 16 < num_rows) {
+                        __builtin_prefetch(firsts + nexts[i + 16]);
+                    }
+
                     uint32_t bucket = nexts[i];
 
                     uint32_t probe_times = 1;
@@ -1675,6 +1719,10 @@ void JoinBuildFunc<LT>::do_construct_hash_table(RuntimeState* state, JoinHashTab
                         probe_times++;
                     }
                 } else if constexpr (SIMD == 36 && LT == TYPE_VARCHAR) {
+                    if (i + 16 < num_rows) {
+                        __builtin_prefetch(str_firsts + nexts[i + 16]);
+                    }
+
                     uint32_t bucket = nexts[i];
                     Slice slice = data[i];
 
