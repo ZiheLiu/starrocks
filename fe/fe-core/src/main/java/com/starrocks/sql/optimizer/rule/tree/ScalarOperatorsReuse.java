@@ -414,6 +414,11 @@ public class ScalarOperatorsReuse {
 
         @Override
         public Integer visitCall(CallOperator scalarOperator, CommonSubScalarOperatorCollectorContext context) {
+            if (scalarOperator.getDepth() > Config.max_scalar_operator_optimize_depth ||
+                    scalarOperator.isConstant() || scalarOperator.getChildren().isEmpty()) {
+                return 0;
+            }
+
             CallOperator callOperator = scalarOperator.cast();
             if (FunctionSet.nonDeterministicFunctions.contains(callOperator.getFnName())) {
                 // try to reuse non deterministic function
