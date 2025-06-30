@@ -1071,4 +1071,14 @@ public class ReplayFromDumpTest extends ReplayFromDumpTestBase {
                 "\n" +
                 "  0:EMPTYSET"));
     }
+
+    @Test
+    public void testTemp() throws Exception {
+        FeConstants.USE_MOCK_DICT_MANAGER = true;
+        String dumpString = getDumpInfoFromFile("query_dump/tmp_dump_file");
+        QueryDumpInfo queryDumpInfo = getDumpInfoFromJson(dumpString);
+        Pair<QueryDumpInfo, String> replayPair = getPlanFragment(dumpString, queryDumpInfo.getSessionVariable(),
+                TExplainLevel.NORMAL);
+        System.out.println(replayPair.second);
+    }
 }
