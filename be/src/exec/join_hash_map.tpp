@@ -1347,6 +1347,7 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_outer_join(R
         if constexpr (first_probe) {
             one_to_many |= cur_row_match_count > 1;
         }
+        return false;
     };
 
     if (probe_chunk<first_probe>(build_data, probe_data, match_process, finish_probe_row_process)) {
