@@ -98,6 +98,10 @@ struct HashTableSlotDescriptor {
     bool need_lazy_materialize = false;
 };
 
+struct ProbePauseState {
+    uint32_t build_index;
+};
+
 struct JoinHashTableItems {
     //TODO: memory continues problem?
     ChunkPtr build_chunk = nullptr;
@@ -198,7 +202,8 @@ struct HashTableProbeState {
 
     // For nullaware left anti join there are other conjuncts, if the left or right table is null.
     // We need to find all rows (null does not match all rows). This variable helps us keep track of which rows are currently being processed.
-    uint32_t cur_nullaware_build_index = 1;
+    size_t cur_nullaware_build_index = 1;
+    ProbePauseState probe_pause_state;
 
     std::unique_ptr<MemPool> probe_pool = nullptr;
 
@@ -715,20 +720,52 @@ private:
     void _search_ht(RuntimeState* state, ChunkPtr* probe_chunk);
     void _search_ht_remain(RuntimeState* state);
 
+    // ------------------------------------------------------------------------------------
+    // Test
+    // ------------------------------------------------------------------------------------
+
+    template <typename MatchFunctor, typename FinishProbeRowFunctor, typename FinishProbeFunctor>
+    HashTableProbeState::ProbeCoroutine probe_chunk_coroutine(const Buffer<CppType>& build_data,
+                                                              const Buffer<CppType>& probe_data,
+                                                              MatchFunctor match_func,
+                                                              FinishProbeRowFunctor finish_probe_row_func,
+                                                              FinishProbeFunctor finish_probe_func);
+    template <typename MatchFunctor, typename FinishProbeFunctor>
+    HashTableProbeState::ProbeCoroutine probe_chunk_coroutine(const Buffer<CppType>& build_data,
+                                                              const Buffer<CppType>& probe_data,
+                                                              MatchFunctor match_func,
+                                                              FinishProbeFunctor finish_probe_func);
+
+    template <typename NeedRowFunctor, typename ContainsRowFunctor, typename FinishProbeFunctor>
+    HashTableProbeState::ProbeCoroutine contains_coroutine(const Buffer<CppType>& build_data,
+                                                           const Buffer<CppType>& probe_data,
+                                                           NeedRowFunctor need_row_func,
+                                                           ContainsRowFunctor contains_row_func,
+                                                           FinishProbeFunctor finish_probe_func);
+
+    template <bool first_probe, typename MatchFunctor, typename FinishProbeRowFunctor>
+    bool probe_chunk(const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data, MatchFunctor match_func,
+                     FinishProbeRowFunctor finish_probe_row_func);
+    template <bool first_probe, typename MatchFunctor>
+    bool probe_chunk(const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data, MatchFunctor match_func);
+
+    bool contains(const uint32_t probe_index, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
+
+    // ------------------------------------------------------------------------------------
+    // Test Done.
+    // ------------------------------------------------------------------------------------
+
     template <bool first_probe>
     void _search_ht_impl(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& data);
+
+    template <bool first_probe>
+    void _probe_coroutine(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     // for one key inner join
     template <bool first_probe>
     void _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
-    template <bool first_probe, bool is_collision_free_and_unique>
-    void _do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
-
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                        const Buffer<CppType>& probe_data);
-
-    template <bool first_probe>
-    void _probe_coroutine(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     // for one key left outer join
     template <bool first_probe>
@@ -789,22 +826,16 @@ private:
     template <bool first_probe>
     void _probe_from_ht_for_left_semi_join_with_other_conjunct(RuntimeState* state, const Buffer<CppType>& build_data,
                                                                const Buffer<CppType>& probe_data);
-    HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_semi_join_with_other_conjunct(
-            RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     // for null aware anti join with other join conjunct
     template <bool first_probe>
     void _probe_from_ht_for_null_aware_anti_join_with_other_conjunct(RuntimeState* state,
                                                                      const Buffer<CppType>& build_data,
                                                                      const Buffer<CppType>& probe_data);
-    HashTableProbeState::ProbeCoroutine _probe_from_ht_for_null_aware_anti_join_with_other_conjunct(
-            RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     // for one key right outer join with other conjunct
     template <bool first_probe>
     void _probe_from_ht_for_right_outer_right_semi_right_anti_join_with_other_conjunct(
-            RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
-    HashTableProbeState::ProbeCoroutine _probe_from_ht_for_right_outer_right_semi_right_anti_join_with_other_conjunct(
             RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     // for one key full outer join with other join conjunct
@@ -812,8 +843,6 @@ private:
     void _probe_from_ht_for_left_outer_left_anti_full_outer_join_with_other_conjunct(RuntimeState* state,
                                                                                      const Buffer<CppType>& build_data,
                                                                                      const Buffer<CppType>& probe_data);
-    HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_outer_left_anti_full_outer_join_with_other_conjunct(
-            RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     JoinHashTableItems* _table_items = nullptr;
     HashTableProbeState* _probe_state = nullptr;
