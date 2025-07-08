@@ -1400,21 +1400,26 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_from_ht_for_left_anti_join(Ru
                                                                               const Buffer<CppType>& build_data,
                                                                               const Buffer<CppType>& probe_data) {
     DCHECK_LT(0, _table_items->row_count);
-
-    auto need_row_func =
-            _table_items->join_type == TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN && _probe_state->null_array != nullptr
-                    ? [&](uint32_t probe_index) { return (*_probe_state->null_array)[probe_index] != 1; }
-                    : [](uint32_t probe_index) { return true; };
     const size_t probe_row_count = _probe_state->probe_row_count;
     size_t match_count = 0;
-    for (size_t i = 0; i < probe_row_count; i++) {
-        if (!need_row_func(i)) {
-            continue;
-        }
 
-        if (!contains(i, build_data, probe_data)) {
-            _probe_state->probe_index[match_count] = i;
-            match_count++;
+    if (_table_items->join_type == TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN && _probe_state->null_array != nullptr) {
+        for (size_t i = 0; i < probe_row_count; i++) {
+            if ((*_probe_state->null_array)[i] == 1) {
+                continue;
+            }
+
+            if (!contains(i, build_data, probe_data)) {
+                _probe_state->probe_index[match_count] = i;
+                match_count++;
+            }
+        }
+    } else {
+        for (size_t i = 0; i < probe_row_count; i++) {
+            if (!contains(i, build_data, probe_data)) {
+                _probe_state->probe_index[match_count] = i;
+                match_count++;
+            }
         }
     }
 
@@ -1427,12 +1432,6 @@ HashTableProbeState::ProbeCoroutine JoinHashMap<LT, BuildFunc, ProbeFunc>::_prob
     DCHECK_LT(0, _table_items->row_count);
 
     auto& match_count = _probe_state->match_count;
-
-    auto need_row_func =
-            _table_items->join_type == TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN && _probe_state->null_array != nullptr
-                    ? [&](uint32_t probe_index) { return (*_probe_state->null_array)[probe_index] != 1; }
-                    : [](uint32_t probe_index) { return true; };
-
     auto contains_row_func = [&](const uint32_t probe_index, const bool contains) {
         if (!contains) {
             _probe_state->probe_index[match_count] = probe_index;
@@ -1442,7 +1441,13 @@ HashTableProbeState::ProbeCoroutine JoinHashMap<LT, BuildFunc, ProbeFunc>::_prob
 
     auto finish_probe_func = [&]() { PROBE_OVER() };
 
-    return contains_coroutine(build_data, probe_data, need_row_func, contains_row_func, finish_probe_func);
+    if (_table_items->join_type == TJoinOp::NULL_AWARE_LEFT_ANTI_JOIN && _probe_state->null_array != nullptr) {
+        auto need_row_func = [&](uint32_t probe_index) { return (*_probe_state->null_array)[probe_index] != 1; };
+        return contains_coroutine(build_data, probe_data, need_row_func, contains_row_func, finish_probe_func);
+    } else {
+        auto need_row_func = [](uint32_t probe_index) { return true; };
+        return contains_coroutine(build_data, probe_data, need_row_func, contains_row_func, finish_probe_func);
+    }
 }
 
 template <LogicalType LT, class BuildFunc, class ProbeFunc>
