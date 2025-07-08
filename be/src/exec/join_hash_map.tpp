@@ -1012,7 +1012,7 @@ template <typename MatchFunctor, typename FinishProbeFunctor>
 HashTableProbeState::ProbeCoroutine JoinHashMap<LT, BuildFunc, ProbeFunc>::probe_chunk_coroutine(
         const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data, MatchFunctor match_func,
         FinishProbeFunctor finish_probe_func) {
-    return probe_chunk_coroutine<MatchFunctor, MatchFunctor, FinishProbeFunctor>(
+    return probe_chunk_coroutine(
             build_data, probe_data, match_func, [](const uint32_t, const uint32_t) { return false; },
             finish_probe_func);
 }
