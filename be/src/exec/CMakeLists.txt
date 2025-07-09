@@ -72,7 +72,7 @@ set(EXEC_FILES
     hash_joiner.cpp
     hash_join_node.cpp
     hash_join_components.cpp
-    join_hash_map.cpp
+    join/join_hash_map.cpp
     topn_node.cpp
     chunks_sorter.cpp
     chunks_sorter_heap_sort.cpp

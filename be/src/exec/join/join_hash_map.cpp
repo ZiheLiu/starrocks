@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "exec/join_hash_map.h"
+#include "join_hash_map.h"
 
 #include <column/chunk.h>
 #include <runtime/descriptors.h>
@@ -27,6 +27,41 @@
 #include "util/runtime_profile.h"
 
 namespace starrocks {
+
+namespace detail {
+
+template <JoinHashMapVariant::Type>
+struct JoinHashMapVariantTypeTraits;
+
+#define DEFINE_MAP_TYPE(enum_value, type)                                       \
+    template <>                                                                 \
+    struct JoinHashMapVariantTypeTraits<JoinHashMapVariant::Type::enum_value> { \
+        using HashMapType = type;                                               \
+    }
+
+DEFINE_MAP_TYPE(empty, JoinHashMapForEmpty);
+DEFINE_MAP_TYPE(keyboolean, JoinHashMapForDirectMapping(TYPE_BOOLEAN));
+DEFINE_MAP_TYPE(key8, JoinHashMapForDirectMapping(TYPE_TINYINT));
+DEFINE_MAP_TYPE(key16, JoinHashMapForDirectMapping(TYPE_SMALLINT));
+DEFINE_MAP_TYPE(key32, JoinHashMapForOneKey(TYPE_INT));
+DEFINE_MAP_TYPE(key64, JoinHashMapForOneKey(TYPE_BIGINT));
+DEFINE_MAP_TYPE(key128, JoinHashMapForOneKey(TYPE_LARGEINT));
+DEFINE_MAP_TYPE(keyfloat, JoinHashMapForOneKey(TYPE_FLOAT));
+DEFINE_MAP_TYPE(keydouble, JoinHashMapForOneKey(TYPE_DOUBLE));
+DEFINE_MAP_TYPE(keystring, JoinHashMapForOneKey(TYPE_VARCHAR));
+DEFINE_MAP_TYPE(keydate, JoinHashMapForOneKey(TYPE_DATE));
+DEFINE_MAP_TYPE(keydatetime, JoinHashMapForOneKey(TYPE_DATETIME));
+DEFINE_MAP_TYPE(keydecimal, JoinHashMapForOneKey(TYPE_DECIMALV2));
+DEFINE_MAP_TYPE(keydecimal32, JoinHashMapForOneKey(TYPE_DECIMAL32));
+DEFINE_MAP_TYPE(keydecimal64, JoinHashMapForOneKey(TYPE_DECIMAL64));
+DEFINE_MAP_TYPE(keydecimal128, JoinHashMapForOneKey(TYPE_DECIMAL128));
+DEFINE_MAP_TYPE(slice, JoinHashMapForSerializedKey(TYPE_VARCHAR));
+DEFINE_MAP_TYPE(fixed32, JoinHashMapForFixedSizeKey(TYPE_INT));
+DEFINE_MAP_TYPE(fixed64, JoinHashMapForFixedSizeKey(TYPE_BIGINT));
+DEFINE_MAP_TYPE(fixed128, JoinHashMapForFixedSizeKey(TYPE_LARGEINT));
+
+} // namespace detail
+
 // if the same hash values are clustered, after the first probe, all related hash buckets are cached, without too many
 // misses. So check time locality of probe keys here.
 void HashTableProbeState::consider_probe_time_locality() {
@@ -267,14 +302,14 @@ void SerializedJoinProbeFunc::_probe_nullable_column(const JoinHashTableItems& t
     }
 }
 
-template <LogicalType LT, class BuildFunc, class ProbeFunc>
-void JoinHashMap<LT, BuildFunc, ProbeFunc>::_probe_index_output(ChunkPtr* chunk) {
+template <LogicalType LT, typename Map>
+void JoinHashMap<LT, Map>::_probe_index_output(ChunkPtr* chunk) {
     _probe_state->probe_index.resize((*chunk)->num_rows());
     (*chunk)->append_column(_probe_state->probe_index_column, Chunk::HASH_JOIN_PROBE_INDEX_SLOT_ID);
 }
 
-template <LogicalType LT, class BuildFunc, class ProbeFunc>
-void JoinHashMap<LT, BuildFunc, ProbeFunc>::_build_index_output(ChunkPtr* chunk) {
+template <LogicalType LT, typename Map>
+void JoinHashMap<LT, Map>::_build_index_output(ChunkPtr* chunk) {
     _probe_state->build_index.resize(_probe_state->count);
     (*chunk)->append_column(_probe_state->build_index_column, Chunk::HASH_JOIN_BUILD_INDEX_SLOT_ID);
 }
@@ -282,23 +317,16 @@ void JoinHashMap<LT, BuildFunc, ProbeFunc>::_build_index_output(ChunkPtr* chunk)
 JoinHashTable JoinHashTable::clone_readable_table() {
     JoinHashTable ht;
 
-    ht._hash_map_type = this->_hash_map_type;
+    ht._hash_map_variant.type = this->_hash_map_variant.type;
 
     ht._table_items = this->_table_items;
     // Clone a new probe state.
     ht._probe_state = std::make_unique<HashTableProbeState>(*this->_probe_state);
 
-    switch (ht._hash_map_type) {
-#define M(NAME)                                                                                         \
-    case JoinHashMapType::NAME:                                                                         \
-        ht._##NAME = std::make_unique<typename decltype(_##NAME)::element_type>(ht._table_items.get(),  \
-                                                                                ht._probe_state.get()); \
-        break;
-        APPLY_FOR_JOIN_VARIANTS(M)
-#undef M
-    default:
-        DCHECK(false) << "Unsupported hash_map_type";
-    }
+    _hash_map_variant.visit([&](auto&& map) {
+        using MapType = std::decay_t<decltype(*map)>;
+        ht._hash_map_variant.variant = std::make_unique<MapType>(ht._table_items.get(), ht._probe_state.get());
+    });
 
     return ht;
 }
@@ -541,16 +569,20 @@ Status JoinHashTable::build(RuntimeState* state) {
 
     RETURN_IF_ERROR(_upgrade_key_columns_if_overflow());
 
-    _hash_map_type = _choose_join_hash_map();
+    _hash_map_variant.type = _choose_join_hash_map();
+    switch (_hash_map_variant.type) {
+#define M(NAME)                                                                                              \
+    case JoinHashMapVariant::Type::NAME: {                                                                   \
+        auto map = std::make_unique<                                                                         \
+                typename detail::JoinHashMapVariantTypeTraits<JoinHashMapVariant::Type::NAME>::HashMapType>( \
+                _table_items.get(), _probe_state.get());                                                     \
+        map->build_prepare(state);                                                                           \
+        map->probe_prepare(state);                                                                           \
+        map->build(state);                                                                                   \
+        _hash_map_variant.variant = std::move(map);                                                          \
+        break;                                                                                               \
+    }
 
-    switch (_hash_map_type) {
-#define M(NAME)                                                                                                       \
-    case JoinHashMapType::NAME:                                                                                       \
-        _##NAME = std::make_unique<typename decltype(_##NAME)::element_type>(_table_items.get(), _probe_state.get()); \
-        _##NAME->build_prepare(state);                                                                                \
-        _##NAME->probe_prepare(state);                                                                                \
-        _##NAME->build(state);                                                                                        \
-        break;
         APPLY_FOR_JOIN_VARIANTS(M)
 #undef M
     default:
@@ -561,13 +593,18 @@ Status JoinHashTable::build(RuntimeState* state) {
 }
 
 void JoinHashTable::reset_probe_state(starrocks::RuntimeState* state) {
-    _hash_map_type = _choose_join_hash_map();
-    switch (_hash_map_type) {
-#define M(NAME)                                                                                                       \
-    case JoinHashMapType::NAME:                                                                                       \
-        _##NAME = std::make_unique<typename decltype(_##NAME)::element_type>(_table_items.get(), _probe_state.get()); \
-        _##NAME->probe_prepare(state);                                                                                \
-        break;
+    _hash_map_variant.type = _choose_join_hash_map();
+    switch (_hash_map_variant.type) {
+#define M(NAME)                                                                                              \
+    case JoinHashMapVariant::Type::NAME: {                                                                   \
+        auto map = std::make_unique<                                                                         \
+                typename detail::JoinHashMapVariantTypeTraits<JoinHashMapVariant::Type::NAME>::HashMapType>( \
+                _table_items.get(), _probe_state.get());                                                     \
+        map->probe_prepare(state);                                                                           \
+        _hash_map_variant.variant = std::move(map);                                                          \
+        break;                                                                                               \
+    }
+
         APPLY_FOR_JOIN_VARIANTS(M)
 #undef M
     default:
@@ -577,16 +614,7 @@ void JoinHashTable::reset_probe_state(starrocks::RuntimeState* state) {
 
 Status JoinHashTable::probe(RuntimeState* state, const Columns& key_columns, ChunkPtr* probe_chunk, ChunkPtr* chunk,
                             bool* eos) {
-    switch (_hash_map_type) {
-#define M(NAME)                                                      \
-    case JoinHashMapType::NAME:                                      \
-        _##NAME->probe(state, key_columns, probe_chunk, chunk, eos); \
-        break;
-        APPLY_FOR_JOIN_VARIANTS(M)
-#undef M
-    default:
-        assert(false);
-    }
+    _hash_map_variant.visit([&](auto& map) { map->probe(state, key_columns, probe_chunk, chunk, eos); });
     if (_table_items->has_large_column) {
         RETURN_IF_ERROR((*chunk)->downgrade());
     }
@@ -594,16 +622,7 @@ Status JoinHashTable::probe(RuntimeState* state, const Columns& key_columns, Chu
 }
 
 Status JoinHashTable::probe_remain(RuntimeState* state, ChunkPtr* chunk, bool* eos) {
-    switch (_hash_map_type) {
-#define M(NAME)                                   \
-    case JoinHashMapType::NAME:                   \
-        _##NAME->probe_remain(state, chunk, eos); \
-        break;
-        APPLY_FOR_JOIN_VARIANTS(M)
-#undef M
-    default:
-        assert(false);
-    }
+    _hash_map_variant.visit([&](auto& map) { map->probe_remain(state, chunk, eos); });
     if (_table_items->has_large_column) {
         RETURN_IF_ERROR((*chunk)->downgrade());
     }
@@ -673,7 +692,7 @@ ChunkPtr JoinHashTable::convert_to_spill_schema(const ChunkPtr& chunk) const {
 }
 
 void JoinHashTable::remove_duplicate_index(Filter* filter) {
-    if (_hash_map_type == JoinHashMapType::empty) {
+    if (_hash_map_variant.type == JoinHashMapVariant::Type::empty) {
         switch (_table_items->join_type) {
         case TJoinOp::LEFT_OUTER_JOIN:
         case TJoinOp::LEFT_ANTI_JOIN:
@@ -734,9 +753,9 @@ Status JoinHashTable::_upgrade_key_columns_if_overflow() {
     return Status::OK();
 }
 
-JoinHashMapType JoinHashTable::_choose_join_hash_map() {
+JoinHashMapVariant::Type JoinHashTable::_choose_join_hash_map() {
     if (_table_items->row_count == 0) {
-        return JoinHashMapType::empty;
+        return JoinHashMapVariant::Type::empty;
     }
 
     size_t size = _table_items->join_keys.size();
@@ -751,40 +770,40 @@ JoinHashMapType JoinHashTable::_choose_join_hash_map() {
     if (size == 1 && !_table_items->join_keys[0].is_null_safe_equal) {
         switch (_table_items->join_keys[0].type->type) {
         case LogicalType::TYPE_BOOLEAN:
-            return JoinHashMapType::keyboolean;
+            return JoinHashMapVariant::Type::keyboolean;
         case LogicalType::TYPE_TINYINT:
-            return JoinHashMapType::key8;
+            return JoinHashMapVariant::Type::key8;
         case LogicalType::TYPE_SMALLINT:
-            return JoinHashMapType::key16;
+            return JoinHashMapVariant::Type::key16;
         case LogicalType::TYPE_INT:
-            return JoinHashMapType::key32;
+            return JoinHashMapVariant::Type::key32;
         case LogicalType::TYPE_BIGINT:
-            return JoinHashMapType::key64;
+            return JoinHashMapVariant::Type::key64;
         case LogicalType::TYPE_LARGEINT:
-            return JoinHashMapType::key128;
+            return JoinHashMapVariant::Type::key128;
         case LogicalType::TYPE_FLOAT:
             // float will be convert to double, so current can't reach here
-            return JoinHashMapType::keyfloat;
+            return JoinHashMapVariant::Type::keyfloat;
         case LogicalType::TYPE_DOUBLE:
-            return JoinHashMapType::keydouble;
+            return JoinHashMapVariant::Type::keydouble;
         case LogicalType::TYPE_VARCHAR:
         case LogicalType::TYPE_CHAR:
-            return JoinHashMapType::keystring;
+            return JoinHashMapVariant::Type::keystring;
         case LogicalType::TYPE_DATE:
             // date will be convert to datetime, so current can't reach here
-            return JoinHashMapType::keydate;
+            return JoinHashMapVariant::Type::keydate;
         case LogicalType::TYPE_DATETIME:
-            return JoinHashMapType::keydatetime;
+            return JoinHashMapVariant::Type::keydatetime;
         case LogicalType::TYPE_DECIMALV2:
-            return JoinHashMapType::keydecimal;
+            return JoinHashMapVariant::Type::keydecimal;
         case LogicalType::TYPE_DECIMAL32:
-            return JoinHashMapType::keydecimal32;
+            return JoinHashMapVariant::Type::keydecimal32;
         case LogicalType::TYPE_DECIMAL64:
-            return JoinHashMapType::keydecimal64;
+            return JoinHashMapVariant::Type::keydecimal64;
         case LogicalType::TYPE_DECIMAL128:
-            return JoinHashMapType::keydecimal128;
+            return JoinHashMapVariant::Type::keydecimal128;
         default:
-            return JoinHashMapType::slice;
+            return JoinHashMapVariant::Type::slice;
         }
     }
 
@@ -798,21 +817,21 @@ JoinHashMapType JoinHashTable::_choose_join_hash_map() {
         if (s > 0) {
             total_size_in_byte += s;
         } else {
-            return JoinHashMapType::slice;
+            return JoinHashMapVariant::Type::slice;
         }
     }
 
     if (total_size_in_byte <= 4) {
-        return JoinHashMapType::fixed32;
+        return JoinHashMapVariant::Type::fixed32;
     }
     if (total_size_in_byte <= 8) {
-        return JoinHashMapType::fixed64;
+        return JoinHashMapVariant::Type::fixed64;
     }
     if (total_size_in_byte <= 16) {
-        return JoinHashMapType::fixed128;
+        return JoinHashMapVariant::Type::fixed128;
     }
 
-    return JoinHashMapType::slice;
+    return JoinHashMapVariant::Type::slice;
 }
 
 size_t JoinHashTable::_get_size_of_fixed_and_contiguous_type(LogicalType data_type) {

@@ -17,13 +17,13 @@
 #include <atomic>
 #include <memory>
 
+#include "../../join/join_hash_map.h"
 #include "column/column_helper.h"
 #include "column/vectorized_fwd.h"
 #include "common/statusor.h"
 #include "exec/hash_join_components.h"
 #include "exec/hash_join_node.h"
 #include "exec/hash_joiner.h"
-#include "exec/join_hash_map.h"
 #include "exec/pipeline/hashjoin/hash_join_build_operator.h"
 #include "exec/pipeline/hashjoin/hash_joiner_factory.h"
 #include "exec/pipeline/query_context.h"
