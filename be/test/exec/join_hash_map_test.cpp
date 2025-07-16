@@ -3227,7 +3227,7 @@ TEST_F(JoinHashMapTest, TestProbeKeyConstructorForSerializedFixedSizeNullable) {
         probe_column1->append_nulls(3);
         probe_column2->append_datum(Datum(1));
         probe_column2->append_nulls(2);
-        table_items.row_count = 13;
+        probe_state.probe_row_count = 13;
         ProbeKeyBuilder::build_key(table_items, &probe_state);
 
         const auto& keys = ProbeKeyBuilder::get_key_data(probe_state);
@@ -3340,7 +3340,7 @@ TEST_F(JoinHashMapTest, TestProbeKeyConstructorForSerializedNullable) {
         probe_column1->append_nulls(3);
         probe_column2->append_datum(Datum(1));
         probe_column2->append_nulls(2);
-        table_items.row_count = 13;
+        probe_state.probe_row_count = 13;
         ProbeKeyBuilder::build_key(table_items, &probe_state);
 
         const auto& keys = ProbeKeyBuilder::get_key_data(probe_state);
