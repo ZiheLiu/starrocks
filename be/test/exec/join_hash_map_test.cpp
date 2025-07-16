@@ -3036,7 +3036,7 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForOneKeyNonNullable) {
     table_items.join_keys.emplace_back(JoinKeyDesc{&int_type, false, nullptr});
 
     auto build_column = ColumnHelper::create_column(int_type, false);
-    build_column->append_datum(Datum<int>(0));
+    build_column->append_datum(Datum(0));
     build_column->append(*JoinHashMapTest::create_int32_column(10, 0), 0, 10);
     table_items.key_columns.emplace_back(std::move(build_column));
 
@@ -3062,7 +3062,7 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForOneKeyNullable) {
     table_items.join_keys.emplace_back(JoinKeyDesc{&int_type, false, nullptr});
 
     auto build_column = ColumnHelper::create_column(int_type, true);
-    build_column->append_datum(Datum<int>(0));
+    build_column->append_datum(Datum(0));
     build_column->append(*JoinHashMapTest::create_int32_column(10, 0), 0, 10);
     table_items.key_columns.emplace_back(build_column);
 
@@ -3111,11 +3111,11 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForSerializedFixedSizeNonNullable
     table_items.join_keys.emplace_back(JoinKeyDesc{&int_type, false, nullptr});
 
     auto build_column1 = ColumnHelper::create_column(int_type, false);
-    build_column1->append_datum(Datum<int>(0));
+    build_column1->append_datum(Datum(0));
     build_column1->append(*JoinHashMapTest::create_int32_column(10, 0), 0, 10);
     table_items.key_columns.emplace_back(build_column1);
     auto build_column2 = ColumnHelper::create_column(int_type, false);
-    build_column2->append_datum(Datum<int>(0));
+    build_column2->append_datum(Datum(0));
     build_column2->append(*JoinHashMapTest::create_int32_column(10, 100), 0, 10);
     table_items.key_columns.emplace_back(build_column2);
 
@@ -3143,11 +3143,11 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForSerializedFixedSizeNullable) {
     table_items.join_keys.emplace_back(JoinKeyDesc{&int_type, false, nullptr});
 
     auto build_column1 = ColumnHelper::create_column(int_type, true);
-    build_column1->append_datum(Datum<int>(0));
+    build_column1->append_datum(Datum(0));
     build_column1->append(*JoinHashMapTest::create_int32_column(10, 0), 0, 10);
     table_items.key_columns.emplace_back(build_column1);
     auto build_column2 = ColumnHelper::create_column(int_type, true);
-    build_column2->append_datum(Datum<int>(0));
+    build_column2->append_datum(Datum(0));
     build_column2->append(*JoinHashMapTest::create_int32_column(10, 100), 0, 10);
     table_items.key_columns.emplace_back(build_column2);
 
@@ -3170,7 +3170,7 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForSerializedFixedSizeNullable) {
 
     {
         build_column1->append_nulls(3);
-        build_column2->append_datum(Datum<int>(1));
+        build_column2->append_datum(Datum(1));
         build_column2->append_nulls(2);
         table_items.row_count = 13;
         BuildKeyBuilder::build_key(nullptr, &table_items);
@@ -3226,7 +3226,7 @@ TEST_F(JoinHashMapTest, TestProbeKeyConstructorForSerializedFixedSizeNullable) {
 
     {
         probe_column1->append_nulls(3);
-        probe_column2->append_datum(Datum<int>(1));
+        probe_column2->append_datum(Datum(1));
         probe_column2->append_nulls(2);
         table_items.row_count = 13;
         ProbeKeyBuilder::build_key(table_items, &probe_state);
