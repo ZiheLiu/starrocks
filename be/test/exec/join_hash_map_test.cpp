@@ -3329,7 +3329,7 @@ TEST_F(JoinHashMapTest, TestProbeKeyConstructorForSerializedNullable) {
         for (uint64_t i = 0; i < 10; ++i) {
             const uint64_t expected_value = ((100 + i) << 32) | i;
             Slice expected_slice(reinterpret_cast<const char*>(&expected_value), sizeof(expected_value));
-            ASSERT_EQ(keys[i], expected_value);
+            ASSERT_EQ(keys[i], expected_slice);
         }
 
         const auto* is_nulls = probe_state.null_array;
@@ -3347,7 +3347,7 @@ TEST_F(JoinHashMapTest, TestProbeKeyConstructorForSerializedNullable) {
         for (uint64_t i = 0; i < 10; ++i) {
             const uint64_t expected_value = ((100 + i) << 32) | i;
             Slice expected_slice(reinterpret_cast<const char*>(&expected_value), sizeof(expected_value));
-            ASSERT_EQ(keys[i], expected_value);
+            ASSERT_EQ(keys[i], expected_slice);
         }
 
         const auto* is_nulls = probe_state.null_array;
