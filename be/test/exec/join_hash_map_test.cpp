@@ -3025,4 +3025,70 @@ TEST_F(JoinHashMapTest, TestLazyPredicateSlotsNormal) {
     check_lazy_build_output_slot_ids(*ht.table_items(), {4});
     check_not_output_slot_ids(*ht.table_items(), {0, 3});
 }
+
+TEST_F(JoinHashMapTest, TestBuildKeyConstructorForOneKeyNonNullable) {
+    using BuildKeyBuilder = BuildKeyConstructorForOneKey<LogicalType::TYPE_INT>;
+
+    JoinHashTableItems table_items;
+
+    const auto type = TypeDescriptor::from_logical_type(LogicalType::TYPE_INT);
+    auto build_column = ColumnHelper::create_column(type, false);
+    build_column->append(*JoinHashMapTest::create_int32_column(10, 0), 0, 10);
+    table_items.key_columns.emplace_back(std::move(build_column));
+
+    BuildKeyBuilder::prepare(nullptr, &table_items);
+    BuildKeyBuilder::build_key(nullptr, &table_items);
+
+    const auto& keys = BuildKeyBuilder::get_key_data(table_items);
+    ASSERT_EQ(keys.size(), 10);
+    for (uint32_t i = 0; i < 10; ++i) {
+        ASSERT_EQ(keys[i], i);
+    }
+
+    const auto* is_nulls = BuildKeyBuilder::get_is_nulls(table_items);
+    ASSERT_EQ(is_nulls, nullptr);
+}
+
+TEST_F(JoinHashMapTest, TestBuildKeyConstructorForOneKeyNullable) {
+    using BuildKeyBuilder = BuildKeyConstructorForOneKey<LogicalType::TYPE_INT>;
+
+    JoinHashTableItems table_items;
+
+    const auto type = TypeDescriptor::from_logical_type(LogicalType::TYPE_INT);
+    auto build_column = ColumnHelper::create_column(type, true);
+    build_column->append(*JoinHashMapTest::create_int32_column(10, 0), 0, 10);
+    table_items.key_columns.emplace_back(build_column);
+
+    BuildKeyBuilder::prepare(nullptr, &table_items);
+
+    {
+        BuildKeyBuilder::build_key(nullptr, &table_items);
+
+        const auto& keys = BuildKeyBuilder::get_key_data(table_items);
+        ASSERT_EQ(keys.size(), 10);
+        for (uint32_t i = 0; i < 10; ++i) {
+            ASSERT_EQ(keys[i], i);
+        }
+
+        const auto* is_nulls = BuildKeyBuilder::get_is_nulls(table_items);
+        ASSERT_EQ(is_nulls, nullptr);
+    }
+
+    {
+        build_column->append_nulls(3);
+        BuildKeyBuilder::build_key(nullptr, &table_items);
+
+        const auto& keys = BuildKeyBuilder::get_key_data(table_items);
+        ASSERT_EQ(keys.size(), 13);
+        for (uint32_t i = 0; i < 10; ++i) {
+            ASSERT_EQ(keys[i], i);
+        }
+
+        const auto* is_nulls = BuildKeyBuilder::get_is_nulls(table_items);
+        for (uint32_t i = 0; i < 13; ++i) {
+            ASSERT_EQ((*is_nulls)[i], i < 10);
+        }
+    }
+}
+
 } // namespace starrocks
