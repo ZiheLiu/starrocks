@@ -33,6 +33,18 @@ namespace starrocks {
 // JoinHashMapTypeTraits
 // ------------------------------------------------------------------------------------
 
+std::string join_hash_map_type_to_string(JoinHashMapType type) {
+    switch (type) {
+#define M(name)                 \
+    case JoinHashMapType::name: \
+        return #name;
+
+        APPLY_FOR_JOIN_VARIANTS(M)
+#undef M
+    }
+    return "UNKNOWN";
+}
+
 template <JoinHashMapType>
 struct JoinHashMapTypeTraits;
 
@@ -356,6 +368,10 @@ void JoinHashTable::set_probe_profile(RuntimeProfile::Counter* search_ht_timer,
 
 float JoinHashTable::get_keys_per_bucket() const {
     return _table_items->get_keys_per_bucket();
+}
+
+std::string JoinHashTable::get_hash_map_type() const {
+    return join_hash_map_type_to_string(_hash_map_type);
 }
 
 void JoinHashTable::close() {
