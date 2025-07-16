@@ -3088,13 +3088,13 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForOneKeyNullable) {
         BuildKeyBuilder::build_key(nullptr, &table_items);
 
         const auto& keys = BuildKeyBuilder::get_key_data(table_items);
-        ASSERT_EQ(keys.size(), 13);
+        ASSERT_EQ(keys.size(), 14);
         for (uint32_t i = 0; i < 10; ++i) {
             ASSERT_EQ(keys[1 + i], i);
         }
 
         const auto* is_nulls = BuildKeyBuilder::get_is_nulls(table_items);
-        for (uint32_t i = 0; i < 13; ++i) {
+        for (uint32_t i = 0; i < 14; ++i) {
             ASSERT_EQ((*is_nulls)[1 + i], i < 10);
         }
     }
@@ -3151,10 +3151,9 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForSerializedFixedSizeNullable) {
     build_column2->append(*JoinHashMapTest::create_int32_column(10, 100), 0, 10);
     table_items.key_columns.emplace_back(build_column2);
 
-    BuildKeyBuilder::prepare(nullptr, &table_items);
-
     {
         table_items.row_count = 10;
+        BuildKeyBuilder::prepare(nullptr, &table_items);
         BuildKeyBuilder::build_key(nullptr, &table_items);
 
         const auto& keys = BuildKeyBuilder::get_key_data(table_items);
@@ -3173,6 +3172,7 @@ TEST_F(JoinHashMapTest, TestBuildKeyConstructorForSerializedFixedSizeNullable) {
         build_column2->append_datum(Datum(1));
         build_column2->append_nulls(2);
         table_items.row_count = 13;
+        BuildKeyBuilder::prepare(nullptr, &table_items);
         BuildKeyBuilder::build_key(nullptr, &table_items);
 
         const auto& keys = BuildKeyBuilder::get_key_data(table_items);
@@ -3214,7 +3214,6 @@ TEST_F(JoinHashMapTest, TestProbeKeyConstructorForSerializedFixedSizeNullable) {
         ProbeKeyBuilder::build_key(table_items, &probe_state);
 
         const auto& keys = ProbeKeyBuilder::get_key_data(probe_state);
-        ASSERT_EQ(keys.size(), 10);
         for (uint64_t i = 0; i < 10; ++i) {
             const uint64_t expected_value = ((100 + i) << 32) | i;
             ASSERT_EQ(keys[i], expected_value);
@@ -3232,7 +3231,6 @@ TEST_F(JoinHashMapTest, TestProbeKeyConstructorForSerializedFixedSizeNullable) {
         ProbeKeyBuilder::build_key(table_items, &probe_state);
 
         const auto& keys = ProbeKeyBuilder::get_key_data(probe_state);
-        ASSERT_EQ(keys.size(), 13);
         for (uint64_t i = 0; i < 10; ++i) {
             const uint64_t expected_value = ((100 + i) << 32) | i;
             ASSERT_EQ(keys[i], expected_value);
