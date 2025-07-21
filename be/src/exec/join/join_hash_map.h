@@ -35,49 +35,36 @@ class ColumnRef;
 // Types
 // ------------------------------------------------------------------------------------
 
-#define APPLY_FOR_JOIN_VARIANTS(M) \
-    M(empty)                       \
-    M(keyboolean)                  \
-    M(key8)                        \
-    M(key16)                       \
-    M(key32)                       \
-    M(key64)                       \
-    M(key128)                      \
-    M(keyfloat)                    \
-    M(keydouble)                   \
-    M(keystring)                   \
-    M(keydate)                     \
-    M(keydatetime)                 \
-    M(keydecimal)                  \
-    M(keydecimal32)                \
-    M(keydecimal64)                \
-    M(keydecimal128)               \
-    M(slice)                       \
-    M(fixed32)                     \
-    M(fixed64)                     \
-    M(fixed128)
+#define APPLY_FOR_JOIN_VARIANTS(M)    \
+    M(empty)                          \
+    M(keyboolean)                     \
+    M(key8)                           \
+    M(key16)                          \
+    M(key32_range_direct_mapping)     \
+    M(key32_range_direct_mapping_set) \
+    M(key64_range_direct_mapping)     \
+    M(key64_range_direct_mapping_set) \
+    M(key32)                          \
+    M(key64)                          \
+    M(key128)                         \
+    M(keyfloat)                       \
+    M(keydouble)                      \
+    M(keystring)                      \
+    M(keydate)                        \
+    M(keydatetime)                    \
+    M(keydecimal)                     \
+    M(keydecimal32)                   \
+    M(keydecimal64)                   \
+    M(keydecimal128)                  \
+    M(slice)                          \
+    M(fixed32)  /*4 bytes*/           \
+    M(fixed64)  /*8 bytes*/           \
+    M(fixed128) /*16 bytes*/
 
 enum class JoinHashMapType {
-    empty,
-    keyboolean,
-    key8,
-    key16,
-    key32,
-    key64,
-    key128,
-    keyfloat,
-    keydouble,
-    keystring,
-    keydate,
-    keydatetime,
-    keydecimal,
-    keydecimal32,
-    keydecimal64,
-    keydecimal128,
-    slice,
-    fixed32, // 4 bytes
-    fixed64, // 8 bytes
-    fixed128 // 16 bytes
+#define M(name) name,
+    APPLY_FOR_JOIN_VARIANTS(M)
+#undef M
 };
 
 std::string join_hash_map_type_to_string(JoinHashMapType type);
@@ -88,7 +75,7 @@ enum class JoinKeyConstructorType {
     SERIALIZED,
 };
 
-enum class JoinHashMapMethodType { BUCKET_CHAINED, DIRECT_MAPPING };
+enum class JoinHashMapMethodType { BUCKET_CHAINED, DIRECT_MAPPING, RANGE_DIRECT_MAPPING, RANGE_DIRECT_MAPPING_SET };
 
 // ------------------------------------------------------------------------------------
 // JoinHashMapForEmpty
@@ -286,14 +273,12 @@ private:
     void _search_ht(RuntimeState* state, ChunkPtr* probe_chunk);
     void _search_ht_remain(RuntimeState* state);
 
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _search_ht_impl(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& data);
 
     // for one key inner join
-    template <bool first_probe>
-    void _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
     template <bool first_probe, bool is_collision_free_and_unique>
-    void _do_probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
+    void _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     HashTableProbeState::ProbeCoroutine _probe_from_ht(RuntimeState* state, const Buffer<CppType>& build_data,
                                                        const Buffer<CppType>& probe_data);
@@ -302,14 +287,17 @@ private:
     void _probe_coroutine(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     // for one key left outer join
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_left_outer_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                             const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_outer_join(RuntimeState* state,
                                                                            const Buffer<CppType>& build_data,
                                                                            const Buffer<CppType>& probe_data);
+
+    bool _contains_probe_row(RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data,
+                             uint32_t probe_index);
     // for one key left semi join
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_left_semi_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                            const Buffer<CppType>& probe_data);
 
@@ -317,7 +305,7 @@ private:
                                                                           const Buffer<CppType>& build_data,
                                                                           const Buffer<CppType>& probe_data);
     // for one key left anti join
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_left_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                            const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_left_anti_join(RuntimeState* state,
@@ -325,7 +313,7 @@ private:
                                                                           const Buffer<CppType>& probe_data);
 
     // for one key right outer join
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_right_outer_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                              const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_right_outer_join(RuntimeState* state,
@@ -333,7 +321,7 @@ private:
                                                                             const Buffer<CppType>& probe_data);
 
     // for one key right semi join
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_right_semi_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                             const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_right_semi_join(RuntimeState* state,
@@ -341,7 +329,7 @@ private:
                                                                            const Buffer<CppType>& probe_data);
 
     // for one key right anti join
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_right_anti_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                             const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_right_anti_join(RuntimeState* state,
@@ -349,7 +337,7 @@ private:
                                                                            const Buffer<CppType>& probe_data);
 
     // for one key full outer join
-    template <bool first_probe>
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_full_outer_join(RuntimeState* state, const Buffer<CppType>& build_data,
                                             const Buffer<CppType>& probe_data);
     HashTableProbeState::ProbeCoroutine _probe_from_ht_for_full_outer_join(RuntimeState* state,
@@ -357,23 +345,27 @@ private:
                                                                            const Buffer<CppType>& probe_data);
 
     // for left semi join with other join conjunct
-    template <bool first_probe>
+
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_left_semi_join_with_other_conjunct(RuntimeState* state, const Buffer<CppType>& build_data,
                                                                const Buffer<CppType>& probe_data);
 
     // for null aware anti join with other join conjunct
-    template <bool first_probe>
+
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_null_aware_anti_join_with_other_conjunct(RuntimeState* state,
                                                                      const Buffer<CppType>& build_data,
                                                                      const Buffer<CppType>& probe_data);
 
     // for one key right outer join with other conjunct
-    template <bool first_probe>
+
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_right_outer_right_semi_right_anti_join_with_other_conjunct(
             RuntimeState* state, const Buffer<CppType>& build_data, const Buffer<CppType>& probe_data);
 
     // for one key full outer join with other join conjunct
-    template <bool first_probe>
+
+    template <bool first_probe, bool is_collision_free_and_unique>
     void _probe_from_ht_for_left_outer_left_anti_full_outer_join_with_other_conjunct(RuntimeState* state,
                                                                                      const Buffer<CppType>& build_data,
                                                                                      const Buffer<CppType>& probe_data);
@@ -384,13 +376,19 @@ private:
 
 #define JoinHashMapForOneKey(LT) \
     JoinHashMap<LT, BuildKeyConstructorForOneKey<LT>, ProbeKeyConstructorForOneKey<LT>, BucketChainedJoinHashMap<LT>>
-#define JoinHashMapForDirectMapping(LT) \
-    JoinHashMap<LT, BuildKeyConstructorForOneKey<LT>, ProbeKeyConstructorForOneKey<LT>, DirectMappingJoinHashMap<LT>>
 #define JoinHashMapForFixedSizeKey(LT)                                                                            \
     JoinHashMap<LT, BuildKeyConstructorForSerializedFixedSize<LT>, ProbeKeyConstructorForSerializedFixedSize<LT>, \
                 BucketChainedJoinHashMap<LT>>
 #define JoinHashMapForSerializedKey(LT) \
     JoinHashMap<LT, BuildKeyConstructorForSerialized, ProbeKeyConstructorForSerialized, BucketChainedJoinHashMap<LT>>
+#define JoinHashMapForDirectMapping(LT) \
+    JoinHashMap<LT, BuildKeyConstructorForOneKey<LT>, ProbeKeyConstructorForOneKey<LT>, DirectMappingJoinHashMap<LT>>
+#define JoinHashMapForRangeDirectMapping(LT)                                            \
+    JoinHashMap<LT, BuildKeyConstructorForOneKey<LT>, ProbeKeyConstructorForOneKey<LT>, \
+                RangeDirectMappingJoinHashMap<LT>>
+#define JoinHashSetForRangeDirectMapping(LT)                                            \
+    JoinHashMap<LT, BuildKeyConstructorForOneKey<LT>, ProbeKeyConstructorForOneKey<LT>, \
+                RangeDirectMappingJoinHashSet<LT>>
 
 // ------------------------------------------------------------------------------------
 // JoinHashTable
@@ -469,6 +467,10 @@ private:
             std::unique_ptr<JoinHashMapForEmpty>, std::unique_ptr<JoinHashMapForDirectMapping(TYPE_BOOLEAN)>,
             std::unique_ptr<JoinHashMapForDirectMapping(TYPE_TINYINT)>,
             std::unique_ptr<JoinHashMapForDirectMapping(TYPE_SMALLINT)>,
+            std::unique_ptr<JoinHashMapForRangeDirectMapping(TYPE_INT)>,
+            std::unique_ptr<JoinHashSetForRangeDirectMapping(TYPE_INT)>,
+            std::unique_ptr<JoinHashMapForRangeDirectMapping(TYPE_BIGINT)>,
+            std::unique_ptr<JoinHashSetForRangeDirectMapping(TYPE_BIGINT)>,
             std::unique_ptr<JoinHashMapForOneKey(TYPE_INT)>, std::unique_ptr<JoinHashMapForOneKey(TYPE_BIGINT)>,
             std::unique_ptr<JoinHashMapForOneKey(TYPE_LARGEINT)>, std::unique_ptr<JoinHashMapForOneKey(TYPE_FLOAT)>,
             std::unique_ptr<JoinHashMapForOneKey(TYPE_DOUBLE)>, std::unique_ptr<JoinHashMapForOneKey(TYPE_VARCHAR)>,

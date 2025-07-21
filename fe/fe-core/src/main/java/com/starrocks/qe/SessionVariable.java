@@ -391,7 +391,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CBO_PRUNE_JSON_SUBFIELD = "cbo_prune_json_subfield";
     public static final String CBO_PRUNE_JSON_SUBFIELD_DEPTH = "cbo_prune_json_subfield_depth";
     public static final String CBO_PUSH_DOWN_AGG_WITH_MULTI_COLUMN_STATS = "cbo_push_down_aggregate_with_multi_column_stats";
-    public static final String CBO_USE_HISTOGRAM_EVALUDATE_LIST_PARTITION =  "cbo_use_histogram_evaluate_list_partition";
+    public static final String CBO_USE_HISTOGRAM_EVALUDATE_LIST_PARTITION = "cbo_use_histogram_evaluate_list_partition";
     public static final String ENABLE_OPTIMIZER_REWRITE_GROUPINGSETS_TO_UNION_ALL =
             "enable_rewrite_groupingsets_to_union_all";
     public static final String ENABLE_PARTITION_LEVEL_CARDINALITY_ESTIMATION =
@@ -439,6 +439,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String GLOBAL_RUNTIME_FILTER_RPC_HTTP_MIN_SIZE = "global_runtime_filter_rpc_http_min_size";
     public static final String ENABLE_JOIN_RUNTIME_FILTER_PUSH_DOWN = "enable_join_runtime_filter_push_down";
     public static final String ENABLE_JOIN_RUNTIME_BITSET_FILTER = "enable_join_runtime_bitset_filter";
+
+    public static final String ENABLE_HASH_JOIN_RANGE_DIRECT_MAPPING_OPT = "enable_hash_join_range_direct_mapping_opt";
 
     public static final String ENABLE_PIPELINE_LEVEL_MULTI_PARTITIONED_RF =
             "enable_pipeline_level_multi_partitioned_rf";
@@ -888,7 +890,6 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_SCAN_PREDICATE_EXPR_REUSE = "enable_scan_predicate_expr_reuse";
     public static final String ENABLE_PARQUET_READER_BLOOM_FILTER = "enable_parquet_reader_bloom_filter";
     public static final String ENABLE_PARQUET_READER_PAGE_INDEX = "enable_parquet_reader_page_index";
-
 
     public static final String ENABLE_REWRITE_OR_TO_UNION_ALL_JOIN = "enable_rewrite_or_to_union_all_join";
 
@@ -1493,7 +1494,6 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = ENABLE_OPTIMIZER_REWRITE_GROUPINGSETS_TO_UNION_ALL)
     private boolean enableRewriteGroupingSetsToUnionAll = false;
 
-
     @VariableMgr.VarAttr(name = ENABLE_PARTITION_LEVEL_CARDINALITY_ESTIMATION, flag = VariableMgr.INVISIBLE)
     private boolean enablePartitionLevelCardinalityEstimation = true;
 
@@ -1574,6 +1574,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     private boolean enableJoinRuntimeFilterPushDown = true;
     @VariableMgr.VarAttr(name = ENABLE_JOIN_RUNTIME_BITSET_FILTER, flag = VariableMgr.INVISIBLE)
     private boolean enableJoinRuntimeBitsetFilter = true;
+
+    @VarAttr(name = ENABLE_HASH_JOIN_RANGE_DIRECT_MAPPING_OPT)
+    private boolean enableHashJoinRangeDirectMappingOpt = true;
 
     @VarAttr(name = ENABLE_PIPELINE_LEVEL_MULTI_PARTITIONED_RF)
     private boolean enablePipelineLevelMultiPartitionedRf = false;
@@ -1771,7 +1774,6 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     @VarAttr(name = ENABLE_PLAN_ADVISOR_BLACKLIST)
     private boolean enablePlanAdvisorBlacklist = true;
-
 
     @VarAttr(name = COUNT_DISTINCT_IMPLEMENTATION)
     private String countDistinctImplementation = "default";
@@ -2463,7 +2465,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         if (Strings.isNullOrEmpty(annParams)) {
             return Maps.newHashMap();
         }
-        Type type = new com.google.gson.reflect.TypeToken<Map<String, String>>() {}.getType();
+        Type type = new com.google.gson.reflect.TypeToken<Map<String, String>>() {
+        }.getType();
         return GsonUtils.GSON.fromJson(annParams, type);
     }
 
@@ -3170,7 +3173,6 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public void setBigQueryProfileThreshold(String bigQueryProfileThreshold) {
         this.bigQueryProfileThreshold = bigQueryProfileThreshold;
     }
-
 
     // when pipeline engine is enabled
     // in case of pipeline_dop > 0: return pipeline_dop * parallelExecInstanceNum;
@@ -5208,6 +5210,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         tResult.setEnable_parquet_reader_page_index(enableParquetReaderPageIndex);
         tResult.setColumn_view_concat_rows_limit(columnViewConcatRowsLimit);
         tResult.setColumn_view_concat_bytes_limit(columnViewConcatRowsLimit);
+        tResult.setenable_hash_join_range_direct_mapping_opt(enableHashJoinRangeDirectMappingOpt);
+
         return tResult;
     }
 

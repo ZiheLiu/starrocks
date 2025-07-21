@@ -51,4 +51,36 @@ public:
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
 
+template <LogicalType LT>
+class RangeDirectMappingJoinHashMap {
+public:
+    using CppType = typename RunTimeTypeTraits<LT>::CppType;
+    using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
+    static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
+                                     const Buffer<uint8_t>* is_nulls);
+
+    static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
+                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+
+    static bool equal(const CppType& x, const CppType& y) { return true; }
+};
+
+template <LogicalType LT>
+class RangeDirectMappingJoinHashSet {
+public:
+    using CppType = typename RunTimeTypeTraits<LT>::CppType;
+    using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
+    static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
+                                     const Buffer<uint8_t>* is_nulls);
+
+    static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
+                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+
+    static bool equal(const CppType& x, const CppType& y) { return true; }
+};
+
 } // namespace starrocks
