@@ -136,6 +136,30 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
     auto* __restrict next = table_items->next.data();
     auto* __restrict first = table_items->first.data();
 
+    auto process_row = [&](const uint32_t i) {
+        const uint32_t hash = next[i];
+        const uint32_t salt = _extract_salt(hash);
+        uint32_t bucket_num = _extract_data(hash);
+
+        uint32_t probe_times = 1;
+        while (true) {
+            if (first[bucket_num] == 0) {
+                next[i] = 0;
+                first[bucket_num] = _combine_data_salt(i, salt);
+                break;
+            }
+
+            if (salt == _extract_salt(first[bucket_num]) && keys[i] == keys[_extract_data(first[bucket_num])]) {
+                next[i] = _extract_data(first[bucket_num]);
+                first[bucket_num] = _combine_data_salt(i, salt);
+                break;
+            }
+
+            bucket_num = (bucket_num + probe_times) & bucket_size_mask;
+            probe_times++;
+        }
+    };
+
     if (is_nulls == nullptr) {
         for (uint32_t i = 1; i < num_rows; i++) {
             // Use `next` stores `bucket_num` temporarily.
@@ -144,27 +168,7 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
         }
 
         for (uint32_t i = 1; i < num_rows; i++) {
-            const uint32_t hash = next[i];
-            const uint32_t salt = _extract_salt(hash);
-            uint32_t bucket_num = _extract_data(hash);
-
-            uint32_t probe_times = 1;
-            while (true) {
-                if (first[bucket_num] == 0) {
-                    next[i] = 0;
-                    first[bucket_num] = _combine_data_salt(i, salt);
-                    break;
-                }
-
-                if (salt == _extract_salt(first[bucket_num]) && keys[i] == keys[_extract_data(first[bucket_num])]) {
-                    next[i] = _extract_data(first[bucket_num]);
-                    first[bucket_num] = _combine_data_salt(i, salt);
-                    break;
-                }
-
-                bucket_num = (bucket_num + probe_times) & bucket_size_mask;
-                probe_times++;
-            }
+            process_row(i);
         }
     } else {
         const auto* __restrict is_nulls_data = is_nulls->data();
@@ -176,7 +180,6 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
             }
         };
 
-        auto* __restrict next = table_items->next.data();
         for (uint32_t i = 0; i < num_rows; i++) {
             // Use `next` stores `bucket_num` temporarily.
             if (need_calc_bucket_num(i)) {
@@ -185,12 +188,9 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
             }
         }
 
-        auto* __restrict first = table_items->first.data();
         for (uint32_t i = 0; i < num_rows; i++) {
             if (is_nulls_data[i] == 0) {
-                const uint32_t bucket_num = next[i];
-                next[i] = first[bucket_num];
-                first[bucket_num] = i;
+                process_row(i);
             } else {
                 next[i] = 0;
             }
@@ -201,17 +201,44 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
 template <LogicalType LT>
 void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
                                                const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls) {
+    const uint32_t bucket_size_mask = table_items.bucket_size - 1;
     const uint32_t row_count = probe_state->probe_row_count;
+
     const auto* firsts = table_items.first.data();
-    const auto* buckets = probe_state->buckets.data();
+    auto* hashes = probe_state->buckets.data();
     auto* nexts = probe_state->next.data();
+
+    auto process_row = [&](const uint32_t i) {
+        const uint32_t hash = hashes[i];
+        const uint32_t salt = _extract_salt(hash);
+        uint32_t bucket_num = _extract_data(hash);
+
+        uint32_t probe_times = 1;
+        while (true) {
+            if (firsts[bucket_num] == 0) {
+                nexts[i] = 0;
+                break;
+            }
+
+            if (salt == _extract_salt(firsts[bucket_num]) && keys[i] == keys[_extract_data(firsts[bucket_num])]) {
+                nexts[i] = _extract_data(firsts[bucket_num]);
+                break;
+            }
+
+            bucket_num = (bucket_num + probe_times) & bucket_size_mask;
+            probe_times++;
+        }
+    };
 
     if (is_nulls == nullptr) {
         for (uint32_t i = 0; i < row_count; i++) {
-            probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items.bucket_size,
-                                                                                  table_items.log_bucket_size);
+            hashes[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items.bucket_size << SALT_BITS,
+                                                                    table_items.log_bucket_size + SALT_BITS);
         }
-        SIMDGather::gather(nexts, firsts, buckets, row_count);
+
+        for (uint32_t i = 0; i < row_count; i++) {
+            process_row(i);
+        }
     } else {
         const auto* is_nulls_data = is_nulls->data();
         auto need_calc_bucket_num = [&](const uint32_t index) {
@@ -227,7 +254,14 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
                                                                                       table_items.log_bucket_size);
             }
         }
-        SIMDGather::gather(nexts, firsts, buckets, is_nulls_data, row_count);
+
+        for (uint32_t i = 0; i < row_count; i++) {
+            if (is_nulls_data[i] == 0) {
+                process_row(i);
+            } else {
+                nexts[i] = 0;
+            }
+        }
     }
 }
 
