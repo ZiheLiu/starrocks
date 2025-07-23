@@ -152,7 +152,9 @@ JoinHashMapMethodUnaryType JoinHashMapSelector::_determine_hash_map_method(
                 }
             }
 
-            if (state->enable_hash_join_linear_chained_opt()) {
+            const uint64_t bucket_size = JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1);
+            if (state->enable_hash_join_linear_chained_opt() &&
+                bucket_size <= LinearChainedJoinHashMap<LT>::max_supported_bucket_size()) {
                 return JoinHashMapMethodTypeTraits<JoinHashMapMethodType::LINEAR_CHAINED, LT>::unary_type;
             } else {
                 return JoinHashMapMethodTypeTraits<JoinHashMapMethodType::BUCKET_CHAINED, LT>::unary_type;
