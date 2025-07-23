@@ -66,6 +66,33 @@ public:
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
 };
 
+template <LogicalType LT>
+class LinearChainedJoinHashMap {
+public:
+    using CppType = typename RunTimeTypeTraits<LT>::CppType;
+    using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
+    static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
+                                     const Buffer<uint8_t>* is_nulls);
+
+    static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
+                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+
+    static bool equal(const CppType& x, const CppType& y) { return x == y; }
+
+    static uint32_t max_supported_bucket_size() { return DATA_MASK; }
+
+private:
+    static constexpr uint32_t SALT_BITS = 8;
+    static constexpr uint32_t SALT_MASK = 0xFF00'0000ul;
+    static constexpr uint32_t DATA_MASK = 0x00FF'FFFFul;
+
+    static uint32_t _combine_data_salt(const uint32_t data, const uint32_t salt) { return salt | data; }
+    static uint32_t _extract_data(const uint32_t hash) { return hash & DATA_MASK; }
+    static uint32_t _extract_salt(const uint32_t hash) { return hash & SALT_MASK; }
+};
+
 // The bucket-chained linked list formed by first` and `next` is the same as that of `BucketChainedJoinHashMap`.
 //
 // `DirectMappingJoinHashMap` maps to a position in `first` using `key-MIN_VALUE`.
