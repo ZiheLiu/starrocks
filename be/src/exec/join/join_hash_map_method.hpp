@@ -138,8 +138,8 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
 
     auto process_row = [&](const uint32_t i) {
         const uint32_t hash = next[i];
-        const uint32_t salt = _extract_salt(hash);
-        uint32_t bucket_num = _extract_data(hash);
+        const uint32_t salt = (hash & 0xFF) << (32 - SALT_BITS);
+        uint32_t bucket_num = hash >> SALT_BITS;
 
         uint32_t probe_times = 1;
         while (true) {
@@ -210,8 +210,8 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
 
     auto process_row = [&](const uint32_t i) {
         const uint32_t hash = hashes[i];
-        const uint32_t salt = _extract_salt(hash);
-        uint32_t bucket_num = _extract_data(hash);
+        const uint32_t salt = (hash & 0xFF) << (32 - SALT_BITS);
+        uint32_t bucket_num = hash >> SALT_BITS;
 
         uint32_t probe_times = 1;
         while (true) {

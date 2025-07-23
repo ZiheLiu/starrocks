@@ -89,8 +89,8 @@ private:
     static constexpr uint32_t DATA_MASK = 0x00FF'FFFFul;
 
     static uint32_t _combine_data_salt(const uint32_t data, const uint32_t salt) { return salt | data; }
-    static uint32_t _extract_data(const uint32_t hash) { return hash & DATA_MASK; }
-    static uint32_t _extract_salt(const uint32_t hash) { return hash & SALT_MASK; }
+    static uint32_t _extract_data(const uint32_t v) { return v & DATA_MASK; }
+    static uint32_t _extract_salt(const uint32_t v) { return v & SALT_MASK; }
 };
 
 // The bucket-chained linked list formed by first` and `next` is the same as that of `BucketChainedJoinHashMap`.
