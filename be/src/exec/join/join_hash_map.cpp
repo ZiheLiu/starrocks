@@ -152,7 +152,11 @@ JoinHashMapMethodUnaryType JoinHashMapSelector::_determine_hash_map_method(
                 }
             }
 
-            return JoinHashMapMethodTypeTraits<JoinHashMapMethodType::BUCKET_CHAINED, LT>::unary_type;
+            if (state->enable_hash_join_linear_chained_opt()) {
+                return JoinHashMapMethodTypeTraits<JoinHashMapMethodType::LINEAR_CHAINED, LT>::unary_type;
+            } else {
+                return JoinHashMapMethodTypeTraits<JoinHashMapMethodType::BUCKET_CHAINED, LT>::unary_type;
+            }
         }
     });
 }
