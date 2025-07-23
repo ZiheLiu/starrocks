@@ -35,6 +35,9 @@ std::vector<TResourceGroupUsage> ResourceGroupUsageRecorder::get_resource_group_
     ExecEnv::GetInstance()->workgroup_manager()->for_each_workgroup(
             [&group_to_usage, &curr_group_to_cpu_runtime_ns](const workgroup::WorkGroup& wg) {
                 auto it = group_to_usage.find(wg.id());
+                LOG(WARNING) << "get_resource_group_usages 1 "
+                             << "[id=" << wg.id() << "] "
+                             << "[wg.cpu_runtime_ns()=" << wg.cpu_runtime_ns() << "] ";
                 if (it == group_to_usage.end()) {
                     TResourceGroupUsage group_usage;
                     group_usage.__set_group_id(wg.id());
@@ -60,6 +63,11 @@ std::vector<TResourceGroupUsage> ResourceGroupUsageRecorder::get_resource_group_
         } else {
             prev_runtime_ns = iter_prev->second;
         }
+
+        LOG(WARNING) << "get_resource_group_usages 2 "
+                     << "[id=" << group_id << "] "
+                     << "[prev_runtime_ns=" << prev_runtime_ns << "] "
+                     << "[cpu_runtime_ns=" << cpu_runtime_ns << "] ";
 
         int32_t cpu_core_used_permille = (cpu_runtime_ns - prev_runtime_ns) * 1000 / delta_ns;
         cpu_core_used_permille = std::clamp(cpu_core_used_permille, 0, CpuInfo::num_cores() * 1000);
