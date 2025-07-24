@@ -241,6 +241,9 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
         }
 
         for (uint32_t i = 0; i < row_count; i++) {
+            if (i + 16 < row_count) {
+                __builtin_prefetch(firsts + (hashes[i + 16] >> SALT_BITS));
+            }
             process_row(i);
         }
     } else {
@@ -260,6 +263,10 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
         }
 
         for (uint32_t i = 0; i < row_count; i++) {
+            if (i + 16 < row_count && is_nulls_data[i + 16] == 0) {
+                __builtin_prefetch(firsts + (hashes[i + 16] >> SALT_BITS));
+            }
+
             if (is_nulls_data[i] == 0) {
                 process_row(i);
             } else {
