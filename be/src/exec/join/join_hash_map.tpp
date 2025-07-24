@@ -400,7 +400,7 @@ void JoinHashMap<LT, CT, MT>::_search_ht(RuntimeState* state, ChunkPtr* probe_ch
 
         auto& build_data = BuildKeyConstructor().get_key_data(*_table_items);
         auto& probe_data = ProbeKeyConstructor().get_key_data(*_probe_state);
-        HashMapMethod().lookup_init(*_table_items, _probe_state, probe_data, _probe_state->null_array);
+        HashMapMethod().lookup_init(*_table_items, _probe_state, build_data, probe_data, _probe_state->null_array);
         _probe_state->consider_probe_time_locality();
 
         if (_table_items->is_collision_free_and_unique) {

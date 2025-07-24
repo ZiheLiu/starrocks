@@ -84,7 +84,8 @@ void BucketChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
 
 template <LogicalType LT>
 void BucketChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                                               const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls) {
+                                               const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                                               const Buffer<uint8_t>* is_nulls) {
     const uint32_t row_count = probe_state->probe_row_count;
     const auto* firsts = table_items.first.data();
     const auto* buckets = probe_state->buckets.data();
@@ -92,8 +93,8 @@ void BucketChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
 
     if (is_nulls == nullptr) {
         for (uint32_t i = 0; i < row_count; i++) {
-            probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items.bucket_size,
-                                                                                  table_items.log_bucket_size);
+            probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                    probe_keys[i], table_items.bucket_size, table_items.log_bucket_size);
         }
         SIMDGather::gather(nexts, firsts, buckets, row_count);
     } else {
@@ -107,8 +108,8 @@ void BucketChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
         };
         for (uint32_t i = 0; i < row_count; i++) {
             if (need_calc_bucket_num(i)) {
-                probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items.bucket_size,
-                                                                                      table_items.log_bucket_size);
+                probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                        probe_keys[i], table_items.bucket_size, table_items.log_bucket_size);
             }
         }
         SIMDGather::gather(nexts, firsts, buckets, is_nulls_data, row_count);
@@ -200,7 +201,8 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
 
 template <LogicalType LT>
 void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                                               const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls) {
+                                               const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                                               const Buffer<uint8_t>* is_nulls) {
     const uint32_t bucket_size_mask = table_items.bucket_size - 1;
     const uint32_t row_count = probe_state->probe_row_count;
 
@@ -220,8 +222,10 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
                 break;
             }
 
-            if (salt == _extract_salt(firsts[bucket_num]) && keys[i] == keys[_extract_data(firsts[bucket_num])]) {
-                nexts[i] = _extract_data(firsts[bucket_num]);
+            const uint32_t cur_salt = _extract_salt(firsts[bucket_num]);
+            const uint32_t cur_index = _extract_data(firsts[bucket_num]);
+            if (salt == cur_salt && probe_keys[i] == build_keys[cur_index]) {
+                nexts[i] = cur_index;
                 break;
             }
 
@@ -232,7 +236,7 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
 
     if (is_nulls == nullptr) {
         for (uint32_t i = 0; i < row_count; i++) {
-            hashes[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items.bucket_size << SALT_BITS,
+            hashes[i] = JoinHashMapHelper::calc_bucket_num<CppType>(probe_keys[i], table_items.bucket_size << SALT_BITS,
                                                                     table_items.log_bucket_size + SALT_BITS);
         }
 
@@ -251,7 +255,7 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
         for (uint32_t i = 0; i < row_count; i++) {
             if (need_calc_bucket_num(i)) {
                 probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(
-                        keys[i], table_items.bucket_size << SALT_BITS, table_items.log_bucket_size + SALT_BITS);
+                        probe_keys[i], table_items.bucket_size << SALT_BITS, table_items.log_bucket_size + SALT_BITS);
             }
         }
 
@@ -305,7 +309,8 @@ void DirectMappingJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
 
 template <LogicalType LT>
 void DirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                                               const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls) {
+                                               const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                                               const Buffer<uint8_t>* is_nulls) {
     probe_state->active_coroutines = 0; // the ht data is not large, so disable it always.
 
     static constexpr CppType MIN_VALUE = RunTimeTypeLimits<LT>::min_value();
@@ -313,13 +318,13 @@ void DirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
 
     if (is_nulls == nullptr) {
         for (size_t i = 0; i < probe_row_count; i++) {
-            probe_state->next[i] = table_items.first[keys[i] - MIN_VALUE];
+            probe_state->next[i] = table_items.first[probe_keys[i] - MIN_VALUE];
         }
     } else {
         const auto* is_nulls_data = is_nulls->data();
         for (size_t i = 0; i < probe_row_count; i++) {
             if (is_nulls_data[i] == 0) {
-                probe_state->next[i] = table_items.first[keys[i] - MIN_VALUE];
+                probe_state->next[i] = table_items.first[probe_keys[i] - MIN_VALUE];
             } else {
                 probe_state->next[i] = 0;
             }
@@ -365,7 +370,8 @@ void RangeDirectMappingJoinHashMap<LT>::construct_hash_table(JoinHashTableItems*
 
 template <LogicalType LT>
 void RangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_items,
-                                                    HashTableProbeState* probe_state, const Buffer<CppType>& keys,
+                                                    HashTableProbeState* probe_state, const Buffer<CppType>& build_keys,
+                                                    const Buffer<CppType>& probe_keys,
                                                     const Buffer<uint8_t>* is_nulls) {
     probe_state->active_coroutines = 0; // the ht data is not large, so disable it always.
 
@@ -374,8 +380,8 @@ void RangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItems& ta
     const size_t num_rows = probe_state->probe_row_count;
     if (is_nulls == nullptr) {
         for (size_t i = 0; i < num_rows; i++) {
-            if ((keys[i] >= min_value) & (keys[i] <= max_value)) {
-                const uint64_t index = keys[i] - min_value;
+            if ((probe_keys[i] >= min_value) & (probe_keys[i] <= max_value)) {
+                const uint64_t index = probe_keys[i] - min_value;
                 probe_state->next[i] = table_items.first[index];
             } else {
                 probe_state->next[i] = 0;
@@ -384,8 +390,8 @@ void RangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItems& ta
     } else {
         const auto* is_nulls_data = is_nulls->data();
         for (size_t i = 0; i < num_rows; i++) {
-            if ((is_nulls_data[i] == 0) & (keys[i] >= min_value) & (keys[i] <= max_value)) {
-                const uint64_t index = keys[i] - min_value;
+            if ((is_nulls_data[i] == 0) & (probe_keys[i] >= min_value) & (probe_keys[i] <= max_value)) {
+                const uint64_t index = probe_keys[i] - min_value;
                 probe_state->next[i] = table_items.first[index];
             } else {
                 probe_state->next[i] = 0;
@@ -431,7 +437,8 @@ void RangeDirectMappingJoinHashSet<LT>::construct_hash_table(JoinHashTableItems*
 
 template <LogicalType LT>
 void RangeDirectMappingJoinHashSet<LT>::lookup_init(const JoinHashTableItems& table_items,
-                                                    HashTableProbeState* probe_state, const Buffer<CppType>& keys,
+                                                    HashTableProbeState* probe_state, const Buffer<CppType>& build_keys,
+                                                    const Buffer<CppType>& probe_keys,
                                                     const Buffer<uint8_t>* is_nulls) {
     probe_state->active_coroutines = 0; // the ht data is not large, so disable it always.
 
@@ -440,8 +447,8 @@ void RangeDirectMappingJoinHashSet<LT>::lookup_init(const JoinHashTableItems& ta
     const size_t num_rows = probe_state->probe_row_count;
     if (is_nulls == nullptr) {
         for (size_t i = 0; i < num_rows; i++) {
-            if ((keys[i] >= min_value) & (keys[i] <= max_value)) {
-                const uint64_t index = keys[i] - min_value;
+            if ((probe_keys[i] >= min_value) & (probe_keys[i] <= max_value)) {
+                const uint64_t index = probe_keys[i] - min_value;
                 const uint32_t group = index / 8;
                 const uint32_t offset = index % 8;
                 probe_state->next[i] = (table_items.key_bitset[group] & (1 << offset)) != 0;
@@ -452,8 +459,8 @@ void RangeDirectMappingJoinHashSet<LT>::lookup_init(const JoinHashTableItems& ta
     } else {
         const auto* is_nulls_data = is_nulls->data();
         for (size_t i = 0; i < num_rows; i++) {
-            if ((is_nulls_data[i] == 0) & (keys[i] >= min_value) & (keys[i] <= max_value)) {
-                const uint64_t index = keys[i] - min_value;
+            if ((is_nulls_data[i] == 0) & (probe_keys[i] >= min_value) & (probe_keys[i] <= max_value)) {
+                const uint64_t index = probe_keys[i] - min_value;
                 const uint32_t group = index / 8;
                 const uint32_t offset = index % 8;
                 probe_state->next[i] = (table_items.key_bitset[group] & (1 << offset)) != 0;
@@ -537,7 +544,9 @@ void DenseRangeDirectMappingJoinHashMap<LT>::construct_hash_table(JoinHashTableI
 
 template <LogicalType LT>
 void DenseRangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_items,
-                                                         HashTableProbeState* probe_state, const Buffer<CppType>& keys,
+                                                         HashTableProbeState* probe_state,
+                                                         const Buffer<CppType>& build_keys,
+                                                         const Buffer<CppType>& probe_keys,
                                                          const Buffer<uint8_t>* is_nulls) {
     probe_state->active_coroutines = 0; // the ht data is not large, so disable it always.
 
@@ -565,8 +574,8 @@ void DenseRangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItem
     const size_t num_rows = probe_state->probe_row_count;
     if (is_nulls == nullptr) {
         for (size_t i = 0; i < num_rows; i++) {
-            if ((keys[i] >= min_value) & (keys[i] <= max_value)) {
-                const uint64_t bucket_num = keys[i] - min_value;
+            if ((probe_keys[i] >= min_value) & (probe_keys[i] <= max_value)) {
+                const uint64_t bucket_num = probe_keys[i] - min_value;
                 probe_state->next[i] = get_dense_first(bucket_num);
             } else {
                 probe_state->next[i] = 0;
@@ -575,8 +584,8 @@ void DenseRangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItem
     } else {
         const auto* is_nulls_data = is_nulls->data();
         for (size_t i = 0; i < num_rows; i++) {
-            if ((is_nulls_data[i] == 0) & (keys[i] >= min_value) & (keys[i] <= max_value)) {
-                const uint64_t bucket_num = keys[i] - min_value;
+            if ((is_nulls_data[i] == 0) & (probe_keys[i] >= min_value) & (probe_keys[i] <= max_value)) {
+                const uint64_t bucket_num = probe_keys[i] - min_value;
                 probe_state->next[i] = get_dense_first(bucket_num);
             } else {
                 probe_state->next[i] = 0;

@@ -61,7 +61,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
 };
@@ -77,7 +78,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
 
@@ -133,7 +135,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
@@ -181,7 +184,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
@@ -200,7 +204,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
@@ -253,7 +258,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
