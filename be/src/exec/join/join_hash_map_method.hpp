@@ -131,57 +131,32 @@ void LinearChainedJoinHashMap<LT>::build_prepare(RuntimeState* state, JoinHashTa
 template <LogicalType LT>
 void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
                                                         const Buffer<uint8_t>* is_nulls) {
-    const auto num_rows = 1 + table_items->row_count;
-    const uint32_t bucket_size_mask = table_items->bucket_size - 1;
+    auto process = [&]<bool IsNullable>() {
+        const auto num_rows = 1 + table_items->row_count;
+        const uint32_t bucket_size_mask = table_items->bucket_size - 1;
 
-    auto* __restrict next = table_items->next.data();
-    auto* __restrict first = table_items->first.data();
+        auto* __restrict next = table_items->next.data();
+        auto* __restrict first = table_items->first.data();
+        const uint8_t* __restrict is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
 
-    auto process_row = [&](const uint32_t i) {
-        const uint32_t hash = next[i];
-        const uint32_t salt = hash << (32 - SALT_BITS);
-        uint32_t bucket_num = hash >> SALT_BITS;
-
-        uint32_t probe_times = 1;
-        while (true) {
-            if (first[bucket_num] == 0) {
-                next[i] = 0;
-                first[bucket_num] = _combine_data_salt(i, salt);
-                break;
-            }
-
-            if (salt == _extract_salt(first[bucket_num]) && keys[i] == keys[_extract_data(first[bucket_num])]) {
-                next[i] = _extract_data(first[bucket_num]);
-                first[bucket_num] = _combine_data_salt(i, salt);
-                break;
-            }
-
-            bucket_num = (bucket_num + probe_times) & bucket_size_mask;
-            probe_times++;
-        }
-    };
-
-    if (is_nulls == nullptr) {
-        for (uint32_t i = 1; i < num_rows; i++) {
-            // Use `next` stores `bucket_num` temporarily.
-            next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items->bucket_size << SALT_BITS,
-                                                                  table_items->log_bucket_size + SALT_BITS);
-        }
-
-        for (uint32_t i = 1; i < num_rows; i++) {
-            process_row(i);
-        }
-    } else {
-        const auto* __restrict is_nulls_data = is_nulls->data();
         auto need_calc_bucket_num = [&](const uint32_t index) {
-            if constexpr (!std::is_same_v<CppType, Slice>) {
+            // Only check `is_nulls_data[i]` for the nullable slice type. The hash calculation overhead for
+            // fixed-size types is small, and thus we do not check it to allow vectorization of the hash calculation.
+            if constexpr (!IsNullable || !std::is_same_v<CppType, Slice>) {
                 return true;
             } else {
                 return is_nulls_data[index] == 0;
             }
         };
+        auto is_null = [&](const uint32_t index) {
+            if constexpr (!IsNullable) {
+                return false;
+            } else {
+                return is_nulls_data[index] != 0;
+            }
+        };
 
-        for (uint32_t i = 0; i < num_rows; i++) {
+        for (uint32_t i = 1; i < num_rows; i++) {
             // Use `next` stores `bucket_num` temporarily.
             if (need_calc_bucket_num(i)) {
                 next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items->bucket_size << SALT_BITS,
@@ -189,13 +164,40 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
             }
         }
 
-        for (uint32_t i = 0; i < num_rows; i++) {
-            if (is_nulls_data[i] == 0) {
-                process_row(i);
-            } else {
+        for (uint32_t i = 1; i < num_rows; i++) {
+            if (is_null(i)) {
                 next[i] = 0;
+                continue;
+            }
+
+            const uint32_t hash = next[i];
+            const uint32_t salt = _get_salt_from_hash(hash);
+            uint32_t bucket_num = _get_bucket_num_from_hash(hash);
+
+            uint32_t probe_times = 1;
+            while (true) {
+                if (first[bucket_num] == 0) {
+                    next[i] = 0;
+                    first[bucket_num] = _combine_data_salt(i, salt);
+                    break;
+                }
+
+                if (salt == _extract_salt(first[bucket_num]) && keys[i] == keys[_extract_data(first[bucket_num])]) {
+                    next[i] = _extract_data(first[bucket_num]);
+                    first[bucket_num] = _combine_data_salt(i, salt);
+                    break;
+                }
+
+                bucket_num = (bucket_num + probe_times) & bucket_size_mask;
+                probe_times++;
             }
         }
+    };
+
+    if (is_nulls == nullptr) {
+        process.template operator()<false>();
+    } else {
+        process.template operator()<true>();
     }
 }
 
@@ -203,76 +205,77 @@ template <LogicalType LT>
 void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
                                                const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
                                                const Buffer<uint8_t>* is_nulls) {
-    const uint32_t bucket_size_mask = table_items.bucket_size - 1;
-    const uint32_t row_count = probe_state->probe_row_count;
+    auto process = [&]<bool IsNullable>() {
+        const uint32_t bucket_size_mask = table_items.bucket_size - 1;
+        const uint32_t row_count = probe_state->probe_row_count;
 
-    const auto* firsts = table_items.first.data();
-    auto* hashes = probe_state->buckets.data();
-    auto* nexts = probe_state->next.data();
+        const auto* firsts = table_items.first.data();
+        auto* hashes = probe_state->buckets.data();
+        auto* nexts = probe_state->next.data();
+        const uint8_t* is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
 
-    auto process_row = [&](const uint32_t i) {
-        const uint32_t hash = hashes[i];
-        const uint32_t salt = hash << (32 - SALT_BITS);
-        uint32_t bucket_num = hash >> SALT_BITS;
-
-        uint32_t probe_times = 1;
-        while (true) {
-            if (firsts[bucket_num] == 0) {
-                nexts[i] = 0;
-                break;
-            }
-
-            const uint32_t cur_salt = _extract_salt(firsts[bucket_num]);
-            const uint32_t cur_index = _extract_data(firsts[bucket_num]);
-            if (salt == cur_salt && probe_keys[i] == build_keys[cur_index]) {
-                nexts[i] = cur_index;
-                break;
-            }
-
-            bucket_num = (bucket_num + probe_times) & bucket_size_mask;
-            probe_times++;
-        }
-    };
-
-    if (is_nulls == nullptr) {
-        for (uint32_t i = 0; i < row_count; i++) {
-            hashes[i] = JoinHashMapHelper::calc_bucket_num<CppType>(probe_keys[i], table_items.bucket_size << SALT_BITS,
-                                                                    table_items.log_bucket_size + SALT_BITS);
-        }
-
-        for (uint32_t i = 0; i < row_count; i++) {
-            if (i + 16 < row_count) {
-                __builtin_prefetch(firsts + (hashes[i + 16] >> SALT_BITS));
-            }
-            process_row(i);
-        }
-    } else {
-        const auto* is_nulls_data = is_nulls->data();
         auto need_calc_bucket_num = [&](const uint32_t index) {
-            if constexpr (!std::is_same_v<CppType, Slice>) {
+            if constexpr (!IsNullable || !std::is_same_v<CppType, Slice>) {
+                // Only check `is_nulls_data[i]` for the nullable slice type. The hash calculation overhead for
+                // fixed-size types is small, and thus we do not check it to allow vectorization of the hash calculation.
                 return true;
             } else {
                 return is_nulls_data[index] == 0;
             }
         };
+        auto is_null = [&](const uint32_t index) {
+            if constexpr (!IsNullable) {
+                return false;
+            } else {
+                return is_nulls_data[index] != 0;
+            }
+        };
+
         for (uint32_t i = 0; i < row_count; i++) {
             if (need_calc_bucket_num(i)) {
-                probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                hashes[i] = JoinHashMapHelper::calc_bucket_num<CppType>(
                         probe_keys[i], table_items.bucket_size << SALT_BITS, table_items.log_bucket_size + SALT_BITS);
             }
         }
 
         for (uint32_t i = 0; i < row_count; i++) {
-            if (i + 16 < row_count && is_nulls_data[i + 16] == 0) {
-                __builtin_prefetch(firsts + (hashes[i + 16] >> SALT_BITS));
+            if (i + 16 < row_count && !is_null(i + 16)) {
+                __builtin_prefetch(firsts + _get_salt_from_hash(hashes[i + 16]));
             }
 
-            if (is_nulls_data[i] == 0) {
-                process_row(i);
-            } else {
+            if (is_nulls(i)) {
                 nexts[i] = 0;
+                continue;
+            }
+
+            const uint32_t hash = hashes[i];
+            const uint32_t salt = _get_salt_from_hash(hash);
+            uint32_t bucket_num = _get_bucket_num_from_hash(hash);
+
+            uint32_t probe_times = 1;
+            while (true) {
+                if (firsts[bucket_num] == 0) {
+                    nexts[i] = 0;
+                    break;
+                }
+
+                const uint32_t cur_salt = _extract_salt(firsts[bucket_num]);
+                const uint32_t cur_index = _extract_data(firsts[bucket_num]);
+                if (salt == cur_salt && probe_keys[i] == build_keys[cur_index]) {
+                    nexts[i] = cur_index;
+                    break;
+                }
+
+                bucket_num = (bucket_num + probe_times) & bucket_size_mask;
+                probe_times++;
             }
         }
+    };
+
+    if (is_nulls == nullptr) {
+        process.template operator()<false>();
+    } else {
+        process.template operator()<true>();
     }
 }
 
