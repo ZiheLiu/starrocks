@@ -1122,7 +1122,13 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_right_outer_join(RuntimeState* 
                 _probe_state->build_match_index[build_index] = 1;
                 match_count++;
 
-                RETURN_IF_CHUNK_FULL()
+                if constexpr (!is_collision_free_and_unique) {
+                    RETURN_IF_CHUNK_FULL()
+                }
+            }
+
+            if constexpr (is_collision_free_and_unique) {
+                break;
             }
             build_index = _table_items->next[build_index];
         }
@@ -1190,8 +1196,14 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_right_semi_join(RuntimeState* s
                     _probe_state->build_match_index[build_index] = 1;
                     match_count++;
 
-                    RETURN_IF_CHUNK_FULL()
+                    if constexpr (!is_collision_free_and_unique) {
+                        RETURN_IF_CHUNK_FULL()
+                    }
                 }
+            }
+
+            if constexpr (is_collision_free_and_unique) {
+                break;
             }
             build_index = _table_items->next[build_index];
         }
@@ -1246,6 +1258,10 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_right_anti_join(RuntimeState* s
         while (index != 0) {
             if (HashMapMethod().equal(build_data[index], probe_data[i])) {
                 _probe_state->build_match_index[index] = 1;
+            }
+
+            if constexpr (is_collision_free_and_unique) {
+                break;
             }
             index = _table_items->next[index];
         }
@@ -1311,7 +1327,13 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_full_outer_join(RuntimeState* s
                     _probe_state->cur_row_match_count++;
                     match_count++;
 
-                    RETURN_IF_CHUNK_FULL()
+                    if constexpr (!is_collision_free_and_unique) {
+                        RETURN_IF_CHUNK_FULL()
+                    }
+                }
+
+                if constexpr (is_collision_free_and_unique) {
+                    break;
                 }
                 build_index = _table_items->next[build_index];
             }
@@ -1399,8 +1421,15 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_left_semi_join_with_other_conju
                 _probe_state->build_index[match_count] = build_index;
                 match_count++;
 
-                RETURN_IF_CHUNK_FULL()
+                if constexpr (!is_collision_free_and_unique) {
+                    RETURN_IF_CHUNK_FULL()
+                }
             }
+
+            if constexpr (is_collision_free_and_unique) {
+                break;
+            }
+
             build_index = _table_items->next[build_index];
         }
     }
@@ -1463,8 +1492,15 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_null_aware_anti_join_with_other
                 match_count++;
                 _probe_state->cur_row_match_count++;
 
-                RETURN_IF_CHUNK_FULL()
+                if constexpr (!is_collision_free_and_unique) {
+                    RETURN_IF_CHUNK_FULL()
+                }
             }
+
+            if constexpr (is_collision_free_and_unique) {
+                break;
+            }
+
             build_index = _table_items->next[build_index];
         }
 
@@ -1503,7 +1539,13 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_right_outer_right_semi_right_an
                 _probe_state->build_index[match_count] = build_index;
                 match_count++;
 
-                RETURN_IF_CHUNK_FULL()
+                if constexpr (!is_collision_free_and_unique) {
+                    RETURN_IF_CHUNK_FULL()
+                }
+            }
+
+            if constexpr (is_collision_free_and_unique) {
+                break;
             }
             build_index = _table_items->next[build_index];
         }
@@ -1552,7 +1594,13 @@ void JoinHashMap<LT, CT, MT>::_probe_from_ht_for_left_outer_left_anti_full_outer
                     _probe_state->cur_row_match_count++;
                     match_count++;
 
-                    RETURN_IF_CHUNK_FULL()
+                    if constexpr (!is_collision_free_and_unique) {
+                        RETURN_IF_CHUNK_FULL()
+                    }
+                }
+
+                if constexpr (is_collision_free_and_unique) {
+                    break;
                 }
                 build_index = _table_items->next[build_index];
             }
