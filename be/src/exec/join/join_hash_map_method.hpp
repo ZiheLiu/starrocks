@@ -183,8 +183,8 @@ void LinearChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
         for (uint32_t i = 0; i < num_rows; i++) {
             // Use `next` stores `bucket_num` temporarily.
             if (need_calc_bucket_num(i)) {
-                next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items->bucket_size,
-                                                                      table_items->log_bucket_size);
+                next[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items->bucket_size << SALT_BITS,
+                                                                      table_items->log_bucket_size + SALT_BITS);
             }
         }
 
