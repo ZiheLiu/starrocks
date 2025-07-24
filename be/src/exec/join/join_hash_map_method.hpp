@@ -250,8 +250,8 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
         };
         for (uint32_t i = 0; i < row_count; i++) {
             if (need_calc_bucket_num(i)) {
-                probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(keys[i], table_items.bucket_size,
-                                                                                      table_items.log_bucket_size);
+                probe_state->buckets[i] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                        keys[i], table_items.bucket_size << SALT_BITS, table_items.log_bucket_size + SALT_BITS);
             }
         }
 
