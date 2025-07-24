@@ -81,7 +81,7 @@ public:
                             const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
                             const Buffer<uint8_t>* is_nulls);
 
-    static bool equal(const CppType& x, const CppType& y) { return x == y; }
+    static bool equal(const CppType& x, const CppType& y) { return true; }
 
     static uint32_t max_supported_bucket_size() { return DATA_MASK; }
 
