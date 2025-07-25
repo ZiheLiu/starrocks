@@ -2629,6 +2629,8 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true)
     public static int slot_manager_sleep = 10;
+    @ConfField(mutable = true)
+    public static boolean slot_manager_throw_error = true;
 
     /**
      * The heartbeat retry times of be/broker/fe.

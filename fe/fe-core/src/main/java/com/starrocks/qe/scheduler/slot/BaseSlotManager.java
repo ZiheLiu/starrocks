@@ -226,6 +226,9 @@ public abstract class BaseSlotManager {
     }
 
     public void releaseSlotAsync(long warehouseId, TUniqueId slotId) {
+        if (Config.slot_manager_throw_error) {
+            throw new RuntimeException("mock releaseSlotAsync error");
+        }
         try {
             Thread.sleep(Config.slot_manager_sleep * 1000L);
         } catch (InterruptedException e) {
