@@ -187,7 +187,7 @@ public abstract class BaseSlotManager {
      * - SlotTracker will always to allocate slot when running queries is below than the concurrency limit.
      * - If the concurrency limit is less than 0, it means that the slot tracker will not limit the concurrency but will be
      * controlled
-     *  by another resource usage monitor.
+     * by another resource usage monitor.
      */
     public int getQueryQueueConcurrencyLimit(long warehouseId) {
         return GlobalVariable.getQueryQueueConcurrencyLimit();
@@ -226,6 +226,11 @@ public abstract class BaseSlotManager {
     }
 
     public void releaseSlotAsync(long warehouseId, TUniqueId slotId) {
+        try {
+            Thread.sleep(Config.slot_manager_sleep * 1000L);
+        } catch (InterruptedException e) {
+            LOG.warn("[Slot] SlotManager releaseSlotAsync interrupted");
+        }
         requests.add(() -> handleReleaseSlotTask(warehouseId, slotId));
     }
 

@@ -2626,6 +2626,10 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static int heartbeat_timeout_second = 5;
 
+
+    @ConfField(mutable = true)
+    public static int slot_manager_sleep = 10;
+
     /**
      * The heartbeat retry times of be/broker/fe.
      * the default is 3
