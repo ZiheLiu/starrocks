@@ -118,10 +118,10 @@ public:
     static bool equal(const CppType& x, const CppType& y) { return true; }
 
 private:
-    static const Buffer<CppType>& _get_build_buckets(const JoinHashTableItems* table_items) {
+    static const auto& _get_build_buckets(const JoinHashTableItems* table_items) {
         return _get_build_buckets(const_cast<JoinHashTableItems*>(table_items));
     }
-    static Buffer<CppType>& _get_build_buckets(JoinHashTableItems* table_items) {
+    static auto& _get_build_buckets(JoinHashTableItems* table_items) {
         if constexpr (LT == TYPE_INT) {
             return table_items->first;
         } else if constexpr (LT == TYPE_BIGINT) {
