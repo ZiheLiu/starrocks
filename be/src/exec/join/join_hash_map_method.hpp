@@ -366,7 +366,7 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
                         break;
                     }
 
-                    if (keys[i] == keys[bucket_num]) {
+                    if (normalized_key == build_buckets[bucket_num]) {
                         break;
                     }
 
