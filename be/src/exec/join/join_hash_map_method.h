@@ -118,6 +118,9 @@ public:
     static bool equal(const CppType& x, const CppType& y) { return true; }
 
 private:
+    static const Buffer<CppType>& _get_build_buckets(const JoinHashTableItems* table_item) {
+        return _get_build_buckets(down_cast<JoinHashTableItems*>(table_item));
+    }
     static Buffer<CppType>& _get_build_buckets(JoinHashTableItems* table_item) {
         if constexpr (LT == TYPE_INT) {
             return table_item->first;
