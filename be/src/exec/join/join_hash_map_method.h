@@ -118,14 +118,14 @@ public:
     static bool equal(const CppType& x, const CppType& y) { return true; }
 
 private:
-    static const Buffer<CppType>& _get_build_buckets(const JoinHashTableItems* table_item) {
-        return _get_build_buckets(down_cast<JoinHashTableItems*>(table_item));
+    static const Buffer<CppType>& _get_build_buckets(const JoinHashTableItems* table_items) {
+        return _get_build_buckets(const_cast<JoinHashTableItems*>(table_items));
     }
-    static Buffer<CppType>& _get_build_buckets(JoinHashTableItems* table_item) {
+    static Buffer<CppType>& _get_build_buckets(JoinHashTableItems* table_items) {
         if constexpr (LT == TYPE_INT) {
-            return table_item->first;
+            return table_items->first;
         } else if constexpr (LT == TYPE_BIGINT) {
-            return table_item->first_int64;
+            return table_items->first_int64;
         } else {
             static_assert(false, "Unsupported LogicalType for LinearChainedJoinHashSet");
             __builtin_unreachable();
