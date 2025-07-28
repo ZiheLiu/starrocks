@@ -426,6 +426,10 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
         }
 
         for (uint32_t i = 0; i < row_count; i++) {
+            if (i + 16 < row_count && !is_null(i + 16)) {
+                __builtin_prefetch(build_buckets + probe_buckets[i + 16]);
+            }
+
             if (is_null(i) || (probe_keys[i] < min_value || probe_keys[i] > max_value)) {
                 nexts[i] = 0;
                 continue;
