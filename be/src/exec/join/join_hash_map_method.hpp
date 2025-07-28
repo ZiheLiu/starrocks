@@ -243,7 +243,7 @@ void LinearChainedJoinHashMap<LT>::lookup_init(const JoinHashTableItems& table_i
                 __builtin_prefetch(firsts + _get_salt_from_hash(hashes[i + 16]));
             }
 
-            if (is_nulls(i)) {
+            if (is_null(i)) {
                 nexts[i] = 0;
                 continue;
             }
