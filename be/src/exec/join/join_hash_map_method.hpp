@@ -357,7 +357,7 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
                 }
 
                 uint32_t bucket_num = buffer_bucket_nums[i];
-                const int64_t normalized_key = keys[i] - min_value + 1;
+                const uint64_t normalized_key = static_cast<uint64_t>(keys[i]) - min_value + 1;
 
                 uint32_t probe_times = 1;
                 while (true) {
@@ -395,6 +395,7 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
         const uint32_t bucket_size_mask = table_items.bucket_size - 1;
         const uint32_t row_count = probe_state->probe_row_count;
         const int64_t min_value = table_items.min_value;
+        const int64_t max_value = table_items.max_value;
 
         const auto* __restrict build_buckets = _get_build_buckets(&table_items).data();
         auto* probe_buckets = probe_state->buckets.data();
@@ -426,13 +427,13 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
         }
 
         for (uint32_t i = 0; i < row_count; i++) {
-            if (is_null(i)) {
+            if (is_null(i) || (probe_keys[i] < min_value || probe_keys[i] > max_value)) {
                 nexts[i] = 0;
                 continue;
             }
 
             uint32_t bucket_num = probe_buckets[i];
-            const int64_t normalized_key = probe_keys[i] - min_value + 1;
+            const uint64_t normalized_key = static_cast<uint64_t>(probe_keys[i]) - min_value + 1;
 
             uint32_t probe_times = 1;
             while (true) {

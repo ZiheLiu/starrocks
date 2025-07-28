@@ -125,7 +125,7 @@ private:
         if constexpr (LT == TYPE_INT) {
             return table_items->first;
         } else if constexpr (LT == TYPE_BIGINT) {
-            return table_items->first_int64;
+            return table_items->first64;
         } else {
             static_assert(false, "Unsupported LogicalType for LinearChainedJoinHashSet");
             __builtin_unreachable();
