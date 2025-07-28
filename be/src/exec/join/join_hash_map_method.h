@@ -102,7 +102,7 @@ template <LogicalType LT>
 using LinearChainedJoinHashSet = LinearChainedJoinHashMap<LT, false>;
 
 template <LogicalType LT>
-class LinearChainedJoinHashMap<LT, false> {
+requires(LT == TYPE_INT || LT == TYPE_BIGINT) class LinearChainedJoinHashMap<LT, false> {
 public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;

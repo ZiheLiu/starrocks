@@ -300,7 +300,9 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::lookup_init(const JoinHashT
 // ------------------------------------------------------------------------------------
 
 template <LogicalType LT>
-void LinearChainedJoinHashMap<LT, false>::build_prepare(RuntimeState* state, JoinHashTableItems* table_items) {
+requires(LT == TYPE_INT ||
+         LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, false>::build_prepare(RuntimeState* state,
+                                                                                    JoinHashTableItems* table_items) {
     table_items->bucket_size = JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1);
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     _get_build_buckets(table_items).resize(table_items->bucket_size, 0);
@@ -309,9 +311,8 @@ void LinearChainedJoinHashMap<LT, false>::build_prepare(RuntimeState* state, Joi
 }
 
 template <LogicalType LT>
-void LinearChainedJoinHashMap<LT, false>::construct_hash_table(JoinHashTableItems* table_items,
-                                                               const Buffer<CppType>& keys,
-                                                               const Buffer<uint8_t>* is_nulls) {
+requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, false>::construct_hash_table(
+        JoinHashTableItems* table_items, const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls) {
     auto process = [&]<bool IsNullable>() {
         const auto num_rows = 1 + table_items->row_count;
         const uint32_t bucket_size_mask = table_items->bucket_size - 1;
@@ -387,11 +388,9 @@ void LinearChainedJoinHashMap<LT, false>::construct_hash_table(JoinHashTableItem
 }
 
 template <LogicalType LT>
-void LinearChainedJoinHashMap<LT, false>::lookup_init(const JoinHashTableItems& table_items,
-                                                      HashTableProbeState* probe_state,
-                                                      const Buffer<CppType>& build_keys,
-                                                      const Buffer<CppType>& probe_keys,
-                                                      const Buffer<uint8_t>* is_nulls) {
+requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, false>::lookup_init(
+        const JoinHashTableItems& table_items, HashTableProbeState* probe_state, const Buffer<CppType>& build_keys,
+        const Buffer<CppType>& probe_keys, const Buffer<uint8_t>* is_nulls) {
     auto process = [&]<bool IsNullable>() {
         const uint32_t bucket_size_mask = table_items.bucket_size - 1;
         const uint32_t row_count = probe_state->probe_row_count;
