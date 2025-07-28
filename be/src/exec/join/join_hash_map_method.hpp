@@ -396,7 +396,7 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
         const uint32_t row_count = probe_state->probe_row_count;
         const int64_t min_value = table_items.min_value;
 
-        const auto* __restrict build_buckets = _get_build_buckets(table_items).data();
+        const auto* __restrict build_buckets = _get_build_buckets(&table_items).data();
         auto* probe_buckets = probe_state->buckets.data();
         auto* nexts = probe_state->next.data();
         const uint8_t* is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
