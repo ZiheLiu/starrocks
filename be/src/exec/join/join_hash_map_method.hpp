@@ -340,24 +340,23 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
             }
         };
 
-        for (uint32_t j = 1; j < num_rows; j += num_buffer_rows) {
-            const uint32_t start = j;
-            const uint32_t end = j + std::min(num_buffer_rows, num_rows - j);
+        for (uint64_t i = 1; i < num_rows; i += num_buffer_rows) {
+            const uint32_t cur_num_buffer_rows = std::min<uint32_t>(num_buffer_rows, num_rows - i);
 
-            for (uint32_t i = start; i < end; i++) {
-                if (need_calc_bucket_num(i)) {
-                    buffer_bucket_nums[i] = JoinHashMapHelper::calc_bucket_num<CppType>(
-                            keys[i], table_items->bucket_size, table_items->log_bucket_size);
+            for (uint32_t j = 0; j < cur_num_buffer_rows; j++) {
+                if (need_calc_bucket_num(i + j)) {
+                    buffer_bucket_nums[j] = JoinHashMapHelper::calc_bucket_num<CppType>(
+                            keys[i + j], table_items->bucket_size, table_items->log_bucket_size);
                 }
             }
 
-            for (uint32_t i = start; i < end; i++) {
-                if (is_null(i)) {
+            for (uint32_t j = 0; j < cur_num_buffer_rows; j++) {
+                if (is_null(i + j)) {
                     continue;
                 }
 
-                uint32_t bucket_num = buffer_bucket_nums[i];
-                const uint64_t normalized_key = static_cast<uint64_t>(keys[i]) - min_value + 1;
+                uint32_t bucket_num = buffer_bucket_nums[j];
+                const uint64_t normalized_key = static_cast<uint64_t>(keys[i + j]) - min_value + 1;
 
                 uint32_t probe_times = 1;
                 while (true) {
