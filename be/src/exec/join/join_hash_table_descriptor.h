@@ -70,6 +70,7 @@ struct JoinHashTableItems {
         uint32_t bitset = 0;
     };
     Buffer<DenseGroup> dense_groups;
+    Buffer<int64_t> first_int64;
 
     Buffer<Slice> build_slice;
     ColumnPtr build_key_column = nullptr;

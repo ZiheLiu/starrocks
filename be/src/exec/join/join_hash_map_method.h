@@ -67,7 +67,7 @@ public:
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
 };
 
-template <LogicalType LT>
+template <LogicalType LT, bool NeedBuildChained = true>
 class LinearChainedJoinHashMap {
 public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
@@ -96,6 +96,38 @@ private:
 
     static uint32_t _get_bucket_num_from_hash(const uint32_t hash) { return hash >> SALT_BITS; }
     static uint32_t _get_salt_from_hash(const uint32_t hash) { return hash << (32 - SALT_BITS); }
+};
+
+template <LogicalType LT>
+using LinearChainedJoinHashSet = LinearChainedJoinHashMap<LT, false>;
+
+template <LogicalType LT>
+class LinearChainedJoinHashMap<LT, false> {
+public:
+    using CppType = typename RunTimeTypeTraits<LT>::CppType;
+    using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
+    static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
+                                     const Buffer<uint8_t>* is_nulls);
+
+    static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
+
+    static bool equal(const CppType& x, const CppType& y) { return true; }
+
+private:
+    static Buffer<CppType>& _get_build_buckets(JoinHashTableItems* table_item) {
+        if constexpr (LT == TYPE_INT) {
+            return table_item->first;
+        } else if constexpr (LT == TYPE_BIGINT) {
+            return table_item->first_int64;
+        } else {
+            static_assert(false, "Unsupported LogicalType for LinearChainedJoinHashSet");
+            __builtin_unreachable();
+        }
+    }
 };
 
 // The bucket-chained linked list formed by first` and `next` is the same as that of `BucketChainedJoinHashMap`.

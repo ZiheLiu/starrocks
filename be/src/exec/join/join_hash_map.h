@@ -327,33 +327,6 @@ private:
     HashTableProbeState* _probe_state = nullptr;
 };
 
-#define JoinHashMapForOneKey(LT) JoinHashMap<LT, JoinKeyConstructorType::ONE_KEY, JoinHashMapMethodType::BUCKET_CHAINED>
-#define JoinHashMapForDirectMapping(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::ONE_KEY, JoinHashMapMethodType::DIRECT_MAPPING>
-#define JoinHashMapForFixedSizeKey(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::SERIALIZED_FIXED_SIZE, JoinHashMapMethodType::BUCKET_CHAINED>
-#define JoinHashMapForSerializedKey(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::SERIALIZED, JoinHashMapMethodType::BUCKET_CHAINED>
-#define JoinHashMapForOneKeyRangeDirectMapping(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::ONE_KEY, JoinHashMapMethodType::RANGE_DIRECT_MAPPING>
-#define JoinHashSetForOneKeyRangeDirectMapping(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::ONE_KEY, JoinHashMapMethodType::RANGE_DIRECT_MAPPING_SET>
-#define JoinHashMapForOneKeyDenseRangeDirectMapping(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::ONE_KEY, JoinHashMapMethodType::DENSE_RANGE_DIRECT_MAPPING>
-#define JoinHashMapForFixedSizeKeyRangeDirectMapping(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::SERIALIZED_FIXED_SIZE, JoinHashMapMethodType::RANGE_DIRECT_MAPPING>
-#define JoinHashSetForFixedSizeKeyRangeDirectMapping(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::SERIALIZED_FIXED_SIZE, JoinHashMapMethodType::RANGE_DIRECT_MAPPING_SET>
-#define JoinHashMapForFixedSizeKeyDenseRangeDirectMapping(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::SERIALIZED_FIXED_SIZE, JoinHashMapMethodType::DENSE_RANGE_DIRECT_MAPPING>
-
-#define JoinHashMapForOneKeyLinearChained(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::ONE_KEY, JoinHashMapMethodType::LINEAR_CHAINED>
-#define JoinHashMapForFixedSizeKeyLinearChained(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::SERIALIZED_FIXED_SIZE, JoinHashMapMethodType::LINEAR_CHAINED>
-#define JoinHashMapForSerializedKeyLinearChained(LT) \
-    JoinHashMap<LT, JoinKeyConstructorType::SERIALIZED, JoinHashMapMethodType::LINEAR_CHAINED>
-
 // ------------------------------------------------------------------------------------
 // JoinHashTable
 // ------------------------------------------------------------------------------------
@@ -467,6 +440,7 @@ private:
                                             JoinHashMapForSmallKey(DIRECT_MAPPING),                //
                                             JoinHashMapForNonSmallKey(BUCKET_CHAINED),             //
                                             JoinHashMapForNonSmallKey(LINEAR_CHAINED),             //
+                                            JoinHashMapForNonSmallKey(LINEAR_CHAINED_SET),         //
                                             JoinHashMapForIntBigintKey(RANGE_DIRECT_MAPPING),      //
                                             JoinHashMapForIntBigintKey(RANGE_DIRECT_MAPPING_SET),  //
                                             JoinHashMapForIntBigintKey(DENSE_RANGE_DIRECT_MAPPING) //
