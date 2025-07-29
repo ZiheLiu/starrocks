@@ -101,38 +101,6 @@ private:
 template <LogicalType LT>
 using LinearChainedJoinHashSet = LinearChainedJoinHashMap<LT, false>;
 
-template <LogicalType LT>
-requires(LT == TYPE_INT || LT == TYPE_BIGINT) class LinearChainedJoinHashMap<LT, false> {
-public:
-    using CppType = typename RunTimeTypeTraits<LT>::CppType;
-    using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
-
-    static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
-    static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
-                                     const Buffer<uint8_t>* is_nulls);
-
-    static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
-                            const Buffer<uint8_t>* is_nulls);
-
-    static bool equal(const CppType& x, const CppType& y) { return true; }
-
-private:
-    static const auto& _get_build_buckets(const JoinHashTableItems* table_items) {
-        return _get_build_buckets(const_cast<JoinHashTableItems*>(table_items));
-    }
-    static auto& _get_build_buckets(JoinHashTableItems* table_items) {
-        if constexpr (LT == TYPE_INT) {
-            return table_items->first;
-        } else if constexpr (LT == TYPE_BIGINT) {
-            return table_items->first64;
-        } else {
-            static_assert(false, "Unsupported LogicalType for LinearChainedJoinHashSet");
-            __builtin_unreachable();
-        }
-    }
-};
-
 // The bucket-chained linked list formed by first` and `next` is the same as that of `BucketChainedJoinHashMap`.
 //
 // `DirectMappingJoinHashMap` maps to a position in `first` using `key-MIN_VALUE`.

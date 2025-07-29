@@ -257,17 +257,17 @@ std::pair<bool, JoinHashMapMethodUnaryType> JoinHashMapSelector::_try_use_linear
             (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN) &&
             !table_items->with_other_conjunct;
 
-    if (is_left_anti_join_without_other_conjunct) {
-        if constexpr (LT == TYPE_INT || LT == TYPE_BIGINT) {
-            using CppType = typename RunTimeTypeTraits<LT>::CppType;
-            if (table_items->min_value == std::numeric_limits<CppType>::min() &&
-                table_items->max_value == std::numeric_limits<CppType>::max()) {
-                return {false, JoinHashMapMethodTypeTraits<JoinHashMapMethodType::BUCKET_CHAINED, LT>::unary_type};
-            } else {
-                return {true, JoinHashMapMethodTypeTraits<JoinHashMapMethodType::LINEAR_CHAINED_SET, LT>::unary_type};
-            }
-        }
-    }
+    // if (is_left_anti_join_without_other_conjunct) {
+    //     if constexpr (LT == TYPE_INT || LT == TYPE_BIGINT) {
+    //         using CppType = typename RunTimeTypeTraits<LT>::CppType;
+    //         if (table_items->min_value == std::numeric_limits<CppType>::min() &&
+    //             table_items->max_value == std::numeric_limits<CppType>::max()) {
+    //             return {false, JoinHashMapMethodTypeTraits<JoinHashMapMethodType::BUCKET_CHAINED, LT>::unary_type};
+    //         } else {
+    //             return {true, JoinHashMapMethodTypeTraits<JoinHashMapMethodType::LINEAR_CHAINED_SET, LT>::unary_type};
+    //         }
+    //     }
+    // }
 
     if (bucket_size > LinearChainedJoinHashMap<LT>::max_supported_bucket_size()) {
         return {false, JoinHashMapMethodTypeTraits<JoinHashMapMethodType::BUCKET_CHAINED, LT>::unary_type};
