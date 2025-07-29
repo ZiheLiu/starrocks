@@ -167,6 +167,10 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::construct_hash_table(JoinHa
         }
 
         for (uint32_t i = 1; i < num_rows; i++) {
+            if (i + 16 < num_rows && !is_null(i + 16)) {
+                __builtin_prefetch(first + _get_bucket_num_from_hash(next[i + 16]));
+            }
+
             if (is_null(i)) {
                 next[i] = 0;
                 continue;
@@ -351,6 +355,10 @@ requires(LT == TYPE_INT || LT == TYPE_BIGINT) void LinearChainedJoinHashMap<LT, 
             }
 
             for (uint32_t j = 0; j < cur_num_buffer_rows; j++) {
+                if (j + 16 < cur_num_buffer_rows && !is_null(i + j + 16)) {
+                    __builtin_prefetch(build_buckets + buffer_bucket_nums[j + 16]);
+                }
+
                 if (is_null(i + j)) {
                     continue;
                 }
