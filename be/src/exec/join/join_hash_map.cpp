@@ -44,7 +44,7 @@ private:
     static JoinHashMapMethodUnaryType _determine_hash_map_method(RuntimeState* state, JoinHashTableItems* table_items,
                                                                  JoinKeyConstructorUnaryType key_constructor_type);
 
-    template <JoinKeyConstructorUnaryType CT, LogicalType LT>
+    template <JoinKeyConstructorType CT, LogicalType LT>
     static void _calculate_min_max(RuntimeState* state, JoinHashTableItems* table_items);
 
     // @return: <can_use, JoinHashMapMethodUnaryType>, where `JoinHashMapMethodUnaryType` is effective only when `can_use` is true.
@@ -176,7 +176,7 @@ JoinHashMapMethodUnaryType JoinHashMapSelector::_determine_hash_map_method(
     });
 }
 
-template <JoinKeyConstructorUnaryType CT, LogicalType LT>
+template <JoinKeyConstructorType CT, LogicalType LT>
 void JoinHashMapSelector::_calculate_min_max(RuntimeState* state, JoinHashTableItems* table_items) {
     using KeyConstructor = typename JoinKeyConstructorTypeTraits<CT, LT>::BuildType;
     const auto* keys = KeyConstructor().get_key_data(*table_items).data();
