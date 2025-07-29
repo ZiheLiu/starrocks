@@ -44,7 +44,7 @@ private:
     static JoinHashMapMethodUnaryType _determine_hash_map_method(RuntimeState* state, JoinHashTableItems* table_items,
                                                                  JoinKeyConstructorUnaryType key_constructor_type);
 
-    template <LogicalType LT>
+    template <JoinKeyConstructorUnaryType CT, LogicalType LT>
     static void _calculate_min_max(RuntimeState* state, JoinHashTableItems* table_items);
 
     // @return: <can_use, JoinHashMapMethodUnaryType>, where `JoinHashMapMethodUnaryType` is effective only when `can_use` is true.
@@ -156,7 +156,7 @@ JoinHashMapMethodUnaryType JoinHashMapSelector::_determine_hash_map_method(
             if constexpr (LT == TYPE_INT || LT == TYPE_BIGINT) {
                 if (state->enable_hash_join_range_direct_mapping_opt() ||
                     state->enable_hash_join_linear_chained_opt()) {
-                    _calculate_min_max<LT>(state, table_items);
+                    _calculate_min_max<CT, LT>(state, table_items);
                 }
             }
 
@@ -176,9 +176,9 @@ JoinHashMapMethodUnaryType JoinHashMapSelector::_determine_hash_map_method(
     });
 }
 
-template <LogicalType LT>
+template <JoinKeyConstructorUnaryType CT, LogicalType LT>
 void JoinHashMapSelector::_calculate_min_max(RuntimeState* state, JoinHashTableItems* table_items) {
-    using KeyConstructor = typename JoinKeyConstructorTypeTraits<JoinKeyConstructorType::ONE_KEY, LT>::BuildType;
+    using KeyConstructor = typename JoinKeyConstructorTypeTraits<CT, LT>::BuildType;
     const auto* keys = KeyConstructor().get_key_data(*table_items).data();
     const size_t num_rows = table_items->row_count + 1;
     const int64_t min_value = *std::min_element(keys + 1, keys + num_rows);
