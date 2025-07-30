@@ -454,6 +454,8 @@ private:
 
 private:
     std::vector<std::unique_ptr<SingleHashJoinBuilder>> _builders;
+
+    MemTracker _mem_tracker;
     std::vector<PartitionChunkChannel> _partition_input_channels;
 
     size_t _partition_num = 0;
@@ -625,7 +627,7 @@ void AdaptivePartitionHashJoinBuilder::create(const HashTableParam& param) {
     _init_partition_nums(param);
 
     if (_partition_num > 1) {
-        _partition_input_channels.resize(_partition_num);
+        _partition_input_channels.resize(_partition_num, PartitionChunkChannel(&_mem_tracker));
     }
     for (size_t i = 0; i < _partition_num; ++i) {
         _builders.emplace_back(std::make_unique<SingleHashJoinBuilder>(_hash_joiner));
@@ -696,11 +698,8 @@ size_t AdaptivePartitionHashJoinBuilder::get_output_build_column_count() const {
 }
 
 int64_t AdaptivePartitionHashJoinBuilder::ht_mem_usage() const {
-    int64_t usage = std::accumulate(_builders.begin(), _builders.end(), 0L,
-                                    [](int64_t sum, const auto& builder) { return sum + builder->ht_mem_usage(); });
-    usage += std::accumulate(_partition_input_channels.begin(), _partition_input_channels.end(), 0L,
-                             [](int64_t sum, const auto& channel) { return sum + channel.memory_usage(); });
-    return usage;
+    return std::accumulate(_builders.begin(), _builders.end(), 0L,
+                           [](int64_t sum, const auto& builder) { return sum + builder->ht_mem_usage(); });
 }
 
 Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeState* state) {
@@ -802,7 +801,7 @@ Status AdaptivePartitionHashJoinBuilder::do_append_chunk(RuntimeState* state, co
 
     if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
         // 8 for `first` and `next`, which are init in the build phase after all the chunks have been arrived.
-        const size_t build_row_size = ht_mem_usage() / hash_table_row_count() + 8;
+        const size_t build_row_size = (ht_mem_usage() + _mem_tracker.consumption()) / hash_table_row_count() + 8;
         _adjust_partition_rows(build_row_size);
         if (_partition_num == 1) {
             RETURN_IF_ERROR(_convert_to_single_partition(state));
