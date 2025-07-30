@@ -205,7 +205,7 @@ public:
 
     void enter_eos_phase() { _phase = HashJoinPhase::EOS; }
     // build phase
-    Status append_chunk_to_ht(const ChunkPtr& chunk);
+    Status append_chunk_to_ht(RuntimeState* state, const ChunkPtr& chunk);
 
     Status append_chunk_to_spill_buffer(RuntimeState* state, const ChunkPtr& chunk);
 

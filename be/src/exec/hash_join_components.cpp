@@ -130,6 +130,8 @@ public:
 
     bool not_empty() const { return !is_empty(); }
 
+    size_t memory_usage() const { return _tracker->consumption(); }
+
 private:
     MemTracker* _tracker;
     std::deque<ChunkPtr> _chunks;
@@ -362,7 +364,7 @@ bool SingleHashJoinBuilder::anti_join_key_column_has_null() const {
     return false;
 }
 
-Status SingleHashJoinBuilder::do_append_chunk(const ChunkPtr& chunk) {
+Status SingleHashJoinBuilder::do_append_chunk(RuntimeState* state, const ChunkPtr& chunk) {
     if (UNLIKELY(_ht.get_row_count() + chunk->num_rows() >= max_hash_table_element_size)) {
         return Status::NotSupported(strings::Substitute("row count of right table in hash join > $0", UINT32_MAX));
     }
@@ -413,7 +415,7 @@ public:
 
     void reset(const HashTableParam& param) override;
 
-    Status do_append_chunk(const ChunkPtr& chunk) override;
+    Status do_append_chunk(RuntimeState* state, const ChunkPtr& chunk) override;
 
     Status build(RuntimeState* state) override;
 
@@ -447,11 +449,12 @@ private:
     void _adjust_partition_rows(size_t build_row_size);
 
     void _init_partition_nums(const HashTableParam& param);
-    Status _convert_to_single_partition();
-    Status _append_chunk_to_partitions(const ChunkPtr& chunk);
+    Status _convert_to_single_partition(RuntimeState* state);
+    Status _append_chunk_to_partitions(RuntimeState* state, const ChunkPtr& chunk);
 
 private:
     std::vector<std::unique_ptr<SingleHashJoinBuilder>> _builders;
+    std::vector<PartitionChunkChannel> _partition_input_channels;
 
     size_t _partition_num = 0;
     size_t _partition_join_l2_min_rows = 0;
@@ -620,6 +623,10 @@ void AdaptivePartitionHashJoinBuilder::_init_partition_nums(const HashTableParam
 
 void AdaptivePartitionHashJoinBuilder::create(const HashTableParam& param) {
     _init_partition_nums(param);
+
+    if (_partition_num > 1) {
+        _partition_input_channels.resize(_partition_num);
+    }
     for (size_t i = 0; i < _partition_num; ++i) {
         _builders.emplace_back(std::make_unique<SingleHashJoinBuilder>(_hash_joiner));
         _builders.back()->create(param);
@@ -631,6 +638,7 @@ void AdaptivePartitionHashJoinBuilder::close() {
         builder->close();
     }
     _builders.clear();
+    _partition_input_channels.clear();
     _partition_num = 0;
     _partition_join_l2_min_rows = 0;
     _partition_join_l2_max_rows = 0;
@@ -688,22 +696,34 @@ size_t AdaptivePartitionHashJoinBuilder::get_output_build_column_count() const {
 }
 
 int64_t AdaptivePartitionHashJoinBuilder::ht_mem_usage() const {
-    return std::accumulate(_builders.begin(), _builders.end(), 0L,
-                           [](int64_t sum, const auto& builder) { return sum + builder->ht_mem_usage(); });
+    int64_t usage = std::accumulate(_builders.begin(), _builders.end(), 0L,
+                                    [](int64_t sum, const auto& builder) { return sum + builder->ht_mem_usage(); });
+    usage += std::accumulate(_partition_input_channels.begin(), _partition_input_channels.end(), 0L,
+                             [](int64_t sum, const auto& channel) { return sum + channel.memory_usage(); });
+    return usage;
 }
 
-Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition() {
+Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeState* state) {
     // merge all partition data to the first partition
     for (size_t i = 1; i < _builders.size(); ++i) {
         _builders[0]->hash_table().merge_ht(_builders[i]->hash_table());
     }
     _builders.resize(1);
+
+    for (auto& channel : _partition_input_channels) {
+        while (!channel.is_empty()) {
+            _builders[0]->do_append_chunk(state, channel.pull());
+        }
+    }
+    _partition_input_channels.clear();
+
     _partition_num = 1;
     COUNTER_SET(_hash_joiner.build_metrics().partition_nums, static_cast<int64_t>(1));
+
     return Status::OK();
 }
 
-Status AdaptivePartitionHashJoinBuilder::_append_chunk_to_partitions(const ChunkPtr& chunk) {
+Status AdaptivePartitionHashJoinBuilder::_append_chunk_to_partitions(RuntimeState* state, const ChunkPtr& chunk) {
     const std::vector<ExprContext*>& build_partition_keys = _hash_joiner.build_expr_ctxs();
 
     size_t num_rows = chunk->num_rows();
@@ -754,31 +774,45 @@ Status AdaptivePartitionHashJoinBuilder::_append_chunk_to_partitions(const Chunk
         if (size == 0) {
             continue;
         }
-        // TODO: make builder implements append with selective
-        auto partition_chunk = chunk->clone_empty();
-        partition_chunk->append_selective(*chunk, selection.data(), from, size);
-        RETURN_IF_ERROR(_builders[i]->append_chunk(std::move(partition_chunk)));
+
+        auto& channel = _partition_input_channels[i];
+
+        if (channel.is_empty()) {
+            channel.push(chunk->clone_empty());
+        }
+
+        if (channel.back()->num_rows() + size <= state->chunk_size()) {
+            channel.back()->append_selective(*chunk, selection.data(), from, size);
+        } else {
+            channel.push(chunk->clone_empty());
+            channel.back()->append_selective(*chunk, selection.data(), from, size);
+        }
+
+        while (channel.is_full()) {
+            RETURN_IF_ERROR(_builders[i]->append_chunk(state, channel.pull()));
+        }
     }
     return Status::OK();
 }
 
-Status AdaptivePartitionHashJoinBuilder::do_append_chunk(const ChunkPtr& chunk) {
+Status AdaptivePartitionHashJoinBuilder::do_append_chunk(RuntimeState* state, const ChunkPtr& chunk) {
     if (_partition_num > 1 && !_need_partition_join_for_append(hash_table_row_count())) {
-        RETURN_IF_ERROR(_convert_to_single_partition());
+        RETURN_IF_ERROR(_convert_to_single_partition(state));
     }
 
     if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
-        size_t build_row_size = ht_mem_usage() / hash_table_row_count();
+        // 8 for `first` and `next`, which are init in the build phase after all the chunks have been arrived.
+        const size_t build_row_size = ht_mem_usage() / hash_table_row_count() + 8;
         _adjust_partition_rows(build_row_size);
         if (_partition_num == 1) {
-            RETURN_IF_ERROR(_convert_to_single_partition());
+            RETURN_IF_ERROR(_convert_to_single_partition(state));
         }
     }
 
     if (_partition_num > 1) {
-        RETURN_IF_ERROR(_append_chunk_to_partitions(chunk));
+        RETURN_IF_ERROR(_append_chunk_to_partitions(state, chunk));
     } else {
-        RETURN_IF_ERROR(_builders[0]->do_append_chunk(chunk));
+        RETURN_IF_ERROR(_builders[0]->do_append_chunk(state, chunk));
     }
 
     return Status::OK();
@@ -791,8 +825,17 @@ ChunkPtr AdaptivePartitionHashJoinBuilder::convert_to_spill_schema(const ChunkPt
 Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
     DCHECK_EQ(_partition_num, _builders.size());
 
-    if (_partition_num > 1 && !_need_partition_join_for_build(hash_table_row_count())) {
-        RETURN_IF_ERROR(_convert_to_single_partition());
+    if (_partition_num > 1) {
+        if (!_need_partition_join_for_build(hash_table_row_count())) {
+            RETURN_IF_ERROR(_convert_to_single_partition(state));
+        } else {
+            for (size_t i = 0; i < _partition_input_channels.size(); ++i) {
+                auto& channel = _partition_input_channels[i];
+                while (!channel.is_empty()) {
+                    _builders[i]->do_append_chunk(state, channel.pull());
+                }
+            }
+        }
     }
 
     for (auto& builder : _builders) {
@@ -825,13 +868,13 @@ std::unique_ptr<HashJoinProberImpl> AdaptivePartitionHashJoinBuilder::create_pro
     }
 }
 
-void AdaptivePartitionHashJoinBuilder::clone_readable(HashJoinBuilder* builder) {
+void AdaptivePartitionHashJoinBuilder::clone_readable(HashJoinBuilder* other_builder) {
     for (auto& builder : _builders) {
         DCHECK(builder->ready());
     }
     DCHECK(_ready);
     DCHECK_EQ(_partition_num, _builders.size());
-    auto other = down_cast<AdaptivePartitionHashJoinBuilder*>(builder);
+    auto other = down_cast<AdaptivePartitionHashJoinBuilder*>(other_builder);
     other->_builders.clear();
     other->_partition_num = _partition_num;
     other->_partition_join_l2_min_rows = _partition_join_l2_min_rows;

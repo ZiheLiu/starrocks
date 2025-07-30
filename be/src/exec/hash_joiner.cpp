@@ -178,7 +178,7 @@ void HashJoiner::_init_hash_table_param(HashTableParam* param, RuntimeState* sta
         }
     }
 }
-Status HashJoiner::append_chunk_to_ht(const ChunkPtr& chunk) {
+Status HashJoiner::append_chunk_to_ht(RuntimeState* state, const ChunkPtr& chunk) {
     if (_phase != HashJoinPhase::BUILD) {
         return Status::OK();
     }
@@ -187,7 +187,7 @@ Status HashJoiner::append_chunk_to_ht(const ChunkPtr& chunk) {
     }
 
     update_build_rows(chunk->num_rows());
-    return _hash_join_builder->append_chunk(chunk);
+    return _hash_join_builder->append_chunk(state, chunk);
 }
 
 Status HashJoiner::append_chunk_to_spill_buffer(RuntimeState* state, const ChunkPtr& chunk) {
