@@ -48,7 +48,7 @@ void FixedLengthColumnBase<T>::append_selective(const Column& src, const uint32_
     const T* src_data = reinterpret_cast<const T*>(src.raw_data());
 
     const size_t orig_size = _data.size();
-    _data.resize(orig_size + size);
+    raw::stl_vector_resize_uninitialized(&_data, orig_size + size);
     auto* dest_data = _data.data() + orig_size;
 
     SIMDGather::gather(dest_data, src_data, indexes, size);
