@@ -345,15 +345,15 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
 
         static constexpr uint32_t BATCH_SIZE = 4096;
         uint8_t buffer_fps[BATCH_SIZE];
-        for (uint32_t i = 1; i < num_rows; i += BATCH_SIZE) {
-            const uint32_t count = std::min(BATCH_SIZE, num_rows - i);
+        for (uint64_t i = 1; i < num_rows; i += BATCH_SIZE) {
+            const uint32_t count = std::min<uint32_t>(BATCH_SIZE, num_rows - i);
 
             auto* buffer_bucket_nums = next + i;
             for (uint32_t j = 0; j < count; j++) {
                 // Use `next` stores `bucket_num` temporarily.
                 if (need_calc_bucket_num(i + j)) {
                     std::tie(buffer_bucket_nums[j], buffer_fps[j]) = JoinHashMapHelper::calc_bucket_num_and_fp<CppType>(
-                            keys[j], table_items->bucket_size, table_items->log_bucket_size);
+                            keys[i + j], table_items->bucket_size, table_items->log_bucket_size);
                 }
             }
 
@@ -374,7 +374,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                 while (true) {
                     if (fps[bucket_num] == 0) {
                         if constexpr (NeedBuildChained) {
-                            next[j] = 0;
+                            next[i + j] = 0;
                         }
                         first[bucket_num] = i + j;
                         fps[bucket_num] = fp;

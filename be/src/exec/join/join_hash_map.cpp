@@ -257,7 +257,7 @@ std::pair<bool, JoinHashMapMethodUnaryType> JoinHashMapSelector::_try_use_linear
             (table_items->join_type == TJoinOp::LEFT_ANTI_JOIN || table_items->join_type == TJoinOp::LEFT_SEMI_JOIN) &&
             !table_items->with_other_conjunct;
 
-    if (!state->enable_hash_join_linear_chained2_opt()) {
+    if (state->enable_hash_join_linear_chained2_opt()) {
         if (is_left_anti_join_without_other_conjunct) {
             return {true, JoinHashMapMethodTypeTraits<JoinHashMapMethodType::LINEAR_CHAINED2_SET, LT>::unary_type};
         } else {
