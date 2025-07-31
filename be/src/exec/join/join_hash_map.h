@@ -441,6 +441,8 @@ private:
                                             JoinHashMapForNonSmallKey(BUCKET_CHAINED),             //
                                             JoinHashMapForNonSmallKey(LINEAR_CHAINED),             //
                                             JoinHashMapForNonSmallKey(LINEAR_CHAINED_SET),         //
+                                            JoinHashMapForNonSmallKey(LINEAR_CHAINED2),            //
+                                            JoinHashMapForNonSmallKey(LINEAR_CHAINED2_SET),        //
                                             JoinHashMapForIntBigintKey(RANGE_DIRECT_MAPPING),      //
                                             JoinHashMapForIntBigintKey(RANGE_DIRECT_MAPPING_SET),  //
                                             JoinHashMapForIntBigintKey(DENSE_RANGE_DIRECT_MAPPING) //
