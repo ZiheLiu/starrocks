@@ -496,7 +496,7 @@ size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_bytes_per_row(cons
             estimated_each_row += get_size_of_fixed_length_type(join_key.type->type);
             // The benefits from non-fixed key columns is less than those from fixed key columns,
             // so the penalty (/2) is applied here.
-            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type) / 2;
+            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type);
         }
     }
 
