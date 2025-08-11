@@ -361,7 +361,7 @@ private:
                 const_column->data_column()->assign(chunk->num_rows(), 0);
                 key_columns.emplace_back(const_column->data_column());
             } else {
-                key_columns.emplace_back(column_ptr);
+                key_columns.emplace_back(std::move(column_ptr));
             }
         }
         return Status::OK();
