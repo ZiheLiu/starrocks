@@ -437,6 +437,16 @@ public:
                _query_options.enable_hash_join_range_direct_mapping_opt;
     }
 
+    bool enable_hash_join_linear_chained_opt() const {
+        return _query_options.__isset.enable_hash_join_linear_chained_opt &&
+               _query_options.enable_hash_join_linear_chained_opt;
+    }
+
+    bool enable_hash_join_linear_chained2_opt() const {
+        return _query_options.__isset.enable_hash_join_linear_chained2_opt &&
+               _query_options.enable_hash_join_linear_chained2_opt;
+    }
+
     const std::vector<TTabletCommitInfo>& tablet_commit_infos() const { return _tablet_commit_infos; }
 
     std::vector<TTabletCommitInfo>& tablet_commit_infos() { return _tablet_commit_infos; }

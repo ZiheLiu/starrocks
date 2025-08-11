@@ -61,10 +61,65 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return x == y; }
 };
+
+template <LogicalType LT, bool NeedBuildChained = true>
+class LinearChainedJoinHashMap {
+public:
+    using CppType = typename RunTimeTypeTraits<LT>::CppType;
+    using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
+    static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
+                                     const Buffer<uint8_t>* is_nulls);
+
+    static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
+
+    static bool equal(const CppType& x, const CppType& y) { return true; }
+
+    static uint32_t max_supported_bucket_size() { return DATA_MASK; }
+
+private:
+    static constexpr uint32_t SALT_BITS = 8;
+    static constexpr uint32_t SALT_MASK = 0xFF00'0000ul;
+    static constexpr uint32_t DATA_MASK = 0x00FF'FFFFul;
+
+    static uint32_t _combine_data_salt(const uint32_t data, const uint32_t salt) { return salt | data; }
+    static uint32_t _extract_data(const uint32_t v) { return v & DATA_MASK; }
+    static uint32_t _extract_salt(const uint32_t v) { return v & SALT_MASK; }
+
+    static uint32_t _get_bucket_num_from_hash(const uint32_t hash) { return hash >> SALT_BITS; }
+    static uint32_t _get_salt_from_hash(const uint32_t hash) { return hash << (32 - SALT_BITS); }
+};
+
+template <LogicalType LT>
+using LinearChainedJoinHashSet = LinearChainedJoinHashMap<LT, false>;
+
+template <LogicalType LT, bool NeedBuildChained = true>
+class LinearChainedJoinHashMap2 {
+public:
+    using CppType = typename RunTimeTypeTraits<LT>::CppType;
+    using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
+    static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
+                                     const Buffer<uint8_t>* is_nulls);
+
+    static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
+
+    static bool equal(const CppType& x, const CppType& y) { return true; }
+};
+
+template <LogicalType LT>
+using LinearChainedJoinHashSet2 = LinearChainedJoinHashMap2<LT, false>;
 
 // The bucket-chained linked list formed by first` and `next` is the same as that of `BucketChainedJoinHashMap`.
 //
@@ -106,7 +161,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
@@ -154,7 +210,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
@@ -173,7 +230,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };
@@ -226,7 +284,8 @@ public:
                                      const Buffer<uint8_t>* is_nulls);
 
     static void lookup_init(const JoinHashTableItems& table_items, HashTableProbeState* probe_state,
-                            const Buffer<CppType>& keys, const Buffer<uint8_t>* is_nulls);
+                            const Buffer<CppType>& build_keys, const Buffer<CppType>& probe_keys,
+                            const Buffer<uint8_t>* is_nulls);
 
     static bool equal(const CppType& x, const CppType& y) { return true; }
 };

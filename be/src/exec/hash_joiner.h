@@ -205,7 +205,7 @@ public:
 
     void enter_eos_phase() { _phase = HashJoinPhase::EOS; }
     // build phase
-    Status append_chunk_to_ht(const ChunkPtr& chunk);
+    Status append_chunk_to_ht(RuntimeState* state, const ChunkPtr& chunk);
 
     Status append_chunk_to_spill_buffer(RuntimeState* state, const ChunkPtr& chunk);
 
@@ -361,7 +361,7 @@ private:
                 const_column->data_column()->assign(chunk->num_rows(), 0);
                 key_columns.emplace_back(const_column->data_column());
             } else {
-                key_columns.emplace_back(column_ptr);
+                key_columns.emplace_back(std::move(column_ptr));
             }
         }
         return Status::OK();
