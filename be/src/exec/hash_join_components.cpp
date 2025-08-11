@@ -831,7 +831,7 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
             for (size_t i = 0; i < _partition_input_channels.size(); ++i) {
                 auto& channel = _partition_input_channels[i];
                 while (!channel.is_empty()) {
-                    _builders[i]->do_append_chunk(state, channel.pull());
+                    RETURN_IF_ERROR(_builders[i]->do_append_chunk(state, channel.pull()));
                 }
             }
         }
