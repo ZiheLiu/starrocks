@@ -88,7 +88,7 @@ public:
                                                                uint32_t num_log_buckets) {
         static constexpr uint64_t FP_BITS = 7;
         using HashFunc = JoinKeyHash<CppType>;
-        const uint64_t hash = HashFunc()(value, bucket_size * FP_BITS, num_log_buckets + FP_BITS);
+        const uint64_t hash = HashFunc()(value, bucket_size << FP_BITS, num_log_buckets + FP_BITS);
         return {hash >> FP_BITS, (hash & 0x7F) | 0x80};
     }
 
