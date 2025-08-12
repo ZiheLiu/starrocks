@@ -56,6 +56,8 @@ public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
 
+    static constexpr bool AreKeysInChainIdentical = false;
+
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
                                      const Buffer<uint8_t>* is_nulls);
@@ -72,6 +74,8 @@ class LinearChainedJoinHashMap {
 public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static constexpr bool AreKeysInChainIdentical = true;
 
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
@@ -106,6 +110,8 @@ class LinearChainedJoinHashMap2 {
 public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static constexpr bool AreKeysInChainIdentical = true;
 
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
@@ -156,6 +162,8 @@ public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
 
+    static constexpr bool AreKeysInChainIdentical = true;
+
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
                                      const Buffer<uint8_t>* is_nulls);
@@ -205,6 +213,8 @@ public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
 
+    static constexpr bool AreKeysInChainIdentical = true;
+
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
                                      const Buffer<uint8_t>* is_nulls);
@@ -224,6 +234,8 @@ class RangeDirectMappingJoinHashSet {
 public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static constexpr bool AreKeysInChainIdentical = true;
 
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
@@ -278,6 +290,8 @@ class DenseRangeDirectMappingJoinHashMap {
 public:
     using CppType = typename RunTimeTypeTraits<LT>::CppType;
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
+
+    static constexpr bool AreKeysInChainIdentical = true;
 
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,

@@ -634,6 +634,10 @@ void JoinHashMap<LT, CT, MT>::_search_ht_impl(RuntimeState* state, const Buffer<
     XXH_PREFETCH(y);              \
     co_await std::suspend_always{};
 
+#define PREFETCH_AND_COWAIT2(x) \
+    XXH_PREFETCH(x);            \
+    co_await std::suspend_always{};
+
 // When a probe row corresponds to multiple Build rows,
 // a Probe Chunk may generate multiple ResultChunks,
 // so each probe will have search one more row to determine whether it has reached the boundary,
@@ -785,7 +789,11 @@ HashTableProbeState::ProbeCoroutine JoinHashMap<LT, CT, MT>::_probe_from_ht(Runt
         size_t build_index = _probe_state->next[i];
         if (build_index != 0) {
             do {
-                PREFETCH_AND_COWAIT((build_data.data() + build_index), (_table_items->next.data() + build_index))
+                if constexpr (HashMapMethod::AreKeysInChainIdentical) {
+                    PREFETCH_AND_COWAIT2((_table_items->next.data() + build_index))
+                } else {
+                    PREFETCH_AND_COWAIT((build_data.data() + build_index), (_table_items->next.data() + build_index))
+                }
                 if (HashMapMethod().equal(build_data[build_index], probe_data[i])) {
                     COWAIT_IF_CHUNK_FULL()
                     _probe_state->probe_index[_probe_state->match_count] = i;
