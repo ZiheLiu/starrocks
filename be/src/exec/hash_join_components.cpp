@@ -437,8 +437,8 @@ public:
     ChunkPtr convert_to_spill_schema(const ChunkPtr& chunk) const override;
 
 private:
+    size_t _estimate_hash_table_used_bytes_per_row(const HashTableParam& param) const;
     size_t _estimate_hash_table_bytes_per_row(const HashTableParam& param) const;
-    size_t _estimate_build_row_output_bytes(const HashTableParam& param) const;
     size_t _estimate_probe_row_bytes(const HashTableParam& param) const;
     bool _need_partition_join_for_build(size_t ht_num_rows) const;
     bool _need_partition_join_for_append(size_t ht_num_rows) const;
@@ -446,7 +446,7 @@ private:
     template <CacheLevel T>
     size_t _estimate_cost_by_bytes(size_t row_bytes) const;
 
-    void _adjust_partition_rows(size_t build_row_size);
+    void _adjust_partition_rows(size_t hash_table_bytes_per_row, size_t hash_table_used_bytes_per_row);
 
     void _init_partition_nums(const HashTableParam& param);
     Status _convert_to_single_partition(RuntimeState* state);
@@ -466,6 +466,7 @@ private:
 
     size_t _probe_row_shuffle_cost = 0;
     size_t _hash_table_bytes_per_row = 0;
+    size_t _hash_table_used_bytes_per_row = 0;
 
     size_t _fit_L2_cache_max_rows = 0;
     size_t _fit_L3_cache_max_rows = 0;
@@ -487,7 +488,7 @@ AdaptivePartitionHashJoinBuilder::AdaptivePartitionHashJoinBuilder(HashJoiner& h
     _L3_cache_size = _L3_cache_size ? _L3_cache_size : DEFAULT_L3_CACHE_SIZE;
 }
 
-size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_bytes_per_row(const HashTableParam& param) const {
+size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_used_bytes_per_row(const HashTableParam& param) const {
     size_t estimated_each_row = 0;
 
     // key bytes
@@ -503,16 +504,45 @@ size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_bytes_per_row(cons
     // `first` and `next` bytes
     estimated_each_row += 8;
 
-    return estimated_each_row;
-}
-
-size_t AdaptivePartitionHashJoinBuilder::_estimate_build_row_output_bytes(const HashTableParam& param) const {
-    size_t estimated_each_row = 0;
-
     // output bytes
     for (auto* tuple : param.build_row_desc->tuple_descriptors()) {
         for (auto slot : tuple->slots()) {
             if (param.build_output_slots.empty() || param.build_output_slots.contains(slot->id())) {
+                estimated_each_row += get_size_of_fixed_length_type(slot->type().type);
+                estimated_each_row += type_estimated_overhead_bytes(slot->type().type);
+            }
+        }
+    }
+
+    return estimated_each_row;
+}
+
+size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_bytes_per_row(const HashTableParam& param) const {
+    size_t estimated_each_row = 0;
+
+    // key bytes
+    std::unordered_set<SlotId> key_slot_ids;
+    for (const auto& join_key : param.join_keys) {
+        if (join_key.col_ref != nullptr) {
+            key_slot_ids.emplace(join_key.col_ref->slot_id());
+        }
+
+        if (join_key.type != nullptr) {
+            estimated_each_row += get_size_of_fixed_length_type(join_key.type->type);
+            // The benefits from non-fixed key columns is less than those from fixed key columns,
+            // so the penalty (/2) is applied here.
+            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type);
+        }
+    }
+
+    // `first` and `next` bytes
+    estimated_each_row += 8;
+
+    // output bytes
+    for (auto* tuple : param.build_row_desc->tuple_descriptors()) {
+        for (auto slot : tuple->slots()) {
+            if ((param.build_output_slots.empty() || param.build_output_slots.contains(slot->id())) &&
+                !key_slot_ids.contains(slot->id())) {
                 estimated_each_row += get_size_of_fixed_length_type(slot->type().type);
                 estimated_each_row += type_estimated_overhead_bytes(slot->type().type);
             }
@@ -559,26 +589,20 @@ bool AdaptivePartitionHashJoinBuilder::_need_partition_join_for_append(size_t ht
     return ht_num_rows <= _partition_join_l2_max_rows || ht_num_rows <= _partition_join_l3_max_rows;
 }
 
-void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t build_row_size) {
-    const size_t build_row_output_bytes =
-            build_row_size > _hash_table_bytes_per_row ? build_row_size - _hash_table_bytes_per_row : 4UL;
-    _fit_L2_cache_max_rows = _L2_cache_size / build_row_size;
-    _fit_L3_cache_max_rows = _L3_cache_size / build_row_size;
+void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t hash_table_bytes_per_row,
+                                                              size_t hash_table_used_bytes_per_row) {
+    _fit_L2_cache_max_rows = _L2_cache_size / hash_table_bytes_per_row;
+    _fit_L3_cache_max_rows = _L3_cache_size / hash_table_bytes_per_row;
 
     _partition_join_l2_min_rows = -1;
     _partition_join_l2_max_rows = 0;
     _partition_join_l3_min_rows = -1;
     _partition_join_l3_max_rows = 0;
 
-    auto estimate_benefit = [this]<CacheLevel LowLevel, CacheLevel HighLevel>(size_t build_output_size,
-                                                                              size_t build_key_size) {
-        return _estimate_cost_by_bytes<HighLevel>(build_output_size + build_key_size) -
-               _estimate_cost_by_bytes<LowLevel>(build_output_size + build_key_size);
-    };
-    const auto l2_benefit = estimate_benefit.operator()<CacheLevel::L2, CacheLevel::L3>(build_row_output_bytes,
-                                                                                        _hash_table_bytes_per_row);
-    const auto l3_benefit = estimate_benefit.operator()<CacheLevel::L3, CacheLevel::MEMORY>(build_row_output_bytes,
-                                                                                            _hash_table_bytes_per_row);
+    const auto l2_benefit = _estimate_cost_by_bytes<CacheLevel::L3>(hash_table_used_bytes_per_row) -
+                            _estimate_cost_by_bytes<CacheLevel::L2>(hash_table_used_bytes_per_row);
+    const auto l3_benefit = _estimate_cost_by_bytes<CacheLevel::MEMORY>(hash_table_used_bytes_per_row) -
+                            _estimate_cost_by_bytes<CacheLevel::L3>(hash_table_used_bytes_per_row);
 
     if (_probe_row_shuffle_cost < l3_benefit) { // Partitioned joins benefit from L3 cache.
         _partition_join_l3_min_rows = _fit_L3_cache_max_rows;
@@ -602,9 +626,9 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t build_row_s
                   << "[partition_join_l2_max_rows=" << _partition_join_l2_max_rows << "] "
                   << "[partition_join_l3_min_rows=" << _partition_join_l3_min_rows << "] "
                   << "[partition_join_l3_max_rows=" << _partition_join_l3_max_rows << "] "
-                  << "[build_row_bytes=" << build_row_size << "] "
+                  << "[hash_table_used_bytes_per_row=" << hash_table_used_bytes_per_row << "] "
                   << "[hash_table_bytes_per_row=" << _hash_table_bytes_per_row << "] "
-                  << "[build_row_output_bytes=" << build_row_output_bytes << "] "
+                  << "[hash_table_bytes_per_row=" << hash_table_bytes_per_row << "] "
                   << "[l2_benefit=" << l2_benefit << "] "
                   << "[l3_benefit=" << l3_benefit << "] "
                   << "[probe_shuffle_cost=" << _probe_row_shuffle_cost << "] ";
@@ -616,9 +640,9 @@ void AdaptivePartitionHashJoinBuilder::_init_partition_nums(const HashTableParam
     _probe_row_shuffle_cost =
             std::max<size_t>(_estimate_cost_by_bytes<CacheLevel::L3>(_estimate_probe_row_bytes(param)), 1);
     _hash_table_bytes_per_row = _estimate_hash_table_bytes_per_row(param);
+    _hash_table_used_bytes_per_row = _estimate_hash_table_used_bytes_per_row(param);
 
-    const size_t estimated_build_row_bytes = _estimate_build_row_output_bytes(param) + _hash_table_bytes_per_row;
-    _adjust_partition_rows(estimated_build_row_bytes);
+    _adjust_partition_rows(_hash_table_bytes_per_row, _hash_table_used_bytes_per_row);
 
     COUNTER_SET(_hash_joiner.build_metrics().partition_nums, (int64_t)_partition_num);
 }
@@ -799,14 +823,14 @@ Status AdaptivePartitionHashJoinBuilder::do_append_chunk(RuntimeState* state, co
         RETURN_IF_ERROR(_convert_to_single_partition(state));
     }
 
-    if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
-        // 8 for `first` and `next`, which are init in the build phase after all the chunks have been arrived.
-        const size_t build_row_size = (ht_mem_usage() + _mem_tracker.consumption()) / hash_table_row_count() + 8;
-        _adjust_partition_rows(build_row_size);
-        if (_partition_num == 1) {
-            RETURN_IF_ERROR(_convert_to_single_partition(state));
-        }
-    }
+    // if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
+    //     // 8 for `first` and `next`, which are init in the build phase after all the chunks have been arrived.
+    //     const size_t build_row_size = (ht_mem_usage() + _mem_tracker.consumption()) / hash_table_row_count() + 8;
+    //     _adjust_partition_rows(build_row_size);
+    //     if (_partition_num == 1) {
+    //         RETURN_IF_ERROR(_convert_to_single_partition(state));
+    //     }
+    // }
 
     if (_partition_num > 1) {
         RETURN_IF_ERROR(_append_chunk_to_partitions(state, chunk));
