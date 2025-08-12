@@ -465,7 +465,6 @@ private:
     size_t _partition_join_l3_max_rows = 0;
 
     size_t _probe_row_shuffle_cost = 0;
-    size_t _hash_table_bytes_per_row = 0;
     size_t _hash_table_used_bytes_per_row = 0;
 
     size_t _fit_L2_cache_max_rows = 0;
@@ -627,7 +626,6 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t hash_table_
                   << "[partition_join_l3_min_rows=" << _partition_join_l3_min_rows << "] "
                   << "[partition_join_l3_max_rows=" << _partition_join_l3_max_rows << "] "
                   << "[hash_table_used_bytes_per_row=" << hash_table_used_bytes_per_row << "] "
-                  << "[hash_table_bytes_per_row=" << _hash_table_bytes_per_row << "] "
                   << "[hash_table_bytes_per_row=" << hash_table_bytes_per_row << "] "
                   << "[l2_benefit=" << l2_benefit << "] "
                   << "[l3_benefit=" << l3_benefit << "] "
@@ -639,10 +637,9 @@ void AdaptivePartitionHashJoinBuilder::_init_partition_nums(const HashTableParam
 
     _probe_row_shuffle_cost =
             std::max<size_t>(_estimate_cost_by_bytes<CacheLevel::L3>(_estimate_probe_row_bytes(param)), 1);
-    _hash_table_bytes_per_row = _estimate_hash_table_bytes_per_row(param);
     _hash_table_used_bytes_per_row = _estimate_hash_table_used_bytes_per_row(param);
 
-    _adjust_partition_rows(_hash_table_bytes_per_row, _hash_table_used_bytes_per_row);
+    _adjust_partition_rows(1, _hash_table_used_bytes_per_row);
 
     COUNTER_SET(_hash_joiner.build_metrics().partition_nums, (int64_t)_partition_num);
 }
@@ -671,7 +668,7 @@ void AdaptivePartitionHashJoinBuilder::close() {
     _partition_join_l3_min_rows = 0;
     _partition_join_l3_max_rows = 0;
     _probe_row_shuffle_cost = 0;
-    _hash_table_bytes_per_row = 0;
+    _hash_table_used_bytes_per_row = 0;
     _fit_L2_cache_max_rows = 0;
     _fit_L3_cache_max_rows = 0;
     _pushed_chunks = 0;
@@ -823,14 +820,14 @@ Status AdaptivePartitionHashJoinBuilder::do_append_chunk(RuntimeState* state, co
         RETURN_IF_ERROR(_convert_to_single_partition(state));
     }
 
-    // if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
-    //     // 8 for `first` and `next`, which are init in the build phase after all the chunks have been arrived.
-    //     const size_t build_row_size = (ht_mem_usage() + _mem_tracker.consumption()) / hash_table_row_count() + 8;
-    //     _adjust_partition_rows(build_row_size);
-    //     if (_partition_num == 1) {
-    //         RETURN_IF_ERROR(_convert_to_single_partition(state));
-    //     }
-    // }
+    if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
+        // 8 for `first` and `next`, which are init in the build phase after all the chunks have been arrived.
+        const size_t build_row_size = (ht_mem_usage() + _mem_tracker.consumption()) / hash_table_row_count() + 8;
+        _adjust_partition_rows(build_row_size, _hash_table_used_bytes_per_row);
+        if (_partition_num == 1) {
+            RETURN_IF_ERROR(_convert_to_single_partition(state));
+        }
+    }
 
     if (_partition_num > 1) {
         RETURN_IF_ERROR(_append_chunk_to_partitions(state, chunk));
