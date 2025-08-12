@@ -619,7 +619,7 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t hash_table_
         _partition_num = 1;
     }
 
-    VLOG_OPERATOR << "TRACE:"
+    VLOG_OPERATOR << "TRACE: _adjust_partition_rows "
                   << "[partition_num=" << _partition_num << "] "
                   << "[partition_join_l2_min_rows=" << _partition_join_l2_min_rows << "] "
                   << "[partition_join_l2_max_rows=" << _partition_join_l2_max_rows << "] "
@@ -724,6 +724,15 @@ int64_t AdaptivePartitionHashJoinBuilder::ht_mem_usage() const {
 }
 
 Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeState* state) {
+    VLOG_OPERATOR << "TRACE: _convert_to_single_partition "
+                  << "[partition_num=" << _partition_num << "] "
+                  << "[partition_join_l2_min_rows=" << _partition_join_l2_min_rows << "] "
+                  << "[partition_join_l2_max_rows=" << _partition_join_l2_max_rows << "] "
+                  << "[partition_join_l3_min_rows=" << _partition_join_l3_min_rows << "] "
+                  << "[partition_join_l3_max_rows=" << _partition_join_l3_max_rows << "] "
+                  << "[partition_join_l3_max_rows=" << _partition_join_l3_max_rows << "] "
+                  << "[hash_table_row_count=" << hash_table_row_count() << "] ";
+
     // merge all partition data to the first partition
     for (size_t i = 1; i < _builders.size(); ++i) {
         _builders[0]->hash_table().merge_ht(_builders[i]->hash_table());
