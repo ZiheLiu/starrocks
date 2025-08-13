@@ -129,6 +129,109 @@ public:
         return Status::OK();
     }
 
+    Status skip(size_t values_to_skip) override {
+        size_t fetch_size = values_to_skip * SIZE_OF_TYPE;
+        if (fetch_size + _offset > _data.size) {
+            return Status::InternalError(strings::Substitute(
+                    "going to skip out-of-bounds data, offset=$0,skip=$1,size=$2", _offset, fetch_size, _data.size));
+        }
+        _offset += fetch_size;
+        return Status::OK();
+    }
+
+    Status next_batch(size_t count, uint8_t* dst) override {
+        size_t max_fetch = count * SIZE_OF_TYPE;
+        if (max_fetch + _offset > _data.size) {
+            return Status::InternalError(strings::Substitute(
+                    "going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset, count, _data.size));
+        }
+        memcpy(dst, _data.data + _offset, max_fetch);
+        _offset += max_fetch;
+        return Status::OK();
+    }
+
+private:
+    enum { SIZE_OF_TYPE = sizeof(T) };
+
+    Slice _data;
+    size_t _offset = 0;
+};
+
+template <>
+class PlainDecoder<Slice> final : public Decoder {
+public:
+    PlainDecoder() = default;
+    ~PlainDecoder() override = default;
+
+    static Status decode(const std::string& buffer, Slice* value) {
+        value->data = const_cast<char*>(buffer.data());
+        value->size = buffer.size();
+        return Status::OK();
+    }
+
+    Status set_data(const Slice& data) override {
+        _data = data;
+        _offset = 0;
+        return Status::OK();
+    }
+
+    Status next_batch(size_t count, ColumnContentType content_type, Column* dst, const FilterData* filter) override {
+        size_t num_decoded = 0;
+        if (dst->is_nullable()) {
+            down_cast<NullableColumn*>(dst)->mutable_null_column()->append_default(count);
+        }
+
+#define CHECK_DECODING_BOUND                                                                                  \
+    if (UNLIKELY(num_decoded < count || _offset > _data.size)) {                                              \
+        return Status::InternalError(strings::Substitute(                                                     \
+                "going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset, count, _data.size)); \
+    }
+
+        if (filter) {
+            auto* binary_column = ColumnHelper::get_binary_column(dst);
+            while (num_decoded < count && _offset < _data.size) {
+                uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
+                _offset += sizeof(int32_t);
+                if (filter[num_decoded]) {
+                    binary_column->append(Slice(_data.data + _offset, length));
+                } else {
+                    binary_column->append_default();
+                }
+                _offset += length;
+                num_decoded++;
+            }
+            CHECK_DECODING_BOUND
+        } else {
+            std::vector<Slice> slices;
+            slices.reserve(count);
+            size_t max_size = 0;
+            while (num_decoded < count && _offset < _data.size) {
+                uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
+                _offset += sizeof(int32_t);
+                slices.emplace_back(_data.data + _offset, length);
+                _offset += length;
+                max_size = max_size > length ? max_size : length;
+                num_decoded++;
+            }
+            CHECK_DECODING_BOUND
+            bool ret = false;
+            // when last slices offset + max_size > _data.size, there is overflow on reading
+            max_size = std::max(BitUtil::next_power_of_two(max_size), 8L);
+            if (slices[count - 1].data - _data.data + max_size <= _data.size) {
+                ret = ColumnHelper::get_binary_column(dst)->append_strings_overflow(slices.data(), num_decoded,
+                                                                                    max_size);
+            } else {
+                ret = ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), num_decoded);
+            }
+
+            if (UNLIKELY(!ret)) {
+                return Status::InternalError("PlainDecoder append strings to column failed");
+            }
+        }
+
+        return Status::OK();
+    }
+
     Status next_batch_with_nulls(size_t count, const NullInfos& null_infos, ColumnContentType content_type, Column* dst,
                                  const FilterData* filter) override {
         const uint8_t* __restrict is_nulls = null_infos.nulls_data();
@@ -273,109 +376,6 @@ public:
         } else {
             return process.template operator()<true>();
         }
-    }
-
-    Status skip(size_t values_to_skip) override {
-        size_t fetch_size = values_to_skip * SIZE_OF_TYPE;
-        if (fetch_size + _offset > _data.size) {
-            return Status::InternalError(strings::Substitute(
-                    "going to skip out-of-bounds data, offset=$0,skip=$1,size=$2", _offset, fetch_size, _data.size));
-        }
-        _offset += fetch_size;
-        return Status::OK();
-    }
-
-    Status next_batch(size_t count, uint8_t* dst) override {
-        size_t max_fetch = count * SIZE_OF_TYPE;
-        if (max_fetch + _offset > _data.size) {
-            return Status::InternalError(strings::Substitute(
-                    "going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset, count, _data.size));
-        }
-        memcpy(dst, _data.data + _offset, max_fetch);
-        _offset += max_fetch;
-        return Status::OK();
-    }
-
-private:
-    enum { SIZE_OF_TYPE = sizeof(T) };
-
-    Slice _data;
-    size_t _offset = 0;
-};
-
-template <>
-class PlainDecoder<Slice> final : public Decoder {
-public:
-    PlainDecoder() = default;
-    ~PlainDecoder() override = default;
-
-    static Status decode(const std::string& buffer, Slice* value) {
-        value->data = const_cast<char*>(buffer.data());
-        value->size = buffer.size();
-        return Status::OK();
-    }
-
-    Status set_data(const Slice& data) override {
-        _data = data;
-        _offset = 0;
-        return Status::OK();
-    }
-
-    Status next_batch(size_t count, ColumnContentType content_type, Column* dst, const FilterData* filter) override {
-        size_t num_decoded = 0;
-        if (dst->is_nullable()) {
-            down_cast<NullableColumn*>(dst)->mutable_null_column()->append_default(count);
-        }
-
-#define CHECK_DECODING_BOUND                                                                                  \
-    if (UNLIKELY(num_decoded < count || _offset > _data.size)) {                                              \
-        return Status::InternalError(strings::Substitute(                                                     \
-                "going to read out-of-bounds data, offset=$0,count=$1,size=$2", _offset, count, _data.size)); \
-    }
-
-        if (filter) {
-            auto* binary_column = ColumnHelper::get_binary_column(dst);
-            while (num_decoded < count && _offset < _data.size) {
-                uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
-                _offset += sizeof(int32_t);
-                if (filter[num_decoded]) {
-                    binary_column->append(Slice(_data.data + _offset, length));
-                } else {
-                    binary_column->append_default();
-                }
-                _offset += length;
-                num_decoded++;
-            }
-            CHECK_DECODING_BOUND
-        } else {
-            std::vector<Slice> slices;
-            slices.reserve(count);
-            size_t max_size = 0;
-            while (num_decoded < count && _offset < _data.size) {
-                uint32_t length = decode_fixed32_le(reinterpret_cast<const uint8_t*>(_data.data) + _offset);
-                _offset += sizeof(int32_t);
-                slices.emplace_back(_data.data + _offset, length);
-                _offset += length;
-                max_size = max_size > length ? max_size : length;
-                num_decoded++;
-            }
-            CHECK_DECODING_BOUND
-            bool ret = false;
-            // when last slices offset + max_size > _data.size, there is overflow on reading
-            max_size = std::max(BitUtil::next_power_of_two(max_size), 8L);
-            if (slices[count - 1].data - _data.data + max_size <= _data.size) {
-                ret = ColumnHelper::get_binary_column(dst)->append_strings_overflow(slices.data(), num_decoded,
-                                                                                    max_size);
-            } else {
-                ret = ColumnHelper::get_binary_column(dst)->append_strings(slices.data(), num_decoded);
-            }
-
-            if (UNLIKELY(!ret)) {
-                return Status::InternalError("PlainDecoder append strings to column failed");
-            }
-        }
-
-        return Status::OK();
     }
 
     Status skip(size_t values_to_skip) override {
