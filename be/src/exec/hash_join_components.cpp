@@ -617,12 +617,12 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t hash_table_
                             _estimate_cost_by_bytes<CacheLevel::L3>(hash_table_used_bytes_per_row);
 
     if (_probe_row_shuffle_cost < l3_benefit) { // Partitioned joins benefit from L3 cache.
-        _partition_join_l3_min_rows = _fit_L3_cache_max_rows;
+        _partition_join_l3_min_rows = _fit_L3_cache_max_rows * l3_benefit / (l3_benefit - _probe_row_shuffle_cost);
         _partition_join_l3_max_rows = (_fit_L3_cache_max_rows * _partition_num) * l3_benefit / _probe_row_shuffle_cost;
         _partition_join_l3_max_rows *= 2;
 
         if (_probe_row_shuffle_cost < l2_benefit) { // Partitioned joins benefit from L2 cache.
-            _partition_join_l2_min_rows = _fit_L2_cache_max_rows;
+            _partition_join_l2_min_rows = _fit_L2_cache_max_rows * l2_benefit / (l2_benefit - _probe_row_shuffle_cost);
             _partition_join_l2_max_rows =
                     (_fit_L2_cache_max_rows * _partition_num) * l2_benefit / _probe_row_shuffle_cost;
             _partition_join_l2_max_rows += _partition_join_l2_max_rows;
@@ -844,7 +844,7 @@ Status AdaptivePartitionHashJoinBuilder::do_append_chunk(RuntimeState* state, co
 
     if (_partition_num > 1 && ++_pushed_chunks % 8 == 0) {
         // 8 for `first` and `next`, which are init in the build phase after all the chunks have been arrived.
-        const size_t build_row_size = (ht_mem_usage() + _mem_tracker.consumption()) / hash_table_row_count() + 8;
+        const size_t build_row_size = (ht_mem_usage() + _mem_tracker.consumption()) / hash_table_row_count();
         _adjust_partition_rows(build_row_size, _hash_table_used_bytes_per_row);
         if (_partition_num == 1) {
             RETURN_IF_ERROR(_convert_to_single_partition(state));
