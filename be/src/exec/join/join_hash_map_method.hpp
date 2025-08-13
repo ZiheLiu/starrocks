@@ -593,8 +593,6 @@ void RangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItems& ta
                                                     HashTableProbeState* probe_state, const Buffer<CppType>& build_keys,
                                                     const Buffer<CppType>& probe_keys,
                                                     const Buffer<uint8_t>* is_nulls) {
-    probe_state->active_coroutines = 0; // the ht data is not large, so disable it always.
-
     const int64_t min_value = table_items.min_value;
     const int64_t max_value = table_items.max_value;
     const size_t num_rows = probe_state->probe_row_count;
@@ -660,8 +658,6 @@ void RangeDirectMappingJoinHashSet<LT>::lookup_init(const JoinHashTableItems& ta
                                                     HashTableProbeState* probe_state, const Buffer<CppType>& build_keys,
                                                     const Buffer<CppType>& probe_keys,
                                                     const Buffer<uint8_t>* is_nulls) {
-    probe_state->active_coroutines = 0; // the ht data is not large, so disable it always.
-
     const int64_t min_value = table_items.min_value;
     const int64_t max_value = table_items.max_value;
     const size_t num_rows = probe_state->probe_row_count;
@@ -768,8 +764,6 @@ void DenseRangeDirectMappingJoinHashMap<LT>::lookup_init(const JoinHashTableItem
                                                          const Buffer<CppType>& build_keys,
                                                          const Buffer<CppType>& probe_keys,
                                                          const Buffer<uint8_t>* is_nulls) {
-    probe_state->active_coroutines = 0; // the ht data is not large, so disable it always.
-
     const int64_t min_value = table_items.min_value;
     const int64_t max_value = table_items.max_value;
 
