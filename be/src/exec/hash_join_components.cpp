@@ -506,7 +506,7 @@ size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_used_bytes_per_row
             estimated_each_row += get_size_of_fixed_length_type(join_key.type->type);
             // The benefits from non-fixed key columns is less than those from fixed key columns,
             // so the penalty (/2) is applied here.
-            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type);
+            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type) / 2;
         }
     }
 
@@ -550,10 +550,13 @@ size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_bytes_per_row(cons
     // output bytes
     for (auto* tuple : param.build_row_desc->tuple_descriptors()) {
         for (auto slot : tuple->slots()) {
-            if ((param.build_output_slots.empty() || param.build_output_slots.contains(slot->id())) &&
-                !key_slot_ids.contains(slot->id())) {
-                estimated_each_row += get_size_of_fixed_length_type(slot->type().type);
-                estimated_each_row += type_estimated_overhead_bytes(slot->type().type);
+            if (param.build_output_slots.empty() || param.build_output_slots.contains(slot->id())) {
+                if (!key_slot_ids.contains(slot->id())) {
+                    estimated_each_row += get_size_of_fixed_length_type(slot->type().type);
+                    estimated_each_row += type_estimated_overhead_bytes(slot->type().type);
+                } else {
+                    estimated_each_row += type_estimated_overhead_bytes(slot->type().type) / 2;
+                }
             }
         }
     }
