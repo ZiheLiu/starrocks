@@ -919,6 +919,14 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
                     RETURN_IF_ERROR(_builders[i]->do_append_chunk(state, channel.pull()));
                 }
             }
+
+            size_t max_partition_num_rows = 0;
+            for (const auto& builder : _builders) {
+                max_partition_num_rows = std::max(max_partition_num_rows, builder->hash_table_row_count());
+            }
+            if (max_partition_num_rows * 4 >= hash_table_row_count()) {
+                RETURN_IF_ERROR(_convert_to_single_partition(state));
+            }
         }
     }
 
