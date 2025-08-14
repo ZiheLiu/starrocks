@@ -922,6 +922,16 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
         }
     }
 
+    if (_partition_num > 1) {
+        std::string rows;
+        for (auto& builder : _builders) {
+            rows += std::to_string(builder->hash_table_row_count()) + ", ";
+        }
+        VLOG_OPERATOR << "TRACE: build "
+                      << "[rows=" << rows << "] "
+                      << "[total_rows=" << hash_table_row_count() << "] ";
+    }
+
     for (auto& builder : _builders) {
         RETURN_IF_ERROR(builder->build(state));
     }
