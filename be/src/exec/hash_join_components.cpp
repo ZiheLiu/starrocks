@@ -747,16 +747,16 @@ Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeSta
                   << "[hash_table_row_count=" << hash_table_row_count() << "] ";
 
     // merge all partition data to the first partition
-    for (size_t i = 1; i < _builders.size(); ++i) {
-        _builders[0]->hash_table().merge_ht(_builders[i]->hash_table());
-    }
-    _builders.resize(1);
-
-    for (auto& channel : _partition_input_channels) {
+    for (size_t i = 0; i < _builders.size(); ++i) {
+        if (i != 0) {
+            _builders[0]->hash_table().merge_ht(_builders[i]->hash_table());
+        }
+        auto& channel = _partition_input_channels[i];
         while (!channel.is_empty()) {
             _builders[0]->do_append_chunk(state, channel.pull());
         }
     }
+    _builders.resize(1);
     _partition_input_channels.clear();
 
     _partition_num = 1;
