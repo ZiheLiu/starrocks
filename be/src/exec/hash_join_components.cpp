@@ -755,7 +755,7 @@ Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeSta
     if (_stage == Stage::BUFFERING) {
         _mem_tracker.set(0);
         for (const auto& unpartition_chunk : _unpartition_chunks) {
-            _builders[0]->do_append_chunk(state, unpartition_chunk);
+            RETURN_IF_ERROR(_builders[0]->do_append_chunk(state, unpartition_chunk));
         }
     } else {
         for (size_t i = 0; i < _builders.size(); ++i) {
@@ -764,7 +764,7 @@ Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeSta
             }
             auto& channel = _partition_input_channels[i];
             while (!channel.is_empty()) {
-                _builders[0]->do_append_chunk(state, channel.pull());
+                RETURN_IF_ERROR(_builders[0]->do_append_chunk(state, channel.pull()));
             }
         }
         _partition_input_channels.clear();
