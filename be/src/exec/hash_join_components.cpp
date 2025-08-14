@@ -459,14 +459,19 @@ private:
     void _adjust_partition_rows(size_t hash_table_bytes_per_row, size_t hash_table_used_bytes_per_row);
 
     void _init_partition_nums(const HashTableParam& param);
-    Status _convert_to_single_partition(RuntimeState* state);
+    Status _do_append_chunk(RuntimeState* state, const ChunkPtr& chunk);
     Status _append_chunk_to_partitions(RuntimeState* state, const ChunkPtr& chunk);
+    Status _transfer_to_appending_stage(RuntimeState* state);
+    Status _convert_to_single_partition(RuntimeState* state);
 
 private:
     std::vector<std::unique_ptr<SingleHashJoinBuilder>> _builders;
 
     MemTracker _mem_tracker;
     std::vector<PartitionChunkChannel> _partition_input_channels;
+    std::vector<ChunkPtr> _unpartition_chunks;
+    enum class Stage { BUFFERING, APPENDING };
+    Stage _stage = Stage::BUFFERING;
 
     size_t _partition_num = 0;
     size_t _partition_join_l2_min_rows = 0;
@@ -747,22 +752,56 @@ Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeSta
                   << "[hash_table_row_count=" << hash_table_row_count() << "] ";
 
     // merge all partition data to the first partition
-    for (size_t i = 0; i < _builders.size(); ++i) {
-        if (i != 0) {
-            _builders[0]->hash_table().merge_ht(_builders[i]->hash_table());
+    if (_stage == Stage::BUFFERING) {
+        _mem_tracker.set(0);
+        for (const auto& unpartition_chunk : _unpartition_chunks) {
+            _builders[0]->do_append_chunk(state, unpartition_chunk);
         }
-        auto& channel = _partition_input_channels[i];
-        while (!channel.is_empty()) {
-            _builders[0]->do_append_chunk(state, channel.pull());
+    } else {
+        for (size_t i = 0; i < _builders.size(); ++i) {
+            if (i != 0) {
+                _builders[0]->hash_table().merge_ht(_builders[i]->hash_table());
+            }
+            auto& channel = _partition_input_channels[i];
+            while (!channel.is_empty()) {
+                _builders[0]->do_append_chunk(state, channel.pull());
+            }
         }
+        _partition_input_channels.clear();
     }
     _builders.resize(1);
-    _partition_input_channels.clear();
 
     _partition_num = 1;
     COUNTER_SET(_hash_joiner.build_metrics().partition_nums, static_cast<int64_t>(1));
 
     return Status::OK();
+}
+
+Status AdaptivePartitionHashJoinBuilder::_transfer_to_appending_stage(RuntimeState* state) {
+    _stage = Stage::APPENDING;
+    _mem_tracker.set(0);
+    for (const auto& unpartition_chunk : _unpartition_chunks) {
+        RETURN_IF_ERROR(_append_chunk_to_partitions(state, unpartition_chunk));
+    }
+    _unpartition_chunks.clear();
+
+    return Status::OK();
+}
+
+Status AdaptivePartitionHashJoinBuilder::_do_append_chunk(RuntimeState* state, const ChunkPtr& chunk) {
+    if (_stage == Stage::BUFFERING) {
+        _mem_tracker.consume(chunk->memory_usage());
+        _unpartition_chunks.push_back(chunk);
+
+        const size_t num_rows = hash_table_row_count();
+        if (num_rows >= _partition_join_l2_min_rows || num_rows >= _partition_join_l3_min_rows) {
+            RETURN_IF_ERROR(_transfer_to_appending_stage(state));
+        }
+
+        return Status::OK();
+    } else {
+        return _append_chunk_to_partitions(state, chunk);
+    }
 }
 
 Status AdaptivePartitionHashJoinBuilder::_append_chunk_to_partitions(RuntimeState* state, const ChunkPtr& chunk) {
@@ -852,7 +891,7 @@ Status AdaptivePartitionHashJoinBuilder::do_append_chunk(RuntimeState* state, co
     }
 
     if (_partition_num > 1) {
-        RETURN_IF_ERROR(_append_chunk_to_partitions(state, chunk));
+        RETURN_IF_ERROR(_do_append_chunk(state, chunk));
     } else {
         RETURN_IF_ERROR(_builders[0]->do_append_chunk(state, chunk));
     }
@@ -871,6 +910,9 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
         if (!_need_partition_join_for_build(hash_table_row_count())) {
             RETURN_IF_ERROR(_convert_to_single_partition(state));
         } else {
+            if (_stage == Stage::BUFFERING) {
+                RETURN_IF_ERROR(_transfer_to_appending_stage(state));
+            }
             for (size_t i = 0; i < _partition_input_channels.size(); ++i) {
                 auto& channel = _partition_input_channels[i];
                 while (!channel.is_empty()) {
