@@ -82,15 +82,16 @@ void BinaryColumnBase<T>::append(const Column& src, size_t offset, size_t count)
     _slices_cache = false;
 }
 
-ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const void* __restrict _src, size_t size) {
+ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const void* __restrict _src, ssize_t size) {
     auto dst = static_cast<uint8_t*>(_dst);
     auto src = static_cast<const uint8_t*>(_src);
 
 #ifdef __SSE2__
-    for (size_t i = 0; i < size; i += 16) {
+    while (size > 0) {
         _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), _mm_loadu_si128(reinterpret_cast<const __m128i*>(src)));
         dst += 16;
         src += 16;
+        size -= 16;
     }
 #else
     memcpy(dst, src, size);
