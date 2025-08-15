@@ -82,6 +82,22 @@ void BinaryColumnBase<T>::append(const Column& src, size_t offset, size_t count)
     _slices_cache = false;
 }
 
+ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const void* __restrict _src, size_t size) {
+    auto dst = static_cast<uint8_t*>(_dst);
+    auto src = static_cast<const uint8_t*>(_src);
+
+#ifdef __SSE2__
+    while (size > 0) {
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), _mm_loadu_si128(reinterpret_cast<const __m128i*>(src)));
+        dst += 16;
+        src += 16;
+        size -= 16;
+    }
+#else
+    memcpy(dst, src, size);
+#endif
+}
+
 template <typename T>
 void BinaryColumnBase<T>::append_selective(const Column& src, const uint32_t* indexes, uint32_t from,
                                            const uint32_t size) {
@@ -133,13 +149,13 @@ void BinaryColumnBase<T>::append_selective(const Column& src, const uint32_t* in
                     __builtin_prefetch(src_bytes + new_offsets[i * 2 + 32]);
                 }
                 const T str_size = new_offsets[i * 2 + 1] - new_offsets[i * 2];
-                strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
+                memcpy_inlined_overflow16(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
                 cur_offset += str_size;
             }
         } else {
             for (uint32_t i = 0; i < size; i++) {
                 const T str_size = new_offsets[i * 2 + 1] - new_offsets[i * 2];
-                strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
+                memcpy_inlined_overflow16(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
                 cur_offset += str_size;
             }
         }
