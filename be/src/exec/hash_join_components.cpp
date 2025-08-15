@@ -763,7 +763,6 @@ Status AdaptivePartitionHashJoinBuilder::_convert_to_single_partition(RuntimeSta
                   << "[partition_join_l2_max_rows=" << _partition_join_l2_max_rows << "] "
                   << "[partition_join_l3_min_rows=" << _partition_join_l3_min_rows << "] "
                   << "[partition_join_l3_max_rows=" << _partition_join_l3_max_rows << "] "
-                  << "[partition_join_l3_max_rows=" << _partition_join_l3_max_rows << "] "
                   << "[hash_table_row_count=" << hash_table_row_count() << "] ";
 
     // merge all partition data to the first partition
@@ -933,14 +932,6 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
                 while (!channel.is_empty()) {
                     RETURN_IF_ERROR(_builders[i]->do_append_chunk(state, channel.pull()));
                 }
-            }
-
-            size_t max_partition_num_rows = 0;
-            for (const auto& builder : _builders) {
-                max_partition_num_rows = std::max(max_partition_num_rows, builder->hash_table_row_count());
-            }
-            if (max_partition_num_rows * 8 >= hash_table_row_count()) {
-                RETURN_IF_ERROR(_convert_to_single_partition(state));
             }
         }
     }
