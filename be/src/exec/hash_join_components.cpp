@@ -967,8 +967,8 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
                     std::min(1.0, _L2_cache_size / static_cast<double>(_hash_table_bytes_per_row * partition_num_rows));
             l2_benefit += _l2_benefit * hit_l2_cache_rate * partition_num_rows / total_num_rows;
 
-            const double hit_l3_cache_rate =
-                    std::min(1.0, _L3_cache_size / static_cast<double>(_hash_table_bytes_per_row * partition_num_rows));
+            const double hit_l3_cache_rate = std::min(
+                    1.0, _L3_cache_size / static_cast<double>(_hash_table_bytes_per_row * partition_num_rows / 2));
             l3_benefit += _l3_benefit * hit_l3_cache_rate * partition_num_rows / total_num_rows;
         }
 
