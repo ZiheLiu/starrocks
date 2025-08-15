@@ -474,13 +474,17 @@ private:
     Stage _stage = Stage::BUFFERING;
 
     size_t _partition_num = 0;
+
+    size_t _hash_table_used_bytes_per_row = 0;
+    size_t _hash_table_bytes_per_row = 0;
     size_t _partition_join_l2_min_rows = 0;
     size_t _partition_join_l2_max_rows = 0;
     size_t _partition_join_l3_min_rows = 0;
     size_t _partition_join_l3_max_rows = 0;
 
     size_t _probe_row_shuffle_cost = 0;
-    size_t _hash_table_used_bytes_per_row = 0;
+    size_t _l2_benefit = 0;
+    size_t _l3_benefit = 0;
 
     size_t _fit_L2_cache_max_rows = 0;
     size_t _fit_L3_cache_max_rows = 0;
@@ -608,6 +612,14 @@ bool AdaptivePartitionHashJoinBuilder::_need_partition_join_for_append(size_t ht
 
 void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t hash_table_bytes_per_row,
                                                               size_t hash_table_used_bytes_per_row) {
+    if (hash_table_bytes_per_row == _hash_table_bytes_per_row &&
+        hash_table_used_bytes_per_row == _hash_table_used_bytes_per_row) {
+        return; // No need to adjust partition rows.
+    }
+
+    _hash_table_bytes_per_row = hash_table_bytes_per_row;
+    _hash_table_used_bytes_per_row = hash_table_used_bytes_per_row;
+
     _fit_L2_cache_max_rows = _L2_cache_size / hash_table_bytes_per_row;
     _fit_L3_cache_max_rows = _L3_cache_size / hash_table_bytes_per_row;
 
@@ -637,6 +649,9 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t hash_table_
         _partition_num = 1;
     }
 
+    _l2_benefit = l2_benefit;
+    _l3_benefit = l3_benefit;
+
     VLOG_OPERATOR << "TRACE: _adjust_partition_rows "
                   << "[partition_num=" << _partition_num << "] "
                   << "[partition_join_l2_min_rows=" << _partition_join_l2_min_rows << "] "
@@ -655,9 +670,9 @@ void AdaptivePartitionHashJoinBuilder::_init_partition_nums(const HashTableParam
 
     _probe_row_shuffle_cost =
             std::max<size_t>(_estimate_cost_by_bytes<CacheLevel::L3>(_estimate_probe_row_bytes(param)), 1);
-    _hash_table_used_bytes_per_row = _estimate_hash_table_used_bytes_per_row(param);
 
-    _adjust_partition_rows(1, _hash_table_used_bytes_per_row);
+    const size_t hash_table_used_bytes_per_row = _estimate_hash_table_used_bytes_per_row(param);
+    _adjust_partition_rows(1, hash_table_used_bytes_per_row);
 
     COUNTER_SET(_hash_joiner.build_metrics().partition_nums, (int64_t)_partition_num);
 }
@@ -938,6 +953,33 @@ Status AdaptivePartitionHashJoinBuilder::build(RuntimeState* state) {
         VLOG_OPERATOR << "TRACE: build "
                       << "[rows=" << rows << "] "
                       << "[total_rows=" << hash_table_row_count() << "] ";
+
+        const size_t total_num_rows = hash_table_row_count();
+        size_t l2_benefit = 0;
+        size_t l3_benefit = 0;
+        for (auto& builder : _builders) {
+            const size_t partition_num_rows = builder->hash_table_row_count();
+            if (partition_num_rows == 0) {
+                continue;
+            }
+
+            const double hit_l2_cache_rate =
+                    std::min(1.0, _L2_cache_size / static_cast<double>(_hash_table_bytes_per_row * partition_num_rows));
+            l2_benefit += _l2_benefit * hit_l2_cache_rate * partition_num_rows / total_num_rows;
+
+            const double hit_l3_cache_rate =
+                    std::min(1.0, _L3_cache_size / static_cast<double>(_hash_table_bytes_per_row * partition_num_rows));
+            l3_benefit += _l3_benefit * hit_l3_cache_rate * partition_num_rows / total_num_rows;
+        }
+
+        if (l2_benefit < _probe_row_shuffle_cost && l3_benefit < _probe_row_shuffle_cost) {
+            VLOG_OPERATOR << "TRACE: build finds cannot benefit from partitioned hash join "
+                          << "[l2_benefit=" << l2_benefit << "] "
+                          << "[l3_benefit=" << l3_benefit << "] "
+                          << "[probe_row_shuffle_cost=" << _probe_row_shuffle_cost << "] ";
+            // No benefit from partitioned hash join.
+            RETURN_IF_ERROR(_convert_to_single_partition(state));
+        }
     }
 
     for (auto& builder : _builders) {
