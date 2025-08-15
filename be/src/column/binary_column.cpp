@@ -151,7 +151,7 @@ void BinaryColumnBase<T>::append_selective(const Column& src, const uint32_t* in
                     __builtin_prefetch(src_bytes + new_offsets[i * 2 + 32]);
                 }
                 const T str_size = new_offsets[i * 2 + 1] - new_offsets[i * 2];
-                memcpy_inlined_overflow16(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
+                strings::memcpy_inlined(dest_bytes + cur_offset, src_bytes + new_offsets[i * 2], str_size);
                 cur_offset += str_size;
             }
         } else {
