@@ -87,11 +87,10 @@ ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const
     auto src = static_cast<const uint8_t*>(_src);
 
 #ifdef __SSE2__
-    while (size > 0) {
+    for (size_t i = 0; i < size; i += 16) {
         _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), _mm_loadu_si128(reinterpret_cast<const __m128i*>(src)));
         dst += 16;
         src += 16;
-        size -= 16;
     }
 #else
     memcpy(dst, src, size);
