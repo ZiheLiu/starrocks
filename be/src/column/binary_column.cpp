@@ -83,8 +83,8 @@ void BinaryColumnBase<T>::append(const Column& src, size_t offset, size_t count)
 }
 
 ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const void* __restrict _src, ssize_t size) {
-    auto dst = static_cast<uint8_t*>(_dst);
-    auto src = static_cast<const uint8_t*>(_src);
+    auto* __restrict dst = static_cast<uint8_t*>(_dst);
+    const auto* src = static_cast<const uint8_t*>(_src);
 
 #ifdef __SSE2__
     while (size > 0) {
@@ -92,6 +92,8 @@ ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const
         dst += 16;
         src += 16;
         size -= 16;
+
+        __asm__ __volatile__("" : : : "memory");
     }
 #else
     memcpy(dst, src, size);
