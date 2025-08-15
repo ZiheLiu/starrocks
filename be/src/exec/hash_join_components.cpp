@@ -225,10 +225,10 @@ Status PartitionedHashJoinProberImpl::push_probe_chunk(RuntimeState* state, Chun
     }
     std::vector<uint32_t> hash_values;
     {
-        hash_values.assign(num_rows, HashUtil::FNV_SEED);
+        hash_values.assign(num_rows, 0);
 
         for (const ColumnPtr& column : partition_columns) {
-            column->fnv_hash(hash_values.data(), 0, num_rows);
+            column->crc32_hash(hash_values.data(), 0, num_rows);
         }
         // find partition id
         for (size_t i = 0; i < hash_values.size(); ++i) {
@@ -831,10 +831,10 @@ Status AdaptivePartitionHashJoinBuilder::_append_chunk_to_partitions(RuntimeStat
     }
     std::vector<uint32_t> hash_values;
     {
-        hash_values.assign(num_rows, HashUtil::FNV_SEED);
+        hash_values.assign(num_rows, 0);
 
         for (const ColumnPtr& column : partition_columns) {
-            column->fnv_hash(hash_values.data(), 0, num_rows);
+            column->crc32_hash(hash_values.data(), 0, num_rows);
         }
         // find partition id
         for (size_t i = 0; i < hash_values.size(); ++i) {
