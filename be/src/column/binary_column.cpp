@@ -91,6 +91,8 @@ ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const
         dst += 16;
         src += 16;
         size -= 16;
+        // Avoid compilers convert loop-idiom to memcpy.
+        __asm__ __volatile__("" : : : "memory");
     }
 
     // #ifdef __SSE2__
