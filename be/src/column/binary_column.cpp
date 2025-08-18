@@ -86,18 +86,25 @@ ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const
     auto* __restrict dst = static_cast<uint8_t*>(_dst);
     const auto* __restrict src = static_cast<const uint8_t*>(_src);
 
-#ifdef __SSE2__
     while (size > 0) {
-        _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), _mm_loadu_si128(reinterpret_cast<const __m128i*>(src)));
+        __builtin_memcpy(dst, src, size);
         dst += 16;
         src += 16;
         size -= 16;
-
-        __asm__ __volatile__("" : : : "memory");
     }
-#else
-    memcpy(dst, src, size);
-#endif
+
+    // #ifdef __SSE2__
+    //     while (size > 0) {
+    //         _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), _mm_loadu_si128(reinterpret_cast<const __m128i*>(src)));
+    //         dst += 16;
+    //         src += 16;
+    //         size -= 16;
+    //
+    //         __asm__ __volatile__("" : : : "memory");
+    //     }
+    // #else
+    //     memcpy(dst, src, size);
+    // #endif
 }
 
 template <typename T>
