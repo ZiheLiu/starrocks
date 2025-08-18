@@ -87,26 +87,19 @@ ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const
     const auto* __restrict src = static_cast<const uint8_t*>(_src);
 
     while (size > 0) {
+#ifdef __SSE2__
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), _mm_loadu_si128(reinterpret_cast<const __m128i*>(src)));
+#elif defined(__ARM_NEON) && defined(__aarch64__)
+        vst1q_u8(dst, vld1q_u8(src));
+#else
         __builtin_memcpy(dst, src, 16);
+#endif
         dst += 16;
         src += 16;
         size -= 16;
-        // Avoid compilers convert loop-idiom to memcpy.
+        // Inhibit loop-idiom optimization of compilers which would collapse the per-16B copies into a single memcpy.
         __asm__ __volatile__("" : : : "memory");
     }
-
-    // #ifdef __SSE2__
-    //     while (size > 0) {
-    //         _mm_storeu_si128(reinterpret_cast<__m128i*>(dst), _mm_loadu_si128(reinterpret_cast<const __m128i*>(src)));
-    //         dst += 16;
-    //         src += 16;
-    //         size -= 16;
-    //
-    //         __asm__ __volatile__("" : : : "memory");
-    //     }
-    // #else
-    //     memcpy(dst, src, size);
-    // #endif
 }
 
 template <typename T>
