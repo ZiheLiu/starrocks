@@ -87,7 +87,7 @@ ALWAYS_INLINE inline void memcpy_inlined_overflow16(void* __restrict _dst, const
     const auto* __restrict src = static_cast<const uint8_t*>(_src);
 
     while (size > 0) {
-        __builtin_memcpy(dst, src, size);
+        __builtin_memcpy(dst, src, 16);
         dst += 16;
         src += 16;
         size -= 16;
