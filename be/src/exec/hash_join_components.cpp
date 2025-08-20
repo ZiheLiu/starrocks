@@ -533,7 +533,15 @@ double AdaptivePartitionHashJoinBuilder::_calculate_cache_miss_factor(const Hash
 size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_probing_bytes_per_row(const HashTableParam& param) const {
     size_t estimated_each_row = 0;
 
-    // key bytes
+    // Probing a row need
+    // 1. touch `first` and `next` vectors,
+    // 2 and compare join keys between builder and prober.
+    // 3. output columns from the build side.
+
+    // 1. `first` and `next` bytes
+    estimated_each_row += 8;
+
+    // 2. key bytes
     for (const auto& join_key : param.join_keys) {
         if (join_key.type != nullptr) {
             estimated_each_row += get_size_of_fixed_length_type(join_key.type->type);
@@ -542,12 +550,9 @@ size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_probing_bytes_per_
         }
     }
 
-    // `first` and `next` bytes
-    estimated_each_row += 8;
-
-    // output bytes
+    // 3. output bytes
     for (auto* tuple : param.build_row_desc->tuple_descriptors()) {
-        for (auto slot : tuple->slots()) {
+        for (const auto* slot : tuple->slots()) {
             if (param.build_output_slots.empty() || param.build_output_slots.contains(slot->id())) {
                 estimated_each_row += get_size_of_fixed_length_type(slot->type().type);
                 estimated_each_row += type_estimated_overhead_bytes(slot->type().type) * _cache_miss_factor;
@@ -619,14 +624,14 @@ void AdaptivePartitionHashJoinBuilder::_adjust_partition_rows(size_t hash_table_
                             _estimate_cost_by_bytes<CacheLevel::L3>(hash_table_probing_bytes_per_row);
 
     if (_probe_row_shuffle_cost < l3_benefit) { // Partitioned joins benefit from L3 cache.
-        // - l3_benefit * non_partition_cache_miss_rate > _probe_row_shuffle_cost
-        // - non_partition_cache_miss_rate = 1 - l3_cache_size/(min_rows*hash_table_bytes_per_row)
-        // Therefore, min_rows > (l3_cache_size/hash_table_bytes_per_row)(l3_benefit / (l3_benefit - _probe_row_shuffle_cost))
+        // Partitioned joins benefit from L3 cache when probing a row has cache miss in non-partitioned join but not in partitioned join.
+        // 1. min_rows > (l3_cache_size/hash_table_bytes_per_row)*(l3_benefit/(l3_benefit-_probe_row_shuffle_cost)), because:
+        //   - l3_benefit * non_partition_cache_miss_rate > _probe_row_shuffle_cost
+        //   - non_partition_cache_miss_rate = 1 - l3_cache_size/(min_rows*hash_table_bytes_per_row)
+        // 2. max_rows < (l3_cache_size/hash_table_bytes_per_row)*(l3_benefit/_probe_row_shuffle_cost)*num_partitions, because:
+        //   - l3_benefit * partition_cache_hit_rate > _probe_row_shuffle_cost
+        //   - partition_cache_hit_rate = l3_cache_size/(max_rows_per_partition*hash_table_bytes_per_row)
         _partition_join_l3_min_rows = _fit_L3_cache_max_rows * l3_benefit / (l3_benefit - _probe_row_shuffle_cost);
-        // - l3_benefit * partition_cache_hit_rate > _probe_row_shuffle_cost
-        // - partition_cache_hit_rate = l3_cache_size/(max_rows_per_partition*hash_table_bytes_per_row)
-        // Therefore, max_rows = max_rows_per_partition*num_partitions
-        //   < (l3_cache_size/hash_table_bytes_per_row)*(l3_benefit / _probe_row_shuffle_cost)*num_partitions
         _partition_join_l3_max_rows = _fit_L3_cache_max_rows * _partition_num * l3_benefit / _probe_row_shuffle_cost;
         _partition_join_l3_max_rows *= 2; // relax the restriction
 
