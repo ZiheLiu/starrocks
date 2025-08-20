@@ -447,6 +447,8 @@ public:
     ChunkPtr convert_to_spill_schema(const ChunkPtr& chunk) const override;
 
 private:
+    static double _calculate_cache_miss_factor(const HashJoiner& hash_joiner);
+
     size_t _estimate_hash_table_used_bytes_per_row(const HashTableParam& param) const;
     size_t _estimate_hash_table_bytes_per_row(const HashTableParam& param) const;
     size_t _estimate_probe_row_bytes(const HashTableParam& param) const;
@@ -493,10 +495,12 @@ private:
     size_t _L3_cache_size = 0;
 
     size_t _pushed_chunks = 0;
+
+    const double _cache_miss_factor;
 };
 
 AdaptivePartitionHashJoinBuilder::AdaptivePartitionHashJoinBuilder(HashJoiner& hash_joiner)
-        : HashJoinBuilder(hash_joiner) {
+        : HashJoinBuilder(hash_joiner), _cache_miss_factor(_calculate_cache_miss_factor(hash_joiner)) {
     static constexpr size_t DEFAULT_L2_CACHE_SIZE = 1 * 1024 * 1024;
     static constexpr size_t DEFAULT_L3_CACHE_SIZE = 32 * 1024 * 1024;
     const auto& cache_sizes = CpuInfo::get_cache_sizes();
@@ -504,6 +508,21 @@ AdaptivePartitionHashJoinBuilder::AdaptivePartitionHashJoinBuilder(HashJoiner& h
     _L3_cache_size = cache_sizes[CpuInfo::L3_CACHE];
     _L2_cache_size = _L2_cache_size ? _L2_cache_size : DEFAULT_L2_CACHE_SIZE;
     _L3_cache_size = _L3_cache_size ? _L3_cache_size : DEFAULT_L3_CACHE_SIZE;
+}
+
+double AdaptivePartitionHashJoinBuilder::_calculate_cache_miss_factor(const HashJoiner& hash_joiner) {
+    if (hash_joiner.distribution_mode() != TJoinDistributionMode::BROADCAST) {
+        return 1.0; // No broadcast join, no cache reuse between different probers.
+    }
+
+    const size_t max_prober_dop = hash_joiner.max_dop();
+    if (max_prober_dop <= 1) {
+        return 1.0;
+    }
+    if (max_prober_dop > 8) {
+        return 0.1;
+    }
+    return 1 - (max_prober_dop - 1) * 0.1;
 }
 
 size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_used_bytes_per_row(const HashTableParam& param) const {
@@ -514,8 +533,8 @@ size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_used_bytes_per_row
         if (join_key.type != nullptr) {
             estimated_each_row += get_size_of_fixed_length_type(join_key.type->type);
             // The benefits from non-fixed key columns is less than those from fixed key columns,
-            // so the penalty (/2) is applied here.
-            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type) / 4;
+            // so the penalty (/4) is applied here.
+            estimated_each_row += type_estimated_overhead_bytes(join_key.type->type) / 4 * _cache_miss_factor;
         }
     }
 
@@ -527,7 +546,7 @@ size_t AdaptivePartitionHashJoinBuilder::_estimate_hash_table_used_bytes_per_row
         for (auto slot : tuple->slots()) {
             if (param.build_output_slots.empty() || param.build_output_slots.contains(slot->id())) {
                 estimated_each_row += get_size_of_fixed_length_type(slot->type().type);
-                estimated_each_row += type_estimated_overhead_bytes(slot->type().type);
+                estimated_each_row += type_estimated_overhead_bytes(slot->type().type) * _cache_miss_factor;
             }
         }
     }
