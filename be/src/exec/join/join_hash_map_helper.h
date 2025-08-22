@@ -44,12 +44,12 @@ struct JoinKeyHash<T, 8> {
 
 template <typename T>
 struct JoinKeyHash<T, 4> {
-    uint64_t operator()(T value, uint64_t num_buckets, uint32_t num_log_buckets) const {
-        static constexpr uint64_t a = 11400714819323198485ull;
-        uint64_t v = *reinterpret_cast<uint32_t*>(&value);
-        v ^= v >> (64 - num_log_buckets);
-        const uint64_t fraction = v * a;
-        return fraction >> (64 - num_log_buckets);
+    uint32_t operator()(T value, uint64_t num_buckets, uint32_t num_log_buckets) const {
+        static constexpr uint32_t a = 2654435761u;
+        uint32_t v = *reinterpret_cast<uint32_t*>(&value);
+        v ^= v >> (32 - num_log_buckets);
+        const uint32_t fraction = v * a;
+        return fraction >> (32 - num_log_buckets);
     }
 };
 
