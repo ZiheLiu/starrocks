@@ -371,6 +371,52 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                 uint32_t group_idx = buffer_bucket_nums[j];
                 const uint8_t fp = buffer_fps[j];
 
+#ifdef __AVX2__
+                uint32_t probe_times = 1;
+                while (true) {
+                    const uint32_t group_start_index = group_idx * 16;
+                    const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(fps + group_start_index));
+
+                    const __m128i zeros = _mm_setzero_si128();
+                    const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
+                    uint32_t empty_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)); // low 16-bit effective
+
+                    const __m128i vfp = _mm_set1_epi8(static_cast<char>(fp));
+                    const __m128i v_is_eq = _mm_cmpeq_epi8(vfps, vfp);
+                    uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq));
+
+                    while (eq_mask) {
+                        const int gi = __builtin_ctz(eq_mask); // [0,15]
+                        const uint32_t slot = group_start_index + gi;
+                        if (keys[i + j] == keys[first[slot]]) {
+                            if constexpr (NeedBuildChained) {
+                                next[i + j] = first[slot];
+                                first[slot] = i + j;
+                            }
+                            goto next_key;
+                        }
+                        eq_mask &= (eq_mask - 1);
+                    }
+
+                    if (empty_mask) {
+                        const int gi = __builtin_ctz(empty_mask);
+                        const uint32_t slot = group_start_index + gi;
+                        if constexpr (NeedBuildChained) {
+                            next[i + j] = 0;
+                        }
+                        first[slot] = i + j;
+                        fps[slot] = fp;
+                        goto next_key;
+                    }
+
+                    group_idx = (group_idx + probe_times) & group_size_mask;
+                    probe_times++;
+                }
+
+            next_key:
+                continue;
+#else
+
                 uint8_t vfps[16];
                 uint8_t vemptys[16];
                 uint8_t vfp_equals[16];
@@ -416,6 +462,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
 
             next_key:
                 continue;
+#endif
             }
         }
 
@@ -485,6 +532,47 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
             const uint8_t fp = nexts[i];
             uint32_t group_idx = bucket_nums[i];
 
+#ifdef __AVX2__
+            uint32_t probe_times = 1;
+            while (true) {
+                const uint32_t group_start_index = group_idx * 16;
+
+                const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(fps + group_start_index));
+
+                const __m128i zeros = _mm_setzero_si128();
+                const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
+                uint32_t empty_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)); // low 16-bit effective
+
+                const __m128i vfp = _mm_set1_epi8(static_cast<char>(fp));
+                const __m128i v_is_eq = _mm_cmpeq_epi8(vfps, vfp);
+                uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq));
+
+                while (eq_mask) {
+                    const int gi = __builtin_ctz(eq_mask); // [0,15]
+                    const uint32_t slot = group_start_index + gi;
+                    if (probe_keys[i] == build_keys[firsts[slot]]) {
+                        if constexpr (NeedBuildChained) {
+                            nexts[i] = firsts[slot];
+                        } else {
+                            nexts[i] = 1;
+                        }
+                        goto next_key;
+                    }
+                    eq_mask &= (eq_mask - 1);
+                }
+
+                if (empty_mask) {
+                    nexts[i] = 0;
+                    goto next_key;
+                }
+
+                group_idx = (group_idx + probe_times) & group_size_mask;
+                probe_times++;
+            }
+
+        next_key:
+            continue;
+#else
             uint8_t vfps[16];
             uint8_t vemptys[16];
             uint8_t vfp_equals[16];
@@ -506,7 +594,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
                 for (uint32_t gi = 0; gi < 16; gi++) {
                     if (vfp_equals[gi] && probe_keys[i] == build_keys[firsts[group_start_index + gi]]) {
                         if constexpr (NeedBuildChained) {
-                            nexts[i] = firsts[group_idx];
+                            nexts[i] = firsts[group_start_index + gi];
                         } else {
                             nexts[i] = 1;
                         }
@@ -527,6 +615,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
 
         next_key:
             continue;
+#endif
         }
     };
 
