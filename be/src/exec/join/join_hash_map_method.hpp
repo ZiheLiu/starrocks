@@ -306,7 +306,7 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::lookup_init(const JoinHashT
 template <LogicalType LT, bool NeedBuildChained>
 void LinearChainedJoinHashMap2<LT, NeedBuildChained>::build_prepare(RuntimeState* state,
                                                                     JoinHashTableItems* table_items) {
-    table_items->bucket_size = JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1);
+    table_items->bucket_size = std::max<size_t>(16, JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1));
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->fps.resize(table_items->bucket_size, 0);
@@ -319,7 +319,8 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                                                                            const Buffer<uint8_t>* is_nulls) {
     auto process = [&]<bool IsNullable>() {
         const auto num_rows = 1 + table_items->row_count;
-        const uint32_t bucket_size_mask = table_items->bucket_size - 1;
+        const auto num_groups = table_items->bucket_size / 16;
+        const uint32_t group_size_mask = num_groups - 1;
 
         auto* __restrict next = table_items->next.data();
         auto* __restrict first = table_items->first.data();
@@ -353,7 +354,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                 // Use `next` stores `bucket_num` temporarily.
                 if (need_calc_bucket_num(i + j)) {
                     std::tie(buffer_bucket_nums[j], buffer_fps[j]) = JoinHashMapHelper::calc_bucket_num_and_fp<CppType>(
-                            keys[i + j], table_items->bucket_size, table_items->log_bucket_size);
+                            keys[i + j], num_groups, table_items->log_bucket_size);
                 }
             }
 
@@ -367,31 +368,54 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                     continue;
                 }
 
-                uint32_t bucket_num = buffer_bucket_nums[j];
+                uint32_t group_idx = buffer_bucket_nums[j];
                 const uint8_t fp = buffer_fps[j];
+
+                uint8_t vfps[16];
+                uint8_t vemptys[16];
+                uint8_t vfp_equals[16];
 
                 uint32_t probe_times = 1;
                 while (true) {
-                    if (fps[bucket_num] == 0) {
-                        if constexpr (NeedBuildChained) {
-                            next[i + j] = 0;
-                        }
-                        first[bucket_num] = i + j;
-                        fps[bucket_num] = fp;
-                        break;
+                    const uint32_t group_start_index = group_idx * 16;
+
+                    for (uint32_t gi = 0; gi < 16; gi++) {
+                        vfps[gi] = fps[group_start_index + gi];
+                    }
+                    for (uint32_t gi = 0; gi < 16; gi++) {
+                        vemptys[gi] = vfps[gi] == 0;
+                    }
+                    for (uint32_t gi = 0; gi < 16; gi++) {
+                        vfp_equals[gi] = vfps[gi] == fp;
                     }
 
-                    if (fp == fps[bucket_num] && keys[i + j] == keys[first[bucket_num]]) {
-                        if constexpr (NeedBuildChained) {
-                            next[i + j] = first[bucket_num];
-                            first[bucket_num] = i + j;
+                    for (uint32_t gi = 0; gi < 16; gi++) {
+                        if (vfp_equals[gi] && keys[i + j] == keys[first[group_start_index + gi]]) {
+                            if constexpr (NeedBuildChained) {
+                                next[i + j] = first[group_start_index + gi];
+                                first[group_start_index + gi] = i + j;
+                            }
+                            goto next_key;
                         }
-                        break;
                     }
 
-                    bucket_num = (bucket_num + probe_times) & bucket_size_mask;
+                    for (uint32_t gi = 0; gi < 16; gi++) {
+                        if (vemptys[gi]) {
+                            if constexpr (NeedBuildChained) {
+                                next[i + j] = 0;
+                            }
+                            first[group_start_index + gi] = i + j;
+                            fps[group_start_index + gi] = fp;
+                            goto next_key;
+                        }
+                    }
+
+                    group_idx = (group_idx + probe_times) & group_size_mask;
                     probe_times++;
                 }
+
+            next_key:
+                continue;
             }
         }
 
@@ -414,8 +438,9 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
                                                                   const Buffer<CppType>& probe_keys,
                                                                   const Buffer<uint8_t>* is_nulls) {
     auto process = [&]<bool IsNullable>() {
-        const uint32_t bucket_size_mask = table_items.bucket_size - 1;
         const uint32_t row_count = probe_state->probe_row_count;
+        const auto num_groups = table_items.bucket_size / 16;
+        const uint32_t group_size_mask = num_groups - 1;
 
         const auto* firsts = table_items.first.data();
         const auto* fps = table_items.fps.data();
@@ -443,7 +468,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
         for (uint32_t i = 0; i < row_count; i++) {
             if (need_calc_bucket_num(i)) {
                 std::tie(bucket_nums[i], nexts[i]) = JoinHashMapHelper::calc_bucket_num_and_fp<CppType>(
-                        probe_keys[i], table_items.bucket_size, table_items.log_bucket_size);
+                        probe_keys[i], num_groups, table_items.log_bucket_size);
             }
         }
 
@@ -458,27 +483,50 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
             }
 
             const uint8_t fp = nexts[i];
-            uint32_t bucket_num = bucket_nums[i];
+            uint32_t group_idx = bucket_nums[i];
+
+            uint8_t vfps[16];
+            uint8_t vemptys[16];
+            uint8_t vfp_equals[16];
 
             uint32_t probe_times = 1;
             while (true) {
-                if (fps[bucket_num] == 0) {
-                    nexts[i] = 0;
-                    break;
+                const uint32_t group_start_index = group_idx * 16;
+
+                for (uint32_t gi = 0; gi < 16; gi++) {
+                    vfps[gi] = fps[group_start_index + gi];
+                }
+                for (uint32_t gi = 0; gi < 16; gi++) {
+                    vemptys[gi] = vfps[gi] == 0;
+                }
+                for (uint32_t gi = 0; gi < 16; gi++) {
+                    vfp_equals[gi] = vfps[gi] == fp;
                 }
 
-                if (fp == fps[bucket_num] && probe_keys[i] == build_keys[firsts[bucket_num]]) {
-                    if constexpr (NeedBuildChained) {
-                        nexts[i] = firsts[bucket_num];
-                    } else {
-                        nexts[i] = 1;
+                for (uint32_t gi = 0; gi < 16; gi++) {
+                    if (vfp_equals[gi] && probe_keys[i] == build_keys[firsts[group_start_index + gi]]) {
+                        if constexpr (NeedBuildChained) {
+                            nexts[i] = firsts[group_idx];
+                        } else {
+                            nexts[i] = 1;
+                        }
+                        goto next_key;
                     }
-                    break;
                 }
 
-                bucket_num = (bucket_num + probe_times) & bucket_size_mask;
+                for (uint32_t gi = 0; gi < 16; gi++) {
+                    if (vemptys[gi]) {
+                        nexts[i] = 0;
+                        goto next_key;
+                    }
+                }
+
+                group_idx = (group_idx + probe_times) & group_size_mask;
                 probe_times++;
             }
+
+        next_key:
+            continue;
         }
     };
 
