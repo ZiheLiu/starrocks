@@ -359,9 +359,9 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
             }
 
             for (uint32_t j = 0; j < count; j++) {
-                // if (j + 16 < count && !is_null(i + j + 16)) {
-                //     __builtin_prefetch(first + buffer_bucket_nums[j + 16]);
-                // }
+                if (j + 16 < count && !is_null(i + j + 16)) {
+                    __builtin_prefetch(fps + buffer_bucket_nums[j + 16]);
+                }
 
                 if (is_null(i + j)) {
                     next[i + j] = 0;
@@ -520,9 +520,10 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
         }
 
         for (uint32_t i = 0; i < row_count; i++) {
-            // if (i + 16 < row_count && !is_null(i + 16)) {
-            //     __builtin_prefetch(firsts + bucket_nums[i + 16]);
-            // }
+            if (i + 16 < row_count && !is_null(i + 16)) {
+                // __builtin_prefetch(firsts + bucket_nums[i + 16]);
+                __builtin_prefetch(fps + bucket_nums[i + 16]);
+            }
 
             if (is_null(i)) {
                 nexts[i] = 0;
