@@ -307,7 +307,7 @@ template <LogicalType LT, bool NeedBuildChained>
 void LinearChainedJoinHashMap2<LT, NeedBuildChained>::build_prepare(RuntimeState* state,
                                                                     JoinHashTableItems* table_items) {
     table_items->bucket_size = std::max<size_t>(16, JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1));
-    table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size);
+    table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size / 16);
     table_items->first.resize(table_items->bucket_size, 0);
     table_items->fps.resize(table_items->bucket_size, 0);
     table_items->next.resize(table_items->row_count + 1, 0);
