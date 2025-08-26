@@ -19,47 +19,16 @@
 
 namespace starrocks {
 
-template <class T, size_t Size = sizeof(T)>
+template <class T>
 struct JoinKeyHash {
     static constexpr uint32_t CRC_SEED = 0x811C9DC5;
-    uint64_t operator()(const T& value, uint64_t num_buckets, uint32_t num_log_buckets) const {
-        const size_t hash = crc_hash_32(&value, sizeof(T), CRC_SEED);
-        return hash & (num_buckets - 1);
-    }
-};
-
-/// Apply multiplicative hashing for 4-byte or 8-byte keys.
-/// It only needs to perform arithmetic operations on the key as a whole, so the compiler can automatically vectorize it.
-
-template <typename T>
-struct JoinKeyHash<T, 8> {
-    uint64_t operator()(T value, uint64_t num_buckets, uint32_t num_log_buckets) const {
-        static constexpr uint64_t a = 11400714819323198485ull;
-        uint64_t v = *reinterpret_cast<uint64_t*>(&value);
-        v ^= v >> (64 - num_log_buckets);
-        const uint64_t fraction = v * a;
-        return fraction >> (64 - num_log_buckets);
-    }
-};
-
-template <typename T>
-struct JoinKeyHash<T, 4> {
-    uint32_t operator()(T value, uint64_t num_buckets, uint32_t num_log_buckets) const {
-        static constexpr uint32_t a = 2654435761u;
-        uint32_t v = *reinterpret_cast<uint32_t*>(&value);
-        v ^= v >> (32 - num_log_buckets);
-        const uint32_t fraction = v * a;
-        return fraction >> (32 - num_log_buckets);
-    }
+    uint64_t operator()(const T& value) const { return crc_hash_32(&value, sizeof(T), CRC_SEED); }
 };
 
 template <>
 struct JoinKeyHash<Slice> {
-    static const uint32_t CRC_SEED = 0x811C9DC5;
-    uint64_t operator()(const Slice& slice, uint64_t num_buckets, uint32_t num_log_buckets) const {
-        const size_t hash = crc_hash_32(slice.data, slice.size, CRC_SEED);
-        return hash & (num_buckets - 1);
-    }
+    static constexpr uint32_t CRC_SEED = 0x811C9DC5;
+    uint64_t operator()(const Slice& slice) const { return crc_hash_32(slice.data, slice.size, CRC_SEED); }
 };
 
 class JoinHashMapHelper {
@@ -80,7 +49,7 @@ public:
     static uint32_t calc_bucket_num(const CppType& value, uint32_t bucket_size, uint32_t num_log_buckets) {
         using HashFunc = JoinKeyHash<CppType>;
 
-        return HashFunc()(value, bucket_size, num_log_buckets);
+        return HashFunc()(value) & (bucket_size - 1);
     }
 
     template <typename CppType>
@@ -88,8 +57,9 @@ public:
                                                                uint32_t num_log_buckets) {
         static constexpr uint64_t FP_BITS = 7;
         using HashFunc = JoinKeyHash<CppType>;
-        const uint64_t hash = HashFunc()(value, bucket_size << FP_BITS, num_log_buckets + FP_BITS);
-        return {hash >> FP_BITS, (hash & 0x7F) | 0x80};
+        const uint64_t hash = HashFunc()(value);
+        // , bucket_size << FP_BITS, num_log_buckets + FP_BITS
+        return {hash & (bucket_size - 1), (hash >> (64 - FP_BITS)) | 0x80};
     }
 
     template <typename CppType>
