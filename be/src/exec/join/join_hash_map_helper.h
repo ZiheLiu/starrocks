@@ -22,13 +22,13 @@ namespace starrocks {
 template <class T>
 struct JoinKeyHash {
     static constexpr uint32_t CRC_SEED = 0x811C9DC5;
-    uint64_t operator()(const T& value) const { return crc_hash_32(&value, sizeof(T), CRC_SEED); }
+    uint64_t operator()(const T& value) const { return crc_hash_64(&value, sizeof(T), CRC_SEED); }
 };
 
 template <>
 struct JoinKeyHash<Slice> {
     static constexpr uint32_t CRC_SEED = 0x811C9DC5;
-    uint64_t operator()(const Slice& slice) const { return crc_hash_32(slice.data, slice.size, CRC_SEED); }
+    uint64_t operator()(const Slice& slice) const { return crc_hash_64(slice.data, slice.size, CRC_SEED); }
 };
 
 class JoinHashMapHelper {
