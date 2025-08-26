@@ -52,15 +52,24 @@ public:
         return HashFunc()(value) & (bucket_size - 1);
     }
 
+    static inline uint64_t final64(uint64_t x) {
+        x += 0x9e3779b97f4a7c15ull;
+        x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
+        x = (x ^ (x >> 27)) * 0x94d049bb133111ebull;
+        return x ^ (x >> 31);
+    }
+
     template <typename CppType>
     static std::pair<uint32_t, uint8_t> calc_bucket_num_and_fp(const CppType& value, uint32_t bucket_size,
                                                                uint32_t num_log_buckets) {
         static constexpr uint64_t FP_BITS = 7;
         using HashFunc = JoinKeyHash<CppType>;
-        const uint64_t hash = HashFunc()(value);
+        const uint64_t h1 = HashFunc()(value);
+        const uint64_t h2 = final64(h1);
+
         // , bucket_size << FP_BITS, num_log_buckets + FP_BITS
         // return {hash & (bucket_size - 1), (hash >> (64 - FP_BITS)) | 0x80};
-        return {(hash >> FP_BITS) & (bucket_size - 1), (hash & 0x7F) | 0x80};
+        return {h1 & (bucket_size - 1), (h2 >> (64 - FP_BITS)) | 0x80};
     }
 
     template <typename CppType>
