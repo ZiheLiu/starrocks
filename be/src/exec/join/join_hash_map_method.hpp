@@ -141,6 +141,9 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::construct_hash_table(JoinHa
         auto* __restrict first = table_items->first.data();
         const uint8_t* __restrict is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
 
+        uint32_t compare_times = 0;
+        uint32_t meaningless_compare_times = 0;
+
         auto need_calc_bucket_num = [&](const uint32_t index) {
             // Only check `is_nulls_data[i]` for the nullable slice type. The hash calculation overhead for
             // fixed-size types is small, and thus we do not check it to allow vectorization of the hash calculation.
@@ -190,12 +193,16 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::construct_hash_table(JoinHa
                     break;
                 }
 
-                if (salt == _extract_salt(first[bucket_num]) && keys[i] == keys[_extract_data(first[bucket_num])]) {
-                    if constexpr (NeedBuildChained) {
-                        next[i] = _extract_data(first[bucket_num]);
-                        first[bucket_num] = _combine_data_salt(i, salt);
+                if (salt == _extract_salt(first[bucket_num])) {
+                    compare_times++;
+                    if (keys[i] == keys[_extract_data(first[bucket_num])]) {
+                        if constexpr (NeedBuildChained) {
+                            next[i] = _extract_data(first[bucket_num]);
+                            first[bucket_num] = _combine_data_salt(i, salt);
+                        }
+                        break;
                     }
-                    break;
+                    meaningless_compare_times++;
                 }
 
                 bucket_num = (bucket_num + probe_times) & bucket_size_mask;
@@ -206,6 +213,10 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::construct_hash_table(JoinHa
         if constexpr (!NeedBuildChained) {
             table_items->next.clear();
         }
+
+        VLOG_OPERATOR << "[JOIN] [mode=1] [build] "
+                      << "[compare_times=" << compare_times << "] "
+                      << "[meaningless_compare_times=" << meaningless_compare_times << "] ";
     };
 
     if (is_nulls == nullptr) {
@@ -229,6 +240,9 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::lookup_init(const JoinHashT
         auto* hashes = probe_state->buckets.data();
         auto* nexts = probe_state->next.data();
         const uint8_t* is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
+
+        uint32_t compare_times = 0;
+        uint32_t meaningless_compare_times = 0;
 
         auto need_calc_bucket_num = [&](const uint32_t index) {
             if constexpr (!IsNullable || !std::is_same_v<CppType, Slice>) {
@@ -277,19 +291,27 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::lookup_init(const JoinHashT
 
                 const uint32_t cur_salt = _extract_salt(firsts[bucket_num]);
                 const uint32_t cur_index = _extract_data(firsts[bucket_num]);
-                if (salt == cur_salt && probe_keys[i] == build_keys[cur_index]) {
-                    if constexpr (NeedBuildChained) {
-                        nexts[i] = cur_index;
-                    } else {
-                        nexts[i] = 1;
+                if (salt == cur_salt) {
+                    compare_times++;
+                    if (probe_keys[i] == build_keys[cur_index]) {
+                        if constexpr (NeedBuildChained) {
+                            nexts[i] = cur_index;
+                        } else {
+                            nexts[i] = 1;
+                        }
+                        break;
                     }
-                    break;
+                    meaningless_compare_times++;
                 }
 
                 bucket_num = (bucket_num + probe_times) & bucket_size_mask;
                 probe_times++;
             }
         }
+
+        VLOG_OPERATOR << "[JOIN] [mode=1] [probe] "
+                      << "[compare_times=" << compare_times << "] "
+                      << "[meaningless_compare_times=" << meaningless_compare_times << "] ";
     };
 
     if (is_nulls == nullptr) {
@@ -326,6 +348,9 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
         auto* __restrict first = table_items->first.data();
         auto* __restrict fps = table_items->fps.data();
         const uint8_t* __restrict is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
+
+        uint32_t compare_times = 0;
+        uint32_t meaningless_compare_times = 0;
 
         auto need_calc_bucket_num = [&](const uint32_t index) {
             // Only check `is_nulls_data[i]` for the nullable slice type. The hash calculation overhead for
@@ -387,6 +412,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                     uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq));
 
                     while (eq_mask) {
+                        compare_times++;
                         const int gi = __builtin_ctz(eq_mask); // [0,15]
                         const uint32_t slot = group_start_index + gi;
                         if (keys[i + j] == keys[first[slot]]) {
@@ -396,6 +422,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                             }
                             goto next_key;
                         }
+                        meaningless_compare_times++;
                         eq_mask &= (eq_mask - 1);
                     }
 
@@ -470,6 +497,10 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
         if constexpr (!NeedBuildChained) {
             table_items->next.clear();
         }
+
+        VLOG_OPERATOR << "[JOIN] [mode=2] [build] "
+                      << "[compare_times=" << compare_times << "] "
+                      << "[meaningless_compare_times=" << meaningless_compare_times << "] ";
     };
 
     if (is_nulls == nullptr) {
@@ -495,6 +526,9 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
         auto* bucket_nums = probe_state->buckets.data();
         auto* nexts = probe_state->next.data();
         const uint8_t* is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
+
+        uint32_t compare_times = 0;
+        uint32_t meaningless_compare_times = 0;
 
         auto need_calc_bucket_num = [&](const uint32_t index) {
             if constexpr (!IsNullable || !std::is_same_v<CppType, Slice>) {
@@ -552,6 +586,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
                 while (eq_mask) {
                     const int gi = __builtin_ctz(eq_mask); // [0,15]
                     const uint32_t slot = group_start_index + gi;
+                    compare_times++;
                     if (probe_keys[i] == build_keys[firsts[slot]]) {
                         if constexpr (NeedBuildChained) {
                             nexts[i] = firsts[slot];
@@ -560,6 +595,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
                         }
                         goto next_key;
                     }
+                    meaningless_compare_times++;
                     eq_mask &= (eq_mask - 1);
                 }
 
@@ -619,6 +655,10 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
             continue;
 #endif
         }
+
+        VLOG_OPERATOR << "[JOIN] [mode=2] [probe] "
+                      << "[compare_times=" << compare_times << "] "
+                      << "[meaningless_compare_times=" << meaningless_compare_times << "] ";
     };
 
     if (is_nulls == nullptr) {
