@@ -59,7 +59,8 @@ public:
         using HashFunc = JoinKeyHash<CppType>;
         const uint64_t hash = HashFunc()(value);
         // , bucket_size << FP_BITS, num_log_buckets + FP_BITS
-        return {hash & (bucket_size - 1), (hash >> (64 - FP_BITS)) | 0x80};
+        // return {hash & (bucket_size - 1), (hash >> (64 - FP_BITS)) | 0x80};
+        return {(hash >> FP_BITS) & (bucket_size - 1), (hash & 0x7F) | 0x80};
     }
 
     template <typename CppType>
