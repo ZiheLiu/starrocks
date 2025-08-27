@@ -80,6 +80,8 @@ void BucketChainedJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
             }
         }
     }
+
+    table_items->used_buckets = SIMD::count_nonzero(table_items->first);
 }
 
 template <LogicalType LT>
@@ -214,6 +216,8 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::construct_hash_table(JoinHa
             table_items->next.clear();
         }
 
+        table_items->used_buckets = SIMD::count_nonzero(table_items->first);
+
         VLOG_OPERATOR << "[JOIN] [mode=1] [build] "
                       << "[compare_times=" << compare_times << "] "
                       << "[meaningless_compare_times=" << meaningless_compare_times << "] ";
@@ -330,8 +334,8 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::build_prepare(RuntimeState
                                                                     JoinHashTableItems* table_items) {
     table_items->bucket_size = std::max<size_t>(16, JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1));
     table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size / 16);
-    table_items->first.resize(table_items->bucket_size, 0);
-    table_items->fps.resize(table_items->bucket_size, 0);
+    table_items->groups.resize(table_items->bucket_size / 16);
+    std::memset(table_items->groups.data(), 0, table_items->groups.size() * sizeof(JoinHashTableItems::Group));
     table_items->next.resize(table_items->row_count + 1, 0);
 }
 
@@ -345,8 +349,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
         const uint32_t group_size_mask = num_groups - 1;
 
         auto* __restrict next = table_items->next.data();
-        auto* __restrict first = table_items->first.data();
-        auto* __restrict fps = table_items->fps.data();
+        auto* __restrict groups = table_items->groups.data();
         const uint8_t* __restrict is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
 
         uint32_t compare_times = 0;
@@ -371,21 +374,22 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
 
         static constexpr uint32_t BATCH_SIZE = 4096;
         uint8_t buffer_fps[BATCH_SIZE];
+        size_t num_used_buckets = 0;
         for (uint64_t i = 1; i < num_rows; i += BATCH_SIZE) {
             const uint32_t count = std::min<uint32_t>(BATCH_SIZE, num_rows - i);
 
-            auto* buffer_bucket_nums = next + i;
+            auto* buffer_group_idxes = next + i;
             for (uint32_t j = 0; j < count; j++) {
                 // Use `next` stores `bucket_num` temporarily.
                 if (need_calc_bucket_num(i + j)) {
-                    std::tie(buffer_bucket_nums[j], buffer_fps[j]) = JoinHashMapHelper::calc_bucket_num_and_fp<CppType>(
+                    std::tie(buffer_group_idxes[j], buffer_fps[j]) = JoinHashMapHelper::calc_bucket_num_and_fp<CppType>(
                             keys[i + j], num_groups, table_items->log_bucket_size);
                 }
             }
 
             for (uint32_t j = 0; j < count; j++) {
                 if (j + 16 < count && !is_null(i + j + 16)) {
-                    __builtin_prefetch(fps + buffer_bucket_nums[j + 16]);
+                    __builtin_prefetch(groups + buffer_group_idxes[j + 16]);
                     // __builtin_prefetch(first + buffer_bucket_nums[j + 16]);
                 }
 
@@ -394,14 +398,13 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                     continue;
                 }
 
-                uint32_t group_idx = buffer_bucket_nums[j];
+                uint32_t group_idx = buffer_group_idxes[j];
                 const uint8_t fp = buffer_fps[j];
 
 #ifdef __AVX2__
                 uint32_t probe_times = 1;
                 while (true) {
-                    const uint32_t group_start_index = group_idx * 16;
-                    const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(fps + group_start_index));
+                    const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(groups + group_idx));
 
                     const __m128i zeros = _mm_setzero_si128();
                     const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
@@ -414,11 +417,10 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                     while (eq_mask) {
                         compare_times++;
                         const int gi = __builtin_ctz(eq_mask); // [0,15]
-                        const uint32_t slot = group_start_index + gi;
-                        if (keys[i + j] == keys[first[slot]]) {
+                        if (keys[i + j] == keys[groups[group_idx].first[gi]]) {
                             if constexpr (NeedBuildChained) {
-                                next[i + j] = first[slot];
-                                first[slot] = i + j;
+                                next[i + j] = groups[group_idx].first[gi];
+                                groups[group_idx].first[gi] = i + j;
                             }
                             goto next_key;
                         }
@@ -428,12 +430,12 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
 
                     if (empty_mask) {
                         const int gi = __builtin_ctz(empty_mask);
-                        const uint32_t slot = group_start_index + gi;
                         if constexpr (NeedBuildChained) {
                             next[i + j] = 0;
                         }
-                        first[slot] = i + j;
-                        fps[slot] = fp;
+                        groups[group_idx].ctrl[gi] = fp;
+                        groups[group_idx].first[gi] = i + j;
+                        num_used_buckets++;
                         goto next_key;
                     }
 
@@ -498,6 +500,8 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
             table_items->next.clear();
         }
 
+        table_items->used_buckets = num_used_buckets;
+
         VLOG_OPERATOR << "[JOIN] [mode=2] [build] "
                       << "[compare_times=" << compare_times << "] "
                       << "[meaningless_compare_times=" << meaningless_compare_times << "] ";
@@ -521,9 +525,8 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
         const auto num_groups = table_items.bucket_size / 16;
         const uint32_t group_size_mask = num_groups - 1;
 
-        const auto* firsts = table_items.first.data();
-        const auto* fps = table_items.fps.data();
-        auto* bucket_nums = probe_state->buckets.data();
+        auto* __restrict groups = table_items.groups.data();
+        auto* buffer_group_idxes = probe_state->buckets.data();
         auto* nexts = probe_state->next.data();
         const uint8_t* is_nulls_data = IsNullable ? is_nulls->data() : nullptr;
 
@@ -549,14 +552,14 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
 
         for (uint32_t i = 0; i < row_count; i++) {
             if (need_calc_bucket_num(i)) {
-                std::tie(bucket_nums[i], nexts[i]) = JoinHashMapHelper::calc_bucket_num_and_fp<CppType>(
+                std::tie(buffer_group_idxes[i], nexts[i]) = JoinHashMapHelper::calc_bucket_num_and_fp<CppType>(
                         probe_keys[i], num_groups, table_items.log_bucket_size);
             }
         }
 
         for (uint32_t i = 0; i < row_count; i++) {
             if (i + 16 < row_count && !is_null(i + 16)) {
-                __builtin_prefetch(fps + bucket_nums[i + 16]);
+                __builtin_prefetch(groups + buffer_group_idxes[i + 16]);
                 // __builtin_prefetch(firsts + bucket_nums[i + 16]);
             }
 
@@ -566,14 +569,12 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
             }
 
             const uint8_t fp = nexts[i];
-            uint32_t group_idx = bucket_nums[i];
+            uint32_t group_idx = buffer_group_idxes[i];
 
 #ifdef __AVX2__
             uint32_t probe_times = 1;
             while (true) {
-                const uint32_t group_start_index = group_idx * 16;
-
-                const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(fps + group_start_index));
+                const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(groups + group_idx));
 
                 const __m128i zeros = _mm_setzero_si128();
                 const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
@@ -585,11 +586,10 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
 
                 while (eq_mask) {
                     const int gi = __builtin_ctz(eq_mask); // [0,15]
-                    const uint32_t slot = group_start_index + gi;
                     compare_times++;
-                    if (probe_keys[i] == build_keys[firsts[slot]]) {
+                    if (probe_keys[i] == build_keys[groups[group_idx].first[gi]]) {
                         if constexpr (NeedBuildChained) {
-                            nexts[i] = firsts[slot];
+                            nexts[i] = groups[group_idx].first[gi];
                         } else {
                             nexts[i] = 1;
                         }
@@ -704,6 +704,8 @@ void DirectMappingJoinHashMap<LT>::construct_hash_table(JoinHashTableItems* tabl
             }
         }
     }
+
+    table_items->used_buckets = SIMD::count_nonzero(table_items->first);
 }
 
 template <LogicalType LT>
@@ -830,6 +832,8 @@ void RangeDirectMappingJoinHashSet<LT>::construct_hash_table(JoinHashTableItems*
             table_items->key_bitset[group] |= (is_nulls_data[i] == 0) << offset;
         }
     }
+
+    table_items->used_buckets = SIMD::count_nonzero(table_items->key_bitset);
 }
 
 template <LogicalType LT>
@@ -928,6 +932,8 @@ void DenseRangeDirectMappingJoinHashMap<LT>::construct_hash_table(JoinHashTableI
                 table_items->first[index] = i;
             }
         }
+
+        table_items->used_buckets = SIMD::count_nonzero(table_items->first);
     };
 
     if (is_nulls == nullptr) {

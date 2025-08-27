@@ -64,6 +64,12 @@ struct JoinHashTableItems {
     Buffer<uint32_t> first;
     Buffer<uint32_t> next;
 
+    struct Group {
+        uint8_t ctrl[16];   // 16 bytes
+        uint32_t first[16]; // 64 bytes
+    };
+    Buffer<Group> groups;
+
     Buffer<uint8_t> key_bitset;
     struct DenseGroup {
         uint32_t start_index = 0;
