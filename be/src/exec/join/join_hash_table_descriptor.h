@@ -65,8 +65,8 @@ struct JoinHashTableItems {
     Buffer<uint32_t> next;
 
     struct Group {
-        uint8_t ctrl[8];   // 16 bytes
-        uint32_t first[8]; // 64 bytes
+        uint8_t ctrl[4];   // 16 bytes
+        uint32_t first[4]; // 64 bytes
     };
     Buffer<Group> groups;
 

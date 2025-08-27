@@ -380,16 +380,16 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
 #ifdef __AVX2__
                 uint32_t probe_times = 1;
                 while (true) {
-                    const __m128i vfps = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(groups + group_idx));
+                    const __m128i vfps = _mm_cvtsi32_si128(*reinterpret_cast<const int32_t*>(groups[group_idx].ctrl));
 
                     const __m128i zeros = _mm_setzero_si128();
                     const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
                     uint32_t empty_mask =
-                            static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)) & 0xFFu; // low 8-bit effective
+                            static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)) & 0x0Fu; // low 8-bit effective
 
                     const __m128i vfp = _mm_set1_epi8(static_cast<char>(fp));
                     const __m128i v_is_eq = _mm_cmpeq_epi8(vfps, vfp);
-                    uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq)) & 0xFFu;
+                    uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq)) & 0x0Fu;
 
                     while (eq_mask) {
                         const int gi = __builtin_ctz(eq_mask); // [0,15]
@@ -541,16 +541,16 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
 #ifdef __AVX2__
             uint32_t probe_times = 1;
             while (true) {
-                const __m128i vfps = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(groups + group_idx));
+                const __m128i vfps = _mm_cvtsi32_si128(*reinterpret_cast<const int32_t*>(groups[group_idx].ctrl));
 
                 const __m128i zeros = _mm_setzero_si128();
                 const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
                 uint32_t empty_mask =
-                        static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)) & 0xFFu; // low 16-bit effective
+                        static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)) & 0x0Fu; // low 16-bit effective
 
                 const __m128i vfp = _mm_set1_epi8(static_cast<char>(fp));
                 const __m128i v_is_eq = _mm_cmpeq_epi8(vfps, vfp);
-                uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq)) & 0xFFu;
+                uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq)) & 0x0Fu;
 
                 while (eq_mask) {
                     const int gi = __builtin_ctz(eq_mask); // [0,15]

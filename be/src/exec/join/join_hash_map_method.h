@@ -112,7 +112,7 @@ public:
     using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
 
     static constexpr bool AreKeysInChainIdentical = true;
-    static constexpr size_t NumItemsInGroup = 8;
+    static constexpr size_t NumItemsInGroup = 4;
 
     static void build_prepare(RuntimeState* state, JoinHashTableItems* table_items);
     static void construct_hash_table(JoinHashTableItems* table_items, const Buffer<CppType>& keys,
