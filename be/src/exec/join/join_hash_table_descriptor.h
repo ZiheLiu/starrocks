@@ -115,7 +115,6 @@ struct JoinHashTableItems {
         }
         has_calculate_ht_info = true;
 
-        used_buckets = first.empty() ? SIMD::count_nonzero(key_bitset) : SIMD::count_nonzero(first);
         keys_per_bucket = used_buckets == 0 ? 0 : row_count * 1.0 / used_buckets;
         size_t probe_bytes = key_bytes + row_count * sizeof(uint32_t);
         // cache miss is serious when
