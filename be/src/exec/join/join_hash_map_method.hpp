@@ -310,9 +310,10 @@ void LinearChainedJoinHashMap<LT, NeedBuildChained>::lookup_init(const JoinHashT
 template <LogicalType LT, bool NeedBuildChained>
 void LinearChainedJoinHashMap2<LT, NeedBuildChained>::build_prepare(RuntimeState* state,
                                                                     JoinHashTableItems* table_items) {
-    table_items->bucket_size = std::max<size_t>(16, JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1));
-    table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size / 16);
-    table_items->groups.resize(table_items->bucket_size / 16);
+    table_items->bucket_size =
+            std::max<size_t>(NumItemsInGroup, JoinHashMapHelper::calc_bucket_size(table_items->row_count + 1));
+    table_items->log_bucket_size = __builtin_ctz(table_items->bucket_size / NumItemsInGroup);
+    table_items->groups.resize(table_items->bucket_size / NumItemsInGroup);
     std::memset(table_items->groups.data(), 0, table_items->groups.size() * sizeof(JoinHashTableItems::Group));
     table_items->next.resize(table_items->row_count + 1, 0);
 }
@@ -323,7 +324,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
                                                                            const Buffer<uint8_t>* is_nulls) {
     auto process = [&]<bool IsNullable>() {
         const auto num_rows = 1 + table_items->row_count;
-        const auto num_groups = table_items->bucket_size / 16;
+        const auto num_groups = table_items->bucket_size / NumItemsInGroup;
         const uint32_t group_size_mask = num_groups - 1;
 
         auto* __restrict next = table_items->next.data();
@@ -383,11 +384,12 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
 
                     const __m128i zeros = _mm_setzero_si128();
                     const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
-                    uint32_t empty_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)); // low 16-bit effective
+                    uint32_t empty_mask =
+                            static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)) & 0xFFu; // low 8-bit effective
 
                     const __m128i vfp = _mm_set1_epi8(static_cast<char>(fp));
                     const __m128i v_is_eq = _mm_cmpeq_epi8(vfps, vfp);
-                    uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq));
+                    uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq)) & 0xFFu;
 
                     while (eq_mask) {
                         const int gi = __builtin_ctz(eq_mask); // [0,15]
@@ -491,7 +493,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
                                                                   const Buffer<uint8_t>* is_nulls) {
     auto process = [&]<bool IsNullable>() {
         const uint32_t row_count = probe_state->probe_row_count;
-        const auto num_groups = table_items.bucket_size / 16;
+        const auto num_groups = table_items.bucket_size / NumItemsInGroup;
         const uint32_t group_size_mask = num_groups - 1;
 
         auto* __restrict groups = table_items.groups.data();
@@ -543,11 +545,12 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
 
                 const __m128i zeros = _mm_setzero_si128();
                 const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
-                uint32_t empty_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)); // low 16-bit effective
+                uint32_t empty_mask =
+                        static_cast<uint32_t>(_mm_movemask_epi8(v_is_empty)) & 0xFFu; // low 16-bit effective
 
                 const __m128i vfp = _mm_set1_epi8(static_cast<char>(fp));
                 const __m128i v_is_eq = _mm_cmpeq_epi8(vfps, vfp);
-                uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq));
+                uint32_t eq_mask = static_cast<uint32_t>(_mm_movemask_epi8(v_is_eq)) & 0xFFu;
 
                 while (eq_mask) {
                     const int gi = __builtin_ctz(eq_mask); // [0,15]
