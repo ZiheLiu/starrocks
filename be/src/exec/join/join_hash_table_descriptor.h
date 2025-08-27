@@ -104,15 +104,16 @@ struct JoinHashTableItems {
     bool cache_miss_serious = false;
     bool enable_late_materialization = false;
     bool is_collision_free_and_unique = false;
+    bool has_calculate_ht_info = false;
 
     float get_keys_per_bucket() const { return keys_per_bucket; }
     bool ht_cache_miss_serious() const { return cache_miss_serious; }
 
     void calculate_ht_info(size_t key_bytes) {
-        if (used_buckets != 0) {
-            // to avoid redo
+        if (has_calculate_ht_info) {
             return;
         }
+        has_calculate_ht_info = true;
 
         used_buckets = first.empty() ? SIMD::count_nonzero(key_bitset) : SIMD::count_nonzero(first);
         keys_per_bucket = used_buckets == 0 ? 0 : row_count * 1.0 / used_buckets;
