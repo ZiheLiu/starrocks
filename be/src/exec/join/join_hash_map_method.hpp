@@ -380,7 +380,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::construct_hash_table(JoinH
 #ifdef __AVX2__
                 uint32_t probe_times = 1;
                 while (true) {
-                    const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(groups + group_idx));
+                    const __m128i vfps = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(groups + group_idx));
 
                     const __m128i zeros = _mm_setzero_si128();
                     const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
@@ -541,7 +541,7 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
 #ifdef __AVX2__
             uint32_t probe_times = 1;
             while (true) {
-                const __m128i vfps = _mm_loadu_si128(reinterpret_cast<const __m128i*>(groups + group_idx));
+                const __m128i vfps = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(groups + group_idx));
 
                 const __m128i zeros = _mm_setzero_si128();
                 const __m128i v_is_empty = _mm_cmpeq_epi8(vfps, zeros);
