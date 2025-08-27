@@ -526,7 +526,6 @@ void LinearChainedJoinHashMap2<LT, NeedBuildChained>::lookup_init(const JoinHash
         for (uint32_t i = 0; i < row_count; i++) {
             if (i + 16 < row_count && !is_null(i + 16)) {
                 __builtin_prefetch(groups + buffer_group_idxes[i + 16]);
-                // __builtin_prefetch(firsts + bucket_nums[i + 16]);
             }
 
             if (is_null(i)) {

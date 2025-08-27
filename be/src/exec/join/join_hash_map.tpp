@@ -471,7 +471,7 @@ void JoinHashMap<LT, CT, MT>::_search_ht_remain(RuntimeState* state) {
                 throw std::runtime_error(msg);                                                                       \
             }                                                                                                        \
             for (int i = 0; i < group_size; ++i) {                                                                   \
-                _probe_state->handles.insert(X(state, build_data, data));                                            \
+                _probe_state->handles.push_back(X(state, build_data, data));                                            \
             }                                                                                                        \
             _probe_state->active_coroutines = group_size;                                                            \
         }                                                                                                            \

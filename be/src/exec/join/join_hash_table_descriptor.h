@@ -212,7 +212,7 @@ struct HashTableProbeState {
     uint32_t detect_step = 1;
     bool last_enable_interleaving = true;
 
-    std::set<std::coroutine_handle<ProbeCoroutine::ProbePromise>> handles;
+    std::vector<std::coroutine_handle<ProbeCoroutine::ProbePromise>> handles;
 
     HashTableProbeState(const HashTableProbeState& rhs)
             : is_nulls(rhs.is_nulls),
