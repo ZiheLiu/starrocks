@@ -312,8 +312,8 @@ public:
     // (dst + byte_offset) with an interval between each element. It returns size of the data type
     // (which should be fixed size) of this column if this column supports this method, otherwise
     // it returns 0.
-    virtual size_t serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval, size_t start,
-                                               size_t count) const {
+    virtual size_t serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval,
+                                               uint32_t max_row_size, size_t start, size_t count) const {
         return 0;
     };
 

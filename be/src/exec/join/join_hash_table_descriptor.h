@@ -127,6 +127,8 @@ struct JoinHashTableItems {
 
     std::unique_ptr<MemPool> build_pool = nullptr;
     std::vector<JoinKeyDesc> join_keys;
+
+    std::vector<uint32_t> fixed_size_key_bytes;
 };
 
 struct HashTableProbeState {

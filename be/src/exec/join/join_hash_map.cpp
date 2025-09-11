@@ -44,6 +44,7 @@ private:
     static JoinKeyConstructorUnaryType _determine_key_constructor(JoinHashTableItems* table_items);
     static JoinHashMapMethodUnaryType _determine_hash_map_method(RuntimeState* state, JoinHashTableItems* table_items,
                                                                  JoinKeyConstructorUnaryType key_constructor_type);
+    static int64_t _get_binary_column_max_size(const ColumnPtr& column);
     // @return: <can_use, JoinHashMapMethodUnaryType>, where `JoinHashMapMethodUnaryType` is effective only when `can_use` is true.
     template <LogicalType LT>
     static std::pair<bool, JoinHashMapMethodUnaryType> _try_use_range_direct_mapping(RuntimeState* state,
@@ -96,6 +97,38 @@ size_t JoinHashMapSelector::_get_size_of_fixed_and_contiguous_type(const Logical
     }
 }
 
+int64_t JoinHashMapSelector::_get_binary_column_max_size(const ColumnPtr& column) {
+    if (column->is_large_binary() || column->is_view()) {
+        return -1;
+    }
+
+    const BinaryColumn* binary_column = nullptr;
+    if (column->is_nullable()) {
+        auto* null_column = ColumnHelper::as_raw_column<NullableColumn>(column);
+        const auto data_column = null_column->data_column();
+        binary_column = down_cast<const BinaryColumn*>(data_column.get());
+    } else {
+        binary_column = down_cast<const BinaryColumn*>(column.get());
+    }
+
+    const auto& offsets = binary_column->get_offset();
+    const auto& bytes = binary_column->get_bytes();
+
+    bool has_tail_zero = false;
+    for (size_t i = offsets.size() - 1; i > 0 && offsets[i] > 0; i--) {
+        has_tail_zero |= bytes[offsets[i] - 1] == 0;
+    }
+    if (has_tail_zero) {
+        return -1;
+    }
+
+    int64_t max_size = 0;
+    for (size_t i = 0; i < offsets.size() - 1; i++) {
+        max_size = std::max<int64_t>(max_size, offsets[i + 1] - offsets[i]);
+    }
+    return max_size;
+}
+
 JoinKeyConstructorUnaryType JoinHashMapSelector::_determine_key_constructor(JoinHashTableItems* table_items) {
     const size_t num_keys = table_items->join_keys.size();
     DCHECK_GT(num_keys, 0);
@@ -109,20 +142,34 @@ JoinKeyConstructorUnaryType JoinHashMapSelector::_determine_key_constructor(Join
     if (num_keys == 1 && !table_items->join_keys[0].is_null_safe_equal) {
         return dispatch_join_logical_type(
                 table_items->join_keys[0].type->type, JoinKeyConstructorUnaryType::SERIALIZED_VARCHAR,
-                []<LogicalType LT>() {
+                [&]<LogicalType LT>() {
                     static constexpr auto MAPPING_LT = LT == TYPE_CHAR ? TYPE_VARCHAR : LT;
+                    if constexpr (MAPPING_LT == TYPE_VARCHAR) {
+                        const int64_t max_size = _get_binary_column_max_size(table_items->key_columns[0]);
+                        if (max_size >= 0 && max_size <= 16) {
+                            table_items->fixed_size_key_bytes.emplace_back(max_size);
+                            if (max_size <= 4) {
+                                return JoinKeyConstructorUnaryType::SERIALIZED_FIXED_SIZE_INT;
+                            }
+                            if (max_size <= 8) {
+                                return JoinKeyConstructorUnaryType::SERIALIZED_FIXED_SIZE_BIGINT;
+                            }
+                            if (max_size <= 16) {
+                                return JoinKeyConstructorUnaryType::SERIALIZED_FIXED_SIZE_LARGEINT;
+                            }
+                        }
+                    }
                     return JoinKeyConstructorTypeTraits<JoinKeyConstructorType::ONE_KEY, MAPPING_LT>::unary_type;
                 });
     }
 
     size_t total_size_in_byte = 0;
     for (const auto& join_key : table_items->join_keys) {
-        if (join_key.is_null_safe_equal) {
-            total_size_in_byte += 1;
-        }
-        size_t s = _get_size_of_fixed_and_contiguous_type(join_key.type->type);
-        if (s > 0) {
-            total_size_in_byte += s;
+        size_t cur_key_bytes = _get_size_of_fixed_and_contiguous_type(join_key.type->type);
+        if (cur_key_bytes > 0) {
+            cur_key_bytes += join_key.is_null_safe_equal;
+            table_items->fixed_size_key_bytes.emplace_back(cur_key_bytes);
+            total_size_in_byte += cur_key_bytes;
         } else {
             return JoinKeyConstructorUnaryType::SERIALIZED_VARCHAR;
         }

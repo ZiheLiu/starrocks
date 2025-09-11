@@ -304,9 +304,9 @@ uint32_t NullableColumn::serialize_default(uint8_t* pos) const {
     return sizeof(bool);
 }
 
-size_t NullableColumn::serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval, size_t start,
-                                                   size_t count) const {
-    _null_column->serialize_batch_at_interval(dst, byte_offset, byte_interval, start, count);
+size_t NullableColumn::serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval,
+                                                   uint32_t max_row_size, size_t start, size_t count) const {
+    _null_column->serialize_batch_at_interval(dst, byte_offset, byte_interval, max_row_size, start, count);
     for (size_t i = start; i < start + count; i++) {
         if (_null_column->get_data()[i] == 0) {
             _data_column->serialize(i, dst + (i - start) * byte_interval + byte_offset + 1);

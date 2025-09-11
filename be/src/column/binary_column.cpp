@@ -646,6 +646,27 @@ uint32_t BinaryColumnBase<T>::max_one_element_serialize_size() const {
 }
 
 template <typename T>
+size_t BinaryColumnBase<T>::serialize_batch_at_interval(uint8_t* dst, size_t byte_offset, size_t byte_interval,
+                                                        uint32_t max_row_size, size_t start, size_t count) const {
+    dst += byte_offset;
+
+    auto* bytes = _bytes.data();
+    for (size_t i = start; i < start + count; ++i) {
+        const size_t length = _offsets[i + 1] - _offsets[i];
+        if (length > max_row_size) {
+            *dst = 0xFF; // Invalid UTF-8 string.
+        } else if (length > 0 && bytes[_offsets[i + 1] - 1] == 0) {
+            *dst = 0xFE;
+        } else {
+            strings::memcpy_inlined(dst, bytes + _offsets[i], length);
+        }
+        dst += byte_interval;
+    }
+
+    return max_row_size;
+}
+
+template <typename T>
 uint32_t BinaryColumnBase<T>::serialize_default(uint8_t* pos) const {
     // max size of one string is 2^32, so use uint32_t not T
     uint32_t binary_size = 0;
