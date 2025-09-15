@@ -146,7 +146,7 @@ JoinKeyConstructorUnaryType JoinHashMapSelector::_determine_key_constructor(Join
                     static constexpr auto MAPPING_LT = LT == TYPE_CHAR ? TYPE_VARCHAR : LT;
                     if constexpr (MAPPING_LT == TYPE_VARCHAR) {
                         const int64_t max_size = _get_binary_column_max_size(table_items->key_columns[0]);
-                        if (max_size >= 0 && max_size <= 16) {
+                        if (max_size >= 0 && max_size <= 32) {
                             table_items->fixed_size_key_bytes.emplace_back(max_size);
                             if (max_size <= 4) {
                                 return JoinKeyConstructorUnaryType::SERIALIZED_FIXED_SIZE_INT;
@@ -156,6 +156,9 @@ JoinKeyConstructorUnaryType JoinHashMapSelector::_determine_key_constructor(Join
                             }
                             if (max_size <= 16) {
                                 return JoinKeyConstructorUnaryType::SERIALIZED_FIXED_SIZE_LARGEINT;
+                            }
+                            if (max_size <= 32) {
+                                return JoinKeyConstructorUnaryType::SERIALIZED_FIXED_SIZE_DECIMAL256;
                             }
                         }
                     }

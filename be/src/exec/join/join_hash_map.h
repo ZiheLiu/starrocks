@@ -433,6 +433,8 @@ private:
                                         JoinHashMapMethodType::MT>>,                                                   \
             std::unique_ptr<JoinHashMap<TYPE_LARGEINT, JoinKeyConstructorType::SERIALIZED_FIXED_SIZE,                  \
                                         JoinHashMapMethodType::MT>>,                                                   \
+            std::unique_ptr<JoinHashMap<TYPE_DECIMAL256, JoinKeyConstructorType::SERIALIZED_FIXED_SIZE,                \
+                                        JoinHashMapMethodType::MT>>,                                                   \
                                                                                                                        \
             std::unique_ptr<JoinHashMap<TYPE_VARCHAR, JoinKeyConstructorType::SERIALIZED, JoinHashMapMethodType::MT>>
 
