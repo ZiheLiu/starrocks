@@ -78,7 +78,7 @@ public final class ColumnDict extends StatsVersion {
 
         int index = 1; // start from 1, reserve 0 for null value
         for (ByteBuffer key : d1.getDict().keySet()) {
-            if (d1.dict.containsKey(key)) {
+            if (d2.dict.containsKey(key)) {
                 newD1.put(key, index);
                 newD2.put(key, index);
                 index++;

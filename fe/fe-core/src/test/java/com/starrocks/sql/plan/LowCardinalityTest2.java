@@ -2358,7 +2358,7 @@ public class LowCardinalityTest2 extends PlanTestBase {
     @Test
     public void testTempJoin() throws Exception {
         String sql = "SELECT COUNT(1) FROM supplier t1 JOIN supplier t2 " +
-                "on t1.S_ADDRESS = t2.S_ADDRESS and t1.S_COMMENT = t2.S_COMMENT and t1.S_COMMENT <= t2.S_COMMENT";
+                "on t1.S_ADDRESS = t2.S_ADDRESS";
         String plan = getCostExplain(sql);
         System.out.println(plan);
     }

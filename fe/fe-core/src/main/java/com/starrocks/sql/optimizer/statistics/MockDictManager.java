@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.optimizer.statistics;
 
 import com.google.common.collect.ImmutableMap;
@@ -21,12 +20,18 @@ import com.starrocks.catalog.ColumnId;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class MockDictManager implements IDictManager {
 
     private static final ImmutableMap<ByteBuffer, Integer> MOCK_DICT =
-            ImmutableMap.of(ByteBuffer.wrap("mock".getBytes(StandardCharsets.UTF_8)), 1);
+            ImmutableMap.of(ByteBuffer.wrap("mock1".getBytes(StandardCharsets.UTF_8)), 1);
+    private static final ImmutableMap<ByteBuffer, Integer> MOCK_DICT2 =
+            ImmutableMap.of(ByteBuffer.wrap("mock2".getBytes(StandardCharsets.UTF_8)), 1);
     private static final ColumnDict COLUMN_DICT = new ColumnDict(MOCK_DICT, 1);
+    private static final ColumnDict COLUMN_DICT2 = new ColumnDict(MOCK_DICT2, 1);
+
+    private static final AtomicInteger MOCK_DICT_COUNT = new AtomicInteger(0);
 
     private MockDictManager() {
     }
@@ -66,6 +71,6 @@ public class MockDictManager implements IDictManager {
 
     @Override
     public Optional<ColumnDict> getGlobalDict(long tableId, ColumnId columnName) {
-        return Optional.of(COLUMN_DICT);
+        return MOCK_DICT_COUNT.getAndIncrement() % 2 == 0 ? Optional.of(COLUMN_DICT) : Optional.of(COLUMN_DICT2);
     }
 }
