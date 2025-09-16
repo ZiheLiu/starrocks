@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
 import com.starrocks.common.Config;
+import com.starrocks.common.Pair;
 import com.starrocks.persist.gson.GsonUtils;
 
 import java.nio.ByteBuffer;
@@ -69,5 +70,33 @@ public final class ColumnDict extends StatsVersion {
         jsonMap.put("collectedVersion", collectedVersion);
         jsonMap.put("version", version);
         return gson.toJson(jsonMap);
+    }
+
+    public static Pair<ColumnDict, ColumnDict> merge(ColumnDict d1, ColumnDict d2) {
+        ImmutableMap.Builder<ByteBuffer, Integer> newD1 = ImmutableMap.builder();
+        ImmutableMap.Builder<ByteBuffer, Integer> newD2 = ImmutableMap.builder();
+
+        int index = 1; // start from 1, reserve 0 for null value
+        for (ByteBuffer key : d1.getDict().keySet()) {
+            if (d1.dict.containsKey(key)) {
+                newD1.put(key, index);
+                newD2.put(key, index);
+                index++;
+            } else {
+                newD1.put(key, index);
+                index++;
+            }
+        }
+
+        for (ByteBuffer key : d2.getDict().keySet()) {
+            if (!d1.dict.containsKey(key)) {
+                newD2.put(key, index);
+                index++;
+            }
+        }
+
+        ColumnDict dict1 = new ColumnDict(newD1.build(), d1.collectedVersion, d1.version);
+        ColumnDict dict2 = new ColumnDict(newD2.build(), d2.collectedVersion, d2.version);
+        return new Pair<>(dict1, dict2);
     }
 }

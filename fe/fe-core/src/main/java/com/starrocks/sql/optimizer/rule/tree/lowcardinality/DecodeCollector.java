@@ -42,6 +42,7 @@ import com.starrocks.sql.optimizer.base.DistributionSpec;
 import com.starrocks.sql.optimizer.base.EquivalentDescriptor;
 import com.starrocks.sql.optimizer.base.HashDistributionSpec;
 import com.starrocks.sql.optimizer.operator.Operator;
+import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalHashAggregateOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalHiveScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalIcebergScanOperator;
@@ -484,6 +485,40 @@ public class DecodeCollector extends OptExpressionVisitor<DecodeInfo, DecodeInfo
         return context.createDecodeInfo();
     }
 
+    private void checkJoinOnPredicate(DecodeInfo result, Map<Integer, Integer> onGroups, ScalarOperator root) {
+        if (OperatorType.COMPOUND.equals(root.getOpType())) {
+            CompoundPredicateOperator compound = (CompoundPredicateOperator) root;
+            if (compound.isAnd()) {
+                for (ScalarOperator child : compound.getChildren()) {
+                    checkJoinOnPredicate(result, onGroups, child);
+                }
+                return;
+            }
+        }
+
+        if (OperatorType.BINARY.equals(root.getOpType())) {
+            BinaryPredicateOperator binary = (BinaryPredicateOperator) root;
+            if (binary.getBinaryType().isEquivalence()) {
+                ScalarOperator left = binary.getChild(0);
+                ScalarOperator right = binary.getChild(1);
+                if (left.isColumnRef() && right.isColumnRef()) {
+                    ColumnRefOperator leftRef = (ColumnRefOperator) left;
+                    ColumnRefOperator rightRef = (ColumnRefOperator) right;
+                    if (result.inputStringColumns.contains(leftRef) && result.inputStringColumns.contains(rightRef)) {
+                        int minColId = Math.min(leftRef.getId(), rightRef.getId());
+                        int maxColId = Math.max(leftRef.getId(), rightRef.getId());
+                        if (!onGroups.containsKey(minColId)) {
+                            onGroups.put(minColId, maxColId);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        root.getUsedColumns().getStream().forEach(disableRewriteStringColumns::union);
+    }
+
     @Override
     public DecodeInfo visitPhysicalJoin(OptExpression optExpression, DecodeInfo context) {
         if (context.outputStringColumns.isEmpty()) {
@@ -498,10 +533,24 @@ public class DecodeCollector extends OptExpressionVisitor<DecodeInfo, DecodeInfo
         if (!result.inputStringColumns.containsAny(onColumns)) {
             return result;
         }
-        onColumns.getStream().forEach(c -> disableRewriteStringColumns.union(c));
+
+        Map<Integer, Integer> onGroups = Maps.newHashMap();
+        checkJoinOnPredicate(result, onGroups, join.getOnPredicate());
+        onGroups.forEach((colId1, colId2) -> {
+            if (disableRewriteStringColumns.contains(colId1) || disableRewriteStringColumns.contains(colId2)) {
+                return;
+            }
+
+            ColumnDict d1 = globalDicts.get(colId1);
+            ColumnDict d2 = globalDicts.get(colId2);
+            Pair<ColumnDict, ColumnDict> mergedDict = ColumnDict.merge(d1, d2);
+            globalDicts.put(colId1, mergedDict.first);
+            globalDicts.put(colId2, mergedDict.second);
+        });
+
         result.outputStringColumns.clear();
         result.inputStringColumns.getStream().forEach(c -> {
-            if (!onColumns.contains(c)) {
+            if (!disableRewriteStringColumns.contains(c)) {
                 result.outputStringColumns.union(c);
             }
         });

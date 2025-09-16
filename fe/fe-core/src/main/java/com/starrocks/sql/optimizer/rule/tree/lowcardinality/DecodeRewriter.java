@@ -40,6 +40,7 @@ import com.starrocks.sql.optimizer.operator.ScanOperatorPredicates;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalDecodeOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalDistributionOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalHashAggregateOperator;
+import com.starrocks.sql.optimizer.operator.physical.PhysicalHashJoinOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalHiveScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalIcebergScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalOlapScanOperator;
@@ -160,6 +161,33 @@ public class DecodeRewriter extends OptExpressionVisitor<OptExpression, ColumnRe
         return rewriteOptExpression(optExpression, op, info.outputStringColumns);
     }
 
+    private ScalarOperator rewriteJoinOnPredicate(ScalarOperator predicate, ColumnRefSet inputs) {
+        if (predicate == null) {
+            return null;
+        }
+
+        // replace string predicate to dict predicate
+        JoinOnPredicateReplacer replacer = new JoinOnPredicateReplacer(context.stringRefToDictRefMap, inputs);
+        return predicate.accept(replacer, null);
+    }
+
+    @Override
+    public OptExpression visitPhysicalHashJoin(OptExpression optExpression, ColumnRefSet fragmentUseDictExprs) {
+        PhysicalHashJoinOperator join = optExpression.getOp().cast();
+        DecodeInfo info = context.operatorDecodeInfo.getOrDefault(join, DecodeInfo.EMPTY);
+
+        ScalarOperator newOnPredicate = rewriteJoinOnPredicate(join.getOnPredicate(), info.inputStringColumns);
+        ScalarOperator newPredicate = rewritePredicate(join.getPredicate(), info.inputStringColumns);
+        Projection newProjection = rewriteProjection(join.getProjection(), info.inputStringColumns);
+
+        PhysicalHashJoinOperator newJoin = new PhysicalHashJoinOperator(
+                join.getJoinType(), newOnPredicate, join.getJoinHint(), join.getLimit(), newPredicate, newProjection,
+                join.getSkewColumn(), join.getSkewValues());
+        newJoin.setSkewJoinFriend(join.getSkewJoinFriend().orElse(null));
+
+        return rewriteOptExpression(optExpression, newJoin, info.outputStringColumns);
+    }
+
     @Override
     public OptExpression visitPhysicalHashAggregate(OptExpression optExpression, ColumnRefSet fragmentUseDictExprs) {
         // rewrite multi-stage aggregate
@@ -240,8 +268,9 @@ public class DecodeRewriter extends OptExpressionVisitor<OptExpression, ColumnRe
         exchange.setGlobalDictsExpr(computeDictExpr(fragmentUseDictExprs));
 
         if (!(exchange.getDistributionSpec() instanceof HashDistributionSpec)) {
-            return optExpression;
+            return rewriteOptExpression(optExpression, exchange, info.outputStringColumns);
         }
+
         HashDistributionSpec spec = (HashDistributionSpec) exchange.getDistributionSpec();
         List<DistributionCol> shuffledColumns = Lists.newArrayList();
         for (DistributionCol column : spec.getHashDistributionDesc().getDistributionCols()) {
@@ -562,6 +591,31 @@ public class DecodeRewriter extends OptExpressionVisitor<OptExpression, ColumnRe
                     && supportColumns.containsAll(scalarOperator.getUsedColumns())) {
                 return Optional.of(exprMapping.get(scalarOperator));
             }
+            return Optional.empty();
+        }
+    }
+
+    private static class JoinOnPredicateReplacer extends BaseScalarOperatorShuttle {
+        private final Map<ColumnRefOperator, ColumnRefOperator> stringRefToDictRefMap;
+        private final ColumnRefSet supportColumns;
+
+        public JoinOnPredicateReplacer(Map<ColumnRefOperator, ColumnRefOperator> stringRefToDictRefMap,
+                                       ColumnRefSet supportColumns) {
+            this.stringRefToDictRefMap = stringRefToDictRefMap;
+            this.supportColumns = supportColumns;
+        }
+
+        @Override
+        public Optional<ScalarOperator> preprocess(ScalarOperator scalarOperator) {
+            if (!(scalarOperator instanceof ColumnRefOperator)) {
+                return Optional.empty();
+            }
+
+            ColumnRefOperator columnRef = (ColumnRefOperator) scalarOperator;
+            if (stringRefToDictRefMap.containsKey(columnRef) && supportColumns.containsAll(columnRef.getUsedColumns())) {
+                return Optional.of(stringRefToDictRefMap.get(columnRef));
+            }
+
             return Optional.empty();
         }
     }

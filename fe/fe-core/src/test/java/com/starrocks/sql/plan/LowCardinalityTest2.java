@@ -2316,7 +2316,7 @@ public class LowCardinalityTest2 extends PlanTestBase {
                 "args nullable: true; result nullable: false]\n" +
                 "  |  cardinality: 1");
     }
-    
+
     @Test
     public void testWindowFunction() throws Exception {
         String sql = "SELECT\n" +
@@ -2353,5 +2353,13 @@ public class LowCardinalityTest2 extends PlanTestBase {
                 "  |  order by: <slot 12> 12: S_ADDRESS ASC\n" +
                 "  |  pre agg functions: [, min(12: S_ADDRESS), ]\n" +
                 "  |  offset: 0");
+    }
+
+    @Test
+    public void testTempJoin() throws Exception {
+        String sql = "SELECT COUNT(1) FROM supplier t1 JOIN supplier t2 " +
+                "on t1.S_ADDRESS = t2.S_ADDRESS and t1.S_COMMENT = t2.S_COMMENT and t1.S_COMMENT <= t2.S_COMMENT";
+        String plan = getCostExplain(sql);
+        System.out.println(plan);
     }
 }
