@@ -534,19 +534,23 @@ public class DecodeCollector extends OptExpressionVisitor<DecodeInfo, DecodeInfo
             return result;
         }
 
-        Map<Integer, Integer> onGroups = Maps.newHashMap();
-        checkJoinOnPredicate(result, onGroups, join.getOnPredicate());
-        onGroups.forEach((colId1, colId2) -> {
-            if (disableRewriteStringColumns.contains(colId1) || disableRewriteStringColumns.contains(colId2)) {
-                return;
-            }
+        if (!sessionVariable.isEnableLowCardinalityOptimizeForJoin()) {
+            onColumns.getStream().forEach(c -> disableRewriteStringColumns.union(c));
+        } else {
+            Map<Integer, Integer> onGroups = Maps.newHashMap();
+            checkJoinOnPredicate(result, onGroups, join.getOnPredicate());
+            onGroups.forEach((colId1, colId2) -> {
+                if (disableRewriteStringColumns.contains(colId1) || disableRewriteStringColumns.contains(colId2)) {
+                    return;
+                }
 
-            ColumnDict d1 = globalDicts.get(colId1);
-            ColumnDict d2 = globalDicts.get(colId2);
-            Pair<ColumnDict, ColumnDict> mergedDict = ColumnDict.merge(d1, d2);
-            globalDicts.put(colId1, mergedDict.first);
-            globalDicts.put(colId2, mergedDict.second);
-        });
+                ColumnDict d1 = globalDicts.get(colId1);
+                ColumnDict d2 = globalDicts.get(colId2);
+                Pair<ColumnDict, ColumnDict> mergedDict = ColumnDict.merge(d1, d2);
+                globalDicts.put(colId1, mergedDict.first);
+                globalDicts.put(colId2, mergedDict.second);
+            });
+        }
 
         result.outputStringColumns.clear();
         result.inputStringColumns.getStream().forEach(c -> {

@@ -23,6 +23,7 @@ import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.TableFunction;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.Pair;
+import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
@@ -69,9 +70,12 @@ public class DecodeRewriter extends OptExpressionVisitor<OptExpression, ColumnRe
 
     private final DecodeContext context;
 
-    public DecodeRewriter(ColumnRefFactory factory, DecodeContext context) {
+    private final SessionVariable sessionVariable;
+
+    public DecodeRewriter(ColumnRefFactory factory, DecodeContext context, SessionVariable sessionVariable) {
         this.factory = factory;
         this.context = context;
+        this.sessionVariable = sessionVariable;
     }
 
     public OptExpression rewrite(OptExpression optExpression) {
@@ -173,6 +177,10 @@ public class DecodeRewriter extends OptExpressionVisitor<OptExpression, ColumnRe
 
     @Override
     public OptExpression visitPhysicalHashJoin(OptExpression optExpression, ColumnRefSet fragmentUseDictExprs) {
+        if (!sessionVariable.isEnableLowCardinalityOptimizeForJoin()) {
+            return super.visitPhysicalHashJoin(optExpression, fragmentUseDictExprs);
+        }
+
         PhysicalHashJoinOperator join = optExpression.getOp().cast();
         DecodeInfo info = context.operatorDecodeInfo.getOrDefault(join, DecodeInfo.EMPTY);
 
