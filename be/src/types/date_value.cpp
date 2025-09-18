@@ -14,6 +14,8 @@
 
 #include "types/date_value.hpp"
 
+#include <libdivide.h>
+
 #include "date_value.h"
 #include "gutil/strings/substitute.h"
 #include "types/timestamp_value.h"
@@ -153,10 +155,17 @@ void DateValue::trunc_to_week() {
     _julian = date::from_date(year, month, day);
 }
 
+inline bool is_leap_for_julian(int year) {
+    static const libdivide::divider<int> fast_div_100(100);
+    static const libdivide::divider<int> fast_div_400(400);
+    return ((year % 4) == 0) && ((year != year / fast_div_100 * 100) || (year == year / fast_div_400 * 400));
+}
+
 void DateValue::trunc_to_quarter() {
     int year, month, day;
     date::to_date_with_cache(_julian, &year, &month, &day);
-    _julian -= quarter_month_day_offset[month] + (day - 1) + (month == 3 && date::is_leap(year));
+
+    _julian -= quarter_month_day_offset[month] + (day - 1) + (month == 3 && is_leap_for_julian(year));
 }
 
 void DateValue::set_end_of_month() {
