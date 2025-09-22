@@ -58,6 +58,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient.LOW_AGGREGATE_EFFECT_COEFFICIENT;
 import static com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient.SMALL_BROADCAST_JOIN_MAX_COMBINED_NDV_LIMIT;
 import static com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient.SMALL_BROADCAST_JOIN_MAX_NDV_LIMIT;
 
@@ -519,7 +520,8 @@ public class PushDownAggregateCollector extends OptExpressionVisitor<Void, Aggre
             if (maxSingleColumnDistinct > SMALL_BROADCAST_JOIN_MAX_NDV_LIMIT) {
                 return false;
             }
-            if (maxMultiColumnDistinct > SMALL_BROADCAST_JOIN_MAX_COMBINED_NDV_LIMIT) {
+            if (maxMultiColumnDistinct > SMALL_BROADCAST_JOIN_MAX_COMBINED_NDV_LIMIT ||
+                    maxMultiColumnDistinct * LOW_AGGREGATE_EFFECT_COEFFICIENT >= outputRowCount) {
                 return false;
             }
         }
@@ -562,7 +564,6 @@ public class PushDownAggregateCollector extends OptExpressionVisitor<Void, Aggre
                 return pushDownMode >= PUSH_DOWN_MEDIUM_CARDINALITY_AGG;
             }
         }
-
 
         // 2.1 high cardinality >= 2
         // 2.2 medium cardinality > 2
@@ -633,6 +634,7 @@ public class PushDownAggregateCollector extends OptExpressionVisitor<Void, Aggre
 
     /**
      * Whether all the children are scan/project/filter.
+     *
      * @return true, if all the children are scan/project/filter.
      */
     private static boolean isAllChildrenSP(OptExpression root) {
