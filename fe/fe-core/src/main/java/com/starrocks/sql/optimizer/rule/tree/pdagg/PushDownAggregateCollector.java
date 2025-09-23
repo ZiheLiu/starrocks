@@ -58,6 +58,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient.LOWER_AGGREGATE_EFFECT_COEFFICIENT;
 import static com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient.LOW_AGGREGATE_EFFECT_COEFFICIENT;
 import static com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient.SMALL_BROADCAST_JOIN_MAX_COMBINED_NDV_LIMIT;
 import static com.starrocks.sql.optimizer.statistics.StatisticsEstimateCoefficient.SMALL_BROADCAST_JOIN_MAX_NDV_LIMIT;
@@ -521,7 +522,7 @@ public class PushDownAggregateCollector extends OptExpressionVisitor<Void, Aggre
                 return false;
             }
             if (maxMultiColumnDistinct > SMALL_BROADCAST_JOIN_MAX_COMBINED_NDV_LIMIT ||
-                    maxMultiColumnDistinct * LOW_AGGREGATE_EFFECT_COEFFICIENT >= outputRowCount) {
+                    maxMultiColumnDistinct * LOWER_AGGREGATE_EFFECT_COEFFICIENT >= outputRowCount) {
                 return false;
             }
         }
@@ -574,7 +575,7 @@ public class PushDownAggregateCollector extends OptExpressionVisitor<Void, Aggre
 
         // 3. Extremely low cardinality for lower with at most one medium or high.
         double lowerCartesianLowerBound =
-                statistics.getOutputRowCount() / StatisticsEstimateCoefficient.LOWER_AGGREGATE_EFFECT_COEFFICIENT;
+                statistics.getOutputRowCount() / LOWER_AGGREGATE_EFFECT_COEFFICIENT;
         if (high.size() + medium.size() == 1 && lower.size() <= 2 && lowerCartesian <= lowerCartesianLowerBound) {
             return true;
         }
