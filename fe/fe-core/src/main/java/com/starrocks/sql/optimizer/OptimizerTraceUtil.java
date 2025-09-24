@@ -188,8 +188,8 @@ public class OptimizerTraceUtil {
             if (newExpressions.isEmpty()) {
                 sb.append("Empty");
             } else {
-                sb.append("\n");
                 for (int i = 0; i < newExpressions.size(); i++) {
+                    sb.append("\n");
                     sb.append(i).append(":").append(newExpressions.get(i).debugString());
                 }
             }

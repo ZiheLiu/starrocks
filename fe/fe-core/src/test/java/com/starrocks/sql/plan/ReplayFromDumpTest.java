@@ -1183,4 +1183,17 @@ public class ReplayFromDumpTest extends ReplayFromDumpTestBase {
             FeConstants.USE_MOCK_DICT_MANAGER = false;
         }
     }
+
+    @Test
+    public void testTempPushdownAgg() throws Exception {
+        Tracers.register(connectContext);
+        Tracers.init(Tracers.Mode.LOGS, Tracers.Module.OPTIMIZER, false, false);
+        String dumpString = getDumpInfoFromFile("query_dump/lzh_temp_pushdown_agg");
+        QueryDumpInfo queryDumpInfo = getDumpInfoFromJson(dumpString);
+        Pair<QueryDumpInfo, String> replayPair = getPlanFragment(dumpString, queryDumpInfo.getSessionVariable(),
+                TExplainLevel.COSTS);
+        System.out.println(replayPair.second);
+
+        System.out.println(Tracers.printLogs());
+    }
 }

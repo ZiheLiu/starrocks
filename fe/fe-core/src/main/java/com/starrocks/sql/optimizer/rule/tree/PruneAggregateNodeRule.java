@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 package com.starrocks.sql.optimizer.rule.tree;
 
 import com.starrocks.common.FeConstants;
@@ -85,17 +84,27 @@ public class PruneAggregateNodeRule implements TreeRewriteRule {
 
         @Override
         public OptExpression visitPhysicalHashAggregate(OptExpression optExpression, Void context) {
-            PhysicalHashAggregateOperator parentOperator = (PhysicalHashAggregateOperator) optExpression.getOp();
+            PhysicalHashAggregateOperator parentAgg = (PhysicalHashAggregateOperator) optExpression.getOp();
             Operator childOperator = optExpression.inputAt(0).getOp();
 
-            if (parentOperator.getType().isDistinctGlobal() && childOperator instanceof PhysicalHashAggregateOperator) {
-                PhysicalHashAggregateOperator hashAggregateOperator = (PhysicalHashAggregateOperator) childOperator;
-                hashAggregateOperator.setMergedLocalAgg(true);
-                hashAggregateOperator.setProjection(parentOperator.getProjection());
-                return optExpression.inputAt(0);
-            } else {
+            if (!(childOperator instanceof PhysicalHashAggregateOperator)) {
                 return visit(optExpression, context);
             }
+            PhysicalHashAggregateOperator childAgg = (PhysicalHashAggregateOperator) childOperator;
+
+            if (parentAgg.getType().isDistinctGlobal()) {
+                childAgg.setMergedLocalAgg(true);
+                childAgg.setProjection(parentAgg.getProjection());
+                return optExpression.inputAt(0);
+            }
+
+            if (parentAgg.getType().isGlobal() && parentAgg.isSplit() && childAgg.getType().isLocal()) {
+                PhysicalHashAggregateOperator mergedAgg = new PhysicalHashAggregateOperator(childAgg, parentAgg.getType());
+                mergedAgg.setProjection(parentAgg.getProjection());
+                return OptExpression.create(mergedAgg, optExpression.inputAt(0).inputAt(0));
+            }
+
+            return visit(optExpression, context);
         }
     }
 }
