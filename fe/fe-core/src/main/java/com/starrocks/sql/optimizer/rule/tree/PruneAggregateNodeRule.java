@@ -99,9 +99,9 @@ public class PruneAggregateNodeRule implements TreeRewriteRule {
             }
 
             if (parentAgg.getType().isGlobal() && parentAgg.isSplit() && childAgg.getType().isLocal()) {
-                PhysicalHashAggregateOperator mergedAgg = new PhysicalHashAggregateOperator(childAgg, parentAgg.getType());
-                mergedAgg.setProjection(parentAgg.getProjection());
-                return OptExpression.create(mergedAgg, optExpression.inputAt(0).inputAt(0));
+                childAgg.setType(parentAgg.getType());
+                childAgg.setProjection(parentAgg.getProjection());
+                return optExpression.inputAt(0);
             }
 
             return visit(optExpression, context);

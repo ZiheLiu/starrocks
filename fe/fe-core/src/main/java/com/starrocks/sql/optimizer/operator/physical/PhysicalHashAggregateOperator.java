@@ -47,7 +47,7 @@ public class PhysicalHashAggregateOperator extends PhysicalOperator {
             FunctionSet.COUNT, FunctionSet.MULTI_DISTINCT_COUNT, FunctionSet.MAX, FunctionSet.MIN
     );
 
-    private final AggType type;
+    private AggType type;
     private final List<ColumnRefOperator> groupBys;
     // For normal aggregate function, partitionByColumns are same with groupingKeys
     // but for single distinct function, partitionByColumns are not same with groupingKeys
@@ -120,6 +120,10 @@ public class PhysicalHashAggregateOperator extends PhysicalOperator {
 
     public AggType getType() {
         return type;
+    }
+
+    public void setType(AggType type) {
+        this.type = type;
     }
 
     public boolean isOnePhaseAgg() {

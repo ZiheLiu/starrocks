@@ -1186,6 +1186,8 @@ public class ReplayFromDumpTest extends ReplayFromDumpTestBase {
 
     @Test
     public void testTempPushdownAgg() throws Exception {
+
+        FeConstants.USE_MOCK_DICT_MANAGER = true;
         Tracers.register(connectContext);
         Tracers.init(Tracers.Mode.LOGS, Tracers.Module.OPTIMIZER, false, false);
         String dumpString = getDumpInfoFromFile("query_dump/lzh_temp_pushdown_agg");
