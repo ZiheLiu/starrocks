@@ -286,10 +286,10 @@ public class ReplayFromDumpTest extends ReplayFromDumpTestBase {
         Pair<QueryDumpInfo, String> replayPair =
                 getPlanFragment(getDumpInfoFromFile("query_dump/cross_reorder"), null, TExplainLevel.NORMAL);
         Assertions.assertTrue(replayPair.second.contains("  13:NESTLOOP JOIN\n" +
-                "  |  join op: INNER JOIN\n" +
-                "  |  colocate: false, reason: \n" +
-                "  |  other join predicates: CAST(CASE WHEN CAST(6: v3 AS BOOLEAN) THEN CAST(11: v2 AS VARCHAR) " +
-                "WHEN CAST(3: v3 AS BOOLEAN) THEN '123' ELSE CAST(12: v3 AS VARCHAR) END AS DOUBLE) > " +
+                        "  |  join op: INNER JOIN\n" +
+                        "  |  colocate: false, reason: \n" +
+                        "  |  other join predicates: CAST(CASE WHEN CAST(6: v3 AS BOOLEAN) THEN CAST(11: v2 AS VARCHAR) " +
+                        "WHEN CAST(3: v3 AS BOOLEAN) THEN '123' ELSE CAST(12: v3 AS VARCHAR) END AS DOUBLE) > " +
                         "1.0, (CAST(2: v2 AS DECIMAL128(38,9)) = CAST(8: v2 AS DECIMAL128(38,9))) OR (3: v3 = 8: v2)\n"),
                 replayPair.second);
         connectContext.getSessionVariable().setEnableLocalShuffleAgg(true);
@@ -1015,8 +1015,8 @@ public class ReplayFromDumpTest extends ReplayFromDumpTestBase {
                 TExplainLevel.NORMAL);
         Assertions.assertTrue(replayPair.second.contains(
                 "get_json_string(107: mock_031, '$.\"fY21_Territory_Score__c\"')\n" +
-                "  |  \n" +
-                "  9:OlapScanNode\n" +
+                        "  |  \n" +
+                        "  9:OlapScanNode\n" +
                         "     TABLE: tbl_mock_103"), replayPair.second);
     }
 
@@ -1196,6 +1196,6 @@ public class ReplayFromDumpTest extends ReplayFromDumpTestBase {
                 TExplainLevel.COSTS);
         System.out.println(replayPair.second);
 
-        System.out.println(Tracers.printLogs());
+        //        System.out.println(Tracers.printLogs());
     }
 }

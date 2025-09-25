@@ -100,6 +100,7 @@ public class PruneAggregateNodeRule implements TreeRewriteRule {
 
             if (parentAgg.getType().isGlobal() && parentAgg.isSplit() && childAgg.getType().isLocal()) {
                 childAgg.setType(parentAgg.getType());
+                childAgg.setSplit(false);
                 childAgg.setProjection(parentAgg.getProjection());
                 return optExpression.inputAt(0);
             }

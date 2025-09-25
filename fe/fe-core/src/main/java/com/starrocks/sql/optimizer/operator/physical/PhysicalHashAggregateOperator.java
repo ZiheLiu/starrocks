@@ -56,7 +56,7 @@ public class PhysicalHashAggregateOperator extends PhysicalOperator {
 
     // The flag for this aggregate operator has split to
     // two stage aggregate or three stage aggregate
-    private final boolean isSplit;
+    private boolean isSplit;
 
     // TODO introduce builder mode to change these fields to final fields
     // flag for this aggregate operator's parent had been pruned
@@ -154,6 +154,10 @@ public class PhysicalHashAggregateOperator extends PhysicalOperator {
 
     public boolean isSplit() {
         return isSplit;
+    }
+
+    public void setSplit(boolean split) {
+        isSplit = split;
     }
 
     public boolean canUseStreamingPreAgg() {
