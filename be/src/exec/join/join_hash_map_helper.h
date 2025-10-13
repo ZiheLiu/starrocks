@@ -116,8 +116,13 @@ public:
         using CppType = typename RunTimeTypeTraits<LT>::CppType;
         using ColumnType = typename RunTimeTypeTraits<LT>::ColumnType;
 
-        auto& data = reinterpret_cast<ColumnType*>(fixed_size_key_column)->get_data();
+        auto& data = down_cast<ColumnType*>(fixed_size_key_column)->get_data();
         auto* buf = reinterpret_cast<uint8_t*>(&data[start]);
+
+        LOG(WARNING) << "[TEST] JoinHashMapHelper::serialize_fixed_size_key_column, start: " << start
+                     << ", count: " << count << ", key_columns size: " << key_columns.size()
+                     << ", serialized_fixed_size_key_bytes size: " << serialized_fixed_size_key_bytes.size()
+                     << ", data_size: " << data.size() << ", byte_interval" << sizeof(CppType);
 
         const size_t byte_interval = sizeof(CppType);
         std::memset(buf, 0, data.size() * byte_interval);
