@@ -119,9 +119,9 @@ public:
         auto& data = down_cast<ColumnType*>(fixed_size_key_column)->get_data();
         auto* buf = reinterpret_cast<uint8_t*>(&data[start]);
 
-        std::memset(buf, 0, data.size() * count);
-
         constexpr size_t byte_interval = sizeof(CppType);
+        std::memset(buf, 0, count * byte_interval);
+
         size_t byte_offset = 0;
         for (uint32_t i = 0; i < key_columns.size(); i++) {
             const auto& key_col = key_columns[i];
