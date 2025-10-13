@@ -143,7 +143,7 @@ size_t JoinHashMapSelector::_get_binary_column_max_size(RuntimeState* state, con
     }
 
     int64_t max_size = 1;
-    for (size_t i = 0; i < offsets.size() - 1; i++) {
+    for (size_t i = 0; i + 1 < offsets.size(); i++) {
         max_size = std::max<int64_t>(max_size, offsets[i + 1] - offsets[i]);
     }
 
@@ -189,11 +189,13 @@ JoinKeyConstructorUnaryType JoinHashMapSelector::_determine_key_constructor(Runt
     }
 
     size_t total_size_in_byte = 0;
-    for (const auto& join_key : table_items->join_keys) {
-        size_t cur_key_bytes = _get_size_of_fixed_and_contiguous_type(join_key.type->type);
-        if (cur_key_bytes <= 0 && (join_key.type->type == TYPE_CHAR || join_key.type->type == TYPE_VARCHAR)) {
-            cur_key_bytes = _get_binary_column_max_size(
-                    state, table_items->key_columns[&join_key - &table_items->join_keys[0]]);
+    for (size_t i = 0; i < table_items->join_keys.size(); i++) {
+        const auto& join_key = table_items->join_keys[i];
+        const LogicalType join_type = table_items->join_keys[i].type->type;
+
+        size_t cur_key_bytes = _get_size_of_fixed_and_contiguous_type(join_type);
+        if (cur_key_bytes <= 0 && (join_type == TYPE_CHAR || join_type == TYPE_VARCHAR)) {
+            cur_key_bytes = _get_binary_column_max_size(state, table_items->key_columns[i]);
         }
 
         if (cur_key_bytes > 0) {
