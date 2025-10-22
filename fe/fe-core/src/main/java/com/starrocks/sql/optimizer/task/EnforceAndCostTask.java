@@ -436,21 +436,26 @@ public class EnforceAndCostTask extends OptimizerTask implements Cloneable {
             if (aggregate.getDistinctColumnDataSkew() != null) {
                 return true;
             }
+
+            if (sv.isEnableLocalShuffleAgg() &&
+                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().isSingleBackendAndComputeNode()) {
+                return true;
+            }
+
+            // 1.2 disable one stage agg with distinct aggregate
+            if (!distinctAggCallOperator.isEmpty()) {
+                return false;
+            }
+
             // 1.1 check default column statistics or child output row may not be accurate
             if (groupExpression.getGroup().getStatistics().getColumnStatistics().values().stream()
                     .anyMatch(ColumnStatistic::isUnknown) ||
                     childBestExpr.getGroup().getStatistics().isTableRowCountMayInaccurate()) {
                 return false;
             }
-            // 1.2 disable one stage agg with distinct aggregate
-            if (!distinctAggCallOperator.isEmpty()) {
-                return false;
-            }
 
             // 1.3 disable one stage agg with multi group by columns
-            return (sv.isEnableLocalShuffleAgg() &&
-                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().isSingleBackendAndComputeNode()) ||
-                    aggregate.getGroupBys().size() <= 1;
+            return  aggregate.getGroupBys().size() <= 1;
         }
         return true;
     }
