@@ -231,7 +231,7 @@ public class CostModel {
 
             Statistics statistics = context.getStatistics();
             Statistics inputStatistics = context.getChildStatistics(0);
-            if (statistics.getOutputRowCount() * 4 < inputStatistics.getOutputRowCount()) {
+            if (statistics.getOutputRowCount() * 5 < inputStatistics.getOutputRowCount()) {
                 return false;
             }
 
