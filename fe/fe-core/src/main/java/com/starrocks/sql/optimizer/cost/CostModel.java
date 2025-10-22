@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import com.starrocks.catalog.FunctionSet;
+import com.starrocks.common.Config;
 import com.starrocks.common.Pair;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
@@ -214,6 +215,24 @@ public class CostModel {
                     inputStatistics.getComputeSize());
         }
 
+        private boolean preferLocalShuffleOnePhaseAgg(PhysicalHashAggregateOperator node) {
+            ConnectContext ctx = ConnectContext.get();
+            SessionVariable sv = ctx.getSessionVariable();
+            if (!sv.isEnableLocalShuffleAgg()) {
+                return false;
+            }
+
+            if (!GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().isSingleBackendAndComputeNode()) {
+                return false;
+            }
+
+            if (node.getGroupBys().isEmpty()) {
+                return false;
+            }
+
+            return true;
+        }
+
         @Override
         public CostEstimate visitPhysicalHashAggregate(PhysicalHashAggregateOperator node, ExpressionContext context) {
             Optional<CostEstimate> cost;
@@ -234,7 +253,11 @@ public class CostModel {
             if (node.getDistinctColumnDataSkew() != null) {
                 factor = computeDataSkewPenaltyOfGroupByCountDistinct(node, inputStatistics);
             } else if (node.isSplit() && node.getType().isLocal()) {
-                factor = 0.1;
+                if (preferLocalShuffleOnePhaseAgg(node)) {
+                    factor = Config.local_shuffle_one_phase_agg_factor;
+                } else {
+                    factor = 0.1;
+                }
             }
 
             return CostEstimate.of(inputStatistics.getComputeSize() * factor, statistics.getComputeSize() * factor,
@@ -408,7 +431,6 @@ public class CostModel {
             double cpuCost = StatisticUtils.multiplyOutputSize(StatisticUtils.multiplyOutputSize(leftSize, rightSize),
                     EXECUTE_COST_PENALTY);
             double memCost = StatisticUtils.multiplyOutputSize(rightSize, EXECUTE_COST_PENALTY * 100D);
-
 
             if (join.getJoinType().isCrossJoin()) {
                 cpuCost = StatisticUtils.multiplyOutputSize(cpuCost, crossJoinCostPenalty);
