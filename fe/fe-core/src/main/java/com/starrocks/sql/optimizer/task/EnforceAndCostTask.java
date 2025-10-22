@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.HintNode;
 import com.starrocks.sql.optimizer.ChildOutputPropertyGuarantor;
 import com.starrocks.sql.optimizer.Group;
@@ -408,8 +409,10 @@ public class EnforceAndCostTask extends OptimizerTask implements Cloneable {
         if (!OperatorType.PHYSICAL_HASH_AGG.equals(groupExpression.getOp().getOpType())) {
             return true;
         }
+
+        SessionVariable sv = ConnectContext.get().getSessionVariable();
         // respect session variable new_planner_agg_stage
-        int aggStage = ConnectContext.get().getSessionVariable().getNewPlannerAggStage();
+        int aggStage = sv.getNewPlannerAggStage();
         if (aggStage == 1) {
             return true;
         }
@@ -443,8 +446,11 @@ public class EnforceAndCostTask extends OptimizerTask implements Cloneable {
             if (!distinctAggCallOperator.isEmpty()) {
                 return false;
             }
+
             // 1.3 disable one stage agg with multi group by columns
-            return aggregate.getGroupBys().size() <= 1;
+            return (sv.isEnableLocalShuffleAgg() &&
+                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().isSingleBackendAndComputeNode()) ||
+                    aggregate.getGroupBys().size() <= 1;
         }
         return true;
     }
