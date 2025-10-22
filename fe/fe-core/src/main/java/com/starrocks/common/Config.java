@@ -3670,6 +3670,9 @@ public class Config extends ConfigBase {
     public static int thrift_max_frame_size = 16384000;
 
     @ConfField(mutable = true)
+    public static double local_shuffle_one_phase_agg_factor = 0.8;
+
+    @ConfField(mutable = true)
     public static int thrift_max_recursion_depth = 64;
 
     @ConfField(mutable = true)
