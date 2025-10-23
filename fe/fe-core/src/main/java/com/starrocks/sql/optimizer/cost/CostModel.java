@@ -232,13 +232,14 @@ public class CostModel {
             }
 
             Operator child = context.getChildOperator(0);
-            if (!(child instanceof LogicalOlapScanOperator || child instanceof LogicalProjectOperator)) {
+            if (!(child instanceof LogicalOlapScanOperator || child instanceof PhysicalOlapScanOperator ||
+                    child instanceof LogicalProjectOperator || child instanceof PhysicalProjectOperator)) {
                 return false;
             }
-            if (child instanceof LogicalProjectOperator) {
+            if (child instanceof LogicalProjectOperator || child instanceof PhysicalProjectOperator) {
                 GroupExpression childGroup = context.getGroupExpression().getInputs().get(0).getFirstLogicalExpression();
                 Operator grandChild = childGroup.getInputs().get(0).getFirstLogicalExpression().getOp();
-                if (!(grandChild instanceof LogicalOlapScanOperator)) {
+                if (!(grandChild instanceof LogicalOlapScanOperator || grandChild instanceof PhysicalOlapScanOperator)) {
                     return false;
                 }
             }
@@ -271,8 +272,7 @@ public class CostModel {
 
             if (node.getDistinctColumnDataSkew() != null) {
                 factor = computeDataSkewPenaltyOfGroupByCountDistinct(node, inputStatistics);
-            } else if (node.isSplit() && node.getType().isLocal()) {
-                //  && !preferLocalShuffleOnePhaseAgg(node, context)
+            } else if (node.isSplit() && node.getType().isLocal() && !preferLocalShuffleOnePhaseAgg(node, context)) {
                 factor = 0.1;
             }
 

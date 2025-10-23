@@ -26,8 +26,16 @@ import com.starrocks.sql.optimizer.operator.physical.PhysicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalProjectOperator;
 import com.starrocks.sql.optimizer.task.TaskContext;
 
-// Global Agg -> Shuffle Exchange -> Local Agg -> [Project] -> OlapScan
-// Global Agg -> Shuffle Exchange -> [Project] -> OlapScan
+/**
+ * 对于单个 BE 的集群，Global Agg 与 Scan 之间的 Shuffle Exchange 可以使用 Local Shuffle 代替。
+ * 为了鲁棒性，限制以下两种 plan 可以消除掉 Shuffle Exchange：
+ * - OlapScan -> [Project] -> Local Agg -> Shuffle Exchange -> Global Agg
+ * - OlapScan -> [Project] -> Shuffle Exchange -> Global Agg
+ *
+ * 限制：
+ * - 查询中不能包含输入为多个 child 的算子，例如 Join。
+ * - 必须是上述两种 plan。
+ */
 public class PruneShuffleDistributionNodeRule implements TreeRewriteRule {
     private static final Visitor VISITOR = new Visitor();
 
