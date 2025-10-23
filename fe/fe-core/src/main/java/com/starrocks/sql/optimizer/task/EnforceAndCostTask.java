@@ -437,11 +437,6 @@ public class EnforceAndCostTask extends OptimizerTask implements Cloneable {
                 return true;
             }
 
-            if (sv.isEnableLocalShuffleAgg() &&
-                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().isSingleBackendAndComputeNode()) {
-                return true;
-            }
-
             // 1.2 disable one stage agg with distinct aggregate
             if (!distinctAggCallOperator.isEmpty()) {
                 return false;
@@ -454,8 +449,13 @@ public class EnforceAndCostTask extends OptimizerTask implements Cloneable {
                 return false;
             }
 
+            if (sv.isEnableLocalShuffleAgg() &&
+                    GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().isSingleBackendAndComputeNode()) {
+                return true;
+            }
+
             // 1.3 disable one stage agg with multi group by columns
-            return  aggregate.getGroupBys().size() <= 1;
+            return aggregate.getGroupBys().size() <= 1;
         }
         return true;
     }

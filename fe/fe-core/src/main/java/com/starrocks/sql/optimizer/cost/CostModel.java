@@ -40,6 +40,8 @@ import com.starrocks.sql.optimizer.operator.OperatorVisitor;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalExceptOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalIntersectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalAssertOneRowOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalCTEAnchorOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalCTEConsumeOperator;
@@ -229,9 +231,21 @@ public class CostModel {
                 return false;
             }
 
+            Operator child = context.getChildOperator(0);
+            if (!(child instanceof LogicalOlapScanOperator || child instanceof LogicalProjectOperator)) {
+                return false;
+            }
+            if (child instanceof LogicalProjectOperator) {
+                GroupExpression childGroup = context.getGroupExpression().getInputs().get(0).getFirstLogicalExpression();
+                Operator grandChild = childGroup.getInputs().get(0).getFirstLogicalExpression().getOp();
+                if (!(grandChild instanceof LogicalOlapScanOperator)) {
+                    return false;
+                }
+            }
+
             Statistics statistics = context.getStatistics();
             Statistics inputStatistics = context.getChildStatistics(0);
-            if (statistics.getOutputRowCount() * 5 < inputStatistics.getOutputRowCount()) {
+            if (statistics.getOutputRowCount() * 4 < inputStatistics.getOutputRowCount()) {
                 return false;
             }
 
@@ -257,7 +271,8 @@ public class CostModel {
 
             if (node.getDistinctColumnDataSkew() != null) {
                 factor = computeDataSkewPenaltyOfGroupByCountDistinct(node, inputStatistics);
-            } else if (node.isSplit() && node.getType().isLocal() && !preferLocalShuffleOnePhaseAgg(node, context)) {
+            } else if (node.isSplit() && node.getType().isLocal()) {
+                //  && !preferLocalShuffleOnePhaseAgg(node, context)
                 factor = 0.1;
             }
 

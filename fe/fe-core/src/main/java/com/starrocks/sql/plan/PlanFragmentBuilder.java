@@ -608,7 +608,6 @@ public class PlanFragmentBuilder {
                 predicateColumns.union(predicate.getUsedColumns());
             }
 
-
             // ------------------------------------------------------------------------------------
             // unused Columns = required columns - predicate columns.
             // be will prune columns by predicate push down
@@ -1470,7 +1469,6 @@ public class PlanFragmentBuilder {
             return buildIcebergScanNode(optExpression, context);
         }
 
-
         public PlanFragment buildIcebergScanNode(OptExpression expression, ExecPlan context) {
             PhysicalScanOperator node = expression.getOp().cast();
             Table referenceTable = node.getTable();
@@ -2228,10 +2226,12 @@ public class PlanFragmentBuilder {
         @Override
         public PlanFragment visitPhysicalHashAggregate(OptExpression optExpr, ExecPlan context) {
             PhysicalHashAggregateOperator node = (PhysicalHashAggregateOperator) optExpr.getOp();
-            PlanFragment originalInputFragment = visit(optExpr.inputAt(0), context);
+            PlanFragment inputFragment = visit(optExpr.inputAt(0), context);
 
-            PlanFragment inputFragment = removeExchangeNodeForLocalShuffleAgg(originalInputFragment, context);
-            boolean withLocalShuffle = inputFragment != originalInputFragment || inputFragment.isWithLocalShuffle();
+            final boolean withLocalShuffle = node.isWithLocalShuffle() || inputFragment.isWithLocalShuffle();
+            if (node.isWithLocalShuffle()) {
+                inputFragment.setWithLocalShuffleIfTrue(true);
+            }
 
             Map<ColumnRefOperator, CallOperator> aggregations = node.getAggregations();
             List<ColumnRefOperator> groupBys = node.getGroupBys();
@@ -2367,7 +2367,8 @@ public class PlanFragmentBuilder {
             aggregationNode.computeStatistics(optExpr.getStatistics());
             aggregationNode.setGroupByMinMaxStats(node.getGroupByMinMaxStatistic());
 
-            if (node.isOnePhaseAgg() || node.isMergedLocalAgg() || node.getType().isDistinctGlobal()) {
+            if (node.isOnePhaseAgg() || node.isMergedLocalAgg() || node.getType().isDistinctGlobal() ||
+                    node.getType().isGlobal()) {
                 // For ScanNode->LocalShuffle->AggNode, we needn't assign scan ranges per driver sequence.
                 inputFragment.setAssignScanRangesPerDriverSeq(!withLocalShuffle);
                 inputFragment.setWithLocalShuffleIfTrue(withLocalShuffle);
@@ -2391,8 +2392,8 @@ public class PlanFragmentBuilder {
             }
             inputFragment.setPlanRoot(aggregationNode);
             inputFragment.getPlanRoot().forceCollectExecStats();
-            inputFragment.mergeQueryDictExprs(originalInputFragment.getQueryGlobalDictExprs());
-            inputFragment.mergeQueryGlobalDicts(originalInputFragment.getQueryGlobalDicts());
+            inputFragment.mergeQueryDictExprs(inputFragment.getQueryGlobalDictExprs());
+            inputFragment.mergeQueryGlobalDicts(inputFragment.getQueryGlobalDicts());
             return inputFragment;
         }
 
@@ -3433,7 +3434,6 @@ public class PlanFragmentBuilder {
 
             Map<SlotId, Expr> commonSubOperatorMap = buildCommonSubExprMap(filter.getPredicateCommonOperators(), context);
 
-
             List<Expr> predicates = Utils.extractConjuncts(filter.getPredicate()).stream()
                     .map(d -> ScalarOperatorToExpr.buildExecExpression(d,
                             new ScalarOperatorToExpr.FormatterContext(context.getColRefToExpr())))
@@ -3572,8 +3572,6 @@ public class PlanFragmentBuilder {
                     .map(ColumnRefOperator::getId).distinct().collect(Collectors.toList()));
             exchangeNode.setDataPartition(cteFragment.getDataPartition());
             exchangeNode.forceCollectExecStats();
-
-
 
             PlanFragment consumeFragment = new PlanFragment(context.getNextFragmentId(), exchangeNode,
                     cteFragment.getDataPartition());
@@ -4265,8 +4263,8 @@ public class PlanFragmentBuilder {
         }
 
         private ScalarOperator extractAndValidateAsofTemporalPredicate(List<ScalarOperator> otherJoin,
-                                                            ColumnRefSet leftColumns,
-                                                            ColumnRefSet rightColumns) {
+                                                                       ColumnRefSet leftColumns,
+                                                                       ColumnRefSet rightColumns) {
             List<ScalarOperator> candidates = new ArrayList<>();
 
             for (ScalarOperator predicate : otherJoin) {

@@ -1505,7 +1505,7 @@ public class PlanFragmentWithCostTest extends PlanWithCostTestBase {
             Assertions.assertEquals(0, olapScanNode.getBucketExprs().size());
             Assertions.assertFalse(containAnyColocateNode(execPlan.getFragments().get(1).getPlanRoot()));
             plan = execPlan.getExplainString(TExplainLevel.NORMAL);
-            assertContains(plan, "  2:AGGREGATE (update finalize)\n" +
+            assertContains(plan, "  1:AGGREGATE (update finalize)\n" +
                     "  |  output: sum(2: v2)\n" +
                     "  |  group by: 2: v2\n" +
                     "  |  withLocalShuffle: true\n" +
@@ -1523,12 +1523,12 @@ public class PlanFragmentWithCostTest extends PlanWithCostTestBase {
             Assertions.assertFalse(containAnyColocateNode(execPlan.getFragments().get(1).getPlanRoot()));
             Assertions.assertFalse(execPlan.getFragments().get(1).isAssignScanRangesPerDriverSeq());
             plan = execPlan.getExplainString(TExplainLevel.NORMAL);
-            assertContains(plan, "  3:AGGREGATE (update finalize)\n" +
+            assertContains(plan, "  2:AGGREGATE (update finalize)\n" +
                     "  |  output: sum(4: count)\n" +
                     "  |  group by: 2: v2, 4: count\n" +
                     "  |  withLocalShuffle: true\n" +
                     "  |  \n" +
-                    "  2:AGGREGATE (update finalize)\n" +
+                    "  1:AGGREGATE (update finalize)\n" +
                     "  |  output: count(2: v2)\n" +
                     "  |  group by: 2: v2\n" +
                     "  |  withLocalShuffle: true\n" +
@@ -1616,17 +1616,17 @@ public class PlanFragmentWithCostTest extends PlanWithCostTestBase {
             olapScanNode = (OlapScanNode) execPlan.getScanNodes().get(0);
             Assertions.assertEquals(0, olapScanNode.getBucketExprs().size());
             plan = execPlan.getExplainString(TExplainLevel.NORMAL);
-            assertContains(plan, "1:AGGREGATE (update serialize)\n" +
+            assertContains(plan, "  2:AGGREGATE (merge finalize)\n" +
+                    "  |  output: sum(4: sum)\n" +
+                    "  |  group by: 2: v2\n" +
+                    "  |  withLocalShuffle: true\n" +
+                    "  |  \n" +
+                    "  1:AGGREGATE (update serialize)\n" +
                     "  |  STREAMING\n" +
                     "  |  output: sum(2: v2)\n" +
                     "  |  group by: 2: v2\n" +
                     "  |  \n" +
                     "  0:OlapScanNode");
-            assertContains(plan, "  3:AGGREGATE (merge finalize)\n" +
-                    "  |  output: sum(4: sum)\n" +
-                    "  |  group by: 2: v2\n" +
-                    "  |  \n" +
-                    "  2:EXCHANGE");
 
             // case 8: insert into cannot use one-phase local aggregation with local shuffle.
             isSingleBackendAndComputeNode.setRef(true);
