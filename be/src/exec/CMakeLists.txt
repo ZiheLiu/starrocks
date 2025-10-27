@@ -340,6 +340,9 @@ set(EXEC_FILES
     stream/aggregate/stream_aggregate_operator.cpp
     stream/stream_aggregate_node.cpp)
 
+set_source_files_properties(join/join_hash_map.cpp
+        PROPERTIES COMPILE_OPTIONS "-ftime-report;-fmem-report")
+
 add_library(Exec STATIC
     ${EXEC_FILES}
 )

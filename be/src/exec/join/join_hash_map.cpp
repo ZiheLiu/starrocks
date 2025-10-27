@@ -883,6 +883,8 @@ void JoinHashTable::_remove_duplicate_index_for_full_outer_join(Filter* filter) 
             _probe_state->build_match_index[_probe_state->build_index[i]] = 1;
         }
     }
+
+    VLOG_ROW << "TEST1 ";
 }
 
 } // namespace starrocks
