@@ -671,7 +671,7 @@ Status ColumnReader::_zone_map_filter(const std::vector<const ColumnPredicate*>&
 
     int32_t i = 0;
     int32_t end_page = num_pages;
-    if (src_range != nullptr && src_range->end() != 0) {
+    if (src_range != nullptr) {
         i = _ordinal_index->seek_at_or_before(src_range->begin()).page_index();
         end_page = _ordinal_index->seek_at_or_before(src_range->end() - 1).page_index();
         if (end_page + 1 <= num_pages) {
