@@ -496,12 +496,14 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             SessionVariable sv = ctx.getSessionVariable();
             Coordinator coordinator = ctx.waitForDeploymentFinished(sv.getQueryTimeoutS() * 1000L);
             if (coordinator == null || ctx.getState().isError()) {
+                LOG.warn("[ARROW] point 1");
                 throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
                         DebugUtil.printId(ctx.getExecutionId()),
                         ctx.getState().getErrorMessage()));
             }
 
             if (!(coordinator instanceof DefaultCoordinator)) {
+                LOG.warn("[ARROW] point 2");
                 throw new RuntimeException("Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
             }
             DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
@@ -523,6 +525,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             FlightSql.TicketStatementQuery ticketStatement =
                     FlightSql.TicketStatementQuery.newBuilder().setStatementHandle(handle).build();
             Location endpoint = Location.forGrpcInsecure(worker.getHost(), worker.getArrowFlightPort());
+            LOG.warn("[ARROW] point 3 [workerHost={}] [workerPort={}]", worker.getHost(), worker.getArrowFlightPort());
             return buildFlightInfo(ticketStatement, descriptor, schema, endpoint);
         } catch (Exception e) {
             LOG.warn("[ARROW] failed to getFlightInfoFromQuery [queryID={}]", DebugUtil.printId(ctx.getExecutionId()), e);
