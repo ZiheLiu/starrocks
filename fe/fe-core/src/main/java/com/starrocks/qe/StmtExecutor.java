@@ -1499,6 +1499,11 @@ public class StmtExecutor {
 
         if (context instanceof ArrowFlightSqlConnectContext) {
             coord.join(context.getSessionVariable().getQueryTimeoutS());
+            if (!isOutfileQuery) {
+                context.getState().setEof();
+            }
+            // TODO(liuzihe): process query statistics for Arrow Flight SQL. For now query statistics is passed by the final
+            //  batch, so we need to change the implementation to support Arrow Flight SQL.
         }
 
         processQueryStatisticsFromResult(batch, execPlan, isOutfileQuery);
