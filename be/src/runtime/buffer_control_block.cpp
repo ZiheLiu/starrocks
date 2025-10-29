@@ -187,6 +187,10 @@ void BufferControlBlock::_process_batch_without_lock(std::unique_ptr<SerializeRe
 void BufferControlBlock::_process_arrow_batch_without_lock(std::shared_ptr<arrow::RecordBatch>& result) {
     _arrow_rows += result->num_rows();
     _arrow_batch_queue.push_back(std::move(result));
+
+    LOG(WARNING) << "[ARROW] _process_arrow_batch_without_lock "
+                 << "[queue_size=" << _arrow_batch_queue.size() << "]";
+
     _data_arriaval.notify_one();
 }
 
@@ -335,6 +339,7 @@ Status BufferControlBlock::get_arrow_batch(std::shared_ptr<arrow::RecordBatch>* 
     }
 
     if (_is_cancelled) {
+        LOG(WARNING) << "[ARROW] get_arrow_batch cancelled 1";
         return Status::Cancelled("Cancelled BufferControlBlock::get_arrow_batch");
     }
 
@@ -343,10 +348,12 @@ Status BufferControlBlock::get_arrow_batch(std::shared_ptr<arrow::RecordBatch>* 
     }
 
     if (_is_cancelled) {
+        LOG(WARNING) << "[ARROW] get_arrow_batch cancelled 2";
         return Status::Cancelled("Cancelled BufferControlBlock::get_arrow_batch");
     }
 
     if (!_arrow_batch_queue.empty()) {
+        LOG(WARNING) << "[ARROW] get_arrow_batch pop chunk";
         const auto batch = std::move(_arrow_batch_queue.front());
         *result = batch;
         _arrow_batch_queue.pop_front();
@@ -356,6 +363,7 @@ Status BufferControlBlock::get_arrow_batch(std::shared_ptr<arrow::RecordBatch>* 
     }
 
     if (_is_close) {
+        LOG(WARNING) << "[ARROW] get_arrow_batch empty";
         *result = nullptr;
         return Status::OK();
     }

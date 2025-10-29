@@ -89,11 +89,15 @@ Status ArrowResultWriter::close() {
 // [2] Convert Chunk → Arrow::RecordBatch
 // [3] Write Arrow batch to sinker (BufferControlBlock)
 StatusOr<TFetchDataResultPtrs> ArrowResultWriter::process_chunk(Chunk* chunk) {
+    LOG(WARNING) << "[ARROW] ArrowResultWriter::process_chunk() "
+                 << "[num_rows=" << chunk->num_rows() << "]";
+
     SCOPED_TIMER(_append_chunk_timer);
     std::shared_ptr<arrow::RecordBatch> result;
     RETURN_IF_ERROR(convert_chunk_to_arrow_batch(chunk, _output_expr_ctxs, _arrow_schema, arrow::default_memory_pool(),
                                                  &result));
     RETURN_IF_ERROR(_sinker->add_arrow_batch(result));
+
     return TFetchDataResultPtrs{};
 }
 
