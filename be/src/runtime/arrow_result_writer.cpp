@@ -75,7 +75,7 @@ Status ArrowResultWriter::append_chunk(Chunk* chunk) {
 }
 
 Status ArrowResultWriter::close() {
-    LOG(INFO) << "[Flight] ArrowResultWriter::close() called";
+    VLOG_ROW << "[Flight] ArrowResultWriter::close() called";
     return Status::OK();
 }
 
