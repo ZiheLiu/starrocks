@@ -1391,8 +1391,9 @@ public class StmtExecutor {
             }
         }
 
+        // TODO(liuzihe): support execute in FE for Arrow Flight SQL.
         boolean executeInFe = !isExplainAnalyze && !isSchedulerExplain && !isOutfileQuery
-                && canExecuteInFe(context, execPlan.getPhysicalPlan());
+                && canExecuteInFe(context, execPlan.getPhysicalPlan()) && !(context instanceof ArrowFlightSqlConnectContext);
 
         if (isExplainAnalyze) {
             context.getSessionVariable().setEnableProfile(true);
