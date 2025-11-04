@@ -476,12 +476,6 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // Wait util deployment finished or ArrowFlightSqlConnectProcessor finished.
             SessionVariable sv = ctx.getSessionVariable();
             Coordinator coordinator = ctx.waitForDeploymentFinished(sv.getQueryTimeoutS() * 1000L);
-            if (coordinator == null || ctx.getState().isError()) {
-                LOG.warn("[ARROW] point 1");
-                throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
-                        DebugUtil.printId(ctx.getExecutionId()),
-                        ctx.getState().getErrorMessage()));
-            }
 
             // ------------------------------------------------------------------------------------
             // FE task will return FE as endpoint.
@@ -507,6 +501,13 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // ------------------------------------------------------------------------------------
             // Query task will wait until deployment to BE is finished and return BE as endpoint.
             // ------------------------------------------------------------------------------------
+            if (coordinator == null || ctx.getState().isError()) {
+                LOG.warn("[ARROW] point 1");
+                throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
+                        DebugUtil.printId(ctx.getExecutionId()),
+                        ctx.getState().getErrorMessage()));
+            }
+
             Preconditions.checkState(coordinator instanceof DefaultCoordinator,
                     "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
             DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
