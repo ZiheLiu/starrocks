@@ -14,6 +14,8 @@
 
 package com.starrocks.service.arrow.flight.sql;
 
+import com.google.common.base.Preconditions;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
@@ -36,6 +38,8 @@ import com.starrocks.rpc.BackendServiceClient;
 import com.starrocks.service.arrow.flight.sql.session.ArrowFlightSqlSessionManager;
 import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.StatementBase;
+import com.starrocks.sql.ast.expression.Expr;
+import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TUniqueId;
@@ -66,6 +70,7 @@ import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.ipc.ArrowStreamReader;
 import org.apache.arrow.vector.ipc.WriteChannel;
 import org.apache.arrow.vector.ipc.message.MessageSerializer;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
@@ -463,6 +468,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
                     ctx.setDeploymentFinished(null);
                     processorFinished.complete(null);
                 } catch (Throwable t) {
+                    ctx.setDeployFailed(t);
                     processorFinished.completeExceptionally(t);
                 }
             });
@@ -513,12 +519,9 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             ComputeNode worker = rootFragmentInstance.getWorker();
             TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
 
-            // Fetch arrow schema from BE.
-            PUniqueId pInstanceId = new PUniqueId();
-            pInstanceId.setHi(rootFragmentInstanceId.getHi());
-            pInstanceId.setLo(rootFragmentInstanceId.getLo());
-            long timeoutMs = Math.min(sv.getQueryDeliveryTimeoutS(), sv.getQueryTimeoutS()) * 1000L;
-            Schema schema = fetchArrowSchema(ctx, worker.getBrpcAddress(), pInstanceId, timeoutMs);
+            ExecPlan execPlan = defaultCoordinator.getJobSpec().getExecPlan();
+            Preconditions.checkNotNull(execPlan, "execPlan is null");
+            Schema schema = buildSchema(execPlan);
 
             // Build BE ticket.
             final ByteString handle = buildBETicket(defaultCoordinator.getQueryId(), rootFragmentInstanceId);
@@ -548,8 +551,8 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
         return buildFlightInfo(request, descriptor, schema, feEndpoint);
     }
 
-    protected  <T extends Message> FlightInfo buildFlightInfo(T request, FlightDescriptor descriptor,
-                                                           Schema schema, Location endpoint) {
+    protected <T extends Message> FlightInfo buildFlightInfo(T request, FlightDescriptor descriptor,
+                                                             Schema schema, Location endpoint) {
         final Ticket ticket = new Ticket(Any.pack(request).toByteArray());
         final List<FlightEndpoint> endpoints = Collections.singletonList(new FlightEndpoint(ticket, endpoint));
         return new FlightInfo(schema, descriptor, endpoints, -1, -1);
@@ -575,6 +578,20 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             LOG.warn("[ARROW] {}", errorMsg, e);
             throw new RuntimeException(errorMsg, e);
         }
+    }
+
+    private Schema buildSchema(ExecPlan execPlan) {
+        List<Field> arrowFields = Lists.newArrayList();
+
+        List<String> colNames = execPlan.getColNames();
+        List<Expr> outExprs = execPlan.getOutputExprs();
+        for (int i = 0; i < colNames.size(); i++) {
+            Expr expr = outExprs.get(i);
+            Field arrowField = ArrowUtils.convertToArrowType(expr.getType(), colNames.get(i), expr.isNullable());
+            arrowFields.add(arrowField);
+        }
+
+        return new Schema(arrowFields);
     }
 
     protected StatementBase parse(String sql, SessionVariable sessionVariables) {

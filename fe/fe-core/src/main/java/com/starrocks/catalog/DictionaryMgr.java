@@ -526,8 +526,6 @@ public class DictionaryMgr implements Writable, GsonPostProcessable {
         this.nextDictionaryId = data.getNextDictionaryId();
     }
 
-
-
     @Override
     public void gsonPostProcess() throws IOException {
         lock.lock();
@@ -627,9 +625,8 @@ public class DictionaryMgr implements Writable, GsonPostProcessable {
             List<PlanFragment> fragments = execPlan.getFragments();
             List<ScanNode> scanNodes = execPlan.getScanNodes();
             DescriptorTable descTable = execPlan.getDescTbl();
-            Coordinator coord =
-                    getCoordinatorFactory().createRefreshDictionaryCacheScheduler(context, queryId, descTable,
-                            fragments, scanNodes);
+            Coordinator coord = getCoordinatorFactory().createRefreshDictionaryCacheScheduler(
+                    context, queryId, descTable, fragments, scanNodes, execPlan);
 
             QeProcessorImpl.INSTANCE.registerQuery(queryId, coord);
             int leftTimeSecond = context.getExecTimeout();
