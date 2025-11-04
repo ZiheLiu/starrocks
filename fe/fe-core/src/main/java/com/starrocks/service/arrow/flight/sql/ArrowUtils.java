@@ -17,7 +17,6 @@ package com.starrocks.service.arrow.flight.sql;
 import com.starrocks.catalog.ArrayType;
 import com.starrocks.catalog.MapType;
 import com.starrocks.catalog.ScalarType;
-import com.starrocks.catalog.StructField;
 import com.starrocks.catalog.StructType;
 import com.starrocks.catalog.Type;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
