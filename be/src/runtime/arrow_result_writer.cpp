@@ -63,7 +63,8 @@ Status ArrowResultWriter::init(RuntimeState* state) {
     }
 
     std::unordered_map<int64_t, std::string> temp_id_to_col_name;
-    RETURN_IF_ERROR(convert_to_arrow_schema(_row_desc, temp_id_to_col_name, &_arrow_schema, _output_expr_ctxs));
+    RETURN_IF_ERROR(convert_to_arrow_schema(_row_desc, temp_id_to_col_name, &_arrow_schema, _output_expr_ctxs,
+                                            &_output_column_names));
 
     state->exec_env()->result_mgr()->set_arrow_schema(state->fragment_instance_id(), _arrow_schema);
 
