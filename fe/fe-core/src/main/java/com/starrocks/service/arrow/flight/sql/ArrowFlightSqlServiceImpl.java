@@ -32,6 +32,7 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.DefaultCoordinator;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.Coordinator;
+import com.starrocks.qe.scheduler.FeExecuteCoordinator;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.rpc.BackendServiceClient;
@@ -476,11 +477,17 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // Wait util deployment finished or ArrowFlightSqlConnectProcessor finished.
             SessionVariable sv = ctx.getSessionVariable();
             Coordinator coordinator = ctx.waitForDeploymentFinished(sv.getQueryTimeoutS() * 1000L);
+            if (coordinator == null || ctx.getState().isError()) {
+                LOG.warn("[ARROW] point 1");
+                throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
+                        DebugUtil.printId(ctx.getExecutionId()),
+                        ctx.getState().getErrorMessage()));
+            }
 
             // ------------------------------------------------------------------------------------
             // FE task will return FE as endpoint.
             // ------------------------------------------------------------------------------------
-            if (ctx.returnFromFE()) {
+            if (ctx.returnFromFE() || (coordinator instanceof FeExecuteCoordinator)) {
                 processorFinished.get();
                 if (ctx.getState().isError()) {
                     throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
@@ -501,17 +508,8 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // ------------------------------------------------------------------------------------
             // Query task will wait until deployment to BE is finished and return BE as endpoint.
             // ------------------------------------------------------------------------------------
-            if (coordinator == null || ctx.getState().isError()) {
-                LOG.warn("[ARROW] point 1");
-                throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
-                        DebugUtil.printId(ctx.getExecutionId()),
-                        ctx.getState().getErrorMessage()));
-            }
-
-            if (!(coordinator instanceof DefaultCoordinator)) {
-                LOG.warn("[ARROW] point 2");
-                throw new RuntimeException("Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
-            }
+            Preconditions.checkState(coordinator instanceof DefaultCoordinator,
+                    "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
             DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
 
             ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
