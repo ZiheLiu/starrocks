@@ -168,8 +168,8 @@ public class AuditEvent {
     @AuditField(value = "Command")
     public String command = "";
 
-    @AuditField(value = "PreparedStmtId")
-    public String preparedStmtId = "";
+    @AuditField(value = "PreparedStmtId", ignore_zero = true)
+    public String preparedStmtId = null;
 
     public static class AuditEventBuilder {
 

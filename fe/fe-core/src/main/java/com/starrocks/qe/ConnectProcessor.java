@@ -213,12 +213,12 @@ public class ConnectProcessor {
 
     private String getPreparedStmtId() {
         if (executor == null) {
-            return "";
+            return null;
         }
 
         StatementBase stmt = executor.getParsedStmt();
         if (stmt == null) {
-            return "";
+            return null;
         }
 
         if (stmt instanceof ExecuteStmt) {
@@ -231,7 +231,7 @@ public class ConnectProcessor {
             return prepareStmt.getName();
         }
 
-        return "";
+        return null;
     }
 
     public void auditAfterExec(String origStmt, StatementBase parsedStmt, PQueryStatistics statistics) {
