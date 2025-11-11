@@ -211,29 +211,6 @@ public class ConnectProcessor {
         }
     }
 
-    private String getPreparedStmtId() {
-        if (executor == null) {
-            return null;
-        }
-
-        StatementBase stmt = executor.getParsedStmt();
-        if (stmt == null) {
-            return null;
-        }
-
-        if (stmt instanceof ExecuteStmt) {
-            ExecuteStmt executeStmt = (ExecuteStmt) stmt;
-            return executeStmt.getStmtName();
-        }
-
-        if (stmt instanceof PrepareStmt) {
-            PrepareStmt prepareStmt = (PrepareStmt) stmt;
-            return prepareStmt.getName();
-        }
-
-        return null;
-    }
-
     public void auditAfterExec(String origStmt, StatementBase parsedStmt, PQueryStatistics statistics) {
         // slow query
         long endTime = System.currentTimeMillis();
@@ -258,7 +235,7 @@ public class ConnectProcessor {
                 .setCNGroup(ctx.getCurrentComputeResourceName())
                 .setQuerySource(ctx.getQuerySource().toString())
                 .setCommand(ctx.getCommandStr())
-                .setPreparedStmtId(getPreparedStmtId());
+                .setPreparedStmtId(executor == null ? null : executor.getPreparedStmtId());
 
         if (ctx.getState().isQuery()) {
             MetricRepo.COUNTER_QUERY_ALL.increase(1L);

@@ -320,7 +320,7 @@ public class StmtExecutor {
     private List<StmtExecutor> subStmtExecutors;
     private Optional<Boolean> isForwardToLeaderOpt = Optional.empty();
     private HttpResultSender httpResultSender;
-    private PrepareStmtContext prepareStmtContext;
+    private PrepareStmtContext prepareStmtContext = null;
     private boolean isInternalStmt = false;
 
     public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt) {
@@ -525,6 +525,19 @@ public class StmtExecutor {
 
     public StatementBase getParsedStmt() {
         return parsedStmt;
+    }
+
+    public String getPreparedStmtId() {
+        // For EXECUTE.
+        if (prepareStmtContext != null) {
+            return prepareStmtContext.getStmt().getName();
+        }
+        // For PREPARE.
+        if (parsedStmt != null && parsedStmt instanceof PrepareStmt) {
+            PrepareStmt prepareStmt = (PrepareStmt) parsedStmt;
+            return prepareStmt.getName();
+        }
+        return null;
     }
 
     public int getExecTimeout() {
