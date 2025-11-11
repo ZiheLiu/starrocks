@@ -211,6 +211,29 @@ public class ConnectProcessor {
         }
     }
 
+    private String getPreparedStmtId() {
+        if (executor == null) {
+            return "";
+        }
+
+        StatementBase stmt = executor.getParsedStmt();
+        if (stmt == null) {
+            return "";
+        }
+
+        if (stmt instanceof ExecuteStmt) {
+            ExecuteStmt executeStmt = (ExecuteStmt) stmt;
+            return executeStmt.getStmtName();
+        }
+
+        if (stmt instanceof PrepareStmt) {
+            PrepareStmt prepareStmt = (PrepareStmt) stmt;
+            return prepareStmt.getName();
+        }
+
+        return "";
+    }
+
     public void auditAfterExec(String origStmt, StatementBase parsedStmt, PQueryStatistics statistics) {
         // slow query
         long endTime = System.currentTimeMillis();
@@ -233,7 +256,9 @@ public class ConnectProcessor {
                 .setQueryId(ctx.getQueryId() == null ? "NaN" : ctx.getQueryId().toString())
                 .setSessionId(ctx.getSessionId().toString())
                 .setCNGroup(ctx.getCurrentComputeResourceName())
-                .setQuerySource(ctx.getQuerySource().toString());
+                .setQuerySource(ctx.getQuerySource().toString())
+                .setCommand(ctx.getCommandStr())
+                .setPreparedStmtId(getPreparedStmtId());
 
         if (ctx.getState().isQuery()) {
             MetricRepo.COUNTER_QUERY_ALL.increase(1L);
@@ -404,17 +429,17 @@ public class ConnectProcessor {
 
     /**
      * Execute query with parser-stage retry support.
-     *
+     * <p>
      * This method provides a retry mechanism starting from the parser stage, which is necessary for
      * certain optimizations that require different AST structures based on session variables or configs.
      * Some scenarios that need parser-stage retry include:
      * - LargeInPredicate optimization: When enable_large_in_predicate=true, the parser uses raw constant
-     *   values instead of expressions. If this optimization fails, we must re-parse with the flag disabled
-     *   to get a traditional expression-based AST. Additionally, mid-pipeline rewrites of expressions or
-     *   operators (e.g., during analyzer/optimizer phases) may bypass critical processing steps; therefore
-     *   a full re-parse is required to ensure all semantic checks and transformations are executed.
+     * values instead of expressions. If this optimization fails, we must re-parse with the flag disabled
+     * to get a traditional expression-based AST. Additionally, mid-pipeline rewrites of expressions or
+     * operators (e.g., during analyzer/optimizer phases) may bypass critical processing steps; therefore
+     * a full re-parse is required to ensure all semantic checks and transformations are executed.
      * - Other future optimizations that modify parsing behavior based on session/config settings.
-     *
+     * <p>
      * This is different from execution-level retries because it requires re-parsing the SQL to get
      * a different AST structure, not just re-executing the same plan.
      */
