@@ -101,7 +101,7 @@ SELECT
     detail->'sql' as query
 FROM w1;
 -- result:
-[REGEX]"SELECT `\w+`\.`t1`\.`k1`, `\w+`\.`t1`\.`c_1`, `\w+`\.`t1`\.`c_2`, `\w+`\.`t1`\.`c_3`, `\w+`\.`t1`\.`c_4`\nFROM `\w+`\.`t1`\nWHERE ((`\w+`\.`t1`\.`c_1` = 100) AND (`\w+`\.`t1`\.`c_2` = 101)) OR ((`\w+`\.`t1`\.`c_3` = 102) AND (`\w+`\.`t1`\.`c_4` = 103))"
+[REGEX]"SELECT `\w+`\.`t1`\.`k1`, `\w+`\.`t1`\.`c_1`, `\w+`\.`t1`\.`c_2`, `\w+`\.`t1`\.`c_3`, `\w+`\.`t1`\.`c_4`\\nFROM `\w+`\.`t1`\\nWHERE \(\(`\w+`\.`t1`\.`c_1` = 100\) AND \(`\w+`\.`t1`\.`c_2` = 101\)\) OR \(\(`\w+`\.`t1`\.`c_3` = 102\) AND \(`\w+`\.`t1`\.`c_4` = 103\)\)"
 -- !result
 [UC]prepared_stmt_id=WITH w1 as (SELECT parse_json('${execute_detail}') detail) SELECT detail->'preparedStmtId' preparedStmtId FROM w1;
 -- result:
@@ -156,7 +156,7 @@ SELECT
     detail->'sql' as query
 FROM w1;
 -- result:
-[REGEX]"SELECT `\w+`\.`t1`\.`k1`, `\w+`\.`t1`\.`c_1`, `\w+`\.`t1`\.`c_2`, `\w+`\.`t1`\.`c_3`, `\w+`\.`t1`\.`c_4`\nFROM `\w+`\.`t1`\nWHERE ((`\w+`\.`t1`\.`c_1` = 100) AND (`\w+`\.`t1`\.`c_2` = 101)) OR ((`\w+`\.`t1`\.`c_3` = 102) AND (`\w+`\.`t1`\.`c_4` = 103))"
+[REGEX]"SELECT `\w+`\.`t1`\.`k1`, `\w+`\.`t1`\.`c_1`, `\w+`\.`t1`\.`c_2`, `\w+`\.`t1`\.`c_3`, `\w+`\.`t1`\.`c_4`\\nFROM `\w+`\.`t1`\\nWHERE \(\(`\w+`\.`t1`\.`c_1` = 100\) AND \(`\w+`\.`t1`\.`c_2` = 101\)\) OR \(\(`\w+`\.`t1`\.`c_3` = 102\) AND \(`\w+`\.`t1`\.`c_4` = 103\)\)"
 -- !result
 [UC]prepared_stmt_id=WITH w1 as (SELECT parse_json('${execute_detail}') detail) SELECT detail->'preparedStmtId' preparedStmtId FROM w1;
 -- result:
