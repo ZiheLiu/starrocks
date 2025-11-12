@@ -64,6 +64,7 @@ from lib import data_delete_lib
 from lib import data_insert_lib
 from lib.github_issue import GitHubApi
 from lib.mysql_lib import MysqlLib
+from lib.mysql_prepared_stmt_lib import MysqlPreparedStmtLib
 from lib.trino_lib import TrinoLib
 from lib.spark_lib import SparkLib
 from lib.hive_lib import HiveLib
@@ -156,6 +157,7 @@ class StarrocksSQLApiLib(object):
         self.db = list()
         self.resource = list()
         self.mysql_lib = MysqlLib()
+        self.mysql_prepared_stmt_lib = MysqlPreparedStmtLib()
         self.trino_lib = TrinoLib()
         self.spark_lib = SparkLib()
         self.hive_lib = HiveLib()
@@ -589,6 +591,7 @@ class StarrocksSQLApiLib(object):
             "password": self.mysql_password,
         }
         self.mysql_lib.connect(mysql_dict)
+        self.mysql_prepared_stmt_lib.connect(mysql_dict)
 
     def create_starrocks_conn_pool(self):
         self.connection_pool = PooledDB(
@@ -619,6 +622,7 @@ class StarrocksSQLApiLib(object):
 
     def close_starrocks(self):
         self.mysql_lib.close()
+        self.mysql_prepared_stmt_lib.close()
 
     def close_trino(self):
         self.trino_lib.close()
@@ -3089,6 +3093,12 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
             cursor.close()
             conn.close()
 
+    def execute_prepared_stmt(self, sql, params):
+        return self.mysql_prepared_stmt_lib.execute_prepared(sql, params)
+
+    def execute_by_prepared_stmt_conn(self, sql):
+        return self.mysql_prepared_stmt_lib.execute(sql)
+
     def assert_trace_times_contains(self, query, *expects):
         """
         assert trace times result contains expect string
@@ -3323,12 +3333,12 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
         # print(f"Last query id: {query_id}")
         return query_id
 
-    def get_query_detail_by_api(self, timestamp_ms, query_id):
+    def get_query_detail(self, query_id, timestamp_ms = None):
         """
         Get query detail information through API
         """
-        import json
-        import subprocess
+        if timestamp_ms is None:
+            timestamp_ms = self.get_timestamp_ms()
 
         # Build API URL and curl command
         api_url = f"http://{self.mysql_host}:{self.http_port}/api/query_detail?event_time={timestamp_ms}"
@@ -3461,7 +3471,7 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
         # 5. Get query detail, retry up to 3 times
         query_detail = None
         for retry_count in range(3):
-            query_detail = self.get_query_detail_by_api(timestamp_ms, query_id)
+            query_detail = self.get_query_detail(timestamp_ms, query_id)
             if query_detail is not None:
                 break
             # print(f"Failed to get query detail, retry {retry_count + 1}/3")

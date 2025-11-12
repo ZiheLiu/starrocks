@@ -1,0 +1,53 @@
+-- name: test_prepare_stmt_query_history @sequential
+
+admin set frontend config ("enable_collect_query_detail_info" = "true");
+
+create database db_${uuid0};
+use create database db_${uuid0};
+
+CREATE TABLE __row_util_base (
+  k1 bigint NULL
+) ENGINE=OLAP
+DUPLICATE KEY(`k1`)
+DISTRIBUTED BY HASH(`k1`) BUCKETS 32
+PROPERTIES (
+    "replication_num" = "1"
+);
+insert into __row_util_base select generate_series from TABLE(generate_series(0, 10000 - 1));
+insert into __row_util_base select * from __row_util_base;
+insert into __row_util_base select * from __row_util_base;
+insert into __row_util_base select * from __row_util_base;
+insert into __row_util_base select * from __row_util_base;
+  idx bigint NULL
+) ENGINE=OLAP
+DUPLICATE KEY(`idx`)
+DISTRIBUTED BY HASH(`idx`) BUCKETS 32
+PROPERTIES (
+    "replication_num" = "1"
+);
+insert into __row_util select row_number() over() as idx from __row_util_base;
+
+
+CREATE TABLE t1 (
+    k1 bigint NULL,
+
+    c_1 int,
+    c_2 int
+    c_3 int
+    c_4 int
+) ENGINE=OLAP
+DUPLICATE KEY(`k1`)
+DISTRIBUTED BY HASH(`k1`) BUCKETS 32
+PROPERTIES (
+    "replication_num" = "1"
+);
+
+insert into t1 
+select
+    idx, idx + 1, idx + 2, idx + 3, idx + 4
+from __row_util;
+
+[function] execute_prepared_stmt("SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_1 = ? AND c_2 = ?) OR (c_3 = ? AND c_4 = ?)", [100, 101, 102, 103]);
+[function] execute_by_prepared_stmt_conn("SELECT get_last_query_id()");
+
+drop database db_${uuid0} FORCE;
