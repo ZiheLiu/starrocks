@@ -528,10 +528,17 @@ public class StmtExecutor {
     }
 
     public String getPreparedStmtId() {
-        // For EXECUTE.
+        // For EXECUTE, either `parsedStmt` is an `ExecuteStmt`, or `prepareStmtContext` has already been set.
+        // Initially, `parsedStmt` is an `ExecuteStmt`. After it matches the corresponding `PrepareStmt`, `parsedStmt` is replaced
+        // with a `QueryStatement`, while `prepareStmtContext` stores the associated `PrepareStmt` information.
+        if (parsedStmt != null && parsedStmt instanceof ExecuteStmt) {
+            ExecuteStmt executeStmt = (ExecuteStmt) parsedStmt;
+            return executeStmt.getStmtName();
+        }
         if (prepareStmtContext != null) {
             return prepareStmtContext.getStmt().getName();
         }
+
         // For PREPARE.
         if (parsedStmt != null && parsedStmt instanceof PrepareStmt) {
             PrepareStmt prepareStmt = (PrepareStmt) parsedStmt;
@@ -3197,7 +3204,9 @@ public class StmtExecutor {
                 context.getQualifiedUser(),
                 Optional.ofNullable(context.getResourceGroup()).map(TWorkGroup::getName).orElse(""),
                 context.getCurrentWarehouseName(),
-                context.getCurrentCatalog());
+                context.getCurrentCatalog(),
+                context.getCommandStr(),
+                getPreparedStmtId());
         // Set query source from context
         queryDetail.setQuerySource(context.getQuerySource());
         context.setQueryDetail(queryDetail);
