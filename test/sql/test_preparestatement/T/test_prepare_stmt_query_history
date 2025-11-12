@@ -3,7 +3,7 @@
 admin set frontend config ("enable_collect_query_detail_info" = "true");
 
 create database db_${uuid0};
-use create database db_${uuid0};
+use database db_${uuid0};
 
 CREATE TABLE __row_util_base (
   k1 bigint NULL
@@ -30,7 +30,6 @@ insert into __row_util select row_number() over() as idx from __row_util_base;
 
 CREATE TABLE t1 (
     k1 bigint NULL,
-
     c_1 int,
     c_2 int
     c_3 int
@@ -47,7 +46,8 @@ select
     idx, idx + 1, idx + 2, idx + 3, idx + 4
 from __row_util;
 
-[function] execute_prepared_stmt("SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_1 = ? AND c_2 = ?) OR (c_3 = ? AND c_4 = ?)", [100, 101, 102, 103]);
-[function] execute_by_prepared_stmt_conn("SELECT get_last_query_id()");
+function: execute_by_prepared_stmt_conn("use db_${uuid0}");
+function: execute_prepared_stmt("SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_1 = ? AND c_2 = ?) OR (c_3 = ? AND c_4 = ?)", [100, 101, 102, 103]);
+function: execute_by_prepared_stmt_conn("SELECT get_last_query_id()");
 
 drop database db_${uuid0} FORCE;

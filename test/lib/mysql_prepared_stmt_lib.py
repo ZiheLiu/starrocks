@@ -33,6 +33,7 @@ class MysqlPreparedStmtLib(object):
                 user=query_dict["user"],
                 port=int(query_dict["port"]),
                 passwd=query_dict["password"],
+                allow_multi_statements = True,
             )
         else:
             self.connector = mysql.connector.connect(
@@ -41,6 +42,7 @@ class MysqlPreparedStmtLib(object):
                 port=int(query_dict["port"]),
                 passwd=query_dict["password"],
                 db=query_dict["database"],
+                allow_multi_statements = True,
             )
         self.prepared_stmt_cursor = self.connector.cursor(prepared=True)
 
