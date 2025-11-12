@@ -3341,7 +3341,7 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
         return query_id
 
     def get_query_details(self):
-        url = f"http://{self.mysql_host}:{self.http_port}/api/query_detail?event_time=0}"
+        url = f"http://{self.mysql_host}:{self.http_port}/api/query_detail?event_time=0"
         result = self.get_http_request(url)
         query_details = json.loads(result)
         return query_details
@@ -3368,18 +3368,23 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
         else:
             return None
 
-    def _get_query_detail_by_filter_or_timeout(self, filter_func, timeout_sec):
+    def _get_query_detail_by_filter_or_timeout(self, filter_func, timeout_sec, raw_result=False):
         for retry_count in range(timeout_sec):
             query_detail = self._get_query_detail_by_filter(filter_func)
             if query_detail is not None:
-                return query_detail
+                if raw_result:
+                    return query_detail
+                else:
+                    str_res = json.dumps(query_detail)
+                    str_res = str_res.replace('\\n', '\\\\n').replace('\\"', '\\\\"')
+                    return str_res
             if retry_count < timeout_sec:  # Not the last retry
                 time.sleep(1)
         return None
 
-    def get_query_detail_or_timeout(self, query_id, timeout_sec=5):
+    def get_query_detail_or_timeout(self, query_id, timeout_sec=5, raw_result=False):
         return self._get_query_detail_by_filter_or_timeout(lambda detail: detail.get("queryId") == query_id,
-                                                           timeout_sec)
+                                                           timeout_sec, raw_result)
 
     def get_prepared_stmt_query_detail_or_timeout(self, prepared_stmt_id):
         def is_prepared_stmt_detail(detail):
@@ -3445,7 +3450,7 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
         time.sleep(1)
 
         # 5. Get query detail, retry up to 3 times
-        query_detail = self.get_query_detail_or_timeout(query_id, timeout_sec=3)
+        query_detail = self.get_query_detail_or_timeout(query_id, timeout_sec=3, raw_result=True)
         if query_detail is None:
             # print("Failed to get query detail after 3 retries")
             tools.assert_true(
