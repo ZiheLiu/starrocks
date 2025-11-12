@@ -70,7 +70,7 @@ function: execute_by_prepared_stmt_conn("use db_${uuid0}")
 -- result:
 
 -- !result
-function: execute_by_prepared_stmt_conn("set enable_profile = true")
+function: execute_by_prepared_stmt_conn("set audit_execute_stmt = true")
 -- result:
 
 -- !result
@@ -129,7 +129,7 @@ FROM w1;
 -- result:
 "SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_1 = ? AND c_2 = ?) OR (c_3 = ? AND c_4 = ?)"
 -- !result
-function: execute_by_prepared_stmt_conn("set enable_profile = false")
+function: execute_by_prepared_stmt_conn("set audit_execute_stmt = false")
 -- result:
 
 -- !result
@@ -137,53 +137,8 @@ function: execute_prepared_stmt("SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_
 -- result:
 99	100	101	102	103
 -- !result
-[UC]function: query_id=execute_by_prepared_stmt_conn("SELECT last_query_id()")
+[UC]function: check_prepared_stmt_query_detail()
 -- result:
-019a77c0-c11e-7994-a0ac-a59db89544f7
--- !result
-[UC]function: execute_detail=get_query_detail_or_timeout("${query_id}")
--- result:
--- !result
-WITH w1 as (SELECT parse_json('${execute_detail}') detail)
-SELECT 
-    detail->'command' AS command
-FROM w1;
--- result:
-"MySQL.COM_STMT_EXECUTE"
--- !result
-WITH w1 as (SELECT parse_json('${execute_detail}') detail)
-SELECT 
-    detail->'sql' as query
-FROM w1;
--- result:
-[REGEX]"SELECT `\w+`\.`t1`\.`k1`, `\w+`\.`t1`\.`c_1`, `\w+`\.`t1`\.`c_2`, `\w+`\.`t1`\.`c_3`, `\w+`\.`t1`\.`c_4`\\nFROM `\w+`\.`t1`\\nWHERE \(\(`\w+`\.`t1`\.`c_1` = 100\) AND \(`\w+`\.`t1`\.`c_2` = 101\)\) OR \(\(`\w+`\.`t1`\.`c_3` = 102\) AND \(`\w+`\.`t1`\.`c_4` = 103\)\)"
--- !result
-[UC]prepared_stmt_id=WITH w1 as (SELECT parse_json('${execute_detail}') detail) SELECT detail->'preparedStmtId' preparedStmtId FROM w1;
--- result:
-"2568"
--- !result
-[UC]function: prepare_detail=get_prepared_stmt_query_detail_or_timeout(${prepared_stmt_id})
--- result:
--- !result
-WITH w1 as (
-    SELECT parse_json('${prepare_detail}') detail
-)
-SELECT 
-    detail->'command' AS command,
-    detail->'queryId' != '${query_id}' AS is_correct_query_id,
-    detail->'profile' as profile
-FROM w1;
--- result:
-"MySQL.COM_STMT_PREPARE"	1	None
--- !result
-WITH w1 as (
-    SELECT parse_json('${prepare_detail}') detail
-)
-SELECT 
-    detail->'sql' as query
-FROM w1;
--- result:
-"SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_1 = ? AND c_2 = ?) OR (c_3 = ? AND c_4 = ?)"
 -- !result
 admin set frontend config ("enable_collect_query_detail_info" = "false");
 -- result:

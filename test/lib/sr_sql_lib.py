@@ -3394,6 +3394,22 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
 
         return self._get_query_detail_by_filter_or_timeout(is_prepared_stmt_detail, timeout_sec=5)
 
+    def check_prepared_stmt_query_detail(self):
+        query_details = self.get_query_details()
+        for detail in query_details:
+            if 'command' not in detail or detail['command'] != 'MySQL.COM_STMT_PREPARE':
+                continue
+            query_id = detail['queryId']
+
+            if 'profile' not in detail:
+                continue
+            profile_query_id_res = re.match(detail['profile'], 'Query ID: (.*?)\n')
+            if not profile_query_id_res:
+                continue
+            profile_query_id = profile_query_id_res.group(1)
+
+            tools.assert_equals(query_id, profile_query_id)
+
     def assert_query_detail_field(self, query_detail, field_name, expected_value=None):
         """
         Validate field values in query detail
