@@ -3403,7 +3403,7 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
 
             if 'profile' not in detail:
                 continue
-            profile_query_id_res = re.match(detail['profile'], 'Query ID: (.*?)\n')
+            profile_query_id_res = re.match(r'[\w\W]*Query ID: (.*)[\w\W]*', detail['profile'])
             if not profile_query_id_res:
                 continue
             profile_query_id = profile_query_id_res.group(1)
