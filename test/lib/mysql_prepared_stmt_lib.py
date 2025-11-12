@@ -33,7 +33,6 @@ class MysqlPreparedStmtLib(object):
                 user=query_dict["user"],
                 port=int(query_dict["port"]),
                 passwd=query_dict["password"],
-                allow_multi_statements = True,
             )
         else:
             self.connector = mysql.connector.connect(
@@ -42,7 +41,6 @@ class MysqlPreparedStmtLib(object):
                 port=int(query_dict["port"]),
                 passwd=query_dict["password"],
                 db=query_dict["database"],
-                allow_multi_statements = True,
             )
         self.prepared_stmt_cursor = self.connector.cursor(prepared=True)
 
@@ -56,12 +54,24 @@ class MysqlPreparedStmtLib(object):
 
     def execute_prepared(self, sql, params):
         self.prepared_stmt_cursor.execute(sql, params)
-        return self.prepared_stmt_cursor.fetchall()
+        return self._res_to_str(self.prepared_stmt_cursor.fetchall())
 
     def execute(self, sql):
         cursor = self.connector.cursor()
         try:
             cursor.execute(sql)
-            return cursor.fetchall()
+            return self._res_to_str(cursor.fetchall())
         finally:
             cursor.close()
+
+    @staticmethod
+    def _res_to_str(res):
+        if not res:
+            return ""
+
+        res_log = []
+        if isinstance(res[0], tuple) or isinstance(res[0], list):
+            res_log.extend(["\t".join([str(col) for col in row]) for row in res])
+        else:
+            res_log.extend(["\t".join(str(row)) for row in res])
+        return "\n".join(res_log)
