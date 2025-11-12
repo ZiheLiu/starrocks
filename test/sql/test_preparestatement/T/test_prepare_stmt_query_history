@@ -49,7 +49,14 @@ select
 from __row_util;
 
 function: execute_by_prepared_stmt_conn("use db_${uuid0}")
-function: execute_prepared_stmt("SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_1 = ? AND c_2 = ?) OR (c_3 = ? AND c_4 = ?)", [100, 101, 102, 103]);
-function: execute_by_prepared_stmt_conn("SELECT last_query_id()");
+function: execute_by_prepared_stmt_conn("set enable_profile = true")
+function: execute_by_prepared_stmt_conn("set enable_async_profile = false")
+
+function: execute_prepared_stmt("SELECT k1, c_1, c_2, c_3, c_4 FROM t1 WHERE (c_1 = ? AND c_2 = ?) OR (c_3 = ? AND c_4 = ?)", [100, 101, 102, 103])
+function: query_id=execute_by_prepared_stmt_conn("SELECT last_query_id()")
+function: get_query_detail("${query_id}")
+
+
+admin set frontend config ("enable_collect_query_detail_info" = "false");
 
 drop database db_${uuid0} FORCE;
