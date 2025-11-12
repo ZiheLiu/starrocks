@@ -3380,7 +3380,8 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
                     return str_res
             if retry_count < timeout_sec:  # Not the last retry
                 time.sleep(1)
-        return None
+
+        tools.assert_true(False, "Failed to get query detail after 3 retries")
 
     def get_query_detail_or_timeout(self, query_id, timeout_sec=5, raw_result=False):
         return self._get_query_detail_by_filter_or_timeout(lambda detail: detail.get("queryId") == query_id,
@@ -3451,10 +3452,6 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
 
         # 5. Get query detail, retry up to 3 times
         query_detail = self.get_query_detail_or_timeout(query_id, timeout_sec=3, raw_result=True)
-        if query_detail is None:
-            # print("Failed to get query detail after 3 retries")
-            tools.assert_true(
-                False, "Failed to get query detail after 3 retries")
 
         # 6. Validate each field and assert
         # print("=== Query Detail API Test Results ===")
