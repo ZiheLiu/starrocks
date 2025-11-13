@@ -3371,15 +3371,27 @@ out.append("${{dictMgr.NO_DICT_STRING_COLUMNS.contains(cid)}}")
     def _get_query_detail_by_filter_or_timeout(self, filter_func, timeout_sec, raw_result=False):
         for retry_count in range(timeout_sec):
             query_detail = self._get_query_detail_by_filter(filter_func)
-            if query_detail is not None:
-                if raw_result:
-                    return query_detail
-                else:
-                    str_res = json.dumps(query_detail)
-                    str_res = str_res.replace('\\n', '\\\\n').replace('\\"', '\\\\"')
-                    return str_res
-            if retry_count < timeout_sec:  # Not the last retry
-                time.sleep(1)
+            if query_detail is None:
+                if retry_count < timeout_sec:  # Not the last retry
+                    time.sleep(1)
+                continue
+
+            if raw_result:
+                return query_detail
+
+            # To ensure that the output string is in a JSON-compatible format that can be processed by the
+            # function `parse_json()` in StarRocks, escaping is required.
+            def escaped_str(s):
+                return s.replace('\n', r'\n').replace('"', r'\"')
+
+            escaped_detail = {}
+            for key, value in query_detail.items():
+                key = escaped_str(key)
+                if type(value) is str:
+                    value = escaped_str(value)
+                escaped_detail[key] = value
+            escaped_detail_str = json.dumps(escaped_detail)
+            return escaped_detail_str
 
         tools.assert_true(False, "Failed to get query detail after 3 retries")
 
