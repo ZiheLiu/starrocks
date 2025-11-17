@@ -383,7 +383,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CBO_PRUNE_SUBFIELD = "cbo_prune_subfield";
     public static final String CBO_PRUNE_JSON_SUBFIELD = "cbo_prune_json_subfield";
     public static final String CBO_PRUNE_JSON_SUBFIELD_DEPTH = "cbo_prune_json_subfield_depth";
-    public static final String CBO_USE_HISTOGRAM_EVALUDATE_LIST_PARTITION =  "cbo_use_histogram_evaluate_list_partition";
+    public static final String CBO_USE_HISTOGRAM_EVALUDATE_LIST_PARTITION = "cbo_use_histogram_evaluate_list_partition";
     public static final String ENABLE_OPTIMIZER_REWRITE_GROUPINGSETS_TO_UNION_ALL =
             "enable_rewrite_groupingsets_to_union_all";
     public static final String ENABLE_PARTITION_LEVEL_CARDINALITY_ESTIMATION =
@@ -1428,7 +1428,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = NEW_PLANER_AGG_STAGE)
     private int newPlannerAggStage = SessionVariableConstants.AggregationStage.AUTO.ordinal();
 
-    @VariableMgr.VarAttr(name = TRANSMISSION_COMPRESSION_TYPE) 
+    @VariableMgr.VarAttr(name = TRANSMISSION_COMPRESSION_TYPE)
     private String transmissionCompressionType = "AUTO";
 
     // if a packet's size is larger than RPC_HTTP_MIN_SIZE, it will use RPC via http, as the std rpc has 2GB size limit.
@@ -2277,7 +2277,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         if (Strings.isNullOrEmpty(annParams)) {
             return Maps.newHashMap();
         }
-        Type type = new com.google.gson.reflect.TypeToken<Map<String, String>>() {}.getType();
+        Type type = new com.google.gson.reflect.TypeToken<Map<String, String>>() {
+        }.getType();
         return GsonUtils.GSON.fromJson(annParams, type);
     }
 
@@ -2948,7 +2949,6 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public void setBigQueryProfileThreshold(String bigQueryProfileThreshold) {
         this.bigQueryProfileThreshold = bigQueryProfileThreshold;
     }
-
 
     // when pipeline engine is enabled
     // in case of pipeline_dop > 0: return pipeline_dop * parallelExecInstanceNum;
