@@ -295,12 +295,24 @@ Status OlapChunkSource::_init_reader_params(const std::vector<std::unique_ptr<Ol
     std::vector<ExprContext*> not_pushdown_conjuncts;
     _scan_ctx->conjuncts_manager().get_not_push_down_conjuncts(&not_pushdown_conjuncts);
     std::unordered_set<SlotId> conjuncts_slot_ids;
+
+    LOG(WARNING) << "[TEST] [num_not_pushdown_conjuncts=" << not_pushdown_conjuncts.size() << "]";
+
     for (auto* expr : not_pushdown_conjuncts) {
-        expr->root()->for_each_slot_id([&conjuncts_slot_ids](SlotId id) { conjuncts_slot_ids.insert(id); });
+        expr->root()->for_each_slot_id([&conjuncts_slot_ids](SlotId id) {
+            LOG(WARNING) << "[TEST] [slot_id=" << id << "]";
+            conjuncts_slot_ids.insert(id);
+        });
     }
+
+    LOG(WARNING) << "[TEST] [num_slots=" << not_pushdown_conjuncts.size() << "]";
+
     for (auto& slot : *_slots) {
+        LOG(WARNING) << "[TEST] [slot_id=" << slot->id() << "]";
+
         if (conjuncts_slot_ids.contains(slot->id())) {
             int32_t fid = _tablet_schema->field_index(slot->col_name());
+            LOG(WARNING) << "[TEST] [fid=" << fid << "]";
             _unused_output_column_ids.erase(fid);
         }
     }
