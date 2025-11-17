@@ -305,7 +305,7 @@ Status OlapChunkSource::_init_reader_params(const std::vector<std::unique_ptr<Ol
         });
     }
 
-    LOG(WARNING) << "[TEST] [num_slots=" << not_pushdown_conjuncts.size() << "]";
+    LOG(WARNING) << "[TEST] [num_slots=" << _slots.size() << "]";
 
     for (auto& slot : *_slots) {
         LOG(WARNING) << "[TEST] [slot_id=" << slot->id() << "]";
