@@ -66,7 +66,7 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
 
         StatementBase parsedStmt = null;
         try {
-            parsedStmt = executeQueryWithRetry();
+            parsedStmt = runWithParserStageRetry();
         } catch (IOException e) {
             // Client failed.
             LOG.warn("Process one query failed because IOException: ", e);
@@ -123,7 +123,7 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         ctx.setCommand(MysqlCommand.COM_SLEEP);
     }
 
-    private StatementBase executeQueryWithRetry() throws Exception {
+    private StatementBase runWithParserStageRetry() throws Exception {
         try {
             return executeQueryAttempt();
         } catch (LargeInPredicateException e) {
