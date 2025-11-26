@@ -26,6 +26,7 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.common.ThreadPoolManager;
 import com.starrocks.common.util.ArrowUtil;
 import com.starrocks.common.util.DebugUtil;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.DefaultCoordinator;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.Coordinator;
@@ -493,8 +494,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             if (ctx.returnFromFE()) {
                 processorFinished.get();
                 if (ctx.getState().isError()) {
-                    throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
-                            DebugUtil.printId(ctx.getExecutionId()), ctx.getState().getErrorMessage()));
+                    reportError(ctx);
                 }
                 String queryId = DebugUtil.printId(ctx.getExecutionId());
                 if (ctx.getResult(queryId) == null) {
@@ -511,8 +511,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // Query task will wait until deployment to BE is finished and return BE as endpoint.
             // ------------------------------------------------------------------------------------
             if (coordinator == null || ctx.getState().isError()) {
-                throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
-                        DebugUtil.printId(ctx.getExecutionId()), ctx.getState().getErrorMessage()));
+                reportError(ctx);
             }
 
             Preconditions.checkState(coordinator instanceof DefaultCoordinator,
@@ -538,6 +537,15 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             LOG.warn("[ARROW] failed to getFlightInfoFromQuery [queryID={}]", DebugUtil.printId(ctx.getExecutionId()), e);
             throw CallStatus.INTERNAL.withDescription(e.getMessage()).toRuntimeException();
         }
+    }
+
+    private void reportError(ConnectContext ctx) {
+        String errMsg = ctx.getState().getErrorMessage();
+        if (StringUtils.isEmpty(errMsg)) {
+            errMsg = "Unknown error";
+        }
+        throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
+                DebugUtil.printId(ctx.getExecutionId()), errMsg));
     }
 
     private static ByteString buildFETicket(ArrowFlightSqlConnectContext ctx) {
