@@ -73,7 +73,6 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
         super();
         this.allocator = new RootAllocator(Long.MAX_VALUE);
         this.arrowFlightSqlToken = arrowFlightSqlToken;
-        this.statement = null;
         this.returnResultFromFE = true;
     }
 
