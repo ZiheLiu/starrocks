@@ -18,7 +18,6 @@ import com.starrocks.catalog.Column;
 import com.starrocks.common.util.ArrowUtil;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.ShowResultSetMetaData;
-import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.type.TypeFactory;
 import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
