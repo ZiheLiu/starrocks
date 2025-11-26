@@ -199,7 +199,7 @@ if __name__ == "__main__":
         print("In alive mode, set concurrency=1 in default!")
         concurrency = 1
 
-    arrow_mode = True
+    # arrow_mode = True
     print(f"[TEST] run [arrow_mode={arrow_mode}]")
     sr_sql_lib.set_arrow_mode(arrow_mode)
 

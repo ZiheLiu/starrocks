@@ -288,13 +288,14 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
     """
     # 1. MapType: value is [(key, value), ...]
     if T.is_map(dtype):
-        item_conv = _build_arrow_to_py_converter(dtype.item_type)
+        key_conv = _build_arrow_to_py_converter(dtype.key_type)
+        value_conv = _build_arrow_to_py_converter(dtype.item_type)
 
         def conv_map(value):
             if value is None:
                 return None
             # Default Python representation of map is [(k, v), ...]
-            return {k: item_conv(v) for (k, v) in value}
+            return {key_conv(k): value_conv(v) for (k, v) in value}
 
         return conv_map
 
