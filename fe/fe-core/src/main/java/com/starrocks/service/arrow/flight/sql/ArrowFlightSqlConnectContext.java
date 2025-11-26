@@ -49,8 +49,6 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
 
     private final String arrowFlightSqlToken;
 
-    private StatementBase statement;
-
     private boolean returnResultFromFE;
 
     private final RunningToken runningToken = new RunningToken();
@@ -89,18 +87,9 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
     }
 
     public void resetForStatement() {
-        this.statement = null;
         this.returnResultFromFE = true;
         this.setQueryId(UUIDUtil.genUUID());
         this.setExecutionId(UUIDUtil.toTUniqueId(this.getQueryId()));
-    }
-
-    public StatementBase getStatement() {
-        return statement;
-    }
-
-    public void setStatement(StatementBase statement) {
-        this.statement = statement;
     }
 
     public VectorSchemaRoot getResult(String queryId) {

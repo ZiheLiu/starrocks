@@ -673,7 +673,7 @@ static const std::unordered_map<int32_t, StarRocksToArrowConvertFunc> global_sta
         STARROCKS_TO_ARROW_CONV_ENTRY_R(ArrowTypeId::MAP, TYPE_MAP)};
 
 static inline StarRocksToArrowConvertFunc resolve_convert_func(LogicalType lt, ArrowTypeId at, bool is_nullable) {
-    if (lt == TYPE_OBJECT || lt == TYPE_PERCENTILE || (lt == TYPE_HLL && at == ArrowTypeId::BINARY)) {
+    if (is_always_convert_to_null(lt, at)) {
         is_nullable = true;
     }
     const auto func_id = starrocks_to_arrow_convert_idx(lt, at, is_nullable);
@@ -715,7 +715,10 @@ public:
     DEF_VISIT_METHOD(Int16Type);
     DEF_VISIT_METHOD(Int32Type);
     DEF_VISIT_METHOD(Int64Type);
+    DEF_VISIT_METHOD(Date32Type);
+    DEF_VISIT_METHOD(TimestampType);
     DEF_VISIT_METHOD(StringType);
+    DEF_VISIT_METHOD(BinaryType);
     DEF_VISIT_METHOD(ListType);
     DEF_VISIT_METHOD(StructType);
     DEF_VISIT_METHOD(MapType);

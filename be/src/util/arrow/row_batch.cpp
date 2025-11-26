@@ -95,6 +95,9 @@ Status convert_to_arrow_type(const TypeDescriptor& type, std::shared_ptr<arrow::
     case TYPE_JSON:
         *result = arrow::utf8();
         break;
+    case TYPE_VARBINARY:
+        *result = arrow::binary();
+        break;
     case TYPE_DECIMALV2:
         *result = std::make_shared<arrow::Decimal128Type>(27, 9);
         break;

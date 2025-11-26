@@ -24,8 +24,6 @@ import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.common.ThreadPoolManager;
-import com.starrocks.common.profile.Timer;
-import com.starrocks.common.profile.Tracers;
 import com.starrocks.common.util.ArrowUtil;
 import com.starrocks.common.util.DebugUtil;
 import com.starrocks.qe.DefaultCoordinator;
@@ -34,8 +32,6 @@ import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.qe.scheduler.dag.ExecutionFragment;
 import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.service.arrow.flight.sql.session.ArrowFlightSqlSessionManager;
-import com.starrocks.sql.ast.OriginStatement;
-import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.system.ComputeNode;
@@ -473,13 +469,9 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             CompletableFuture<Void> processorFinished = new CompletableFuture<>();
             executor.submit(() -> {
                 try {
-                    ArrowFlightSqlConnectProcessor processor = new ArrowFlightSqlConnectProcessor(ctx, deploymentFinished);
-                    StatementBase parsedStmt = parse(query, ctx.getSessionVariable());
-                    ctx.setStatement(parsedStmt);
                     ctx.setThreadLocalInfo();
 
-
-
+                    ArrowFlightSqlConnectProcessor processor = new ArrowFlightSqlConnectProcessor(ctx, deploymentFinished, query);
                     processor.processOnce();
 
                     deploymentFinished.complete(null);
@@ -586,22 +578,6 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
         }
 
         return new Schema(arrowFields);
-    }
-
-    protected StatementBase parse(String sql, SessionVariable sessionVariables) {
-        List<StatementBase> stmts;
-
-        try (Timer ignored = Tracers.watchScope(Tracers.Module.PARSER, "Parser")) {
-            stmts = com.starrocks.sql.parser.SqlParser.parse(sql, sessionVariables);
-        }
-        // TODO: Support multiple stmts, as long as at most one stmt needs to return the result.
-        if (stmts.size() > 1) {
-            throw new RuntimeException("arrow flight sql query does not support execute multiple query");
-        }
-
-        StatementBase parsedStmt = stmts.get(0);
-        parsedStmt.setOrigStmt(new OriginStatement(sql));
-        return parsedStmt;
     }
 
     private static String hexStringFromUniqueId(final TUniqueId id) {

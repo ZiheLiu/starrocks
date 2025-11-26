@@ -139,7 +139,6 @@ public class ArrowFlightSqlServiceImplTest {
 
         StatementBase mockStmtBase = mock(StatementBase.class);
         when(mockStmtBase.getOrigStmt()).thenReturn(new OriginStatement("SELECT 1", 0));
-        when(mockContext.getStatement()).thenReturn(mockStmtBase);
 
         service = new ArrowFlightSqlServiceImpl(sessionManager, Location.forGrpcInsecure("localhost", 1234));
     }

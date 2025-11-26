@@ -60,13 +60,6 @@ public class ArrowFlightSqlConnectContextTest {
     }
 
     @Test
-    public void testSetAndGetStatement() {
-        StatementBase mockStatement = mock(StatementBase.class);
-        context.setStatement(mockStatement);
-        assertEquals(mockStatement, context.getStatement());
-    }
-
-    @Test
     public void testReset() {
         context.resetForStatement();
         assertNotNull(context.getQueryId());
