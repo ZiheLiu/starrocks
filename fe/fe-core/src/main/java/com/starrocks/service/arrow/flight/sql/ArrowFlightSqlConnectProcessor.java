@@ -64,14 +64,14 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
                 .setCatalog(ctx.getCurrentCatalog());
         Tracers.register(ctx);
 
-        StatementBase parsedStmt = parse(originStmt, ctx.getSessionVariable());
-        Tracers.init(ctx, parsedStmt.getTraceMode(), parsedStmt.getTraceModule());
-
-        executor = new StmtExecutor(ctx, parsedStmt, deploymentFinished);
-        ctx.setExecutor(executor);
-        ctx.setIsLastStmt(true);
-
+        StatementBase parsedStmt = null;
         try {
+            parsedStmt = parse(originStmt, ctx.getSessionVariable());
+            Tracers.init(ctx, parsedStmt.getTraceMode(), parsedStmt.getTraceModule());
+
+            executor = new StmtExecutor(ctx, parsedStmt, deploymentFinished);
+            ctx.setIsLastStmt(true);
+
             executor.addRunningQueryDetail(parsedStmt);
             executor.execute();
         } catch (IOException e) {
@@ -99,8 +99,12 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
             Tracers.close();
         }
 
-        auditAfterExec(originStmt, executor.getParsedStmt(), executor.getQueryStatisticsForAuditLog());
-        executor.addFinishedQueryDetail();
+        if (executor != null) {
+            auditAfterExec(originStmt, executor.getParsedStmt(), executor.getQueryStatisticsForAuditLog());
+            executor.addFinishedQueryDetail();
+        } else {
+            auditAfterExec(originStmt, parsedStmt, null);
+        }
     }
 
     @Override
