@@ -276,6 +276,7 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.RejectedExecutionException;
@@ -322,8 +323,14 @@ public class StmtExecutor {
     private PrepareStmtContext prepareStmtContext = null;
     private boolean isInternalStmt = false;
 
+    private final CompletableFuture<Coordinator> deploymentFinished;
+
     public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt) {
         this(ctx, parsedStmt, false);
+    }
+
+    public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt, CompletableFuture<Coordinator> deploymentFinished) {
+        this(ctx, parsedStmt, false, deploymentFinished);
     }
 
     public static StmtExecutor newInternalExecutor(ConnectContext ctx, StatementBase parsedStmt) {
@@ -335,12 +342,18 @@ public class StmtExecutor {
     }
 
     private StmtExecutor(ConnectContext ctx, StatementBase parsedStmt, boolean isInternalStmt) {
+        this(ctx, parsedStmt, isInternalStmt, null);
+    }
+
+    private StmtExecutor(ConnectContext ctx, StatementBase parsedStmt, boolean isInternalStmt,
+                         CompletableFuture<Coordinator> deploymentFinished) {
         this.context = ctx;
         this.parsedStmt = Preconditions.checkNotNull(parsedStmt);
         this.originStmt = parsedStmt.getOrigStmt();
         this.serializer = context.getSerializer();
         this.isProxy = false;
         this.isInternalStmt = isInternalStmt;
+        this.deploymentFinished = deploymentFinished;
     }
 
     public void setProxy() {
@@ -1491,13 +1504,16 @@ public class StmtExecutor {
         RowBatch batch = null;
         if (context instanceof HttpConnectContext) {
             batch = httpResultSender.sendQueryResult(coord, execPlan, parsedStmt.getOrigStmt().getOrigStmt());
-        } else if (context instanceof ArrowFlightSqlConnectContext) {
-            ArrowFlightSqlConnectContext ctx = (ArrowFlightSqlConnectContext) context;
-            ctx.setReturnResultFromFE(false);
-            ctx.setDeploymentFinished(coord);
         } else {
-            boolean needSendResult = !isPlanAdvisorAnalyze && !isExplainAnalyze
-                    && !context.getSessionVariable().isEnableExecutionOnly();
+            final boolean isArrowFlight = context instanceof ArrowFlightSqlConnectContext && deploymentFinished != null;
+            if (isArrowFlight && !isExplainAnalyze) {
+                ArrowFlightSqlConnectContext arrowContext = (ArrowFlightSqlConnectContext) context;
+                arrowContext.setReturnResultFromFE(false);
+                deploymentFinished.complete(coord);
+            }
+
+            final boolean needSendResult = !isPlanAdvisorAnalyze && !isExplainAnalyze
+                    && !context.getSessionVariable().isEnableExecutionOnly() && !isArrowFlight;
             // send mysql result
             // 1. If this is a query with OUTFILE clause, eg: select * from tbl1 into outfile xxx,
             //    We will not send real query result to client. Instead, we only send OK to client with
@@ -1534,21 +1550,15 @@ public class StmtExecutor {
                             channel.sendOnePacket(row);
                         }
                     }
+                }
+                if (batch.getBatch() != null) {
                     context.updateReturnRows(batch.getBatch().getRows().size());
                 }
             } while (!batch.isEos());
-            if (!isSendFields && !isOutfileQuery && !isExplainAnalyze && !isPlanAdvisorAnalyze) {
+
+            if (!isSendFields && !isOutfileQuery && !isExplainAnalyze && !isPlanAdvisorAnalyze && !isArrowFlight) {
                 sendFields(colNames, outputExprs);
             }
-        }
-
-        if (context instanceof ArrowFlightSqlConnectContext) {
-            coord.join(context.getSessionVariable().getQueryTimeoutS());
-            if (!isOutfileQuery) {
-                context.getState().setEof();
-            }
-            // TODO(liuzihe): process query statistics for Arrow Flight SQL. For now query statistics is passed by the final
-            //  batch, so we need to change the implementation to support Arrow Flight SQL.
         }
 
         processQueryStatisticsFromResult(batch, execPlan, isOutfileQuery);
@@ -1567,12 +1577,16 @@ public class StmtExecutor {
                 context.getState().setOk(statisticsForAuditLog.returnedRows, 0, "");
             }
 
-            if (null != statisticsForAuditLog) {
-                analyzePlanWithExecStats(execPlan);
+            if (null == statisticsForAuditLog) {
+                return;
             }
 
-            if (null == statisticsForAuditLog || null == statisticsForAuditLog.statsItems ||
-                    statisticsForAuditLog.statsItems.isEmpty()) {
+            analyzePlanWithExecStats(execPlan);
+            if (context instanceof ArrowFlightSqlConnectContext) {
+                context.updateReturnRows(statisticsForAuditLog.getReturnedRows());
+            }
+
+            if (null == statisticsForAuditLog.statsItems || statisticsForAuditLog.statsItems.isEmpty()) {
                 return;
             }
 
@@ -2169,33 +2183,37 @@ public class StmtExecutor {
     }
 
     private void handleExplainStmt(String explainString) throws IOException {
-        if (context instanceof HttpConnectContext) {
-            httpResultSender.sendExplainResult(explainString);
-            return;
-        }
 
         if (context.getQueryDetail() != null) {
             context.getQueryDetail().setExplain(explainString);
         }
 
-        ShowResultSetMetaData metaData =
-                ShowResultSetMetaData.builder()
-                        .addColumn(new Column("Explain String", TypeFactory.createVarchar(20)))
-                        .build();
-        sendMetaData(metaData);
-
-        if (isProxy) {
-            proxyResultSet = new ShowResultSet(metaData,
-                    Arrays.stream(explainString.split("\n")).map(Collections::singletonList).collect(
-                            Collectors.toList()));
+        if (context instanceof HttpConnectContext) {
+            httpResultSender.sendExplainResult(explainString);
+        } else if (context instanceof ArrowFlightSqlConnectContext) {
+            ArrowFlightSqlConnectContext ctx = (ArrowFlightSqlConnectContext) context;
+            ctx.addExplainResult(DebugUtil.printId(ctx.getExecutionId()), explainString);
         } else {
-            // Send result set.
-            for (String item : explainString.split("\n")) {
-                serializer.reset();
-                serializer.writeLenEncodedString(item);
-                context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
+            ShowResultSetMetaData metaData =
+                    ShowResultSetMetaData.builder()
+                            .addColumn(new Column("Explain String", TypeFactory.createVarchar(20)))
+                            .build();
+            sendMetaData(metaData);
+
+            if (isProxy) {
+                proxyResultSet = new ShowResultSet(metaData,
+                        Arrays.stream(explainString.split("\n")).map(Collections::singletonList).collect(
+                                Collectors.toList()));
+            } else {
+                // Send result set.
+                for (String item : explainString.split("\n")) {
+                    serializer.reset();
+                    serializer.writeLenEncodedString(item);
+                    context.getMysqlChannel().sendOnePacket(serializer.toByteBuffer());
+                }
             }
         }
+
         context.getState().setEof();
     }
 

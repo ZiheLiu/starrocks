@@ -132,7 +132,9 @@ public class MysqlChannel {
             return;
         }
         try {
-            conn.close();
+            if (conn != null) {
+                conn.close();
+            }
         } catch (IOException e) {
             LOG.warn("Close channel exception, ignore.");
         } finally {

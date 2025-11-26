@@ -22,19 +22,24 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ConnectProcessor;
 import com.starrocks.qe.QueryState;
 import com.starrocks.qe.StmtExecutor;
+import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.sql.ast.KillStmt;
 import com.starrocks.sql.ast.StatementBase;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 
 // inherit ConnectProcessor to record the audit log and Query Detail
 public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
     private static final Logger LOG = LogManager.getLogger(ArrowFlightSqlConnectProcessor.class);
 
-    public ArrowFlightSqlConnectProcessor(ConnectContext context) {
+    private final CompletableFuture<Coordinator> deploymentFinished;
+
+    public ArrowFlightSqlConnectProcessor(ConnectContext context, CompletableFuture<Coordinator> deploymentFinished) {
         super(context);
+        this.deploymentFinished = deploymentFinished;
     }
 
     @Override
@@ -54,7 +59,7 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         StatementBase parsedStmt = ((ArrowFlightSqlConnectContext) ctx).getStatement();
         String sql = parsedStmt.getOrigStmt().originStmt;
 
-        executor = new StmtExecutor(ctx, parsedStmt);
+        executor = new StmtExecutor(ctx, parsedStmt, deploymentFinished);
         ctx.setExecutor(executor);
         ctx.setIsLastStmt(true);
 
@@ -101,7 +106,15 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         ctx.setStartTime();
         ctx.setResourceGroup(null);
         ctx.resetErrorCode();
+
+        StatementBase parsedStmt = ((ArrowFlightSqlConnectContext) ctx).getStatement();
+        Tracers.register(ctx);
+        Tracers.init(ctx, parsedStmt.getTraceMode(), parsedStmt.getTraceModule());
+
         this.handleQuery();
+
+        ctx.setLastQueryId(ctx.getQueryId());
+        ctx.setQueryId(null);
 
         // Set command as sleep, so timeCheck will close the connection.
         // When client's last query is long long ago (controlled by waitTimeout session variable).

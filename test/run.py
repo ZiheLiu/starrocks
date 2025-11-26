@@ -23,6 +23,7 @@ run
 """
 import datetime
 import getopt
+import logging
 import os
 import sys
 
@@ -125,6 +126,8 @@ if __name__ == "__main__":
         print_help()
         sys.exit(1)
 
+    print(f"[TEST] [opts={opts}]")
+
     for opt, arg in opts:
         if opt in ("-h", "--help"):
             print_help()
@@ -196,6 +199,17 @@ if __name__ == "__main__":
         print("In alive mode, set concurrency=1 in default!")
         concurrency = 1
 
+    arrow_mode = True
+    print(f"[TEST] run [arrow_mode={arrow_mode}]")
+    sr_sql_lib.set_arrow_mode(arrow_mode)
+
+    # Auto-exclude no_arrow_flight_sql cases in arrow mode
+    if arrow_mode:
+        if attr:
+            attr = attr + ",!no_arrow_flight_sql"
+        else:
+            attr = "!no_arrow_flight_sql"
+
     # set environment
     os.environ.update(
         {
@@ -210,6 +224,7 @@ if __name__ == "__main__":
             "log_filtered": str(log_filtered),
             "check_status": str(check_status),
             "case_timeout": str(timeout),
+            "arrow_mode": "true" if arrow_mode else "false",
         }
     )
 

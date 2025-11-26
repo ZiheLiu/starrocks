@@ -101,6 +101,7 @@ import static com.starrocks.qe.SessionVariableConstants.ComputationFragmentSched
 @SuppressWarnings("FieldMayBeFinal")
 public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final ImmutableMap<String, Method> SETTER_MAP;
+
     static {
         ImmutableMap.Builder<String, Method> builder = ImmutableMap.builder();
         for (Field field : SessionVariable.class.getDeclaredFields()) {
@@ -186,8 +187,8 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String TRANSACTION_READ_ONLY = "transaction_read_only";
     public static final String DEFAULT_STORAGE_ENGINE = "default_storage_engine";
     public static final String DEFAULT_TMP_STORAGE_ENGINE = "default_tmp_storage_engine";
-    public static final String DEFAULT_AUTHENTICATION_PLUGIN = "default_authentication_plugin"; 
-    public static final String AUTHENTICATION_POLICY = "authentication_policy"; 
+    public static final String DEFAULT_AUTHENTICATION_PLUGIN = "default_authentication_plugin";
+    public static final String AUTHENTICATION_POLICY = "authentication_policy";
     public static final String CHARACTER_SET_CLIENT = "character_set_client";
     public static final String CHARACTER_SET_CONNNECTION = "character_set_connection";
     public static final String CHARACTER_SET_RESULTS = "character_set_results";
@@ -630,6 +631,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String ENABLE_CONNECTOR_SPLIT_IO_TASKS = "enable_connector_split_io_tasks";
     public static final String ENABLE_QUERY_CACHE = "enable_query_cache";
     public static final String QUERY_CACHE_FORCE_POPULATE = "query_cache_force_populate";
+
     public static final String QUERY_CACHE_ENTRY_MAX_BYTES = "query_cache_entry_max_bytes";
     public static final String QUERY_CACHE_ENTRY_MAX_ROWS = "query_cache_entry_max_rows";
 
@@ -877,6 +879,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     public static final String CONSISTENT_HASH_VIRTUAL_NUMBER = "consistent_hash_virtual_number";
 
     public static final String ENABLE_COLLECT_TABLE_LEVEL_SCAN_STATS = "enable_collect_table_level_scan_stats";
+
+    public static final String ENABLE_ARROW_FLIGHT_CONVERT_LARGEINT_TO_DECIMAL128 =
+            "enable_arrow_flight_convert_largeint_to_decimal128";
 
     public static final String HIVE_TEMP_STAGING_DIR = "hive_temp_staging_dir";
 
@@ -2696,6 +2701,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     // see more details: https://github.com/StarRocks/starrocks/pull/29678
     @VarAttr(name = ENABLE_COLLECT_TABLE_LEVEL_SCAN_STATS)
     private boolean enableCollectTableLevelScanStats = true;
+
+    // When enabled, Arrow Flight SQL will convert largeint type to decimal128(38, 0) instead of bytes/string
+    @VarAttr(name = ENABLE_ARROW_FLIGHT_CONVERT_LARGEINT_TO_DECIMAL128)
+    private boolean enableArrowFlightConvertLargeintToDecimal128 = true;
 
     @VarAttr(name = HIVE_TEMP_STAGING_DIR)
     private String hiveTempStagingDir = "/tmp/starrocks";
@@ -5073,6 +5082,10 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         enablePartitionColumnValueOnlyOptimization = v;
     }
 
+    public boolean isEnableArrowFlightConvertLargeintToDecimal128() {
+        return enableArrowFlightConvertLargeintToDecimal128;
+    }
+
     public boolean isEnableExprPrunePartition() {
         return enableExprPrunePartition;
     }
@@ -5782,6 +5795,7 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
         tResult.setEnable_hash_join_range_direct_mapping_opt(enableHashJoinRangeDirectMappingOpt);
         tResult.setEnable_hash_join_linear_chained_opt(enableHashJoinLinearChainedOpt);
         tResult.setEnable_hash_join_serialize_fixed_size_string(enableHashJoinSerializeFixedSizeString);
+        tResult.setEnable_arrow_flight_convert_largeint_to_decimal128(enableArrowFlightConvertLargeintToDecimal128);
 
         return tResult;
     }

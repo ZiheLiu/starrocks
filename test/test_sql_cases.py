@@ -87,6 +87,15 @@ class TestSQLCases(sr_sql_lib.StarrocksSQLApiLib):
     def setUp(self, *args, **kwargs):
         """set up"""
         super().setUp()
+        # Note: Actual connection will be done in test_sql_basic after checking @arrow_flight_sql tag
+        
+    def _set_up(self):
+        # Check if case has @arrow_flight_sql tag and setup connection accordingly
+        if "arrow_flight_sql" in self.case_info.tags and not arrow_mode:
+            self_print("[INFO]: Using Arrow Flight SQL for this case", ColorEnum.CYAN, bold=True)
+            log.info(f"Case {self.case_info.name} has @arrow_flight_sql tag, using ArrowSqlLib")
+            self.mysql_lib = self.arrow_sql_lib
+
         self.connect_starrocks()
         self.create_starrocks_conn_pool()
         self.check_cluster_status()
@@ -126,6 +135,10 @@ class TestSQLCases(sr_sql_lib.StarrocksSQLApiLib):
         super().tearDown()
 
         log.info("[TearDown begin]: %s" % self.case_info.name)
+
+        # reset the scheduler interval
+        sql = "ADMIN SET FRONTEND CONFIG ('dynamic_partition_check_interval_seconds' = '600')"
+        self.execute_sql(sql)
 
         # run custom cleanup (always)
         try:
@@ -397,6 +410,8 @@ class TestSQLCases(sr_sql_lib.StarrocksSQLApiLib):
         self_print(f"[case file]: {case_info.file}", ColorEnum.GREEN, bold=True)
         self_print("-" * 60, ColorEnum.GREEN, bold=True)
 
+        self._set_up()
+
         sql_list = self._init_data(case_info.sql)
 
         self_print(f"\t → case db: {self.db}")
@@ -414,27 +429,6 @@ Start to run: %s
             self.res_log.append(case_info.info)
 
         for sql_id, sql in enumerate(sql_list):
-            if arrow_mode and isinstance(sql, str):
-                sql = sql.strip()
-                if sql.startswith(
-                    (
-                        "mysql:",
-                        "shell:",
-                        "--",
-                        "function:",
-                        "CHECK:",
-                        "PROPERTY:",
-                        "LOOP",
-                        "END LOOP",
-                        "CONCURRENCY",
-                        "END CONCURRENCY",
-                    )
-                ):
-                    self_print(f"[arrow_mode] Skip non-arrow SQL: {sql}", ColorEnum.YELLOW)
-                    continue
-                if not sql.startswith("arrow:"):
-                    sql = "arrow: " + sql
-
             uncheck = False
             ori_sql = sql
             var = None

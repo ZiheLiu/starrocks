@@ -54,6 +54,11 @@ enum TFunctionVersion {
     RUNTIME_FILTER_SERIALIZE_VERSION_3 = 8,
 }
 
+enum TArrowFlightSQLVersion {
+  V0 = 0,
+  V1 = 1,
+}
+
 enum TQueryType {
     SELECT,
     LOAD,
@@ -350,6 +355,8 @@ struct TQueryOptions {
   191: optional i64 column_view_concat_bytes_limit;
 
   200: optional bool enable_full_sort_use_german_string;
+
+  201: optional bool enable_arrow_flight_convert_largeint_to_decimal128;
 }
 
 // A scan range plus the parameters needed to execute that scan.
@@ -520,6 +527,8 @@ struct TExecPlanFragmentParams {
   60: optional TPredicateTreeParams pred_tree_params
 
   61: optional list<i32> exec_stats_node_ids;
+
+  62: optional i32 arrow_flight_sql_version;
 }
 
 struct TExecPlanFragmentResult {
