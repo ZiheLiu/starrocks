@@ -187,6 +187,7 @@ Status convert_to_arrow_type_for_flight_sql(const TypeDescriptor& type, std::sha
     case TYPE_PERCENTILE:
         // HLL,BITMAP,PERCENTILE are always converted to binary with null values, which is the same as MySQL output.
         *result = arrow::binary();
+        break;
     case TYPE_DECIMALV2:
         *result = std::make_shared<arrow::Decimal128Type>(27, 9);
         break;
