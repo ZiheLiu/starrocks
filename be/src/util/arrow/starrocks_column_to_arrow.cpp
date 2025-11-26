@@ -306,7 +306,6 @@ struct ColumnToArrowConverter<LT, AT, is_nullable, ConvBinaryGuard<LT, AT>> {
         ArrowBuilderType* builder = down_cast<ArrowBuilderType*>(array_builder);
 
         if constexpr (is_always_convert_to_null(LT, AT)) {
-            DCHECK_EQ(AT, ArrowTypeId::BINARY);
             DCHECK(is_nullable);
             for (auto i = start_idx; i < end_idx; ++i) {
                 ARROW_RETURN_NOT_OK(builder->AppendNull());
