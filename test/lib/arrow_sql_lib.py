@@ -27,6 +27,8 @@ import warnings
 from decimal import Decimal
 from typing import Tuple, Any
 
+from cup import log
+
 import adbc_driver_manager
 import adbc_driver_flightsql.dbapi as flight_sql
 import pyarrow
@@ -183,6 +185,12 @@ def convert_arrow_table_to_mysql_rows(arrow_table) -> Tuple[Tuple[Any, ...], ...
         for col in row:
             if isinstance(col, (dict, list)):
                 new_col = serialize_to_json(col)
+            elif isinstance(col, bytes):
+                try:
+                    new_col = col.decode()
+                except UnicodeDecodeError as e:
+                    log.info("decode sql result by utf-8 error, try str")
+                    new_col = str(col)
             else:
                 new_col = col
             new_row.append(new_col)
