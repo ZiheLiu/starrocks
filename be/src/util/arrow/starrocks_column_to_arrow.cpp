@@ -67,6 +67,7 @@ static inline arrow::Status check_const(const ColumnPtr& column) {
     return arrow::Status::Invalid(fmt::format("The column can not be constant"));
 }
 
+// HLL only maps to Arrow Binary for Flight SQL responses; we emit nulls there to align with Flight SQL contract.
 static constexpr bool is_always_convert_to_null(const LogicalType lt, const ArrowTypeId at) {
     return lt == TYPE_OBJECT || lt == TYPE_PERCENTILE || (lt == TYPE_HLL && at == ArrowTypeId::BINARY);
 }
@@ -305,6 +306,7 @@ struct ColumnToArrowConverter<LT, AT, is_nullable, ConvBinaryGuard<LT, AT>> {
         ArrowBuilderType* builder = down_cast<ArrowBuilderType*>(array_builder);
 
         if constexpr (is_always_convert_to_null(LT, AT)) {
+            DCHECK_EQ(AT, ArrowTypeId::BINARY);
             DCHECK(is_nullable);
             for (auto i = start_idx; i < end_idx; ++i) {
                 ARROW_RETURN_NOT_OK(builder->AppendNull());

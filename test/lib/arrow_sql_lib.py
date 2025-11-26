@@ -182,10 +182,7 @@ def convert_arrow_table_to_mysql_rows(arrow_table) -> Tuple[Tuple[Any, ...], ...
         new_row = []
         for col in row:
             if isinstance(col, (dict, list)):
-                new_col = serialize_with_int_keys(col)
-            elif isinstance(col, bytes):
-                # For bytes, convert to hex string representation
-                new_col = col.hex()
+                new_col = serialize_to_json(col)
             else:
                 new_col = col
             new_row.append(new_col)
@@ -194,7 +191,7 @@ def convert_arrow_table_to_mysql_rows(arrow_table) -> Tuple[Tuple[Any, ...], ...
     return tuple(new_rows)
 
 
-def serialize_with_int_keys(item, deep=0) -> str:
+def serialize_to_json(item, deep=0) -> str:
     """
     Convert the data into the same format as MySQL's result set. The main focus is on handling Array, Map, and Struct
     types (which correspond to Python's list/tuple and dict).
@@ -213,9 +210,6 @@ def serialize_with_int_keys(item, deep=0) -> str:
         if deep != 0 and not math.isnan(item) and item == int(item):  # Check it's an integer value and not NaN
             return str(int(item))
         return str(item)
-    elif isinstance(item, bytes):
-        # Handle non-UTF8 bytes: represent as hex string
-        return json.dumps(item.hex(), ensure_ascii=False)
     elif isinstance(item, str):
         escaped = json.dumps(item, ensure_ascii=False)
         return escaped
@@ -229,13 +223,13 @@ def serialize_with_int_keys(item, deep=0) -> str:
                 key_str = str(k)
             else:
                 key_str = json.dumps(str(k), ensure_ascii=False)
-            value_str = serialize_with_int_keys(v, deep + 1)
+            value_str = serialize_to_json(v, deep + 1)
             items.append(f"{key_str}:{value_str}")
         return "{" + ",".join(items) + "}"
     elif isinstance(item, (list, tuple)):
         if not item:
             return "[]"
-        items = [serialize_with_int_keys(item, deep + 1) for item in item]
+        items = [serialize_to_json(item, deep + 1) for item in item]
         return "[" + ",".join(items) + "]"
     else:
         # Fallback to standard JSON serialization
