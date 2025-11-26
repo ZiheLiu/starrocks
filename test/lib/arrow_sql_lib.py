@@ -328,7 +328,25 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
 
         return conv_struct
 
-    # 4. Boolean type: convert True/False to 1/0
+    # 4. Date32: convert to YYYY-MM-DD string
+    if T.is_date32(dtype):
+        def conv_date32(value):
+            if value is None:
+                return None
+            return value.strftime("%Y-%m-%d")
+
+        return conv_date32
+
+    # 5. Timestamp (datetime): convert to YYYY-MM-DD HH:MM:SS string
+    if T.is_timestamp(dtype):
+        def conv_timestamp(value):
+            if value is None:
+                return None
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+
+        return conv_timestamp
+
+    # 6. Boolean type: convert True/False to 1/0
     if T.is_boolean(dtype):
         def conv_bool(value):
             if value is None:
@@ -337,7 +355,7 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
 
         return conv_bool
 
-    # 5. Float32 type: handle precision to match MySQL/Ryu behavior
+    # 7. Float32 type: handle precision to match MySQL/Ryu behavior
     if T.is_float32(dtype):
         import struct
         
