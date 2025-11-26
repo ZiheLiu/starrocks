@@ -66,14 +66,7 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
 
         StatementBase parsedStmt = null;
         try {
-            parsedStmt = parse(originStmt, ctx.getSessionVariable());
-            Tracers.init(ctx, parsedStmt.getTraceMode(), parsedStmt.getTraceModule());
-
-            executor = new StmtExecutor(ctx, parsedStmt, deploymentFinished);
-            ctx.setIsLastStmt(true);
-
-            executor.addRunningQueryDetail(parsedStmt);
-            executor.execute();
+            parsedStmt = executeQueryWithRetry();
         } catch (IOException e) {
             // Client failed.
             LOG.warn("Process one query failed because IOException: ", e);
@@ -130,12 +123,42 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         ctx.setCommand(MysqlCommand.COM_SLEEP);
     }
 
+    private StatementBase executeQueryWithRetry() throws Exception {
+        try {
+            return executeQueryAttempt();
+        } catch (LargeInPredicateException e) {
+            final boolean originalEnableLargeInPredicate = ctx.getSessionVariable().enableLargeInPredicate();
+            try {
+                ctx.getSessionVariable().setEnableLargeInPredicate(false);
+                LOG.warn("Retrying query with enable_large_in_predicate=false");
+                Tracers.record(Tracers.Module.BASE, "retry_with_large_in_predicate_exception", "true");
+                ((ArrowFlightSqlConnectContext) ctx).resetForStatement();
+                return executeQueryAttempt();
+            } finally {
+                ctx.getSessionVariable().setEnableLargeInPredicate(originalEnableLargeInPredicate);
+            }
+        }
+    }
+
+    private StatementBase executeQueryAttempt() throws Exception {
+        StatementBase parsedStmt = parse(originStmt, ctx.getSessionVariable());
+        Tracers.init(ctx, parsedStmt.getTraceMode(), parsedStmt.getTraceModule());
+
+        executor = new StmtExecutor(ctx, parsedStmt, deploymentFinished);
+        ctx.setIsLastStmt(true);
+
+        executor.addRunningQueryDetail(parsedStmt);
+        executor.execute();
+
+        return parsedStmt;
+    }
+
     private StatementBase parse(String sql, SessionVariable sessionVariables) {
         List<StatementBase> stmts;
-
         try (Timer ignored = Tracers.watchScope(Tracers.Module.PARSER, "Parser")) {
-            stmts = parseWithRetry(sql, sessionVariables);
+            stmts = com.starrocks.sql.parser.SqlParser.parse(sql, sessionVariables);
         }
+
         if (stmts.size() > 1) {
             throw new RuntimeException("arrow flight sql query does not support execute multiple query");
         }
@@ -143,21 +166,5 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         StatementBase parsedStmt = stmts.get(0);
         parsedStmt.setOrigStmt(new OriginStatement(sql));
         return parsedStmt;
-    }
-
-    private List<StatementBase> parseWithRetry(String sql, SessionVariable sessionVariables) {
-        try {
-            return com.starrocks.sql.parser.SqlParser.parse(sql, sessionVariables);
-        } catch (LargeInPredicateException e) {
-            final boolean originalEnableLargeInPredicate = ctx.getSessionVariable().enableLargeInPredicate();
-            try {
-                ctx.getSessionVariable().setEnableLargeInPredicate(false);
-                LOG.warn("Retrying query with enable_large_in_predicate=false");
-                Tracers.record(Tracers.Module.BASE, "retry_with_large_in_predicate_exception", "true");
-                return com.starrocks.sql.parser.SqlParser.parse(sql, sessionVariables);
-            } finally {
-                ctx.getSessionVariable().setEnableLargeInPredicate(originalEnableLargeInPredicate);
-            }
-        }
     }
 }
