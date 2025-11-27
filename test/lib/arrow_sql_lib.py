@@ -32,6 +32,7 @@ from cup import log
 import adbc_driver_manager
 import adbc_driver_flightsql.dbapi as flight_sql
 import pyarrow
+import pyarrow.compute as pc
 from pyarrow import types as T
 
 from lib.connection_base_lib import BaseConnectionLib, SQLRawResult
@@ -274,6 +275,16 @@ def arrow_table_to_py(table: pyarrow.Table):
                 else:
                     # Fallback: try to get bytes representation
                     py_value = bytes(item)
+            except OverflowError:
+                col_type = columns[col_i].type
+                if T.is_date32(col_type):
+                    # Some dates (e.g. year 0000) cannot be converted to Python date; format via Arrow.
+                    py_value = pc.strftime(item, format="%Y-%m-%d").as_py()
+                elif T.is_timestamp(col_type):
+                    # Use Arrow formatting to avoid Python datetime limits.
+                    py_value = pc.strftime(item, format="%Y-%m-%d %H:%M:%S.%f").as_py()
+                else:
+                    raise
             new_columns.append(col_converters[col_i](py_value))
         rows.append(new_columns)
 
@@ -333,6 +344,8 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
         def conv_date32(value):
             if value is None:
                 return None
+            if isinstance(value, str):
+                return value
             return f"{value.year:04d}-{value.month:02d}-{value.day:02d}"
 
         return conv_date32
@@ -342,6 +355,8 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
         def conv_timestamp(value):
             if value is None:
                 return None
+            if isinstance(value, str):
+                return value
             base = (f"{value.year:04d}-{value.month:02d}-{value.day:02d} "
                     f"{value.hour:02d}:{value.minute:02d}:{value.second:02d}")
             if value.microsecond > 0:
