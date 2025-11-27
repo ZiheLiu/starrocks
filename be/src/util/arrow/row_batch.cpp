@@ -177,7 +177,7 @@ Status convert_to_arrow_type_for_flight_sql(const TypeDescriptor& type, std::sha
         *result = arrow::date32();
         break;
     case TYPE_DATETIME:
-        *result = arrow::timestamp(arrow::TimeUnit::MILLI, "UTC");
+        *result = arrow::timestamp(arrow::TimeUnit::MICRO, "UTC");
         break;
     case TYPE_VARCHAR:
     case TYPE_CHAR:

@@ -23,6 +23,7 @@
 #include "common/statusor.h"
 #include "exec/arrow_type_traits.h"
 #include "exprs/expr.h"
+#include "runtime/time_types.h"
 #include "runtime/types.h"
 #include "types/large_int_value.h"
 #include "util/raw_container.h"
@@ -144,21 +145,44 @@ struct ColumnToArrowConverter<LT, AT, is_nullable, ConvDateOrDatetimeGuard<LT, A
     using ArrowType = ArrowTypeIdToType<AT>;
     using ArrowBuilderType = typename arrow::TypeTraits<ArrowType>::BuilderType;
 
-    static inline auto convert_datum(const StarRocksCppType& datum) {
+    static inline auto convert_datum(const StarRocksCppType& datum, int64_t unit_scale_num, int64_t unit_scale_den) {
         if constexpr (lt_is_date<LT>) {
             return datum.to_days_since_unix_epoch();
         } else if constexpr (lt_is_datetime<LT>) {
-            return datum.to_unixtime();
+            const int64_t micros = datum.to_unix_microsecond();
+            return (micros * unit_scale_num) / unit_scale_den;
         } else {
             static_assert(lt_is_date<LT> || lt_is_datetime<LT>, "Illegal LogicalType");
         }
     }
 
     static inline arrow::Status convert(const ColumnPtr& column, int start_idx, int end_idx,
-                                        [[maybe_unused]] ColumnContext* column_context,
-                                        arrow::ArrayBuilder* array_builder) {
+                                        ColumnContext* column_context, arrow::ArrayBuilder* array_builder) {
         ARROW_RETURN_NOT_OK(check_const(column));
         ArrowBuilderType* builder = down_cast<ArrowBuilderType*>(array_builder);
+
+        // Pre-compute unit conversion once per column.
+        // For DATETIME we normalize StarRocks microseconds to the Arrow timestamp unit
+        // (SECOND/MILLI/MICRO/NANO) via a simple scale = unit_scale_num / unit_scale_den.
+        int64_t unit_scale_num = 1;
+        int64_t unit_scale_den = 1;
+        if constexpr (lt_is_datetime<LT>) {
+            auto ts_type = std::static_pointer_cast<arrow::TimestampType>(column_context->arrow_type);
+            switch (ts_type->unit()) {
+            case arrow::TimeUnit::SECOND:
+                unit_scale_den = USECS_PER_SEC;
+                break;
+            case arrow::TimeUnit::MILLI:
+                unit_scale_den = USECS_PER_MILLIS;
+                break;
+            case arrow::TimeUnit::MICRO:
+                break;
+            case arrow::TimeUnit::NANO:
+                unit_scale_num = NANOSECS_PER_USEC;
+                break;
+            }
+        }
+
         if constexpr (is_nullable) {
             const auto* nullable_column = down_cast<const NullableColumn*>(column.get());
             const auto* data_column = down_cast<const StarRocksColumnType*>(nullable_column->data_column().get());
@@ -167,14 +191,14 @@ struct ColumnToArrowConverter<LT, AT, is_nullable, ConvDateOrDatetimeGuard<LT, A
                 if (nullable_column->is_null(i)) {
                     ARROW_RETURN_NOT_OK(builder->AppendNull());
                 } else {
-                    ARROW_RETURN_NOT_OK(builder->Append(convert_datum(data[i])));
+                    ARROW_RETURN_NOT_OK(builder->Append(convert_datum(data[i], unit_scale_num, unit_scale_den)));
                 }
             }
         } else {
             const auto* data_column = down_cast<const StarRocksColumnType*>(column.get());
             const auto data = data_column->immutable_data();
             for (auto i = start_idx; i < end_idx; ++i) {
-                ARROW_RETURN_NOT_OK(builder->Append(convert_datum(data[i])));
+                ARROW_RETURN_NOT_OK(builder->Append(convert_datum(data[i], unit_scale_num, unit_scale_den)));
             }
         }
         return arrow::Status::OK();
