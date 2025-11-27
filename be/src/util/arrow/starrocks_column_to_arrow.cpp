@@ -14,6 +14,9 @@
 
 #include "util/arrow/starrocks_column_to_arrow.h"
 
+#include <arrow/result.h>
+#include <arrow/status.h>
+
 #include <array>
 
 #include "column/array_column.h"
@@ -23,6 +26,7 @@
 #include "common/statusor.h"
 #include "exec/arrow_type_traits.h"
 #include "exprs/expr.h"
+#include "runtime/decimalv2_value.h"
 #include "runtime/time_types.h"
 #include "runtime/types.h"
 #include "types/large_int_value.h"
@@ -223,7 +227,7 @@ struct ColumnToArrowConverter<LT, AT, is_nullable, ConvDecimalGuard<LT, AT>> {
     using ArrowType = ArrowTypeIdToType<AT>;
     using ArrowBuilderType = typename arrow::TypeTraits<ArrowType>::BuilderType;
 
-    static inline auto convert_datum(const StarRocksCppType& datum) {
+    static inline auto convert_datum(const StarRocksCppType& datum, [[maybe_unused]] int32_t target_scale) {
         if constexpr (lt_is_decimal256<LT>) {
             const int256_t& value = datum;
             // Arrow Decimal256 uses little-endian word array: [word0, word1, word2, word3]
@@ -253,10 +257,31 @@ struct ColumnToArrowConverter<LT, AT, is_nullable, ConvDecimalGuard<LT, AT>> {
     }
 
     static inline arrow::Status convert(const ColumnPtr& column, int start_idx, int end_idx,
-                                        [[maybe_unused]] ColumnContext* column_context,
-                                        arrow::ArrayBuilder* array_builder) {
+                                        ColumnContext* column_context, arrow::ArrayBuilder* array_builder) {
         ARROW_RETURN_NOT_OK(check_const(column));
         ArrowBuilderType* builder = down_cast<ArrowBuilderType*>(array_builder);
+
+        int32_t target_scale = DecimalV2Value::SCALE;
+        if constexpr (lt_is_decimalv2<LT>) {
+            auto decimal_type = std::static_pointer_cast<arrow::Decimal128Type>(column_context->arrow_type);
+            target_scale = decimal_type->scale();
+        }
+
+        auto append_value = [&](const StarRocksCppType& datum) -> arrow::Status {
+            if constexpr (lt_is_decimal256<LT>) {
+                return builder->Append(convert_datum(datum, target_scale));
+            } else {
+                auto value = convert_datum(datum, target_scale);
+                if constexpr (lt_is_decimalv2<LT>) {
+                    if (target_scale != DecimalV2Value::SCALE) {
+                        ARROW_ASSIGN_OR_RAISE(auto rescaled, value.Rescale(DecimalV2Value::SCALE, target_scale));
+                        value = rescaled;
+                    }
+                }
+                return builder->Append(value);
+            }
+        };
+
         if constexpr (is_nullable) {
             const auto* nullable_column = down_cast<const NullableColumn*>(column.get());
             const auto* data_column = down_cast<const StarRocksColumnType*>(nullable_column->data_column().get());
@@ -265,14 +290,14 @@ struct ColumnToArrowConverter<LT, AT, is_nullable, ConvDecimalGuard<LT, AT>> {
                 if (nullable_column->is_null(i)) {
                     ARROW_RETURN_NOT_OK(builder->AppendNull());
                 } else {
-                    ARROW_RETURN_NOT_OK(builder->Append(convert_datum(data[i])));
+                    ARROW_RETURN_NOT_OK(append_value(data[i]));
                 }
             }
         } else {
             const auto* data_column = down_cast<const StarRocksColumnType*>(column.get());
             const auto data = data_column->immutable_data();
             for (auto i = start_idx; i < end_idx; ++i) {
-                ARROW_RETURN_NOT_OK(builder->Append(convert_datum(data[i])));
+                ARROW_RETURN_NOT_OK(append_value(data[i]));
             }
         }
         return arrow::Status::OK();

@@ -100,7 +100,7 @@ public final class ArrowUtils {
             case DATE:
                 return new ArrowType.Date(DateUnit.DAY);
             case DATETIME:
-                return new ArrowType.Timestamp(TimeUnit.MILLISECOND, "UTC");
+                return new ArrowType.Timestamp(TimeUnit.MICROSECOND, "UTC");
             case VARCHAR:
             case CHAR:
             case JSON:
