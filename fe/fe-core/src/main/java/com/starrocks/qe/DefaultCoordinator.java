@@ -1036,7 +1036,8 @@ public class DefaultCoordinator extends Coordinator {
     private void cancelInternal(PPlanFragmentCancelReason cancelReason) {
         jobSpec.getSlotProvider().cancelSlotRequirement(slot);
         if (!isInternalCancel(cancelReason) && StringUtils.isEmpty(connectContext.getState().getErrorMessage())) {
-            connectContext.getState().setError(cancelReason.toString());
+            String errorMsg = String.format("[reason=%s] [msg=%s]", cancelReason, queryStatus.getErrorMsg());
+            connectContext.getState().setError(errorMsg);
         }
         if (null != receiver) {
             receiver.cancel();
