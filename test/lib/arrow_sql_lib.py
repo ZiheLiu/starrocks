@@ -333,7 +333,7 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
         def conv_date32(value):
             if value is None:
                 return None
-            return value.strftime("%Y-%m-%d")
+            return f"{value.year:04d}-{value.month:02d}-{value.day:02d}"
 
         return conv_date32
 
@@ -342,9 +342,11 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
         def conv_timestamp(value):
             if value is None:
                 return None
+            base = (f"{value.year:04d}-{value.month:02d}-{value.day:02d} "
+                    f"{value.hour:02d}:{value.minute:02d}:{value.second:02d}")
             if value.microsecond > 0:
-                return value.strftime("%Y-%m-%d %H:%M:%S.%f")
-            return value.strftime("%Y-%m-%d %H:%M:%S")
+                return f"{base}.{value.microsecond:06d}"
+            return base
 
         return conv_timestamp
 
