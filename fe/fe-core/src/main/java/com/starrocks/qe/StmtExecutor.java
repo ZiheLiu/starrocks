@@ -1506,7 +1506,7 @@ public class StmtExecutor {
             batch = httpResultSender.sendQueryResult(coord, execPlan, parsedStmt.getOrigStmt().getOrigStmt());
         } else {
             final boolean isArrowFlight = context instanceof ArrowFlightSqlConnectContext && deploymentFinished != null;
-            if (isArrowFlight && !isExplainAnalyze) {
+            if (isArrowFlight && !isExplainAnalyze && !isOutfileQuery) {
                 ArrowFlightSqlConnectContext arrowContext = (ArrowFlightSqlConnectContext) context;
                 arrowContext.setReturnResultFromFE(false);
                 deploymentFinished.complete(coord);
