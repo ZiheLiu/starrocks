@@ -337,11 +337,13 @@ def _build_arrow_to_py_converter(dtype: pyarrow.DataType):
 
         return conv_date32
 
-    # 5. Timestamp (datetime): convert to YYYY-MM-DD HH:MM:SS string
+    # 5. Timestamp (datetime): convert to string, append .uuuuuu when microsecond > 0
     if T.is_timestamp(dtype):
         def conv_timestamp(value):
             if value is None:
                 return None
+            if value.microsecond > 0:
+                return value.strftime("%Y-%m-%d %H:%M:%S.%f")
             return value.strftime("%Y-%m-%d %H:%M:%S")
 
         return conv_timestamp
