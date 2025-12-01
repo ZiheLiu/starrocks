@@ -1,0 +1,6 @@
+-- name: test_iceberg_view_lzh
+
+create view if not exists ice2.stephen_ice.test_iceberg_view_${uuid0} as select * from ice2.stephen_ice.xc31;
+
+select * fromice2.stephen_ice.test_iceberg_view_${uuid0};
+
