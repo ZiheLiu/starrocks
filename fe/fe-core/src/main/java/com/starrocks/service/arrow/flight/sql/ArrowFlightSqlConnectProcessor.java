@@ -109,7 +109,7 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
             return;
         }
 
-        if (ctx.getState().getStateType() != QueryState.MysqlStateType.OK) {
+        if (ctx.getState().getStateType() == QueryState.MysqlStateType.ERR) {
             return;
         }
 
