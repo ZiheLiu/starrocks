@@ -469,7 +469,12 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             CompletableFuture<Coordinator> deploymentFinished = new CompletableFuture<>();
             CompletableFuture<Void> processorFinished = new CompletableFuture<>();
             executor.submit(() -> {
+                final boolean prevUseLowCardinalityOptimizeOnLake = ctx.getSessionVariable().isUseLowCardinalityOptimizeOnLake();
                 try {
+                    // The Lake low-cardinality optimization relies on a retry mechanism on the FE side: when the BE discovers at
+                    // execution time that the dictionary cannot be used, it reports this to the FE, and the FE re-plans the query.
+                    // However, with Arrow Flight SQL the client talks directly to the BE, so this retry mechanism is not available.
+                    ctx.getSessionVariable().setUseLowCardinalityOptimizeOnLake(false);
                     ctx.setThreadLocalInfo();
 
                     ArrowFlightSqlConnectProcessor processor = new ArrowFlightSqlConnectProcessor(ctx, deploymentFinished, query);
@@ -481,6 +486,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
                     deploymentFinished.completeExceptionally(t);
                     processorFinished.completeExceptionally(t);
                 } finally {
+                    ctx.getSessionVariable().setUseLowCardinalityOptimizeOnLake(prevUseLowCardinalityOptimizeOnLake);
                     ctx.releaseRunningToken();
                 }
             });
