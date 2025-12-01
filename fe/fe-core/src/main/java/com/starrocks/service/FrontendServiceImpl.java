@@ -155,6 +155,8 @@ import com.starrocks.server.LocalMetastore;
 import com.starrocks.server.MetadataMgr;
 import com.starrocks.server.TemporaryTableMgr;
 import com.starrocks.server.WarehouseManager;
+import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
+import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectProcessor;
 import com.starrocks.sql.analyzer.AlterTableClauseAnalyzer;
 import com.starrocks.sql.analyzer.AnalyzerUtils;
 import com.starrocks.sql.analyzer.Authorizer;
@@ -518,7 +520,7 @@ public class FrontendServiceImpl implements FrontendService.Iface {
                 if (!PatternMatcher.matchPattern(params.getPattern(), tableName, matcher, caseSensitive)) {
                     continue;
                 }
-                
+
                 try {
                     tbl = metadataMgr.getTable(context, catalogName, params.db, tableName);
                 } catch (Exception e) {
@@ -1026,7 +1028,8 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         // add this log so that we can track this stmt
         LOG.info("receive forwarded stmt {} from FE: {}",
                 params.getStmt_id(), clientAddr != null ? clientAddr.getHostname() : "unknown");
-        ConnectContext context = new ConnectContext(null);
+        ConnectContext context = !params.isIs_arrow_flight_sql() ? new ConnectContext(null) :
+                new ArrowFlightSqlConnectContext("");
         String hostname = "";
         if (clientAddr != null) {
             hostname = clientAddr.getHostname();
@@ -1036,8 +1039,9 @@ public class FrontendServiceImpl implements FrontendService.Iface {
         final int connectionId = params.getConnectionId();
 
         try (var guard = proxyContextManager.guard(hostname, connectionId, context, addToProxyManager)) {
-            ConnectProcessor processor = new ConnectProcessor(context);
-            return processor.proxyExecute(params);
+            ConnectProcessor processor = !params.isIs_arrow_flight_sql() ? new ConnectProcessor(context) :
+                    new ArrowFlightSqlConnectProcessor(context, params.getSql());
+            return processor.proxyExecute(params, guard);
         } catch (Exception e) {
             LOG.warn("unreachable path:", e);
             final TMasterOpResult result = new TMasterOpResult();

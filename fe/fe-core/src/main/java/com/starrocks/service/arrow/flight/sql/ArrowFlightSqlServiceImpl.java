@@ -26,16 +26,15 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.common.ThreadPoolManager;
 import com.starrocks.common.util.ArrowUtil;
 import com.starrocks.common.util.DebugUtil;
-import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.DefaultCoordinator;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.scheduler.Coordinator;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment;
-import com.starrocks.qe.scheduler.dag.FragmentInstance;
+import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.arrow.flight.sql.session.ArrowFlightSqlSessionManager;
 import com.starrocks.sql.ast.expression.Expr;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.system.ComputeNode;
+import com.starrocks.system.SystemInfoService;
 import com.starrocks.thrift.TUniqueId;
 import org.apache.arrow.flight.CallStatus;
 import org.apache.arrow.flight.CloseSessionRequest;
@@ -66,6 +65,7 @@ import org.apache.arrow.vector.ipc.message.MessageSerializer;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -86,7 +86,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
     private final Location feEndpoint;
     private final SqlInfoBuilder sqlInfoBuilder;
 
-    private final ExecutorService executor = ThreadPoolManager
+    private static final ExecutorService EXECUTOR = ThreadPoolManager
             .newDaemonCacheThreadPool(Config.arrow_max_service_task_threads_num, "arrow-flight-executor", true);
 
     public ArrowFlightSqlServiceImpl(final ArrowFlightSqlSessionManager sessionManager, final Location feEndpoint) {
@@ -102,6 +102,10 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
                 .withSqlDdlSchema(false).withSqlDdlTable(false)
                 .withSqlIdentifierCase(FlightSql.SqlSupportedCaseSensitivity.SQL_CASE_SENSITIVITY_CASE_INSENSITIVE)
                 .withSqlQuotedIdentifierCase(FlightSql.SqlSupportedCaseSensitivity.SQL_CASE_SENSITIVITY_CASE_INSENSITIVE);
+    }
+
+    public static void submitTask(Runnable task) {
+        EXECUTOR.submit(task);
     }
 
     @Override
@@ -134,7 +138,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
     @Override
     public void createPreparedStatement(
             FlightSql.ActionCreatePreparedStatementRequest request, CallContext context, StreamListener<Result> listener) {
-        executor.submit(() -> {
+        EXECUTOR.submit(() -> {
             try {
                 String token = context.peerIdentity();
                 ArrowFlightSqlConnectContext ctx = sessionManager.validateAndGetConnectContext(token);
@@ -178,7 +182,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
         String preparedStmtId = request.getPreparedStatementHandle().toStringUtf8();
         ctx.removePreparedStatement(preparedStmtId);
 
-        executor.submit(listener::onCompleted);
+        EXECUTOR.submit(listener::onCompleted);
     }
 
     /**
@@ -240,7 +244,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
     @Override
     public void setSessionOptions(SetSessionOptionsRequest request, CallContext context,
                                   StreamListener<SetSessionOptionsResult> listener) {
-        executor.submit(() -> {
+        EXECUTOR.submit(() -> {
             Map<String, SetSessionOptionsResult.Error> errors = Maps.newHashMap();
             request.getSessionOptions().forEach((key, value) -> {
                 // Only support set `catalog` for now.
@@ -468,7 +472,8 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
 
             CompletableFuture<Coordinator> deploymentFinished = new CompletableFuture<>();
             CompletableFuture<Void> processorFinished = new CompletableFuture<>();
-            executor.submit(() -> {
+            ArrowFlightSqlConnectProcessor processor = new ArrowFlightSqlConnectProcessor(ctx, deploymentFinished, query);
+            EXECUTOR.submit(() -> {
                 final boolean prevUseLowCardinalityOptimizeOnLake = ctx.getSessionVariable().isUseLowCardinalityOptimizeOnLake();
                 try {
                     // The Lake low-cardinality optimization relies on a retry mechanism on the FE side: when the BE discovers at
@@ -477,7 +482,6 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
                     ctx.getSessionVariable().setUseLowCardinalityOptimizeOnLake(false);
                     ctx.setThreadLocalInfo();
 
-                    ArrowFlightSqlConnectProcessor processor = new ArrowFlightSqlConnectProcessor(ctx, deploymentFinished, query);
                     processor.processOnce();
 
                     deploymentFinished.complete(null);
@@ -498,17 +502,12 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // FE task will return FE as endpoint.
             // ------------------------------------------------------------------------------------
             if (ctx.returnFromFE()) {
-                processorFinished.get();
-                if (ctx.getState().isError()) {
-                    reportError(ctx);
-                }
+                processorFinished.get(); // Wait `processor.processOnce()` to finish.
+
+                processor.handleResultFromFE();
 
                 String queryId = DebugUtil.printId(ctx.getExecutionId());
-                if (ctx.getResult(queryId) == null) {
-                    ctx.setEmptyResultIfNotExist(queryId);
-                }
                 final ByteString handle = buildFETicket(ctx);
-
                 FlightSql.TicketStatementQuery ticketStatement =
                         FlightSql.TicketStatementQuery.newBuilder().setStatementHandle(handle).build();
                 return buildFlightInfoFromFE(ticketStatement, descriptor, ctx.getResult(queryId).getSchema());
@@ -517,22 +516,18 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // ------------------------------------------------------------------------------------
             // Query task will wait until deployment to BE is finished and return BE as endpoint.
             // ------------------------------------------------------------------------------------
-            if (coordinator == null || ctx.getState().isError()) {
-                reportError(ctx);
-            }
+            Triple<Long, TUniqueId, Schema> resultInfo = processor.handleResultFromBE(coordinator);
 
             Preconditions.checkState(coordinator instanceof DefaultCoordinator,
                     "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
             DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
 
-            ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
-            FragmentInstance rootFragmentInstance = rootFragment.getInstances().get(0);
-            ComputeNode worker = rootFragmentInstance.getWorker();
-            TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
+            Long workerId = resultInfo.getLeft();
+            TUniqueId rootFragmentInstanceId = resultInfo.getMiddle();
+            Schema schema = resultInfo.getRight();
 
-            ExecPlan execPlan = defaultCoordinator.getJobSpec().getExecPlan();
-            Preconditions.checkNotNull(execPlan, "execPlan is null");
-            Schema schema = buildSchema(execPlan, ctx.getSessionVariable());
+            SystemInfoService clusterInfoService = GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo();
+            ComputeNode worker = clusterInfoService.getBackendOrComputeNode(workerId);
 
             // Build BE ticket.
             final ByteString handle = buildBETicket(defaultCoordinator.getQueryId(), rootFragmentInstanceId);
@@ -544,15 +539,6 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             LOG.warn("[ARROW] failed to getFlightInfoFromQuery [queryID={}]", DebugUtil.printId(ctx.getExecutionId()), e);
             throw CallStatus.INTERNAL.withDescription(e.getMessage()).toRuntimeException();
         }
-    }
-
-    private void reportError(ConnectContext ctx) {
-        String errMsg = ctx.getState().getErrorMessage();
-        if (StringUtils.isEmpty(errMsg)) {
-            errMsg = "Unknown error";
-        }
-        throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
-                DebugUtil.printId(ctx.getExecutionId()), errMsg));
     }
 
     private static ByteString buildFETicket(ArrowFlightSqlConnectContext ctx) {
@@ -577,7 +563,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
         return new FlightInfo(schema, descriptor, endpoints, -1, -1);
     }
 
-    private Schema buildSchema(ExecPlan execPlan, SessionVariable sessionVariable) {
+    public static Schema buildSchema(ExecPlan execPlan, SessionVariable sessionVariable) {
         List<Field> arrowFields = Lists.newArrayList();
 
         // Read enable_arrow_flight_convert_largeint_to_decimal128 from session variable

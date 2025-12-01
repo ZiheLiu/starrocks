@@ -14,6 +14,7 @@
 
 package com.starrocks.service.arrow.flight.sql;
 
+import com.google.common.base.Preconditions;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.common.profile.Timer;
 import com.starrocks.common.profile.Tracers;
@@ -22,21 +23,35 @@ import com.starrocks.metric.MetricRepo;
 import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ConnectProcessor;
+import com.starrocks.qe.DefaultCoordinator;
+import com.starrocks.qe.ProxyContextManager;
 import com.starrocks.qe.QueryState;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.StmtExecutor;
 import com.starrocks.qe.scheduler.Coordinator;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.sql.ast.KillStmt;
 import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.common.LargeInPredicateException;
+import com.starrocks.sql.plan.ExecPlan;
+import com.starrocks.system.ComputeNode;
+import com.starrocks.thrift.TMasterOpRequest;
+import com.starrocks.thrift.TMasterOpResult;
+import com.starrocks.thrift.TUniqueId;
+import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+
+import static com.starrocks.service.arrow.flight.sql.ArrowFlightSqlServiceImpl.buildSchema;
 
 // inherit ConnectProcessor to record the audit log and Query Detail
 public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
@@ -45,11 +60,38 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
     private final CompletableFuture<Coordinator> deploymentFinished;
     private final String originStmt;
 
+    public ArrowFlightSqlConnectProcessor(ConnectContext context, String originStmt) {
+        this(context, new CompletableFuture<>(), originStmt);
+    }
+
     public ArrowFlightSqlConnectProcessor(ConnectContext context, CompletableFuture<Coordinator> deploymentFinished,
                                           String originStmt) {
         super(context);
         this.deploymentFinished = deploymentFinished;
         this.originStmt = originStmt;
+    }
+
+    @Override
+    public void processOnce() {
+        // Set status of query to OK.
+        ctx.getState().reset();
+        executor = null;
+
+        // Only handle query，so no need to dispatch
+        ctx.setCommand(MysqlCommand.COM_QUERY);
+        ctx.setStartTime();
+        ctx.setResourceGroup(null);
+        ctx.resetErrorCode();
+
+        this.handleQuery();
+
+        ctx.setLastQueryId(ctx.getQueryId());
+        ctx.setQueryId(null);
+
+        // Set command as sleep, so timeCheck will close the connection.
+        // When client's last query is long long ago (controlled by waitTimeout session variable).
+        ctx.setStartTime();
+        ctx.setCommand(MysqlCommand.COM_SLEEP);
     }
 
     @Override
@@ -104,43 +146,129 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         }
     }
 
-    private void setResultFromLeaderIfForwarded() {
-        if (executor == null || !executor.isForwardToLeader()) {
-            return;
-        }
-
-        if (ctx.getState().getStateType() == QueryState.MysqlStateType.ERR) {
-            return;
+    @Override
+    protected StmtExecutor doProxyExecute(TMasterOpResult result, TMasterOpRequest request, StatementBase statement,
+                                          ProxyContextManager.ScopeGuard scopeGuard)
+            throws Exception {
+        if (request.isIsInternalStmt()) {
+            throw new IllegalArgumentException("Arrow Flight SQL does not support internal statement");
         }
 
         ArrowFlightSqlConnectContext arrowCtx = (ArrowFlightSqlConnectContext) ctx;
-        ShowResultSet resultSet = executor.getShowResultSet();
-        if (resultSet != null) {
-            arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getQueryId()), resultSet);
+        arrowCtx.resetForStatement();
+
+        CompletableFuture<Void> processorFinished = new CompletableFuture<>();
+        StmtExecutor executor = new StmtExecutor(ctx, statement, deploymentFinished);
+        ctx.setExecutor(executor);
+        executor.setProxy();
+
+        scopeGuard.deactive();
+
+        ArrowFlightSqlServiceImpl.submitTask(() -> {
+            try {
+                executor.execute();
+                deploymentFinished.complete(null);
+                processorFinished.complete(null);
+            } catch (Exception e) {
+                deploymentFinished.completeExceptionally(e);
+                processorFinished.completeExceptionally(e);
+            } finally {
+                scopeGuard.activate();
+                scopeGuard.close();
+            }
+        });
+
+        Coordinator coordinator = deploymentFinished.get();
+        if (arrowCtx.returnFromFE()) {
+            processorFinished.get();
+            return executor;
+        }
+
+        if (coordinator == null || ctx.getState().isError()) {
+            return executor;
+        }
+
+        Preconditions.checkState(coordinator instanceof DefaultCoordinator,
+                "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
+        DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
+
+        ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
+        FragmentInstance rootFragmentInstance = rootFragment.getInstances().get(0);
+
+        ComputeNode worker = rootFragmentInstance.getWorker();
+        result.setArrow_flight_sql_result_backend_id(worker.getId());
+
+        TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
+        result.setArrow_flight_sql_result_fragment_id(rootFragmentInstanceId);
+
+        ExecPlan execPlan = defaultCoordinator.getJobSpec().getExecPlan();
+        Preconditions.checkNotNull(execPlan, "execPlan is null");
+        Schema schema = buildSchema(execPlan, ctx.getSessionVariable());
+        result.setArrow_flight_sql_result_schema(schema.serializeAsMessage());
+
+        return executor;
+    }
+
+    public void handleResultFromFE() {
+        if (ctx.getState().isError()) {
+            reportError(ctx);
+        }
+
+        ArrowFlightSqlConnectContext arrowCtx = (ArrowFlightSqlConnectContext) ctx;
+
+        if (executor != null && executor.isForwardToLeader()) {
+            ShowResultSet resultSet = executor.getShowResultSet();
+            if (resultSet != null) {
+                arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getQueryId()), resultSet);
+                return;
+            }
+        }
+
+        String queryId = DebugUtil.printId(arrowCtx.getExecutionId());
+        if (arrowCtx.getResult(queryId) == null) {
+            arrowCtx.setEmptyResultIfNotExist(queryId);
         }
     }
 
-    @Override
-    public void processOnce() {
-        // Set status of query to OK.
-        ctx.getState().reset();
-        executor = null;
+    public Triple<Long, TUniqueId, Schema> handleResultFromBE(Coordinator coordinator) {
+        if (ctx.getState().isError()) {
+            reportError(ctx);
+        }
 
-        // Only handle query，so no need to dispatch
-        ctx.setCommand(MysqlCommand.COM_QUERY);
-        ctx.setStartTime();
-        ctx.setResourceGroup(null);
-        ctx.resetErrorCode();
+        if (executor != null && executor.isForwardToLeader()) {
+            Triple<Long, TUniqueId, Schema> info = executor.getProxyArrowFlightSQLResultInfo();
+            if (info != null) {
+                return info;
+            }
+        }
 
-        this.handleQuery();
+        if (coordinator == null) {
+            reportError(ctx);
+        }
 
-        ctx.setLastQueryId(ctx.getQueryId());
-        ctx.setQueryId(null);
+        Preconditions.checkState(coordinator instanceof DefaultCoordinator,
+                "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
+        DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
 
-        // Set command as sleep, so timeCheck will close the connection.
-        // When client's last query is long long ago (controlled by waitTimeout session variable).
-        ctx.setStartTime();
-        ctx.setCommand(MysqlCommand.COM_SLEEP);
+        ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
+        FragmentInstance rootFragmentInstance = rootFragment.getInstances().get(0);
+        ComputeNode worker = rootFragmentInstance.getWorker();
+        TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
+
+        ExecPlan execPlan = defaultCoordinator.getJobSpec().getExecPlan();
+        Preconditions.checkNotNull(execPlan, "execPlan is null");
+        Schema schema = buildSchema(execPlan, ctx.getSessionVariable());
+
+        return Triple.of(worker.getId(), rootFragmentInstanceId, schema);
+    }
+
+    private void reportError(ConnectContext ctx) throws RuntimeException {
+        String errMsg = ctx.getState().getErrorMessage();
+        if (StringUtils.isEmpty(errMsg)) {
+            errMsg = "Unknown error";
+        }
+        throw new RuntimeException(String.format("failed to process query [queryID=%s] [error=%s]",
+                DebugUtil.printId(ctx.getExecutionId()), errMsg));
     }
 
     private StatementBase runWithParserStageRetry() throws Exception {
@@ -187,5 +315,21 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         StatementBase parsedStmt = stmts.get(0);
         parsedStmt.setOrigStmt(new OriginStatement(sql));
         return parsedStmt;
+    }
+
+    private void setResultFromLeaderIfForwarded() {
+        if (executor == null || !executor.isForwardToLeader()) {
+            return;
+        }
+
+        if (ctx.getState().getStateType() == QueryState.MysqlStateType.ERR) {
+            return;
+        }
+
+        ArrowFlightSqlConnectContext arrowCtx = (ArrowFlightSqlConnectContext) ctx;
+        ShowResultSet resultSet = executor.getShowResultSet();
+        if (resultSet != null) {
+            arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getQueryId()), resultSet);
+        }
     }
 }

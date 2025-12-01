@@ -413,17 +413,17 @@ public class ConnectProcessor {
 
     /**
      * Execute query with parser-stage retry support.
-     *
+     * <p>
      * This method provides a retry mechanism starting from the parser stage, which is necessary for
      * certain optimizations that require different AST structures based on session variables or configs.
      * Some scenarios that need parser-stage retry include:
      * - LargeInPredicate optimization: When enable_large_in_predicate=true, the parser uses raw constant
-     *   values instead of expressions. If this optimization fails, we must re-parse with the flag disabled
-     *   to get a traditional expression-based AST. Additionally, mid-pipeline rewrites of expressions or
-     *   operators (e.g., during analyzer/optimizer phases) may bypass critical processing steps; therefore
-     *   a full re-parse is required to ensure all semantic checks and transformations are executed.
+     * values instead of expressions. If this optimization fails, we must re-parse with the flag disabled
+     * to get a traditional expression-based AST. Additionally, mid-pipeline rewrites of expressions or
+     * operators (e.g., during analyzer/optimizer phases) may bypass critical processing steps; therefore
+     * a full re-parse is required to ensure all semantic checks and transformations are executed.
      * - Other future optimizations that modify parsing behavior based on session/config settings.
-     *
+     * <p>
      * This is different from execution-level retries because it requires re-parsing the SQL to get
      * a different AST structure, not just re-executing the same plan.
      */
@@ -844,7 +844,7 @@ public class ConnectProcessor {
         }
     }
 
-    public TMasterOpResult proxyExecute(TMasterOpRequest request) {
+    public TMasterOpResult proxyExecute(TMasterOpRequest request, ProxyContextManager.ScopeGuard scopeGuard) {
         ctx.setCurrentCatalog(request.catalog);
         if (ctx.getCurrentCatalog() == null) {
             // if we upgrade Master FE first, the request from old FE does not set "catalog".
@@ -990,6 +990,7 @@ public class ConnectProcessor {
 
         ctx.setThreadLocalInfo();
 
+        TMasterOpResult result = new TMasterOpResult();
         StmtExecutor executor = null;
         try {
             // set session variables first
@@ -1017,14 +1018,7 @@ public class ConnectProcessor {
             }.visit(statement);
             statement.setOrigStmt(new OriginStatement(request.getSql(), idx));
 
-            if (request.isIsInternalStmt()) {
-                executor = StmtExecutor.newInternalExecutor(ctx, statement);
-            } else {
-                executor = new StmtExecutor(ctx, statement);
-            }
-            ctx.setExecutor(executor);
-            executor.setProxy();
-            executor.execute();
+            executor = doProxyExecute(result, request, statement, scopeGuard);
         } catch (IOException e) {
             // Client failed.
             LOG.warn("Process one query failed because IOException: ", e);
@@ -1034,8 +1028,6 @@ public class ConnectProcessor {
             // If reach here, maybe StarRocks bug.
             LOG.warn("Process one query failed because unknown reason: ", e);
             ctx.getState().setError(e.getMessage());
-        } finally {
-            ctx.setExecutor(null);
         }
 
         // If stmt is also forwarded during execution, just return the forward result.
@@ -1045,7 +1037,6 @@ public class ConnectProcessor {
 
         // no matter the master execute success or fail, the master must transfer the result to follower
         // and tell the follower the current journalID.
-        TMasterOpResult result = new TMasterOpResult();
         result.setMaxJournalId(GlobalStateMgr.getCurrentState().getMaxJournalId());
         // following stmt will not be executed, when current stmt is failed,
         // so only set SERVER_MORE_RESULTS_EXISTS Flag when stmt executed successfully
@@ -1077,6 +1068,22 @@ public class ConnectProcessor {
             }
         }
         return result;
+    }
+
+    protected StmtExecutor doProxyExecute(TMasterOpResult result, TMasterOpRequest request, StatementBase statement,
+                                          ProxyContextManager.ScopeGuard scopeGuard)
+            throws Exception {
+        StmtExecutor executor;
+        if (request.isIsInternalStmt()) {
+            executor = StmtExecutor.newInternalExecutor(ctx, statement);
+        } else {
+            executor = new StmtExecutor(ctx, statement);
+        }
+        ctx.setExecutor(executor);
+        executor.setProxy();
+        executor.execute();
+
+        return executor;
     }
 
     public void processOnce(RequestPackage req) throws Exception {

@@ -840,6 +840,8 @@ struct TMasterOpRequest {
     37: optional i64 txn_id;
     38: optional bool isInternalStmt;
 
+    39: optional bool is_arrow_flight_sql;
+
     101: optional i64 warehouse_id    // begin from 101, in case of conflict with other's change
 }
 
@@ -872,6 +874,10 @@ struct TMasterOpResult {
     7: optional TAuditStatistics audit_statistics;
     8: optional string errorMsg;
     9: optional i64 txn_id;
+
+    10: optional Types.TUniqueId arrow_flight_sql_result_fragment_id;
+    11: optional i64 arrow_flight_sql_result_backend_id;
+    12: optional binary arrow_flight_sql_result_schema;
 }
 
 struct TIsMethodSupportedRequest {

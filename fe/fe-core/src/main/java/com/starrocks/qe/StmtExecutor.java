@@ -255,9 +255,11 @@ import com.starrocks.transaction.TransactionStmtExecutor;
 import com.starrocks.transaction.VisibleStateWaiter;
 import com.starrocks.type.TypeFactory;
 import com.starrocks.warehouse.WarehouseIdleChecker;
+import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.thrift.transport.TTransportException;
@@ -524,6 +526,14 @@ public class StmtExecutor {
             return null;
         } else {
             return leaderOpExecutor.getProxyResultSet();
+        }
+    }
+
+    public Triple<Long, TUniqueId, Schema> getProxyArrowFlightSQLResultInfo() {
+        if (leaderOpExecutor == null) {
+            return null;
+        } else {
+            return leaderOpExecutor.getProxyArrowFlightSQLResultInfo();
         }
     }
 
@@ -1165,7 +1175,8 @@ public class StmtExecutor {
         }
         try {
             context.incPendingForwardRequest();
-            leaderOpExecutor = new LeaderOpExecutor(parsedStmt, originStmt, context, redirectStatus, isInternalStmt);
+            leaderOpExecutor =
+                    new LeaderOpExecutor(parsedStmt, originStmt, context, redirectStatus, isInternalStmt, deploymentFinished);
             LOG.debug("need to transfer to Leader. stmt: {}", context.getStmtId());
             leaderOpExecutor.execute();
         } finally {

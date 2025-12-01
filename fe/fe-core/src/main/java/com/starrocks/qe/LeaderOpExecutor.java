@@ -45,10 +45,12 @@ import com.starrocks.common.util.AuditStatisticsUtil;
 import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.mysql.MysqlChannel;
 import com.starrocks.qe.QueryState.MysqlStateType;
+import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.rpc.ThriftConnectionPool;
 import com.starrocks.rpc.ThriftRPCRequestExecutor;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.GracefulExitFlag;
+import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.SetListItem;
@@ -64,13 +66,17 @@ import com.starrocks.thrift.TMasterOpRequest;
 import com.starrocks.thrift.TMasterOpResult;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TQueryOptions;
+import com.starrocks.thrift.TUniqueId;
 import com.starrocks.thrift.TUserRoles;
+import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 
 public class LeaderOpExecutor {
     private static final Logger LOG = LogManager.getLogger(LeaderOpExecutor.class);
@@ -87,18 +93,27 @@ public class LeaderOpExecutor {
     private int thriftTimeoutMs;
     private final Pair<String, Integer> ipAndPort;
 
+    private final CompletableFuture<Coordinator> deploymentFinished;
+
     public LeaderOpExecutor(OriginStatement originStmt, ConnectContext ctx, RedirectStatus status) {
-        this(null, originStmt, ctx, status, false);
+        this(null, originStmt, ctx, status, false, null);
     }
 
     public LeaderOpExecutor(StatementBase parsedStmt, OriginStatement originStmt,
-                            ConnectContext ctx, RedirectStatus status, boolean isInternalStmt) {
+                            ConnectContext ctx, RedirectStatus status, boolean isInternalStmt,
+                            CompletableFuture<Coordinator> deploymentFinished) {
         this(GlobalStateMgr.getCurrentState().getNodeMgr().getLeaderIpAndRpcPort(), parsedStmt, originStmt, ctx,
-                status, isInternalStmt);
+                status, isInternalStmt, deploymentFinished);
     }
 
     public LeaderOpExecutor(Pair<String, Integer> ipAndPort, StatementBase parsedStmt, OriginStatement originStmt,
                             ConnectContext ctx, RedirectStatus status, boolean isInternalStmt) {
+        this(ipAndPort, parsedStmt, originStmt, ctx, status, isInternalStmt, null);
+    }
+
+    public LeaderOpExecutor(Pair<String, Integer> ipAndPort, StatementBase parsedStmt, OriginStatement originStmt,
+                            ConnectContext ctx, RedirectStatus status, boolean isInternalStmt,
+                            CompletableFuture<Coordinator> deploymentFinished) {
         this.ipAndPort = ipAndPort;
         this.originStmt = originStmt;
         this.ctx = ctx;
@@ -115,6 +130,7 @@ public class LeaderOpExecutor {
         }
         this.parsedStmt = parsedStmt;
         this.isInternalStmt = isInternalStmt;
+        this.deploymentFinished = deploymentFinished;
     }
 
     public void execute() throws Exception {
@@ -153,6 +169,10 @@ public class LeaderOpExecutor {
             if (result.isSetTxn_id()) {
                 ctx.setTxnId(result.getTxn_id());
             }
+        }
+
+        if (result.isSetArrow_flight_sql_result_backend_id()) {
+            deploymentFinished.complete(null);
         }
     }
 
@@ -226,6 +246,23 @@ public class LeaderOpExecutor {
         }
     }
 
+    public Triple<Long, TUniqueId, Schema> getProxyArrowFlightSQLResultInfo() {
+        if (result == null) {
+            return null;
+        }
+
+        if (!result.isSetArrow_flight_sql_result_backend_id() || !result.isSetArrow_flight_sql_result_fragment_id() ||
+                !result.isSetArrow_flight_sql_result_schema()) {
+            return null;
+        }
+
+        long backendId = result.getArrow_flight_sql_result_backend_id();
+        TUniqueId fragmentId = result.getArrow_flight_sql_result_fragment_id();
+        byte[] schemaBytes = result.getArrow_flight_sql_result_schema();
+        Schema schema = Schema.deserializeMessage(ByteBuffer.wrap(schemaBytes));
+        return Triple.of(backendId, fragmentId, schema);
+    }
+
     /**
      * if a query statement is forwarded to the leader, or if a show statement is automatically rewrote,
      * the result of the query will be returned in thrift body and should write into mysql channel.
@@ -287,6 +324,9 @@ public class LeaderOpExecutor {
         params.setWarehouse_id(ctx.getCurrentWarehouseId());
 
         params.setIsInternalStmt(isInternalStmt);
+
+        params.setIs_arrow_flight_sql(ctx instanceof ArrowFlightSqlConnectContext);
+
         return params;
     }
 }

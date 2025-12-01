@@ -70,7 +70,7 @@ public class ProxyContextManager {
 
     public static class ScopeGuard implements AutoCloseable {
         private ProxyContextManager manager;
-        private boolean set = false;
+        private volatile boolean set = false;
         private String hostName;
         private int connectionId;
 
@@ -86,10 +86,18 @@ public class ProxyContextManager {
         }
 
         @Override
-        public void close() throws Exception {
+        public void close() {
             if (set) {
                 manager.remove(hostName, connectionId);
             }
+        }
+
+        public void deactive() {
+            this.set = false;
+        }
+
+        public void activate() {
+            this.set = true;
         }
     }
 }
