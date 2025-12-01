@@ -502,6 +502,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
                 if (ctx.getState().isError()) {
                     reportError(ctx);
                 }
+
                 String queryId = DebugUtil.printId(ctx.getExecutionId());
                 if (ctx.getResult(queryId) == null) {
                     ctx.setEmptyResultIfNotExist(queryId);

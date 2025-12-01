@@ -855,6 +855,8 @@ public class ConnectProcessor {
                     "Missing current catalog. You need to upgrade this Frontend to the same version as Leader Frontend.");
             result.setMaxJournalId(GlobalStateMgr.getCurrentState().getMaxJournalId());
             result.setPacket(getResultPacket());
+            result.setState(ctx.getState().getStateType().toString());
+            result.setErrorMsg(ctx.getState().getErrorMessage());
             return result;
         }
         ctx.setDatabase(request.db);
@@ -891,6 +893,8 @@ public class ConnectProcessor {
                     "Missing current user identity. You need to upgrade this Frontend to the same version as Leader Frontend.");
             result.setMaxJournalId(GlobalStateMgr.getCurrentState().getMaxJournalId());
             result.setPacket(getResultPacket());
+            result.setState(ctx.getState().getStateType().toString());
+            result.setErrorMsg(ctx.getState().getErrorMessage());
             return result;
         }
 

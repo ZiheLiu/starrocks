@@ -17,12 +17,14 @@ package com.starrocks.service.arrow.flight.sql;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.common.profile.Timer;
 import com.starrocks.common.profile.Tracers;
+import com.starrocks.common.util.DebugUtil;
 import com.starrocks.metric.MetricRepo;
 import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ConnectProcessor;
 import com.starrocks.qe.QueryState;
 import com.starrocks.qe.SessionVariable;
+import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.StmtExecutor;
 import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.sql.ast.KillStmt;
@@ -92,11 +94,29 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
             Tracers.close();
         }
 
+        setResultFromLeaderIfForwarded();
+
         if (executor != null) {
             auditAfterExec(originStmt, executor.getParsedStmt(), executor.getQueryStatisticsForAuditLog());
             executor.addFinishedQueryDetail();
         } else {
             auditAfterExec(originStmt, parsedStmt, null);
+        }
+    }
+
+    private void setResultFromLeaderIfForwarded() {
+        if (executor == null || !executor.isForwardToLeader()) {
+            return;
+        }
+
+        if (ctx.getState().getStateType() != QueryState.MysqlStateType.OK) {
+            return;
+        }
+
+        ArrowFlightSqlConnectContext arrowCtx = (ArrowFlightSqlConnectContext) ctx;
+        ShowResultSet resultSet = executor.getShowResultSet();
+        if (resultSet != null) {
+            arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getQueryId()), resultSet);
         }
     }
 
