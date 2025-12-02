@@ -67,10 +67,7 @@ import com.starrocks.thrift.TMasterOpRequest;
 import com.starrocks.thrift.TMasterOpResult;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TQueryOptions;
-import com.starrocks.thrift.TUniqueId;
 import com.starrocks.thrift.TUserRoles;
-import org.apache.arrow.vector.types.pojo.Schema;
-import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
