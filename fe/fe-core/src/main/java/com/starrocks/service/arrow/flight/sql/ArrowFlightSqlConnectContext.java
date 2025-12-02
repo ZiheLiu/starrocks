@@ -146,7 +146,7 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
             String killSQL = "KILL " + getConnectionId();
             SimpleExecutor executor = new SimpleExecutor("ArrowFlightSQLCloseSession", TResultSinkType.MYSQL_PROTOCAL);
             try {
-                executor.executeDML(killSQL);
+                executor.executeControl(killSQL);
             } catch (Exception e) {
                 LOG.warn("Failed to kill the Arrow Flight SQL connection from the proxy to the leader.", e);
             }
