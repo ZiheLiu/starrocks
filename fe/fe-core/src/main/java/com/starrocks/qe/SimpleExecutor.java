@@ -26,6 +26,7 @@ import com.starrocks.sql.analyzer.Analyzer;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.DmlStmt;
+import com.starrocks.sql.ast.KillStmt;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.formatter.FormatOptions;
 import com.starrocks.sql.parser.SqlParser;
@@ -90,7 +91,8 @@ public class SimpleExecutor {
             ConnectContext context = createConnectContext();
             StatementBase parsedStmt = SqlParser.parseOneWithStarRocksDialect(sql, context.getSessionVariable());
             sql = formatSQL(sql, parsedStmt);
-            Preconditions.checkState(parsedStmt instanceof DmlStmt, "the statement should be dml");
+            Preconditions.checkState(parsedStmt instanceof DmlStmt || parsedStmt instanceof KillStmt,
+                    "the statement should be DML or Kill statement");
             StmtExecutor executor = StmtExecutor.newInternalExecutor(context, parsedStmt);
             context.setExecutor(executor);
             context.setQueryId(UUIDUtil.genUUID());
