@@ -129,10 +129,13 @@ import com.starrocks.qe.feedback.skeleton.SkeletonBuilder;
 import com.starrocks.qe.feedback.skeleton.SkeletonNode;
 import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.qe.scheduler.FeExecuteCoordinator;
+import com.starrocks.qe.scheduler.dag.ExecutionFragment;
+import com.starrocks.qe.scheduler.dag.FragmentInstance;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.GracefulExitFlag;
 import com.starrocks.server.WarehouseManager;
 import com.starrocks.service.ExecuteEnv;
+import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlBackendResult;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
 import com.starrocks.sql.ExplainAnalyzer;
 import com.starrocks.sql.PrepareStmtPlanner;
@@ -233,6 +236,7 @@ import com.starrocks.statistic.StatisticExecutor;
 import com.starrocks.statistic.StatisticUtils;
 import com.starrocks.statistic.StatisticsCollectJobFactory;
 import com.starrocks.statistic.StatsConstants;
+import com.starrocks.system.ComputeNode;
 import com.starrocks.system.Frontend;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.task.LoadEtlTask;
@@ -290,6 +294,7 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 import static com.starrocks.common.ErrorCode.ERR_NO_PARTITIONS_HAVE_DATA_LOAD;
+import static com.starrocks.service.arrow.flight.sql.ArrowFlightSqlServiceImpl.buildSchema;
 import static com.starrocks.sql.parser.ErrorMsgProxy.PARSER_ERROR_MSG;
 import static com.starrocks.statistic.AnalyzeMgr.IS_MULTI_COLUMN_STATS;
 
@@ -325,13 +330,14 @@ public class StmtExecutor {
     private PrepareStmtContext prepareStmtContext = null;
     private boolean isInternalStmt = false;
 
-    private final CompletableFuture<Coordinator> deploymentFinished;
+    private final CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished;
 
     public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt) {
         this(ctx, parsedStmt, false);
     }
 
-    public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt, CompletableFuture<Coordinator> deploymentFinished) {
+    public StmtExecutor(ConnectContext ctx, StatementBase parsedStmt,
+                        CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished) {
         this(ctx, parsedStmt, false, deploymentFinished);
     }
 
@@ -348,7 +354,7 @@ public class StmtExecutor {
     }
 
     private StmtExecutor(ConnectContext ctx, StatementBase parsedStmt, boolean isInternalStmt,
-                         CompletableFuture<Coordinator> deploymentFinished) {
+                         CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished) {
         this.context = ctx;
         this.parsedStmt = Preconditions.checkNotNull(parsedStmt);
         this.originStmt = parsedStmt.getOrigStmt();
@@ -526,14 +532,6 @@ public class StmtExecutor {
             return null;
         } else {
             return leaderOpExecutor.getProxyResultSet();
-        }
-    }
-
-    public Triple<Long, TUniqueId, Schema> getProxyArrowFlightSQLResultInfo() {
-        if (leaderOpExecutor == null) {
-            return null;
-        } else {
-            return leaderOpExecutor.getProxyArrowFlightSQLResultInfo();
         }
     }
 
@@ -1519,8 +1517,21 @@ public class StmtExecutor {
             final boolean isArrowFlight = context instanceof ArrowFlightSqlConnectContext && deploymentFinished != null;
             if (isArrowFlight && !isExplainAnalyze && !isOutfileQuery) {
                 ArrowFlightSqlConnectContext arrowContext = (ArrowFlightSqlConnectContext) context;
-                arrowContext.setReturnResultFromFE(false);
-                deploymentFinished.complete(coord);
+
+                Preconditions.checkState(coord instanceof DefaultCoordinator,
+                        "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
+                DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coord;
+
+                ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
+                FragmentInstance rootFragmentInstance = rootFragment.getInstances().get(0);
+                ComputeNode worker = rootFragmentInstance.getWorker();
+                TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
+                Schema schema = buildSchema(execPlan, context.getSessionVariable());
+
+                ArrowFlightSqlBackendResult backendResult =
+                        new ArrowFlightSqlBackendResult(worker.getId(), rootFragmentInstanceId, schema);
+
+                deploymentFinished.complete(backendResult);
             }
 
             final boolean needSendResult = !isPlanAdvisorAnalyze && !isExplainAnalyze

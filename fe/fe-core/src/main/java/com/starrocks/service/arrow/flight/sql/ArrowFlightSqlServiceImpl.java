@@ -14,7 +14,6 @@
 
 package com.starrocks.service.arrow.flight.sql;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.protobuf.Any;
@@ -26,9 +25,7 @@ import com.starrocks.common.StarRocksException;
 import com.starrocks.common.ThreadPoolManager;
 import com.starrocks.common.util.ArrowUtil;
 import com.starrocks.common.util.DebugUtil;
-import com.starrocks.qe.DefaultCoordinator;
 import com.starrocks.qe.SessionVariable;
-import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.service.arrow.flight.sql.session.ArrowFlightSqlSessionManager;
 import com.starrocks.sql.ast.expression.Expr;
@@ -65,7 +62,6 @@ import org.apache.arrow.vector.ipc.message.MessageSerializer;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -470,7 +466,7 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
 
             ctx.resetForStatement();
 
-            CompletableFuture<Coordinator> deploymentFinished = new CompletableFuture<>();
+            CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished = new CompletableFuture<>();
             CompletableFuture<Void> processorFinished = new CompletableFuture<>();
             ArrowFlightSqlConnectProcessor processor = new ArrowFlightSqlConnectProcessor(ctx, deploymentFinished, query);
             EXECUTOR.submit(() -> {
@@ -496,12 +492,12 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             });
 
             // Wait util deployment finished or ArrowFlightSqlConnectProcessor finished.
-            Coordinator coordinator = deploymentFinished.get();
+            ArrowFlightSqlBackendResult backendResult = deploymentFinished.get();
 
             // ------------------------------------------------------------------------------------
             // FE task will return FE as endpoint.
             // ------------------------------------------------------------------------------------
-            if (ctx.returnFromFE()) {
+            if (backendResult == null) {
                 processorFinished.get(); // Wait `processor.processOnce()` to finish.
 
                 processor.handleResultFromFE();
@@ -516,21 +512,17 @@ public class ArrowFlightSqlServiceImpl implements FlightSqlProducer, AutoCloseab
             // ------------------------------------------------------------------------------------
             // Query task will wait until deployment to BE is finished and return BE as endpoint.
             // ------------------------------------------------------------------------------------
-            Triple<Long, TUniqueId, Schema> resultInfo = processor.handleResultFromBE(coordinator);
+            ArrowFlightSqlBackendResult resultInfo = processor.handleResultFromBE(backendResult);
 
-            Preconditions.checkState(coordinator instanceof DefaultCoordinator,
-                    "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
-            DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
-
-            Long workerId = resultInfo.getLeft();
-            TUniqueId rootFragmentInstanceId = resultInfo.getMiddle();
-            Schema schema = resultInfo.getRight();
+            long workerId = resultInfo.getBackendId();
+            TUniqueId rootFragmentInstanceId = resultInfo.getFragmentInstanceId();
+            Schema schema = resultInfo.getSchema();
 
             SystemInfoService clusterInfoService = GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo();
             ComputeNode worker = clusterInfoService.getBackendOrComputeNode(workerId);
 
             // Build BE ticket.
-            final ByteString handle = buildBETicket(defaultCoordinator.getQueryId(), rootFragmentInstanceId);
+            final ByteString handle = buildBETicket(ctx.getExecutionId(), rootFragmentInstanceId);
             FlightSql.TicketStatementQuery ticketStatement =
                     FlightSql.TicketStatementQuery.newBuilder().setStatementHandle(handle).build();
             Location endpoint = Location.forGrpcInsecure(worker.getHost(), worker.getArrowFlightPort());

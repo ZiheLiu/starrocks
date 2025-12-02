@@ -93,6 +93,7 @@ import com.starrocks.sql.common.LargeInPredicateException;
 import com.starrocks.sql.formatter.FormatOptions;
 import com.starrocks.sql.parser.ParsingException;
 import com.starrocks.sql.parser.SqlParser;
+import com.starrocks.system.Frontend;
 import com.starrocks.thrift.TMasterOpRequest;
 import com.starrocks.thrift.TMasterOpResult;
 import com.starrocks.thrift.TQueryOptions;
@@ -844,7 +845,7 @@ public class ConnectProcessor {
         }
     }
 
-    public TMasterOpResult proxyExecute(TMasterOpRequest request, ProxyContextManager.ScopeGuard scopeGuard) {
+    public TMasterOpResult proxyExecute(TMasterOpRequest request, Frontend requestFE) {
         ctx.setCurrentCatalog(request.catalog);
         if (ctx.getCurrentCatalog() == null) {
             // if we upgrade Master FE first, the request from old FE does not set "catalog".
@@ -1018,7 +1019,7 @@ public class ConnectProcessor {
             }.visit(statement);
             statement.setOrigStmt(new OriginStatement(request.getSql(), idx));
 
-            executor = doProxyExecute(result, request, statement, scopeGuard);
+            executor = doProxyExecute(result, request, statement, requestFE);
         } catch (IOException e) {
             // Client failed.
             LOG.warn("Process one query failed because IOException: ", e);
@@ -1071,7 +1072,7 @@ public class ConnectProcessor {
     }
 
     protected StmtExecutor doProxyExecute(TMasterOpResult result, TMasterOpRequest request, StatementBase statement,
-                                          ProxyContextManager.ScopeGuard scopeGuard)
+                                          Frontend requestFE)
             throws Exception {
         StmtExecutor executor;
         if (request.isIsInternalStmt()) {

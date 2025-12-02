@@ -48,8 +48,6 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
 
     private final String arrowFlightSqlToken;
 
-    private boolean returnResultFromFE;
-
     private final RunningToken runningToken = new RunningToken();
 
     // - Only contains the execution result of the most recent query.
@@ -73,7 +71,6 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
         super();
         this.allocator = new RootAllocator(Long.MAX_VALUE);
         this.arrowFlightSqlToken = arrowFlightSqlToken;
-        this.returnResultFromFE = true;
     }
 
     public boolean acquireRunningToken(long timeoutMs) throws InterruptedException {
@@ -85,7 +82,6 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
     }
 
     public void resetForStatement() {
-        this.returnResultFromFE = true;
         this.setQueryId(UUIDUtil.genUUID());
         this.setExecutionId(UUIDUtil.toTUniqueId(this.getQueryId()));
     }
@@ -93,14 +89,6 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
     public VectorSchemaRoot getResult(String queryId) {
         ArrowSchemaRootWrapper wrapper = resultCache.getIfPresent(queryId);
         return wrapper != null ? wrapper.getSchemaRoot() : null;
-    }
-
-    public boolean returnFromFE() {
-        return returnResultFromFE;
-    }
-
-    public void setReturnResultFromFE(boolean returnResultFromFE) {
-        this.returnResultFromFE = returnResultFromFE;
     }
 
     public String getArrowFlightSqlToken() {

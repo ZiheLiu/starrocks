@@ -14,57 +14,53 @@
 
 package com.starrocks.service.arrow.flight.sql;
 
-import com.google.common.base.Preconditions;
+import com.starrocks.common.Config;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.common.profile.Timer;
 import com.starrocks.common.profile.Tracers;
 import com.starrocks.common.util.DebugUtil;
+import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.metric.MetricRepo;
 import com.starrocks.mysql.MysqlCommand;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ConnectProcessor;
-import com.starrocks.qe.DefaultCoordinator;
-import com.starrocks.qe.ProxyContextManager;
 import com.starrocks.qe.QueryState;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.StmtExecutor;
-import com.starrocks.qe.scheduler.Coordinator;
-import com.starrocks.qe.scheduler.dag.ExecutionFragment;
-import com.starrocks.qe.scheduler.dag.FragmentInstance;
+import com.starrocks.rpc.ThriftConnectionPool;
+import com.starrocks.rpc.ThriftRPCRequestExecutor;
 import com.starrocks.sql.ast.KillStmt;
 import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.StatementBase;
 import com.starrocks.sql.common.LargeInPredicateException;
-import com.starrocks.sql.plan.ExecPlan;
-import com.starrocks.system.ComputeNode;
+import com.starrocks.system.Frontend;
 import com.starrocks.thrift.TMasterOpRequest;
 import com.starrocks.thrift.TMasterOpResult;
-import com.starrocks.thrift.TUniqueId;
-import org.apache.arrow.vector.types.pojo.Schema;
+import com.starrocks.thrift.TNetworkAddress;
+import com.starrocks.thrift.TNotifyForwardDeploymentFinishedRequest;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.tuple.Triple;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.thrift.TException;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-import static com.starrocks.service.arrow.flight.sql.ArrowFlightSqlServiceImpl.buildSchema;
-
 // inherit ConnectProcessor to record the audit log and Query Detail
 public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
     private static final Logger LOG = LogManager.getLogger(ArrowFlightSqlConnectProcessor.class);
 
-    private final CompletableFuture<Coordinator> deploymentFinished;
+    private final CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished;
     private final String originStmt;
 
     public ArrowFlightSqlConnectProcessor(ConnectContext context, String originStmt) {
         this(context, new CompletableFuture<>(), originStmt);
     }
 
-    public ArrowFlightSqlConnectProcessor(ConnectContext context, CompletableFuture<Coordinator> deploymentFinished,
+    public ArrowFlightSqlConnectProcessor(ConnectContext context,
+                                          CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished,
                                           String originStmt) {
         super(context);
         this.deploymentFinished = deploymentFinished;
@@ -148,65 +144,67 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
 
     @Override
     protected StmtExecutor doProxyExecute(TMasterOpResult result, TMasterOpRequest request, StatementBase statement,
-                                          ProxyContextManager.ScopeGuard scopeGuard)
-            throws Exception {
+                                          Frontend requestFE) throws Exception {
         if (request.isIsInternalStmt()) {
             throw new IllegalArgumentException("Arrow Flight SQL does not support internal statement");
         }
 
         ArrowFlightSqlConnectContext arrowCtx = (ArrowFlightSqlConnectContext) ctx;
-        arrowCtx.resetForStatement();
 
         CompletableFuture<Void> processorFinished = new CompletableFuture<>();
         StmtExecutor executor = new StmtExecutor(ctx, statement, deploymentFinished);
         ctx.setExecutor(executor);
         executor.setProxy();
 
-        scopeGuard.deactive();
+        try {
+            ArrowFlightSqlServiceImpl.submitTask(() -> {
+                try {
+                    ctx.setThreadLocalInfo();
+                    executor.execute();
+                    deploymentFinished.complete(null);
+                    processorFinished.complete(null);
+                } catch (Exception e) {
+                    deploymentFinished.completeExceptionally(e);
+                    processorFinished.completeExceptionally(e);
+                }
+            });
 
-        ArrowFlightSqlServiceImpl.submitTask(() -> {
-            try {
-                executor.execute();
-                deploymentFinished.complete(null);
-                processorFinished.complete(null);
-            } catch (Exception e) {
-                deploymentFinished.completeExceptionally(e);
-                processorFinished.completeExceptionally(e);
-            } finally {
-                scopeGuard.activate();
-                scopeGuard.close();
+            ArrowFlightSqlBackendResult backendResult = deploymentFinished.get();
+            if (backendResult == null || ctx.getState().isError()) {
+                return executor;
             }
-        });
 
-        Coordinator coordinator = deploymentFinished.get();
-        if (arrowCtx.returnFromFE()) {
-            processorFinished.get();
+            notifyForwardDeploymentFinished(requestFE, backendResult);
             return executor;
+        } catch (Throwable e) {
+            LOG.warn("Process one query failed. SQL: {}", originStmt, e);
+            ctx.kill(true, "Proxy execute one query failed. SQL: " + originStmt + ", error: " + e.getMessage());
+            throw e;
+        } finally {
+            processorFinished.get(); // Wait for `executor.execute()` to finish
+        }
+    }
+
+    private void notifyForwardDeploymentFinished(Frontend requestFE, ArrowFlightSqlBackendResult backendResult)
+            throws TException {
+        TNetworkAddress address = new TNetworkAddress(requestFE.getHost(), requestFE.getRpcPort());
+        int timeoutMs = ctx.getExecTimeout() * 1000 + Config.thrift_rpc_timeout_ms;
+        if (timeoutMs < 0) {
+            timeoutMs = ctx.getExecTimeout() * 1000;
         }
 
-        if (coordinator == null || ctx.getState().isError()) {
-            return executor;
-        }
+        TNotifyForwardDeploymentFinishedRequest request = new TNotifyForwardDeploymentFinishedRequest();
 
-        Preconditions.checkState(coordinator instanceof DefaultCoordinator,
-                "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
-        DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
+        request.setQuery_id(UUIDUtil.toTUniqueId(ctx.getQueryId()));
+        request.setArrow_flight_sql_result_backend_id(backendResult.getBackendId());
+        request.setArrow_flight_sql_result_fragment_id(backendResult.getFragmentInstanceId());
+        request.setArrow_flight_sql_result_schema(backendResult.getSchema().serializeAsMessage());
 
-        ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
-        FragmentInstance rootFragmentInstance = rootFragment.getInstances().get(0);
-
-        ComputeNode worker = rootFragmentInstance.getWorker();
-        result.setArrow_flight_sql_result_backend_id(worker.getId());
-
-        TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
-        result.setArrow_flight_sql_result_fragment_id(rootFragmentInstanceId);
-
-        ExecPlan execPlan = defaultCoordinator.getJobSpec().getExecPlan();
-        Preconditions.checkNotNull(execPlan, "execPlan is null");
-        Schema schema = buildSchema(execPlan, ctx.getSessionVariable());
-        result.setArrow_flight_sql_result_schema(schema.serializeAsMessage());
-
-        return executor;
+        ThriftRPCRequestExecutor.call(
+                ThriftConnectionPool.frontendPool,
+                address,
+                timeoutMs,
+                client -> client.notifyForwardDeploymentFinished(request));
     }
 
     public void handleResultFromFE() {
@@ -219,7 +217,7 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         if (executor != null && executor.isForwardToLeader()) {
             ShowResultSet resultSet = executor.getShowResultSet();
             if (resultSet != null) {
-                arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getQueryId()), resultSet);
+                arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getExecutionId()), resultSet);
                 return;
             }
         }
@@ -230,36 +228,16 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         }
     }
 
-    public Triple<Long, TUniqueId, Schema> handleResultFromBE(Coordinator coordinator) {
+    public ArrowFlightSqlBackendResult handleResultFromBE(ArrowFlightSqlBackendResult backendResult) {
         if (ctx.getState().isError()) {
             reportError(ctx);
         }
 
-        if (executor != null && executor.isForwardToLeader()) {
-            Triple<Long, TUniqueId, Schema> info = executor.getProxyArrowFlightSQLResultInfo();
-            if (info != null) {
-                return info;
-            }
-        }
-
-        if (coordinator == null) {
+        if (backendResult == null) {
             reportError(ctx);
         }
 
-        Preconditions.checkState(coordinator instanceof DefaultCoordinator,
-                "Coordinator is not DefaultCoordinator, cannot proceed with BE execution.");
-        DefaultCoordinator defaultCoordinator = (DefaultCoordinator) coordinator;
-
-        ExecutionFragment rootFragment = defaultCoordinator.getExecutionDAG().getRootFragment();
-        FragmentInstance rootFragmentInstance = rootFragment.getInstances().get(0);
-        ComputeNode worker = rootFragmentInstance.getWorker();
-        TUniqueId rootFragmentInstanceId = rootFragmentInstance.getInstanceId();
-
-        ExecPlan execPlan = defaultCoordinator.getJobSpec().getExecPlan();
-        Preconditions.checkNotNull(execPlan, "execPlan is null");
-        Schema schema = buildSchema(execPlan, ctx.getSessionVariable());
-
-        return Triple.of(worker.getId(), rootFragmentInstanceId, schema);
+        return backendResult;
     }
 
     private void reportError(ConnectContext ctx) throws RuntimeException {
@@ -329,7 +307,8 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
         ArrowFlightSqlConnectContext arrowCtx = (ArrowFlightSqlConnectContext) ctx;
         ShowResultSet resultSet = executor.getShowResultSet();
         if (resultSet != null) {
-            arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getQueryId()), resultSet);
+            arrowCtx.addShowResult(DebugUtil.printId(arrowCtx.getExecutionId()), resultSet);
         }
     }
+
 }

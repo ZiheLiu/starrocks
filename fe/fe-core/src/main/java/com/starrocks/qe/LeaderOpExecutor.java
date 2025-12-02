@@ -45,12 +45,13 @@ import com.starrocks.common.util.AuditStatisticsUtil;
 import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.mysql.MysqlChannel;
 import com.starrocks.qe.QueryState.MysqlStateType;
-import com.starrocks.qe.scheduler.Coordinator;
 import com.starrocks.rpc.ThriftConnectionPool;
 import com.starrocks.rpc.ThriftRPCRequestExecutor;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.GracefulExitFlag;
+import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlBackendResult;
 import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlConnectContext;
+import com.starrocks.service.arrow.flight.sql.ArrowFlightSqlProxyQueryManager;
 import com.starrocks.sql.analyzer.AstToSQLBuilder;
 import com.starrocks.sql.ast.OriginStatement;
 import com.starrocks.sql.ast.SetListItem;
@@ -93,7 +94,7 @@ public class LeaderOpExecutor {
     private int thriftTimeoutMs;
     private final Pair<String, Integer> ipAndPort;
 
-    private final CompletableFuture<Coordinator> deploymentFinished;
+    private final CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished;
 
     public LeaderOpExecutor(OriginStatement originStmt, ConnectContext ctx, RedirectStatus status) {
         this(null, originStmt, ctx, status, false, null);
@@ -101,9 +102,9 @@ public class LeaderOpExecutor {
 
     public LeaderOpExecutor(StatementBase parsedStmt, OriginStatement originStmt,
                             ConnectContext ctx, RedirectStatus status, boolean isInternalStmt,
-                            CompletableFuture<Coordinator> deploymentFinished) {
-        this(GlobalStateMgr.getCurrentState().getNodeMgr().getLeaderIpAndRpcPort(), parsedStmt, originStmt, ctx,
-                status, isInternalStmt, deploymentFinished);
+                            CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished) {
+        this(GlobalStateMgr.getCurrentState().getNodeMgr().getLeaderIpAndRpcPort(), parsedStmt, originStmt, ctx, status,
+                isInternalStmt, deploymentFinished);
     }
 
     public LeaderOpExecutor(Pair<String, Integer> ipAndPort, StatementBase parsedStmt, OriginStatement originStmt,
@@ -113,7 +114,7 @@ public class LeaderOpExecutor {
 
     public LeaderOpExecutor(Pair<String, Integer> ipAndPort, StatementBase parsedStmt, OriginStatement originStmt,
                             ConnectContext ctx, RedirectStatus status, boolean isInternalStmt,
-                            CompletableFuture<Coordinator> deploymentFinished) {
+                            CompletableFuture<ArrowFlightSqlBackendResult> deploymentFinished) {
         this.ipAndPort = ipAndPort;
         this.originStmt = originStmt;
         this.ctx = ctx;
@@ -134,45 +135,50 @@ public class LeaderOpExecutor {
     }
 
     public void execute() throws Exception {
-        forward();
-        if (!GracefulExitFlag.isGracefulExit() && !GlobalStateMgr.getCurrentState().isLeader()) {
-            LOG.info("forwarding to leader get result max journal id: {}", result.maxJournalId);
-            ctx.getGlobalStateMgr().getJournalObservable().waitOn(result.maxJournalId, waitTimeoutMs);
+        if (ctx.isArrowFlightSql() && deploymentFinished != null) {
+            ArrowFlightSqlProxyQueryManager.getInstance().register(UUIDUtil.toTUniqueId(ctx.getQueryId()), deploymentFinished);
         }
+        try {
+            forward();
+            if (!GracefulExitFlag.isGracefulExit() && !GlobalStateMgr.getCurrentState().isLeader()) {
+                LOG.info("forwarding to leader get result max journal id: {}", result.maxJournalId);
+                ctx.getGlobalStateMgr().getJournalObservable().waitOn(result.maxJournalId, waitTimeoutMs);
+            }
 
-        if (result.state != null) {
-            MysqlStateType state = MysqlStateType.fromString(result.state);
-            if (state != null) {
-                ctx.getState().setStateType(state);
-                if (result.isSetErrorMsg()) {
-                    ctx.getState().setMsg(result.getErrorMsg());
+            if (result.state != null) {
+                MysqlStateType state = MysqlStateType.fromString(result.state);
+                if (state != null) {
+                    ctx.getState().setStateType(state);
+                    if (result.isSetErrorMsg()) {
+                        ctx.getState().setMsg(result.getErrorMsg());
+                    }
+                    if (state == MysqlStateType.EOF || state == MysqlStateType.OK) {
+                        afterForward();
+                    }
                 }
-                if (state == MysqlStateType.EOF || state == MysqlStateType.OK) {
-                    afterForward();
+            }
+
+            if (result.isSetResource_group_name()) {
+                ctx.getAuditEventBuilder().setResourceGroup(result.getResource_group_name());
+            }
+            if (result.isSetAudit_statistics()) {
+                TAuditStatistics tAuditStatistics = result.getAudit_statistics();
+                if (ctx.getExecutor() != null) {
+                    ctx.getExecutor().setQueryStatistics(AuditStatisticsUtil.toProtobuf(tAuditStatistics));
                 }
             }
-        }
 
-        if (result.isSetResource_group_name()) {
-            ctx.getAuditEventBuilder().setResourceGroup(result.getResource_group_name());
-        }
-        if (result.isSetAudit_statistics()) {
-            TAuditStatistics tAuditStatistics = result.getAudit_statistics();
-            if (ctx.getExecutor() != null) {
-                ctx.getExecutor().setQueryStatistics(AuditStatisticsUtil.toProtobuf(tAuditStatistics));
+            // Put the result of leader execution into the connectContext of the current follower
+            // to mark the transaction being executed in the current connection
+            if (parsedStmt instanceof BeginStmt || parsedStmt instanceof CommitStmt || parsedStmt instanceof RollbackStmt) {
+                if (result.isSetTxn_id()) {
+                    ctx.setTxnId(result.getTxn_id());
+                }
             }
-        }
-
-        // Put the result of leader execution into the connectContext of the current follower
-        // to mark the transaction being executed in the current connection
-        if (parsedStmt instanceof BeginStmt || parsedStmt instanceof CommitStmt || parsedStmt instanceof RollbackStmt) {
-            if (result.isSetTxn_id()) {
-                ctx.setTxnId(result.getTxn_id());
+        } finally {
+            if (ctx.isArrowFlightSql() && deploymentFinished != null) {
+                ArrowFlightSqlProxyQueryManager.getInstance().deregister(UUIDUtil.toTUniqueId(ctx.getQueryId()));
             }
-        }
-
-        if (result.isSetArrow_flight_sql_result_backend_id()) {
-            deploymentFinished.complete(null);
         }
     }
 
@@ -244,23 +250,6 @@ public class LeaderOpExecutor {
         } else {
             return null;
         }
-    }
-
-    public Triple<Long, TUniqueId, Schema> getProxyArrowFlightSQLResultInfo() {
-        if (result == null) {
-            return null;
-        }
-
-        if (!result.isSetArrow_flight_sql_result_backend_id() || !result.isSetArrow_flight_sql_result_fragment_id() ||
-                !result.isSetArrow_flight_sql_result_schema()) {
-            return null;
-        }
-
-        long backendId = result.getArrow_flight_sql_result_backend_id();
-        TUniqueId fragmentId = result.getArrow_flight_sql_result_fragment_id();
-        byte[] schemaBytes = result.getArrow_flight_sql_result_schema();
-        Schema schema = Schema.deserializeMessage(ByteBuffer.wrap(schemaBytes));
-        return Triple.of(backendId, fragmentId, schema);
     }
 
     /**

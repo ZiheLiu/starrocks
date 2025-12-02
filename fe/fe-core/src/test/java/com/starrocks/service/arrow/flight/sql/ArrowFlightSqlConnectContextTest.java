@@ -29,10 +29,8 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyInt;
 import static org.mockito.Mockito.anyString;
@@ -53,21 +51,9 @@ public class ArrowFlightSqlConnectContextTest {
     }
 
     @Test
-    public void testConstructor() {
-        assertEquals(token, context.getArrowFlightSqlToken());
-        assertTrue(context.returnFromFE());
-    }
-
-    @Test
     public void testReset() {
         context.resetForStatement();
         assertNotNull(context.getQueryId());
-    }
-
-    @Test
-    public void testSetReturnResultFromFE() {
-        context.setReturnResultFromFE(false);
-        assertFalse(context.returnFromFE());
     }
 
     @Test
