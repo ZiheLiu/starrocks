@@ -24,8 +24,10 @@ import com.starrocks.common.util.UUIDUtil;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.ShowResultSet;
 import com.starrocks.qe.ShowResultSetMetaData;
+import com.starrocks.qe.SimpleExecutor;
 import com.starrocks.qe.StmtExecutor;
 import com.starrocks.service.ExecuteEnv;
+import com.starrocks.thrift.TResultSinkType;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.memory.RootAllocator;
 import org.apache.arrow.vector.FieldVector;
@@ -136,6 +138,12 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
 
     @Override
     public void kill(boolean isKillConnection, String cancelledMessage) {
+        if (hasPendingForwardRequest()) {
+            String killSQL = "KILL " + getConnectionId();
+            SimpleExecutor executor = new SimpleExecutor("ArrowFlightSQLCloseSession", TResultSinkType.MYSQL_PROTOCAL);
+            executor.executeDML(killSQL);
+        }
+
         StmtExecutor executorRef = executor;
         if (executorRef != null) {
             executorRef.cancel(cancelledMessage);

@@ -149,8 +149,6 @@ public class ArrowFlightSqlConnectProcessor extends ConnectProcessor {
             throw new IllegalArgumentException("Arrow Flight SQL does not support internal statement");
         }
 
-        ArrowFlightSqlConnectContext arrowCtx = (ArrowFlightSqlConnectContext) ctx;
-
         CompletableFuture<Void> processorFinished = new CompletableFuture<>();
         StmtExecutor executor = new StmtExecutor(ctx, statement, deploymentFinished);
         ctx.setExecutor(executor);
