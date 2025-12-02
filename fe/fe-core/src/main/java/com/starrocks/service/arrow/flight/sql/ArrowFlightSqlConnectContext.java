@@ -36,6 +36,9 @@ import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.pojo.ArrowType.Utf8;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.paimon.shade.parquet.org.apache.thrift.TException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,6 +49,8 @@ import java.util.concurrent.TimeUnit;
 
 // one connection will create one ArrowFlightSqlConnectContext
 public class ArrowFlightSqlConnectContext extends ConnectContext {
+    private static final Logger LOG = LogManager.getLogger(ArrowFlightSqlConnectContext.class);
+
     private final BufferAllocator allocator;
 
     private final String arrowFlightSqlToken;
@@ -141,7 +146,11 @@ public class ArrowFlightSqlConnectContext extends ConnectContext {
         if (hasPendingForwardRequest()) {
             String killSQL = "KILL " + getConnectionId();
             SimpleExecutor executor = new SimpleExecutor("ArrowFlightSQLCloseSession", TResultSinkType.MYSQL_PROTOCAL);
-            executor.executeDML(killSQL);
+            try {
+                executor.executeDQL(killSQL);
+            } catch (Exception e) {
+                LOG.warn("Failed to kill the Arrow Flight SQL connection from the proxy to the leader.", e);
+            }
         }
 
         StmtExecutor executorRef = executor;
