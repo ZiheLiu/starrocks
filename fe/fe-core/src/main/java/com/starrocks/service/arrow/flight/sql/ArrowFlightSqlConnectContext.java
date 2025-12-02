@@ -38,7 +38,6 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.paimon.shade.parquet.org.apache.thrift.TException;
 
 import java.util.ArrayList;
 import java.util.List;
