@@ -101,7 +101,6 @@ public class ArrowFlightSqlServiceImplTest {
         when(mockContext.getState()).thenReturn(mock(QueryState.class));
         when(mockContext.getResult(anyString())).thenReturn(mock(VectorSchemaRoot.class));
         when(mockContext.getExecutionId()).thenReturn(new com.starrocks.thrift.TUniqueId(1, 1));
-        when(mockContext.returnFromFE()).thenReturn(true);
         when(mockContext.getArrowFlightSqlToken()).thenReturn("token123");
 
         SessionVariable mockSessionVariable = mock(SessionVariable.class);
