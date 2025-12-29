@@ -20,7 +20,6 @@ package com.starrocks.qe;
 import com.google.common.base.Objects;
 import com.google.common.base.Stopwatch;
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.SetMultimap;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.common.util.RuntimeProfile;
@@ -31,15 +30,16 @@ import com.starrocks.planner.PlanNode;
 import com.starrocks.planner.ProjectNode;
 import com.starrocks.planner.expression.ExprToThrift;
 import com.starrocks.proto.PExecShortCircuitResult;
+import com.starrocks.qe.scheduler.DefaultWorkerProvider;
 import com.starrocks.qe.scheduler.LazyWorkerProvider;
 import com.starrocks.qe.scheduler.NonRecoverableException;
+import com.starrocks.qe.scheduler.WorkerProvider;
 import com.starrocks.rpc.BrpcProxy;
 import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.rpc.PBackendService;
 import com.starrocks.rpc.PExecShortCircuitRequest;
-import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.expression.LiteralExpr;
-import com.starrocks.system.Backend;
+import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TExecShortCircuitParams;
 import com.starrocks.thrift.TInternalScanRange;
@@ -201,16 +201,13 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
 
     /**
      * compute all tablets per be
-     *
-     * @return
      */
     private SetMultimap<TNetworkAddress, TabletWithVersion> assignTablet2Backends() throws NonRecoverableException {
         SetMultimap<TNetworkAddress, TabletWithVersion> backend2Tablets = HashMultimap.create();
-        ImmutableMap<Long, Backend> idToBackends =
-                GlobalStateMgr.getCurrentState().getNodeMgr().getClusterInfo().getIdToBackend();
-        Map<Long, Backend> aliveIdToBackends = idToBackends.entrySet().stream()
-                .filter(be -> isWorkerAvailable(be.getValue()))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        WorkerProvider provider = workerProvider.get();
+        Map<Long, ComputeNode> aliveWorkers = provider.getAllWorkers().stream()
+                .filter(DefaultWorkerProvider::isWorkerAvailable)
+                .collect(Collectors.toMap(ComputeNode::getId, worker -> worker));
         for (TScanRangeLocations range : scanRangeLocations) {
             TInternalScanRange internalScanRange = range.getScan_range().getInternal_scan_range();
             Set<Long> scanBackendIds =
@@ -218,11 +215,11 @@ public class ShortCircuitHybridExecutor extends ShortCircuitExecutor {
             TabletWithVersion tabletWithVersion = new TabletWithVersion(internalScanRange.getTablet_id(),
                     internalScanRange.getVersion());
 
-            Optional<Backend> be = pick(scanBackendIds, aliveIdToBackends);
+            Optional<ComputeNode> be = pick(scanBackendIds, aliveWorkers);
             if (be.isEmpty()) {
-                workerProvider.get().reportWorkerNotFoundException();
+                provider.reportWorkerNotFoundException();
             }
-            be.ifPresent(backend -> backend2Tablets.put(be.get().getBrpcAddress(), tabletWithVersion));
+            be.ifPresent(backend -> backend2Tablets.put(backend.getBrpcAddress(), tabletWithVersion));
         }
         return backend2Tablets;
     }

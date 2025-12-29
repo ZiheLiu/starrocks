@@ -26,7 +26,7 @@ import com.starrocks.planner.ScanNode;
 import com.starrocks.qe.scheduler.LazyWorkerProvider;
 import com.starrocks.sql.common.ErrorType;
 import com.starrocks.sql.common.StarRocksPlannerException;
-import com.starrocks.system.Backend;
+import com.starrocks.system.ComputeNode;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TScanRangeLocations;
 
@@ -100,9 +100,9 @@ public class ShortCircuitExecutor {
         throw new StarRocksPlannerException("Not implement ShortCircuit Executor class", ErrorType.INTERNAL_ERROR);
     }
 
-    protected static Optional<Backend> pick(Set<Long> backendId, Map<Long, Backend> aliveBackends) {
+    protected static <T extends ComputeNode> Optional<T> pick(Set<Long> backendId, Map<Long, T> aliveBackends) {
         for (Long beId : backendId) {
-            Optional<Backend> backend = Optional.ofNullable(aliveBackends.get(beId));
+            Optional<T> backend = Optional.ofNullable(aliveBackends.get(beId));
             if (backend.isPresent()) {
                 return backend;
             }
