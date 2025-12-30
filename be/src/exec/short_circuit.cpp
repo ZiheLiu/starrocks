@@ -239,6 +239,10 @@ Status ShortCircuitExecutor::build_source_exec_node(starrocks::ObjectPool* pool,
         *node = pool->add(new ShortCircuitHybridScanNode(pool, t_node, descs, scan_range, *_common_request));
         break;
     }
+    case TPlanNodeType::LAKE_SCAN_NODE: {
+        *node = pool->add(new ShortCircuitHybridScanNode(pool, t_node, descs, scan_range, *_common_request));
+        break;
+    }
     case TPlanNodeType::PROJECT_NODE:
     case TPlanNodeType::UNION_NODE: // values
         RETURN_IF_ERROR(ExecNode::create_vectorized_node(runtime_state(), pool, t_node, descs, node));

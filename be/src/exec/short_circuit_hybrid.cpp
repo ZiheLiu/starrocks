@@ -25,6 +25,8 @@
 #include "runtime/exec_env.h"
 #include "runtime/memory_scratch_sink.h"
 #include "storage/chunk_helper.h"
+#include "storage/lake/local_tablet_reader.h"
+#include "storage/lake/tablet_manager.h"
 #include "storage/storage_engine.h"
 #include "storage/tablet_manager.h"
 #include "util/thrift_util.h"
@@ -35,6 +37,7 @@ Status ShortCircuitHybridScanNode::set_scan_ranges(const std::vector<TScanRangeP
 }
 
 Status ShortCircuitHybridScanNode::prepare(RuntimeState* state) {
+    // Do not call ScanNode::prepare which will register some useless profile counters.
     RETURN_IF_ERROR(ExecNode::prepare(state));
     return Status::OK();
 }
@@ -45,12 +48,35 @@ Status ShortCircuitHybridScanNode::open(RuntimeState* state) {
     _versions.swap(_common_request.versions);
 
     // get tablet
-    for (auto tablet_id : _common_request.tablet_ids) {
-        auto tablet = StorageEngine::instance()->tablet_manager()->get_tablet(tablet_id);
-        if (tablet == nullptr) {
-            return Status::NotFound(fmt::format("tablet {} not exist", tablet_id));
+    for (int i = 0; i < _common_request.tablet_ids.size(); ++i) {
+        auto tablet_id = _common_request.tablet_ids[i];
+        if (_is_lake_scan) {
+            auto tablet_or = ExecEnv::GetInstance()->lake_tablet_manager()->get_tablet(tablet_id);
+            if (!tablet_or.ok()) {
+                return tablet_or.status();
+            }
+            auto tablet = std::make_shared<lake::Tablet>(std::move(tablet_or.value()));
+            ASSIGN_OR_RETURN(auto metadata, ExecEnv::GetInstance()->lake_tablet_manager()->get_tablet_metadata(
+                                                    tablet_id, std::stoll(_versions[i])));
+            _lake_tablets.emplace_back(std::move(tablet));
+            _lake_tablet_metadatas.emplace_back(std::move(metadata));
+            if (_tablet_schema == nullptr) {
+                _tablet_schema = _lake_tablets.back()->tablet_schema();
+            }
+            auto reader = std::make_unique<lake::LocalTabletReader>();
+            RETURN_IF_ERROR(reader->init(_lake_tablets.back(), _lake_tablet_metadatas.back(), _tablet_schema,
+                                         std::stoll(_versions[i])));
+            _lake_local_readers.emplace_back(std::move(reader));
+        } else {
+            auto tablet = StorageEngine::instance()->tablet_manager()->get_tablet(tablet_id);
+            if (tablet == nullptr) {
+                return Status::NotFound(fmt::format("tablet {} not exist", tablet_id));
+            }
+            _tablets.emplace_back(std::move(tablet));
+            if (_tablet_schema == nullptr) {
+                _tablet_schema = _tablets.back()->tablet_schema();
+            }
         }
-        _tablets.emplace_back(std::move(tablet));
     }
 
     SCOPED_TIMER(_runtime_profile->total_time_counter());
@@ -84,7 +110,7 @@ Status ShortCircuitHybridScanNode::get_next(RuntimeState* state, ChunkPtr* chunk
         }
     }
 
-    auto tablet_schema = _tablets[0]->tablet_schema()->schema();
+    auto tablet_schema = _tablet_schema->schema();
     auto column_ids = tablet_schema->field_column_ids();
     auto tablet_schema_without_rowstore = std::make_unique<Schema>(tablet_schema, column_ids);
     auto result_chunk = ChunkHelper::new_chunk(*_tuple_desc, result_size);
@@ -121,8 +147,7 @@ Status ShortCircuitHybridScanNode::get_next(RuntimeState* state, ChunkPtr* chunk
 }
 
 Status ShortCircuitHybridScanNode::_process_key_chunk() {
-    DCHECK(_tablets.size() > 0);
-    _tablet_schema = _tablets[0]->tablet_schema();
+    DCHECK(_tablet_schema != nullptr);
     vector<uint32_t> pk_columns;
     for (size_t i = 0; i < _tablet_schema->num_key_columns(); i++) {
         pk_columns.push_back((uint32_t)i);
@@ -187,21 +212,32 @@ Status ShortCircuitHybridScanNode::_process_value_chunk(std::vector<bool>& found
     std::vector<int> key_idx_to_value_idx(_num_rows, -1);
     int value_chunk_idx = 0;
 
-    for (int i = 0; i < _tablets.size(); ++i) {
-        LocalTableReaderParams params;
-        params.version = std::stoi(_versions[i]);
-        params.tablet_id = _tablets[i]->get_tablet_info().tablet_id;
-        _table_reader = std::make_shared<TableReader>();
-        RETURN_IF_ERROR(_table_reader->init(params));
-
+    int tablet_size = _is_lake_scan ? _lake_tablets.size() : _tablets.size();
+    for (int i = 0; i < tablet_size; ++i) {
         auto current_chunk = ChunkHelper::new_chunk(*(value_schema), _num_rows);
         // current tablet will return all key_chunk mapping whether has value
         // true , means vector idx of key_chunk have value
         std::vector<bool> curent_found;
-        Status status =
-                _table_reader->multi_get(*(_key_chunk.get()), value_field_names, curent_found, *(current_chunk.get()));
+        Status status;
+        if (_is_lake_scan) {
+            status = _lake_multi_get(i, value_field_names, value_column_ids, *value_schema, &curent_found,
+                                     &current_chunk);
+        } else {
+            LocalTableReaderParams params;
+            params.version = std::stoi(_versions[i]);
+            params.tablet_id = _tablets[i]->get_tablet_info().tablet_id;
+            _table_reader = std::make_shared<TableReader>();
+            RETURN_IF_ERROR(_table_reader->init(params));
+            status = _table_reader->multi_get(*(_key_chunk.get()), value_field_names, curent_found,
+                                              *(current_chunk.get()));
+            if (!status.ok()) {
+                // todo retry
+                LOG(WARNING) << "fail to execute multi get: " << status.detailed_message();
+                return status;
+            }
+        }
+
         if (!status.ok()) {
-            // todo retry
             LOG(WARNING) << "fail to execute multi get: " << status.detailed_message();
             return status;
         }
@@ -215,9 +251,10 @@ Status ShortCircuitHybridScanNode::_process_value_chunk(std::vector<bool>& found
                 key_idx_to_value_idx[key_idx] = value_chunk_idx;
                 value_chunk_idx++;
                 if (UNLIKELY(found[key_idx])) {
-                    return Status::Corruption(
-                            fmt::format("one key can't be found twice in short circuit, tablet_id: {}, key_idx: {}",
-                                        params.tablet_id, key_idx));
+                    return Status::Corruption(fmt::format(
+                            "one key can't be found twice in short circuit, tablet_id: {}, key_idx: {}",
+                            _is_lake_scan ? _lake_tablets[i]->id() : _tablets[i]->get_tablet_info().tablet_id,
+                            key_idx));
                 }
                 found[key_idx] = true;
                 has_found_value = true;
@@ -236,6 +273,17 @@ Status ShortCircuitHybridScanNode::_process_value_chunk(std::vector<bool>& found
     }
 
     return Status::OK();
+}
+
+Status ShortCircuitHybridScanNode::_lake_multi_get(int tablet_idx, const std::vector<std::string>& value_field_names,
+                                                   const std::vector<ColumnId>& value_column_ids,
+                                                   const Schema& value_schema, std::vector<bool>* found,
+                                                   ChunkPtr* chunk) {
+    if (tablet_idx >= _lake_local_readers.size()) {
+        return Status::InternalError("lake tablet index out of range");
+    }
+    return _lake_local_readers[tablet_idx]->multi_get(*_key_chunk, value_field_names, value_column_ids, value_schema,
+                                                      found, chunk);
 }
 
 } // namespace starrocks

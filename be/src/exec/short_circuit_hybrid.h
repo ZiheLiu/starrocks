@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "common/object_pool.h"
 #include "common/status.h"
 #include "exec/data_sink.h"
@@ -26,7 +28,12 @@
 #include "runtime/descriptors.h"
 #include "runtime/exec_env.h"
 #include "service/brpc.h"
+#include "storage/lake/local_tablet_reader.h"
+#include "storage/lake/tablet_manager.h"
+#include "storage/lake/tablet_metadata.h"
 #include "storage/table_reader.h"
+#include "storage/tablet.h"
+#include "storage/tablet_schema.h"
 #include "util/stopwatch.hpp"
 
 namespace starrocks {
@@ -39,7 +46,10 @@ class ShortCircuitHybridScanNode : public ScanNode {
 public:
     ShortCircuitHybridScanNode(ObjectPool* pool, const TPlanNode& tnode, const DescriptorTbl& descs,
                                const TScanRange& scan_range, TExecShortCircuitParams& common_request)
-            : ScanNode(pool, tnode, descs), _common_request(common_request), _tuple_id(tnode.olap_scan_node.tuple_id) {}
+            : ScanNode(pool, tnode, descs),
+              _is_lake_scan(tnode.node_type == TPlanNodeType::LAKE_SCAN_NODE),
+              _common_request(common_request),
+              _tuple_id(_is_lake_scan ? tnode.lake_scan_node.tuple_id : tnode.olap_scan_node.tuple_id) {}
 
     Status set_scan_ranges(const std::vector<TScanRangeParams>& scan_ranges) override;
     // do not call ScanNode::prepare which will register some useless profile counters
@@ -49,8 +59,12 @@ public:
 
     Status _process_key_chunk();
     Status _process_value_chunk(std::vector<bool>& found);
+    Status _lake_multi_get(int tablet_idx, const std::vector<std::string>& value_field_names,
+                           const std::vector<ColumnId>& value_column_ids, const Schema& value_schema,
+                           std::vector<bool>* found, ChunkPtr* chunk);
 
 private:
+    const bool _is_lake_scan;
     TableReaderPtr _table_reader;
     TExecShortCircuitParams& _common_request;
     TDescriptorTable* _t_desc_tbl;
@@ -59,6 +73,9 @@ private:
     const std::vector<TKeyLiteralExpr>* _key_literal_exprs;
     TupleDescriptor* _tuple_desc;
     std::vector<TabletSharedPtr> _tablets;
+    std::vector<std::shared_ptr<lake::Tablet>> _lake_tablets;
+    std::vector<lake::TabletMetadataPtr> _lake_tablet_metadatas;
+    std::vector<std::unique_ptr<lake::LocalTabletReader>> _lake_local_readers;
     TabletSchemaCSPtr _tablet_schema;
     TupleId _tuple_id;
     std::vector<string> _versions;
