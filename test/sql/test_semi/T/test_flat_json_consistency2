@@ -1,280 +1,7 @@
 -- name: test_flat_json_consistency2
--- auto-generated permutations for mixed type path
+-- array paired with selected mixed types for path level1.level2.level3.4
 
--- case 01: int -> double
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 3.14}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 02: int -> string
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": "abc"}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 03: int -> array
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": ["abc", 100, 200]}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 04: int -> object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 05: int -> empty_object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 06: int -> null_value
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": null}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 07: int -> json_null
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
-(2, NULL);
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 08: double -> int
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 09: double -> string
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": "abc"}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 10: double -> array
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": ["abc", 100, 200]}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 11: double -> object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 12: double -> empty_object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 13: double -> null_value
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": null}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 14: double -> json_null
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
-(2, NULL);
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 15: string -> int
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 16: string -> double
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 3.14}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 17: string -> array
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": ["abc", 100, 200]}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 18: string -> object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 19: string -> empty_object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 20: string -> null_value
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": null}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 21: string -> json_null
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
-(2, NULL);
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 22: array -> int
+-- case 01: array -> int
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -287,7 +14,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 23: array -> double
+-- case 02: array -> double
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -300,7 +27,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 24: array -> string
+-- case 03: array -> string
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -313,7 +40,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 25: array -> object
+-- case 04: array -> object
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -326,7 +53,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 26: array -> empty_object
+-- case 05: array -> empty_object
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -339,7 +66,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 27: array -> null_value
+-- case 06: array -> null_value
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -352,7 +79,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 28: array -> json_null
+-- case 07: array -> json_null
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -365,46 +92,46 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 29: object -> int
+-- case 08: int -> array
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
 properties("flat_json.enable"="true");
 
 insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}');
+(1, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}'),
+(2, '{"level1": {"level2": {"level3": {"4": ["abc", 100, 200]}}}}');
 
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 30: object -> double
+-- case 09: double -> array
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
 properties("flat_json.enable"="true");
 
 insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 3.14}}}}');
+(1, '{"level1": {"level2": {"level3": {"4": 3.14}}}}'),
+(2, '{"level1": {"level2": {"level3": {"4": ["abc", 100, 200]}}}}');
 
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 31: object -> string
+-- case 10: string -> array
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
 properties("flat_json.enable"="true");
 
 insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": "abc"}}}}');
+(1, '{"level1": {"level2": {"level3": {"4": "abc"}}}}'),
+(2, '{"level1": {"level2": {"level3": {"4": ["abc", 100, 200]}}}}');
 
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 32: object -> array
+-- case 11: object -> array
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -417,85 +144,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 33: object -> empty_object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 34: object -> null_value
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": null}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 35: object -> json_null
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}'),
-(2, NULL);
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 36: empty_object -> int
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 37: empty_object -> double
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 3.14}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 38: empty_object -> string
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": "abc"}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 39: empty_object -> array
+-- case 12: empty_object -> array
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -508,85 +157,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 40: empty_object -> object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 41: empty_object -> null_value
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {}}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": null}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 42: empty_object -> json_null
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": {}}}}}'),
-(2, NULL);
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 43: null_value -> int
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": null}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 44: null_value -> double
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": null}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": 3.14}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 45: null_value -> string
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": null}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": "abc"}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 46: null_value -> array
+-- case 13: null_value -> array
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -599,85 +170,7 @@ insert into test_json values
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
 
--- case 47: null_value -> object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": null}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 48: null_value -> empty_object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": null}}}}'),
-(2, '{"level1": {"level2": {"level3": {"4": {}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 49: null_value -> json_null
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, '{"level1": {"level2": {"level3": {"4": null}}}}'),
-(2, NULL);
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 50: json_null -> int
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, NULL),
-(2, '{"level1": {"level2": {"level3": {"4": 23234982794}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 51: json_null -> double
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, NULL),
-(2, '{"level1": {"level2": {"level3": {"4": 3.14}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 52: json_null -> string
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, NULL),
-(2, '{"level1": {"level2": {"level3": {"4": "abc"}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 53: json_null -> array
+-- case 14: json_null -> array
 drop table if exists test_json;
 create table test_json (c1 int, c2 json)
 distributed by random buckets 1
@@ -686,45 +179,6 @@ properties("flat_json.enable"="true");
 insert into test_json values
 (1, NULL),
 (2, '{"level1": {"level2": {"level3": {"4": ["abc", 100, 200]}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 54: json_null -> object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, NULL),
-(2, '{"level1": {"level2": {"level3": {"4": {"5":"abc"}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 55: json_null -> empty_object
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, NULL),
-(2, '{"level1": {"level2": {"level3": {"4": {}}}}}');
-
-select * from test_json order by c1;
-select flat_json_meta(c2) from test_json [_META_];
-
--- case 56: json_null -> null_value
-drop table if exists test_json;
-create table test_json (c1 int, c2 json)
-distributed by random buckets 1
-properties("flat_json.enable"="true");
-
-insert into test_json values
-(1, NULL),
-(2, '{"level1": {"level2": {"level3": {"4": null}}}}');
 
 select * from test_json order by c1;
 select flat_json_meta(c2) from test_json [_META_];
