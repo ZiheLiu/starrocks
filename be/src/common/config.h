@@ -910,7 +910,7 @@ CONF_mInt64(max_tablet_write_chunk_bytes, "536870912");
 CONF_Int16(bitmap_max_filter_items, "30");
 
 // The bitmap max filter ratio, valid value range is: [0-1000].
-CONF_Int16(bitmap_max_filter_ratio, "1");
+CONF_mInt16(bitmap_max_filter_ratio, "1");
 
 CONF_Bool(bitmap_filter_enable_not_equal, "false");
 

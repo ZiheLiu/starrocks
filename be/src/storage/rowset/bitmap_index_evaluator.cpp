@@ -180,7 +180,7 @@ struct BitmapIndexSeeker {
         // Estimate the selectivity of the bitmap index.
         // ---------------------------------------------------------
         if (num_always_true_child + num_not_used_children >= num_children ||
-            (need_estimate_selectivity && mul_selected * 1000 > mul_cardinality * config::bitmap_max_filter_ratio)) {
+            (need_estimate_selectivity && mul_selected * 1000 > mul_cardinality * bitmap_max_filter_ratio)) {
             return ResultType::NOT_USED;
         }
 
@@ -273,7 +273,7 @@ struct BitmapIndexSeeker {
         // Estimate the selectivity of the bitmap index.
         // ---------------------------------------------------------
         if (num_always_false_child >= num_children ||
-            (need_estimate_selectivity && mul_selected * 1000 > mul_cardinality * config::bitmap_max_filter_ratio)) {
+            (need_estimate_selectivity && mul_selected * 1000 > mul_cardinality * bitmap_max_filter_ratio)) {
             return ResultType::NOT_USED;
         }
 
@@ -319,6 +319,7 @@ struct BitmapIndexSeeker {
     }
 
     BitmapIndexEvaluator* parent;
+    int16_t bitmap_max_filter_ratio;
 };
 
 struct BitmapIndexRetriver {
@@ -425,7 +426,7 @@ Status BitmapIndexEvaluator::evaluate(SparseRange<>& dst_scan_range, PredicateTr
     //  - Seek to the position of predicate's operand within
     //    bitmap index dictionary.
     // ---------------------------------------------------------
-    ASSIGN_OR_RETURN(const auto seek_res, _pred_tree.visit(BitmapIndexSeeker{this}));
+    ASSIGN_OR_RETURN(const auto seek_res, _pred_tree.visit(BitmapIndexSeeker{this, config::bitmap_max_filter_ratio}));
     switch (seek_res) {
     case BitmapIndexSeeker::ResultType::ALWAYS_FALSE:
         dst_scan_range.clear();
