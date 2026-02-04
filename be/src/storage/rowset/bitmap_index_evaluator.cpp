@@ -179,6 +179,12 @@ struct BitmapIndexSeeker {
         // ---------------------------------------------------------
         // Estimate the selectivity of the bitmap index.
         // ---------------------------------------------------------
+        LOG(WARNING) << "[TEST] AND node bitmap index selectivity estimate: [selected=" << mul_selected << "] "
+                     << "[cardinality=" << mul_cardinality << "] "
+                     << "[need_estimate_selectivity=" << need_estimate_selectivity << "] "
+                     << "[need_estimate_selectivity=" << num_always_true_child << "] "
+                     << "[need_estimate_selectivity=" << num_not_used_children << "] "
+                     << "[need_estimate_selectivity=" << num_children << "] ";
         if (num_always_true_child + num_not_used_children >= num_children ||
             (need_estimate_selectivity && mul_selected * 1000 > mul_cardinality * bitmap_max_filter_ratio)) {
             return ResultType::NOT_USED;
