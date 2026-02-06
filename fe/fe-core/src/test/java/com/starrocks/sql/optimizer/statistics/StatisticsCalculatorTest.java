@@ -270,7 +270,8 @@ public class StatisticsCalculatorTest {
                         Lists.newArrayList(),
                         Lists.newArrayList(),
                         Lists.newArrayList(),
-                        false);
+                        false,
+                        null);
 
             GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
             groupExpression.setGroup(new Group(0));
@@ -379,7 +380,8 @@ public class StatisticsCalculatorTest {
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
-                                false);
+                                false,
+                                null);
 
         GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
         groupExpression.setGroup(new Group(0));
@@ -436,7 +438,8 @@ public class StatisticsCalculatorTest {
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
-                                false);
+                                false,
+                                null);
 
         GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
         groupExpression.setGroup(new Group(0));
@@ -466,7 +469,8 @@ public class StatisticsCalculatorTest {
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
-                                false);
+                                false,
+                                null);
         olapScanOperator.setPredicate(new BinaryPredicateOperator(BinaryType.GE,
                     idDate, ConstantOperator.createDate(LocalDateTime.of(2014, 5, 1, 0, 0, 0))));
 
@@ -529,7 +533,8 @@ public class StatisticsCalculatorTest {
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
-                                false);
+                                false,
+                                null);
 
         GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
         groupExpression.setGroup(new Group(0));
@@ -561,7 +566,8 @@ public class StatisticsCalculatorTest {
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
                                 Lists.newArrayList(),
-                                false);
+                                false,
+                                null);
         olapScanOperator.setPredicate(new BinaryPredicateOperator(BinaryType.GE,
                     idDate, ConstantOperator.createDate(LocalDateTime.of(2020, 04, 24, 0, 0, 0))));
 
