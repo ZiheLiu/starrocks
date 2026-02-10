@@ -27,6 +27,7 @@ import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.server.MetadataMgr;
 import com.starrocks.sql.ast.JoinOperator;
+import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.BinaryType;
 import com.starrocks.sql.common.StarRocksPlannerException;
 import com.starrocks.sql.optimizer.ExpressionContext;
@@ -288,6 +289,66 @@ public class StatisticsCalculatorTest {
             Assertions.assertEquals(1000 * partitions.size(), expressionContext.getStatistics().getOutputRowCount(), 0.001);
             Assertions.assertEquals(ref.getType().getTypeSize() * 1000 * partitions.size(),
                         expressionContext.getStatistics().getComputeSize(), 0.001);
+        }
+    }
+
+    @Test
+    public void testLogicalOlapTableChangesScanStats() throws Exception {
+        GlobalStateMgr globalStateMgr = connectContext.getGlobalStateMgr();
+        OlapTable table = (OlapTable) globalStateMgr.getLocalMetastore().getDb("statistics_test").getTable("test_all_type");
+        Collection<Partition> partitions = table.getPartitions();
+        List<Long> partitionIds =
+                partitions.stream().mapToLong(partition -> partition.getId()).boxed().collect(Collectors.toList());
+        for (Partition partition : partitions) {
+            partition.getDefaultPhysicalPartition().getLatestBaseIndex().setRowCount(1000);
+        }
+
+        ColumnRefOperator keyRef = new ColumnRefOperator(20001, IntegerType.BIGINT, "t1d", true);
+        ColumnRefOperator actionRef = new ColumnRefOperator(20002, IntegerType.SMALLINT, "__ACTION__", true);
+        Map<ColumnRefOperator, Column> refToColumn = Maps.newHashMap();
+        Map<Column, ColumnRefOperator> columnToRef = Maps.newHashMap();
+        Column keyColumn = table.getColumn("t1d");
+        Column actionColumn = new Column("__ACTION__", IntegerType.SMALLINT);
+        refToColumn.put(keyRef, keyColumn);
+        refToColumn.put(actionRef, actionColumn);
+        columnToRef.put(keyColumn, keyRef);
+        columnToRef.put(actionColumn, actionRef);
+
+        LogicalOlapScanOperator olapScanOperator = new LogicalOlapScanOperator(table,
+                refToColumn, columnToRef,
+                null, -1, null,
+                table.getBaseIndexMetaId(),
+                partitionIds,
+                null,
+                false,
+                Lists.newArrayList(),
+                Lists.newArrayList(),
+                Lists.newArrayList(),
+                false,
+                null,
+                3L,
+                4L);
+
+        GroupExpression groupExpression = new GroupExpression(olapScanOperator, Lists.newArrayList());
+        groupExpression.setGroup(new Group(0));
+        ExpressionContext expressionContext = new ExpressionContext(groupExpression);
+        StatisticsCalculator statisticsCalculator = new StatisticsCalculator(expressionContext,
+                columnRefFactory, optimizerContext);
+        statisticsCalculator.estimatorStats();
+
+        Statistics statistics = expressionContext.getStatistics();
+        Assertions.assertTrue(statistics.getOutputRowCount() >= 1D);
+        ColumnStatistic actionStat = statistics.getColumnStatistic(actionRef);
+        Assertions.assertFalse(actionStat.isUnknown());
+        Assertions.assertEquals(0D, actionStat.getNullsFraction(), 0.001);
+        if (table.getKeysType() == KeysType.DUP_KEYS) {
+            Assertions.assertEquals(1D, actionStat.getDistinctValuesCount(), 0.001);
+            Assertions.assertEquals(1D, actionStat.getMinValue(), 0.001);
+            Assertions.assertEquals(1D, actionStat.getMaxValue(), 0.001);
+        } else {
+            Assertions.assertEquals(2D, actionStat.getDistinctValuesCount(), 0.001);
+            Assertions.assertEquals(-1D, actionStat.getMinValue(), 0.001);
+            Assertions.assertEquals(1D, actionStat.getMaxValue(), 0.001);
         }
     }
 
