@@ -104,35 +104,73 @@
 
 ## 二、主要细节
 
-我们需要一套框架，来
-1. 判定 MV 是否可以增量维护，
-2. ROW_ID 的推导。
-3. 具体的增量算子改写流程。
+目标是新增一套**完全独立**于当前 TVR/IVM 的增量改写框架，专门面向 `OlapScanOperator`。
 
-对框架的要求：
-1. 清晰、专业、优雅。
-2. 拓展性强，易于维护。
+### 设计约束（必须满足）
+1. 不复用、不修改现有 `rule/tvr/*` 与当前 IVM 执行链路。
+2. 新框架独立包名、独立 RuleType、独立 RuleSet 组合。
+3. 默认关闭，通过独立 session 变量或 task 级开关启用。
+4. 只在 MV 刷新场景触发；失败时严格回退全量，不影响原有 plan 生成。
 
-### 1. 判定 MV 是否可增量维护
-在 MV 创建阶段，分析 MV 定义的 plan，判断是否满足增量维护的条件。
-1. MV 指定的刷新模式是 IVM。
-2. 整个 MV 的 plan 所有算子都支持增量维护。
+### 推荐代码组织
+建议新增目录（示例）：
+- `fe/fe-core/src/main/java/com/starrocks/sql/optimizer/rule/ivm/`
+- `fe/fe-core/src/main/java/com/starrocks/sql/optimizer/rule/ivm/common/`
+- `fe/fe-core/src/main/java/com/starrocks/sql/optimizer/operator/logical/LogicalDeltaOperator.java`
 
-### 2. ROW_ID 推导
-需要一套 rule，从叶子节点（基表 ScanOperator）自下而上推导出每个算子的 ROW_ID 定义。
+核心组件：
+- `IvmOlapRewriteCoordinator`：编排总流程（ROW_ID 推导 + Delta 改写 + 成功判定）。
+- `IvmRowIdDeriveRule`：ROW_ID 两阶段规则（Collector + Rewriter）。
+- `IvmDeltaPushDownRules`：Delta 下推规则集合（每个算子一个 rule）。
+- `IvmRewriteContext`：本次改写上下文（ROW_ID 定义、失败原因、版本边界、列映射）。
 
-### 3. 增量维护 plan 的生成
-对于第三步，增量维护 plan 的生成，主要涉及以下几个方面：
-MV 维护
-- 每个基表已经刷新到的 version `flushed_version`。
+### 1. ROW_ID 推导（独立 TransformationRule）
 
-主流程
-1. 在根节点插入一个 DeltaOperator，表示它下面的 plan 是增量维护的。
-2. 增加一组 rule，把 DeltaOperator → 每种Operator 的转换规则写好，自上而下的把 DeltaOperator 推导 ScanOperator 上。
-3. 对于 ScanOperator 基表
-   - 如果是 changes，那么 from_version=flushed_version ，to_version=table_latest_visible_version 。
-   - 如果是版本读取，那么可能是 flushed_version，也可能是 table_latest_visible_version，取决于改写的 rule。
-4. 迭代应用 rule，如果最终整个 plan 不存在 DeltaOperator，那么说增量改写成功，否则增量改写失败，回退到全量刷新。
+逻辑：从叶子节点（`OlapScanOperator`）自下而上推导每个算子的 ROW_ID 定义。
+
+实现分两阶段：
+1. Collector（自底向上）
+   - 输入：原始 `OptExpression`。
+   - 输出：`Map<OptExpression, RowIdSpec>`。
+   - 作用：记录每个算子的 ROW_ID 定义；发现不支持算子时写入 `IvmUnsupportedReason`。
+2. Rewriter（自顶向下）
+   - 输入：Collector 的 context。
+   - 输出：新 `OptExpression`（仅增量路径使用）。
+   - 作用：在必要位置把 ROW_ID 列注入输出。
+   - 约束：必须创建新的 `Operator` 与 `OptExpression`，保持原 plan 不变。
+
+`RowIdSpec` 建议抽象为：
+- `UNDEFINED`：未定义（不支持增量）。
+- `PASSTHROUGH(childIndex)`：直接继承子节点 ROW_ID（如 Filter/Project）。
+- `EXPR(List<ScalarOperator>)`：由表达式定义（如 GroupByKey）。
+
+### 2. 增量维护 plan 生成（DeltaOperator 驱动）
+
+主流程：
+1. 在根节点包一层 `LogicalDeltaOperator`，表示“该子树需要生成 delta plan”。
+2. 定义一组 `DeltaPushDownRule`，把 `Delta(X)` 改写为对应算子的增量形态，并继续把 Delta 下推到子节点。
+3. 处理 `OlapScanOperator`：
+   - changes 读取：`from_version = flushed_version`，`to_version = latest_visible_version`。
+   - version 读取：按具体 rule 选择 `flushed_version` 或 `latest_visible_version`。
+4. 使用 `scheduler.rewriteIterative` 反复应用规则。
+5. 收敛判定：若最终 plan 不再含 `LogicalDeltaOperator`，则增量改写成功；否则失败并回退全量刷新。
+
+### 3. 不影响现有 TVR/IVM 的接入方式
+
+接入点建议：
+1. 在 `QueryOptimizer` 增加独立分支（例如在现有 TVR rewrite 之前或之后），仅在 `enable_olap_ivm_refresh=true` 且 `isMVRefresh=true` 时执行。
+2. 使用新的规则集合常量（例如 `RuleSet.OLAP_IVM_ROWID_RULES`、`RuleSet.OLAP_IVM_DELTA_RULES`），禁止并入 `RuleSet.TVR_REWRITE_RULES`。
+3. 新增 `RuleType` 前缀（例如 `TF_OLAP_IVM_*`），避免和 `TF_TVR_*` 混淆。
+4. 若任一步失败，仅记录日志并返回“本次不支持增量”，后续走全量路径。
+
+### 4. 可扩展性约定
+
+1. 每新增一个逻辑算子，仅需补两处：
+   - `RowIdCollector/RowIdRewriter` 对该算子的 ROW_ID 规则。
+   - `DeltaPushDownRule` 对该算子的 Delta 改写。
+2. 所有“不支持增量”的判断统一走 `IvmUnsupportedReason`，禁止直接抛散乱异常。
+3. 每个 rule 保持单一职责，避免“大一统 rule”。
+4. 测试按层次拆分：ROW_ID 推导 UT、Delta 规则 UT、端到端改写 UT。
 
 
 问题
