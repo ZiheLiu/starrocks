@@ -89,7 +89,7 @@
 
 # 设计
 
-## 总体流程
+## 一、总体流程
 
 1. 创建 MV 时，通过 analyzer 判断 MV 是否可以增量维护。如果满足条件标记为“可增量”。需要满足的条件包括：
    1. MV 指定的刷新模式是 IVM。
@@ -102,7 +102,7 @@
 3. 对于增量刷新，生成增量维护 plan。
 4. 调度执行增量维护 plan，并更新 MV 的版本信息。
 
-## 主要细节
+## 二、主要细节
 
 我们需要一套框架，来
 1. 判定 MV 是否可以增量维护，
@@ -136,12 +136,23 @@ MV 维护
 
 
 问题
-- 由于统计信息并不支持 changes，因此我们需要自己手动指定 join 顺序，在 rule 中生成 join 的时候。例如把 changes 放到右侧。
+- ~~由于统计信息并不支持 changes，因此我们需要自己手动指定 join 顺序，在 rule 中生成 join 的时候。例如把 changes 放到右侧。~~
 
 ## 实现过程
 
-## Group-by Aggregation 的增量维护
-首先，我们只实现 group-by aggregation。
+## 1. Scan + Project + Filter 的增量维护
+
+### ROW_ID 推导
+- Project 算子：ROW_ID 定义为它的输入算子的 ROW_ID。
+- Filter 算子：ROW_ID 定义为它的输入算子的 ROW_ID。
+- Scan 算子：ROW_ID 定义为基表的主键值。只支持主键表。
+
+### 增量维护 plan 的生成
+Scan、Project、Filter 是 linear operator，直接用算子本身就可以了。
+
+
+## 2. Group-by Aggregation 的增量维护
+然后，我们实现 group-by aggregation。
 
 ### ROW_ID 推导
 对于 group-by aggregation 来说，ROW_ID 定义为 group by key 的值。对于基表 R 上的 group by `key`，ROW_ID 定义为 R.key。
