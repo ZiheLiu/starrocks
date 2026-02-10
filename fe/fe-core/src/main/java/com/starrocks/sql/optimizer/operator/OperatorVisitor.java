@@ -21,6 +21,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalCTEAnchorOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalCTEConsumeOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalCTEProduceOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaLakeScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalEsScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalExceptOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFileScanOperator;
@@ -247,6 +248,10 @@ public abstract class OperatorVisitor<R, C> {
     }
 
     public R visitLogicalFilter(LogicalFilterOperator node, C context) {
+        return visitOperator(node, context);
+    }
+
+    public R visitLogicalDelta(LogicalDeltaOperator node, C context) {
         return visitOperator(node, context);
     }
 

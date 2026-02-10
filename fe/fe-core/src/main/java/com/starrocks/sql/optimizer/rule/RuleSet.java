@@ -59,6 +59,9 @@ import com.starrocks.sql.optimizer.rule.implementation.WindowImplementationRule;
 import com.starrocks.sql.optimizer.rule.implementation.stream.StreamAggregateImplementationRule;
 import com.starrocks.sql.optimizer.rule.implementation.stream.StreamJoinImplementationRule;
 import com.starrocks.sql.optimizer.rule.implementation.stream.StreamScanImplementationRule;
+import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaFilterRule;
+import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaOlapScanRule;
+import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaProjectRule;
 import com.starrocks.sql.optimizer.rule.transformation.CastToEmptyRule;
 import com.starrocks.sql.optimizer.rule.transformation.CollectCTEConsumeRule;
 import com.starrocks.sql.optimizer.rule.transformation.CollectCTEProduceRule;
@@ -439,6 +442,13 @@ public class RuleSet {
                     new TvrJoinRule(),
                     new TvrAggregateRule(),
                     new TvrUnionAllRule()
+            ));
+
+    public static final Rule OLAP_IVM_DELTA_REWRITE_RULES =
+            new CombinationRule(RuleType.GP_OLAP_IVM_DELTA_REWRITE, ImmutableList.of(
+                    new IvmDeltaProjectRule(),
+                    new IvmDeltaFilterRule(),
+                    new IvmDeltaOlapScanRule()
             ));
 
     public RuleSet() {

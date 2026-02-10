@@ -234,6 +234,9 @@ public enum RuleType {
     TF_TVR_FILTER,
     TF_TVR_JOIN,
     TF_TVR_UNION_ALL,
+    TF_OLAP_IVM_DELTA_PROJECT,
+    TF_OLAP_IVM_DELTA_FILTER,
+    TF_OLAP_IVM_DELTA_OLAP_SCAN,
 
     // The following are implementation rules:
     IMPLEMENTATION_RULES,
@@ -311,6 +314,7 @@ public enum RuleType {
     GP_ELIMINATE_OP_WITH_CONSTANT,
     GP_VECTOR_REWRITE,
     GP_TVR_REWRITE,
+    GP_OLAP_IVM_DELTA_REWRITE,
 
     NUM_RULES;
 
