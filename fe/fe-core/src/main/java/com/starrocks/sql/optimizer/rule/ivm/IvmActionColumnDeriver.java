@@ -38,7 +38,8 @@ public class IvmActionColumnDeriver {
     }
 
     public static Result deriveAndRewrite(OptExpression root, OptimizerContext optimizerContext) {
-        return new Result(true, new RewriteVisitor(optimizerContext).visit(root, null), null);
+        OptExpression newRoot = root.getOp().accept(new RewriteVisitor(optimizerContext), root, null);
+        return new Result(true, newRoot, null);
     }
 
     private static class RewriteVisitor extends OptExpressionVisitor<OptExpression, Void> {
