@@ -575,25 +575,6 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
             if (changesFromVersion == null || changesToVersion == null) {
                 throw new StarRocksException("CHANGES clause requires both start and end versions");
             }
-            if (olapTable.getKeysType() == KeysType.PRIMARY_KEYS) {
-                for (SlotDescriptor slot : desc.getSlots()) {
-                    if (!slot.isMaterialized()) {
-                        continue;
-                    }
-                    if (slot.getColumn() == null) {
-                        if (!"__ACTION__".equalsIgnoreCase(slot.getLabel())) {
-                            throw new StarRocksException(
-                                    "Primary Key table CHANGES only supports key columns and __ACTION__");
-                        }
-                        continue;
-                    }
-                    if (!slot.getColumn().isKey()) {
-                        throw new StarRocksException(
-                                "Primary Key table CHANGES only supports key columns and __ACTION__, invalid column: "
-                                        + slot.getColumn().getName());
-                    }
-                }
-            }
             long baseVersion = olapTable.getBaseVersion();
             if (baseVersion > 0 && changesFromVersion < baseVersion) {
                 throw new StarRocksException("Requested changes start version " + changesFromVersion +

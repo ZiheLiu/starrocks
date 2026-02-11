@@ -392,14 +392,6 @@ Status OlapChunkSource::_init_scanner_columns(std::vector<uint32_t>& scanner_col
             LOG(WARNING) << ss.str();
             return Status::InternalError(ss.str());
         }
-        if (_is_pk_changes_query && index >= _tablet_schema->num_key_columns()) {
-            std::stringstream ss;
-            ss << "Primary Key table CHANGES only supports key columns and __ACTION__, invalid column: "
-               << slot->col_name();
-            LOG(WARNING) << ss.str();
-            return Status::NotSupported(ss.str());
-        }
-
         scanner_columns.push_back(index);
         if (!_unused_output_column_ids.count(index)) {
             _query_slots.push_back(slot);
