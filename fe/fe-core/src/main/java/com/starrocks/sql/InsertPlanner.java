@@ -593,6 +593,7 @@ public class InsertPlanner {
         try (Timer ignore2 = Tracers.watchScope("Optimizer")) {
             OptimizerContext optimizerContext = OptimizerFactory.initContext(session, columnRefFactory);
             optimizerContext.setSourceTablesCount(sourceTablesCount);
+            optimizerContext.setStatement(insertStmt);
             Optimizer optimizer = OptimizerFactory.create(optimizerContext);
             optimizedPlan = optimizer.optimize(
                     logicalPlan.getRoot(),
