@@ -552,7 +552,7 @@ public class QueryOptimizer extends Optimizer {
         CTEUtils.collectCteOperators(tree, context);
 
         // tvr rule rewrite
-        if (context.getSessionVariable().isEnableIVMRefresh()) {
+        if (context.getSessionVariable().isEnableIVMRefresh() && !context.getSessionVariable().isEnableOlapIVMRefresh()) {
             scheduler.rewriteIterative(tree, rootTaskContext, RuleSet.TVR_REWRITE_RULES);
         }
         IvmRewriter.rewrite(tree, rootTaskContext, scheduler);
