@@ -617,24 +617,40 @@ public class InsertPlanner {
     private List<ColumnRefOperator> resolvePlanOutputColumns(List<ColumnRefOperator> outputColumns,
                                                              OptExpression optimizedPlan,
                                                              ColumnRefFactory columnRefFactory) {
-        boolean hasLoadOpOutput = outputColumns.stream()
+        List<ColumnRefOperator> optimizedOutputColumns = optimizedPlan.getOutputColumns()
+                .getColumnRefOperators(columnRefFactory);
+        Set<Integer> optimizedOutputColumnIds = optimizedOutputColumns.stream()
+                .map(ColumnRefOperator::getId)
+                .collect(Collectors.toSet());
+        Map<String, List<ColumnRefOperator>> optimizedOutputColumnsByName = optimizedOutputColumns.stream()
+                .collect(Collectors.groupingBy(col -> col.getName().toLowerCase()));
+
+        List<ColumnRefOperator> resolvedOutputColumns = new ArrayList<>(outputColumns.size());
+        for (ColumnRefOperator outputColumn : outputColumns) {
+            if (optimizedOutputColumnIds.contains(outputColumn.getId())) {
+                resolvedOutputColumns.add(outputColumn);
+                continue;
+            }
+            List<ColumnRefOperator> candidates =
+                    optimizedOutputColumnsByName.get(outputColumn.getName().toLowerCase());
+            if (CollectionUtils.isNotEmpty(candidates)) {
+                resolvedOutputColumns.add(candidates.get(0));
+                continue;
+            }
+            resolvedOutputColumns.add(outputColumn);
+        }
+
+        boolean hasLoadOpOutput = resolvedOutputColumns.stream()
                 .anyMatch(col -> Load.LOAD_OP_COLUMN.equalsIgnoreCase(col.getName()));
         if (hasLoadOpOutput) {
-            return outputColumns;
+            return resolvedOutputColumns;
         }
 
-        Optional<ColumnRefOperator> loadOpColumn = optimizedPlan.getOutputColumns()
-                .getColumnRefOperators(columnRefFactory)
-                .stream()
+        Optional<ColumnRefOperator> loadOpColumn = optimizedOutputColumns.stream()
                 .filter(col -> col != null && Load.LOAD_OP_COLUMN.equalsIgnoreCase(col.getName()))
                 .findFirst();
-        if (loadOpColumn.isEmpty()) {
-            return outputColumns;
-        }
-
-        List<ColumnRefOperator> planOutputColumns = new ArrayList<>(outputColumns);
-        planOutputColumns.add(loadOpColumn.get());
-        return planOutputColumns;
+        loadOpColumn.ifPresent(resolvedOutputColumns::add);
+        return resolvedOutputColumns;
     }
 
     private void appendPkLoadOpSchemaIfNeeded(InsertStmt insertStmt, Table targetTable, ExecPlan execPlan) {
