@@ -87,8 +87,8 @@ public class IvmRewriter {
             deriveLogicalProperty(tree);
             return;
         }
-        deriveLogicalProperty(tree);
         OptExpression rewrittenRoot = actionResult.rewrittenRoot();
+        deriveLogicalProperty(rewrittenRoot);
         if (isPrimaryKeyTargetMv(optimizerContext)) {
             rewrittenRoot = appendPkLoadOpColumn(rewrittenRoot, rootTaskContext);
         }
