@@ -217,3 +217,38 @@ Agg --> DMV["ΔMV"]
   classDef nobox fill:transparent,stroke:transparent,color:#111;
   class R1,R0,DR,DMV nobox;
 ```
+
+## 3. 将 changes 写入 Primary Key Table
+
+### 目标
+把 `CHANGES` 读取出来的 `__ACTION__`（`+1/-1`）转换成 Primary Key 表可识别的操作列，一次导入同时支持 UPSERT 和 DELETE。
+
+### 结论
+Primary Key 表支持在一次导入中通过 `__op` 指定行级操作：
+- `__op = 0` 表示 UPSERT
+- `__op = 1` 表示 DELETE
+
+因此可以直接把 `__ACTION__` 映射到 `__op`：
+- `__ACTION__ = -1` -> `__op = 1`
+- `__ACTION__ = +1` -> `__op = 0`
+
+### 实现约定
+1. `__ACTION__` 仅作为增量维护中的中间列，不落到目标 MV schema。
+2. 在写入 PK sink 前追加最后一列 `__op`（TINYINT）。
+3. `__op` 的表达式统一使用：
+
+```sql
+CASE WHEN __ACTION__ < 0 THEN 1 ELSE 0 END
+```
+
+4. 对于 Duplicate Key 表，不使用 `__op`，忽略 `-1`（或在分析阶段禁止产生 `-1` changes）。
+
+### 示例（逻辑形态）
+
+```sql
+INSERT INTO mv_pk (...)
+SELECT
+  ...,
+  CASE WHEN __ACTION__ < 0 THEN 1 ELSE 0 END AS __op
+FROM delta_plan;
+```

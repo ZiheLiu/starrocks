@@ -16,25 +16,36 @@ package com.starrocks.sql.optimizer.rule.ivm;
 
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.gson.JsonSyntaxException;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.MvId;
+import com.starrocks.load.Load;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.ast.InsertStmt;
+import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.StatementBase;
+import com.starrocks.sql.ast.expression.BinaryType;
 import com.starrocks.sql.optimizer.ExpressionContext;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleSet;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.OptExpressionDuplicator;
 import com.starrocks.sql.optimizer.task.TaskContext;
 import com.starrocks.sql.optimizer.task.TaskScheduler;
+import com.starrocks.type.IntegerType;
 
 import java.util.List;
 import java.util.Map;
@@ -80,7 +91,11 @@ public class IvmRewriter {
             deriveLogicalProperty(tree);
             return;
         }
-        tree.setChild(0, actionResult.rewrittenRoot());
+        OptExpression rewrittenRoot = actionResult.rewrittenRoot();
+        if (isPrimaryKeyTargetMv(optimizerContext)) {
+            rewrittenRoot = appendPkLoadOpColumn(rewrittenRoot, rootTaskContext);
+        }
+        tree.setChild(0, rewrittenRoot);
         deriveLogicalProperty(tree);
     }
 
@@ -147,6 +162,48 @@ public class IvmRewriter {
             return false;
         }
         return targetMvId.getDbId() == targetMv.getDbId() && targetMvId.getId() == targetMv.getId();
+    }
+
+    private static boolean isPrimaryKeyTargetMv(OptimizerContext optimizerContext) {
+        StatementBase statement = optimizerContext.getStatement();
+        if (!(statement instanceof InsertStmt insertStmt)) {
+            return false;
+        }
+        if (!(insertStmt.getTargetTable() instanceof MaterializedView targetMv)) {
+            return false;
+        }
+        return targetMv.getKeysType() == KeysType.PRIMARY_KEYS;
+    }
+
+    private static OptExpression appendPkLoadOpColumn(OptExpression root, TaskContext rootTaskContext) {
+        ColumnRefOperator actionColumn = IvmRuleUtils.findActionColumn(root).orElse(null);
+        if (actionColumn == null) {
+            return root;
+        }
+
+        List<ColumnRefOperator> rootOutputColumns = root.getOutputColumns()
+                .getColumnRefOperators(rootTaskContext.getOptimizerContext().getColumnRefFactory());
+        boolean hasLoadOpColumn = rootOutputColumns.stream()
+                .anyMatch(col -> Load.LOAD_OP_COLUMN.equalsIgnoreCase(col.getName()));
+        if (hasLoadOpColumn) {
+            return root;
+        }
+
+        ColumnRefOperator loadOpColumn = rootTaskContext.getOptimizerContext().getColumnRefFactory()
+                .create(Load.LOAD_OP_COLUMN, IntegerType.TINYINT, false);
+        ScalarOperator isDeleteAction = new BinaryPredicateOperator(BinaryType.LT, actionColumn,
+                ConstantOperator.createTinyInt((byte) 0));
+        ScalarOperator loadOpExpr = new CaseWhenOperator(IntegerType.TINYINT, null,
+                ConstantOperator.createTinyInt((byte) 0),
+                Lists.newArrayList(isDeleteAction, ConstantOperator.createTinyInt((byte) 1)));
+
+        Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newLinkedHashMap();
+        for (ColumnRefOperator outputColumn : rootOutputColumns) {
+            projectMap.put(outputColumn, outputColumn);
+        }
+        projectMap.put(loadOpColumn, loadOpExpr);
+        rootTaskContext.getRequiredColumns().union(loadOpColumn);
+        return OptExpression.create(new LogicalProjectOperator(projectMap), root);
     }
 
     private static MvId parseTargetMvId(OptimizerContext optimizerContext) {

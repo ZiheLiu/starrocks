@@ -117,6 +117,7 @@ import com.starrocks.sql.plan.PlanFragmentBuilder;
 import com.starrocks.system.SystemInfoService;
 import com.starrocks.thrift.TPartialUpdateMode;
 import com.starrocks.thrift.TResultSinkType;
+import com.starrocks.type.IntegerType;
 import com.starrocks.type.NullType;
 import com.starrocks.type.Type;
 import org.apache.commons.collections4.CollectionUtils;
@@ -369,6 +370,7 @@ public class InsertPlanner {
                             buildExecPlan(insertStmt, session, outputColumns, logicalPlan, columnRefFactory,
                                     queryRelation,
                                     targetTable);
+            appendPkLoadOpSchemaIfNeeded(insertStmt, targetTable, execPlan);
 
             DescriptorTable descriptorTable = execPlan.getDescTbl();
             TupleDescriptor tupleDesc = descriptorTable.createTupleDescriptor();
@@ -603,11 +605,56 @@ public class InsertPlanner {
                 || targetTable instanceof MysqlTable);
         ExecPlan execPlan;
         try (Timer ignore3 = Tracers.watchScope("PlanBuilder")) {
+            List<ColumnRefOperator> planOutputColumns =
+                    resolvePlanOutputColumns(outputColumns, optimizedPlan, columnRefFactory);
             execPlan = PlanFragmentBuilder.createPhysicalPlan(
-                    optimizedPlan, session, logicalPlan.getOutputColumn(), columnRefFactory,
+                    optimizedPlan, session, planOutputColumns, columnRefFactory,
                     queryRelation.getColumnOutputNames(), TResultSinkType.MYSQL_PROTOCAL, hasOutputFragment);
         }
         return execPlan;
+    }
+
+    private List<ColumnRefOperator> resolvePlanOutputColumns(List<ColumnRefOperator> outputColumns,
+                                                             OptExpression optimizedPlan,
+                                                             ColumnRefFactory columnRefFactory) {
+        boolean hasLoadOpOutput = outputColumns.stream()
+                .anyMatch(col -> Load.LOAD_OP_COLUMN.equalsIgnoreCase(col.getName()));
+        if (hasLoadOpOutput) {
+            return outputColumns;
+        }
+
+        Optional<ColumnRefOperator> loadOpColumn = optimizedPlan.getOutputColumns()
+                .getColumnRefOperators(columnRefFactory)
+                .stream()
+                .filter(col -> col != null && Load.LOAD_OP_COLUMN.equalsIgnoreCase(col.getName()))
+                .findFirst();
+        if (loadOpColumn.isEmpty()) {
+            return outputColumns;
+        }
+
+        List<ColumnRefOperator> planOutputColumns = new ArrayList<>(outputColumns);
+        planOutputColumns.add(loadOpColumn.get());
+        return planOutputColumns;
+    }
+
+    private void appendPkLoadOpSchemaIfNeeded(InsertStmt insertStmt, Table targetTable, ExecPlan execPlan) {
+        if (!insertStmt.isSystem()) {
+            return;
+        }
+        if (!(targetTable instanceof OlapTable olapTable) || olapTable.getKeysType() != KeysType.PRIMARY_KEYS) {
+            return;
+        }
+        boolean hasLoadOpOutput = execPlan.getOutputColumns().stream()
+                .anyMatch(col -> col != null && Load.LOAD_OP_COLUMN.equalsIgnoreCase(col.getName()));
+        if (!hasLoadOpOutput) {
+            return;
+        }
+        boolean hasLoadOpSchema = outputFullSchema.stream()
+                .anyMatch(col -> col != null && col.getName().equalsIgnoreCase(Load.LOAD_OP_COLUMN));
+        if (hasLoadOpSchema) {
+            return;
+        }
+        outputFullSchema.add(new Column(Load.LOAD_OP_COLUMN, IntegerType.TINYINT, false));
     }
 
     private void castLiteralToTargetColumnsType(InsertStmt insertStatement) {
