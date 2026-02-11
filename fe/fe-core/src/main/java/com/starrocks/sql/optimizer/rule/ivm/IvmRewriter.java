@@ -63,9 +63,7 @@ public class IvmRewriter {
         }
 
         OptExpression originalPlan = tree.getInputs().get(0);
-        OptExpressionDuplicator duplicator =
-                new OptExpressionDuplicator(optimizerContext.getColumnRefFactory(), optimizerContext);
-        OptExpression ivmInput = duplicator.duplicate(originalPlan);
+        OptExpression ivmInput = originalPlan;
         ivmInput = bindBaseTableVersionForIvm(ivmInput, optimizerContext);
 
         IvmRowIdDeriver.Result rowIdResult = IvmRowIdDeriver.deriveAndRewrite(ivmInput, optimizerContext);
