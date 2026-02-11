@@ -14,21 +14,16 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
-import com.google.common.collect.Maps;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
-import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
-import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
-import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
-import java.util.Map;
 
 public class IvmDeltaFilterRule extends TransformationRule {
     public IvmDeltaFilterRule() {
@@ -42,24 +37,7 @@ public class IvmDeltaFilterRule extends TransformationRule {
         LogicalFilterOperator filter = (LogicalFilterOperator) input.inputAt(0).getOp();
         OptExpression filterChild = input.inputAt(0).inputAt(0);
         OptExpression deltaChild = OptExpression.create(new LogicalDeltaOperator(), filterChild);
-        if (filter.getProjection() == null) {
-            return List.of(OptExpression.create(filter, deltaChild));
-        }
-        ColumnRefOperator action = IvmRuleUtils.findActionColumn(deltaChild).orElse(null);
-        if (action == null) {
-            return List.of();
-        }
-        Map<ColumnRefOperator, com.starrocks.sql.optimizer.operator.scalar.ScalarOperator> projectionMap =
-                Maps.newHashMap(filter.getProjection().getColumnRefMap());
-        if (projectionMap.keySet().stream().noneMatch(IvmRuleUtils::isActionColumn)) {
-            projectionMap.put(action, action);
-        }
-        LogicalFilterOperator rewrittenFilter = new LogicalFilterOperator.Builder()
-                .withOperator(filter)
-                .setProjection(new Projection(projectionMap,
-                        Maps.newHashMap(filter.getProjection().getCommonSubOperatorMap())))
-                .build();
-        OptExpression rewritten = OptExpression.create(rewrittenFilter, deltaChild);
+        OptExpression rewritten = OptExpression.create(filter, deltaChild);
         return List.of(rewritten);
     }
 }

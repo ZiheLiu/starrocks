@@ -14,20 +14,16 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
-import com.google.common.collect.Maps;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
-import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
-import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
-import java.util.Map;
 
 public class IvmDeltaProjectRule extends TransformationRule {
     public IvmDeltaProjectRule() {
@@ -41,20 +37,7 @@ public class IvmDeltaProjectRule extends TransformationRule {
         LogicalProjectOperator project = (LogicalProjectOperator) input.inputAt(0).getOp();
         OptExpression projectChild = input.inputAt(0).inputAt(0);
         OptExpression deltaChild = OptExpression.create(new LogicalDeltaOperator(), projectChild);
-        ColumnRefOperator action = IvmRuleUtils.findActionColumn(deltaChild).orElse(null);
-        if (action == null) {
-            return List.of();
-        }
-        Map<ColumnRefOperator, com.starrocks.sql.optimizer.operator.scalar.ScalarOperator> projectMap =
-                Maps.newHashMap(project.getColumnRefMap());
-        if (projectMap.keySet().stream().noneMatch(IvmRuleUtils::isActionColumn)) {
-            projectMap.put(action, action);
-        }
-        LogicalProjectOperator rewrittenProject = LogicalProjectOperator.builder()
-                .withOperator(project)
-                .setColumnRefMap(projectMap)
-                .build();
-        OptExpression rewritten = OptExpression.create(rewrittenProject, deltaChild);
+        OptExpression rewritten = OptExpression.create(project, deltaChild);
         return List.of(rewritten);
     }
 }

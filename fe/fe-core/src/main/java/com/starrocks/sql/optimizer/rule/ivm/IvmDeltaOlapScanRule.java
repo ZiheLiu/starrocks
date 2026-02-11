@@ -14,21 +14,17 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
-import com.google.common.collect.Maps;
-import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
-import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
-import java.util.Map;
 
 public class IvmDeltaOlapScanRule extends TransformationRule {
     public IvmDeltaOlapScanRule() {
@@ -51,22 +47,8 @@ public class IvmDeltaOlapScanRule extends TransformationRule {
         if (toVersion <= fromVersion) {
             return List.of();
         }
-
-        Map<ColumnRefOperator, Column> colRefToMeta = Maps.newHashMap(scan.getColRefToColumnMetaMap());
-        Map<Column, ColumnRefOperator> metaToColRef = Maps.newHashMap(scan.getColumnMetaToColRefMap());
-        if (IvmRuleUtils.findActionColumn(input.inputAt(0)).isEmpty()) {
-            Column actionColumn = new Column(IvmRuleUtils.ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE, false);
-            ColumnRefOperator actionRef = context.getColumnRefFactory()
-                    .create(IvmRuleUtils.ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE, false);
-            context.getColumnRefFactory().updateColumnRefToColumns(actionRef, actionColumn, scan.getTable());
-            colRefToMeta.put(actionRef, actionColumn);
-            metaToColRef.put(actionColumn, actionRef);
-        }
-
         LogicalOlapScanOperator rewrittenScan = LogicalOlapScanOperator.builder()
                 .withOperator(scan)
-                .setColRefToColumnMetaMap(colRefToMeta)
-                .setColumnMetaToColRefMap(metaToColRef)
                 .setTableVersion(null)
                 .setChangesVersionRange(fromVersion, toVersion)
                 .build();

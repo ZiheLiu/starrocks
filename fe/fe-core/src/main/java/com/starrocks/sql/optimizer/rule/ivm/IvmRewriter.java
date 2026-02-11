@@ -71,7 +71,17 @@ public class IvmRewriter {
         if (IvmRuleUtils.containsLogicalDelta(tree.getInputs().get(0))) {
             tree.setChild(0, originalPlan);
             deriveLogicalProperty(tree);
+            return;
         }
+        IvmActionColumnDeriver.Result actionResult =
+                IvmActionColumnDeriver.deriveAndRewrite(tree.getInputs().get(0), optimizerContext);
+        if (!actionResult.success()) {
+            tree.setChild(0, originalPlan);
+            deriveLogicalProperty(tree);
+            return;
+        }
+        tree.setChild(0, actionResult.rewrittenRoot());
+        deriveLogicalProperty(tree);
     }
 
     private static OptExpression bindBaseTableVersionForIvm(OptExpression root, OptimizerContext optimizerContext) {
