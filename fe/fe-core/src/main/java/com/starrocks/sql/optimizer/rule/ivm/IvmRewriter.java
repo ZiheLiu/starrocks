@@ -58,8 +58,7 @@ public class IvmRewriter {
 
     public static void rewrite(OptExpression tree, TaskContext rootTaskContext, TaskScheduler scheduler) {
         OptimizerContext optimizerContext = rootTaskContext.getOptimizerContext();
-        if (!optimizerContext.getSessionVariable().isEnableOlapIVMRefresh()
-                || !isMvRefreshPlan(optimizerContext)) {
+        if (!optimizerContext.getSessionVariable().isEnableOlapIVMRefresh()) {
             return;
         }
 
