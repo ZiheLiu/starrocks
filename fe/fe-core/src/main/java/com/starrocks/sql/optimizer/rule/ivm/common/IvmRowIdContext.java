@@ -19,12 +19,13 @@ import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 public class IvmRowIdContext {
     private final ColumnRefFactory columnRefFactory;
-    private final Map<OptExpression, ColumnRefOperator> rowIdByExpr = Maps.newIdentityHashMap();
+    private final Map<OptExpression, List<ColumnRefOperator>> rowIdsByExpr = Maps.newIdentityHashMap();
     private String unsupportedReason;
 
     public IvmRowIdContext(ColumnRefFactory columnRefFactory) {
@@ -35,12 +36,12 @@ public class IvmRowIdContext {
         return columnRefFactory;
     }
 
-    public void putRowId(OptExpression expression, ColumnRefOperator rowId) {
-        rowIdByExpr.put(expression, rowId);
+    public void putRowIds(OptExpression expression, List<ColumnRefOperator> rowIds) {
+        rowIdsByExpr.put(expression, List.copyOf(rowIds));
     }
 
-    public Optional<ColumnRefOperator> getRowId(OptExpression expression) {
-        return Optional.ofNullable(rowIdByExpr.get(expression));
+    public Optional<List<ColumnRefOperator>> getRowIds(OptExpression expression) {
+        return Optional.ofNullable(rowIdsByExpr.get(expression));
     }
 
     public void markUnsupported(String reason) {

@@ -29,13 +29,15 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRowIdContext;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 public class IvmRowIdDeriver {
     public record Result(boolean success, OptExpression rewrittenRoot, String unsupportedReason,
-                         ColumnRefOperator rootRowIdColumnRef) {
+                         List<ColumnRefOperator> rootRowIdColumnRefs) {
     }
 
     private IvmRowIdDeriver() {
@@ -46,12 +48,12 @@ public class IvmRowIdDeriver {
 
         root.getOp().accept(new CollectorVisitor(context), root, null);
         if (!context.isSupported()) {
-            return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"), null);
+            return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"), List.of());
         }
 
         OptExpression rewritten = root.getOp().accept(new RewriteVisitor(context), root, null);
-        ColumnRefOperator rootRowId = context.getRowId(root).orElse(null);
-        return new Result(true, rewritten, null, rootRowId);
+        List<ColumnRefOperator> rootRowIds = context.getRowIds(root).orElse(List.of());
+        return new Result(true, rewritten, null, rootRowIds);
     }
 
     private static class CollectorVisitor extends OptExpressionVisitor<Void, Void> {
@@ -87,17 +89,15 @@ public class IvmRowIdDeriver {
                 return null;
             }
             List<Column> keyColumns = table.getKeyColumnsInOrder();
-            if (keyColumns.size() != 1) {
-                this.context.markUnsupported("only single primary key column is supported in OLAP IVM row-id derive");
+            if (keyColumns.isEmpty()) {
+                this.context.markUnsupported("primary key column is missing in OLAP IVM row-id derive");
                 return null;
             }
-            Column keyColumn = keyColumns.get(0);
-            ColumnRefOperator rowId = scan.getColumnReference(keyColumn);
-            if (rowId == null) {
-                rowId = this.context.getColumnRefFactory()
-                        .create(keyColumn.getName(), keyColumn.getType(), keyColumn.isAllowNull());
-            }
-            this.context.putRowId(expression, rowId);
+
+            List<ColumnRefOperator> rowIds = keyColumns.stream()
+                    .map(col -> getOrCreateKeyRef(scan, col))
+                    .collect(Collectors.toList());
+            this.context.putRowIds(expression, rowIds);
             return null;
         }
 
@@ -108,20 +108,21 @@ public class IvmRowIdDeriver {
                 this.context.markUnsupported("filter must be unary in OLAP IVM row-id derive");
                 return null;
             }
-            ColumnRefOperator childRowId = this.context.getRowId(expression.inputAt(0)).orElse(null);
-            if (childRowId == null) {
+            List<ColumnRefOperator> childRowIds = this.context.getRowIds(expression.inputAt(0)).orElse(null);
+            if (childRowIds == null || childRowIds.isEmpty()) {
                 this.context.markUnsupported("filter child row-id is missing in OLAP IVM row-id derive");
                 return null;
             }
+
             LogicalFilterOperator filter = (LogicalFilterOperator) expression.getOp();
             if (filter.getProjection() == null) {
-                this.context.putRowId(expression, childRowId);
+                this.context.putRowIds(expression, childRowIds);
                 return null;
             }
-            ColumnRefOperator rowIdOutput = findOutputRef(filter.getProjection(), childRowId).orElseGet(
-                    () -> this.context.getColumnRefFactory().create(
-                            "__row_id", childRowId.getType(), childRowId.isNullable()));
-            this.context.putRowId(expression, rowIdOutput);
+
+            List<ColumnRefOperator> outputRowIds =
+                    mapRowIdsThroughProjection(filter.getProjection().getColumnRefMap(), childRowIds);
+            this.context.putRowIds(expression, outputRowIds);
             return null;
         }
 
@@ -132,17 +133,40 @@ public class IvmRowIdDeriver {
                 this.context.markUnsupported("project must be unary in OLAP IVM row-id derive");
                 return null;
             }
-            ColumnRefOperator childRowId = this.context.getRowId(expression.inputAt(0)).orElse(null);
-            if (childRowId == null) {
+            List<ColumnRefOperator> childRowIds = this.context.getRowIds(expression.inputAt(0)).orElse(null);
+            if (childRowIds == null || childRowIds.isEmpty()) {
                 this.context.markUnsupported("project child row-id is missing in OLAP IVM row-id derive");
                 return null;
             }
+
             LogicalProjectOperator project = (LogicalProjectOperator) expression.getOp();
-            ColumnRefOperator rowIdOutput = findOutputRef(project.getColumnRefMap(), childRowId).orElseGet(
-                    () -> this.context.getColumnRefFactory().create(
-                            "__row_id", childRowId.getType(), childRowId.isNullable()));
-            this.context.putRowId(expression, rowIdOutput);
+            List<ColumnRefOperator> outputRowIds = mapRowIdsThroughProjection(project.getColumnRefMap(), childRowIds);
+            this.context.putRowIds(expression, outputRowIds);
             return null;
+        }
+
+        private List<ColumnRefOperator> mapRowIdsThroughProjection(
+                Map<ColumnRefOperator, com.starrocks.sql.optimizer.operator.scalar.ScalarOperator> projectionMap,
+                List<ColumnRefOperator> inputRowIds) {
+            List<ColumnRefOperator> outputRowIds = new ArrayList<>(inputRowIds.size());
+            for (int i = 0; i < inputRowIds.size(); i++) {
+                ColumnRefOperator input = inputRowIds.get(i);
+                final int idx = i;
+                ColumnRefOperator output = findOutputRef(projectionMap, input).orElseGet(
+                        () -> this.context.getColumnRefFactory().create(
+                                "__row_id_" + idx, input.getType(), input.isNullable()));
+                outputRowIds.add(output);
+            }
+            return outputRowIds;
+        }
+
+        private ColumnRefOperator getOrCreateKeyRef(LogicalOlapScanOperator scan, Column keyColumn) {
+            ColumnRefOperator keyRef = scan.getColumnReference(keyColumn);
+            if (keyRef != null) {
+                return keyRef;
+            }
+            return this.context.getColumnRefFactory()
+                    .create(keyColumn.getName(), keyColumn.getType(), keyColumn.isAllowNull());
         }
 
         private void collectChildren(OptExpression expression) {
@@ -152,10 +176,6 @@ public class IvmRowIdDeriver {
                     return;
                 }
             }
-        }
-
-        private Optional<ColumnRefOperator> findOutputRef(Projection projection, ColumnRefOperator input) {
-            return findOutputRef(projection.getColumnRefMap(), input);
         }
 
         private Optional<ColumnRefOperator> findOutputRef(
@@ -183,86 +203,135 @@ public class IvmRowIdDeriver {
         @Override
         public OptExpression visitLogicalTableScan(OptExpression expression, Void context) {
             LogicalOlapScanOperator scan = (LogicalOlapScanOperator) expression.getOp();
-            ColumnRefOperator rowId = this.context.getRowId(expression).orElse(null);
-            if (rowId == null) {
-                return expression;
-            }
-            if (scan.getColRefToColumnMetaMap().containsKey(rowId)) {
+            List<ColumnRefOperator> rowIds = this.context.getRowIds(expression).orElse(null);
+            if (rowIds == null || rowIds.isEmpty()) {
                 return expression;
             }
             if (!(scan.getTable() instanceof OlapTable table)) {
                 return expression;
             }
             List<Column> keyColumns = table.getKeyColumnsInOrder();
-            if (keyColumns.size() != 1) {
+            if (keyColumns.isEmpty() || keyColumns.size() != rowIds.size()) {
                 return expression;
             }
 
             Map<ColumnRefOperator, Column> newColRefToMeta = Maps.newHashMap(scan.getColRefToColumnMetaMap());
             Map<Column, ColumnRefOperator> newMetaToColRef = Maps.newHashMap(scan.getColumnMetaToColRefMap());
-            Column keyColumn = keyColumns.get(0);
-            newColRefToMeta.put(rowId, keyColumn);
-            newMetaToColRef.put(keyColumn, rowId);
+            boolean scanChanged = false;
+            for (int i = 0; i < keyColumns.size(); i++) {
+                Column keyColumn = keyColumns.get(i);
+                ColumnRefOperator rowId = rowIds.get(i);
+                if (!newColRefToMeta.containsKey(rowId)) {
+                    newColRefToMeta.put(rowId, keyColumn);
+                    scanChanged = true;
+                }
+                ColumnRefOperator existing = newMetaToColRef.get(keyColumn);
+                if (existing == null || !existing.equals(rowId)) {
+                    newMetaToColRef.put(keyColumn, rowId);
+                    scanChanged = true;
+                }
+            }
 
-            LogicalOlapScanOperator newScan = LogicalOlapScanOperator.builder()
+            boolean projectionChanged = false;
+            Projection newProjection = scan.getProjection();
+            if (scan.getProjection() != null) {
+                Map<ColumnRefOperator, ScalarOperator> projectionMap =
+                        Maps.newHashMap(scan.getProjection().getColumnRefMap());
+                for (ColumnRefOperator rowId : rowIds) {
+                    if (!projectionMap.containsKey(rowId)) {
+                        projectionMap.put(rowId, rowId);
+                        projectionChanged = true;
+                    }
+                }
+                if (projectionChanged) {
+                    newProjection = new Projection(
+                            projectionMap,
+                            Maps.newHashMap(scan.getProjection().getCommonSubOperatorMap()));
+                }
+            }
+
+            if (!scanChanged && !projectionChanged) {
+                return expression;
+            }
+
+            LogicalOlapScanOperator.Builder builder = LogicalOlapScanOperator.builder()
                     .withOperator(scan)
                     .setColRefToColumnMetaMap(newColRefToMeta)
-                    .setColumnMetaToColRefMap(newMetaToColRef)
-                    .build();
-            return OptExpression.create(newScan);
+                    .setColumnMetaToColRefMap(newMetaToColRef);
+            if (projectionChanged) {
+                builder.setProjection(newProjection);
+            }
+            return OptExpression.create(builder.build());
         }
 
         @Override
         public OptExpression visitLogicalFilter(OptExpression expression, Void context) {
-            OptExpression rewrittenChild = expression.inputAt(0).getOp().accept(this, expression.inputAt(0), null);
+            OptExpression child = expression.inputAt(0);
+            OptExpression rewrittenChild = child.getOp().accept(this, child, null);
             LogicalFilterOperator filter = (LogicalFilterOperator) expression.getOp();
             if (filter.getProjection() == null) {
-                if (rewrittenChild == expression.inputAt(0)) {
+                if (rewrittenChild == child) {
                     return expression;
                 }
                 return OptExpression.create(filter, rewrittenChild);
             }
 
-            ColumnRefOperator rowId = this.context.getRowId(expression).orElse(null);
-            ColumnRefOperator childRowId = this.context.getRowId(expression.inputAt(0)).orElse(null);
-            if (rowId == null || childRowId == null) {
-                return expression;
+            List<ColumnRefOperator> rowIds = this.context.getRowIds(expression).orElse(null);
+            List<ColumnRefOperator> childRowIds = this.context.getRowIds(child).orElse(null);
+            if (rowIds == null || childRowIds == null || rowIds.size() != childRowIds.size()) {
+                if (rewrittenChild == child) {
+                    return expression;
+                }
+                return OptExpression.create(filter, rewrittenChild);
             }
+
             Map<ColumnRefOperator, ScalarOperator> projectionMap = Maps.newHashMap(filter.getProjection().getColumnRefMap());
-            boolean projectionChanged = !projectionMap.containsKey(rowId);
-            if (projectionChanged) {
-                projectionMap.put(rowId, childRowId);
+            boolean projectionChanged = false;
+            for (int i = 0; i < rowIds.size(); i++) {
+                ColumnRefOperator rowId = rowIds.get(i);
+                if (!projectionMap.containsKey(rowId)) {
+                    projectionMap.put(rowId, childRowIds.get(i));
+                    projectionChanged = true;
+                }
             }
-            if (!projectionChanged && rewrittenChild == expression.inputAt(0)) {
+            if (!projectionChanged && rewrittenChild == child) {
                 return expression;
             }
+
             LogicalFilterOperator newFilter = new LogicalFilterOperator.Builder()
                     .withOperator(filter)
-                    .setProjection(
-                            new Projection(projectionMap, Maps.newHashMap(filter.getProjection().getCommonSubOperatorMap())))
+                    .setProjection(new Projection(
+                            projectionMap,
+                            Maps.newHashMap(filter.getProjection().getCommonSubOperatorMap())))
                     .build();
             return OptExpression.create(newFilter, rewrittenChild);
         }
 
         @Override
         public OptExpression visitLogicalProject(OptExpression expression, Void context) {
-            OptExpression rewrittenChild = expression.inputAt(0).getOp().accept(this, expression.inputAt(0), null);
+            OptExpression child = expression.inputAt(0);
+            OptExpression rewrittenChild = child.getOp().accept(this, child, null);
             LogicalProjectOperator project = (LogicalProjectOperator) expression.getOp();
-            ColumnRefOperator rowId = this.context.getRowId(expression).orElse(null);
-            ColumnRefOperator childRowId = this.context.getRowId(expression.inputAt(0)).orElse(null);
-            if (rowId == null || childRowId == null) {
-                if (rewrittenChild == expression.inputAt(0)) {
+
+            List<ColumnRefOperator> rowIds = this.context.getRowIds(expression).orElse(null);
+            List<ColumnRefOperator> childRowIds = this.context.getRowIds(child).orElse(null);
+            if (rowIds == null || childRowIds == null || rowIds.size() != childRowIds.size()) {
+                if (rewrittenChild == child) {
                     return expression;
                 }
                 return OptExpression.create(project, rewrittenChild);
             }
-            Map<ColumnRefOperator, com.starrocks.sql.optimizer.operator.scalar.ScalarOperator> projectMap =
-                    Maps.newHashMap(project.getColumnRefMap());
-            boolean projectChanged = !projectMap.containsKey(rowId);
-            if (projectChanged) {
-                projectMap.put(rowId, childRowId);
+
+            Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap(project.getColumnRefMap());
+            boolean projectChanged = false;
+            for (int i = 0; i < rowIds.size(); i++) {
+                ColumnRefOperator rowId = rowIds.get(i);
+                if (!projectMap.containsKey(rowId)) {
+                    projectMap.put(rowId, childRowIds.get(i));
+                    projectChanged = true;
+                }
             }
-            if (!projectChanged && rewrittenChild == expression.inputAt(0)) {
+            if (!projectChanged && rewrittenChild == child) {
                 return expression;
             }
             LogicalProjectOperator newProject = LogicalProjectOperator.builder()

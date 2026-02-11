@@ -193,7 +193,7 @@ public class MaterializedViewAnalyzer {
         return analyzeOlapIvmRewrite(context, queryStatement).unsupportedReason();
     }
 
-    public record OlapIvmAnalyzeResult(Optional<String> unsupportedReason, Optional<String> rowIdColumnName) {
+    public record OlapIvmAnalyzeResult(Optional<String> unsupportedReason, Optional<List<String>> rowIdColumnNames) {
     }
 
     public static OlapIvmAnalyzeResult analyzeOlapIvmRewrite(ConnectContext context, QueryStatement queryStatement) {
@@ -210,10 +210,12 @@ public class MaterializedViewAnalyzer {
                 }
                 return new OlapIvmAnalyzeResult(Optional.of("unsupported query pattern for OLAP IVM"), Optional.empty());
             }
-            String rowIdColumnName = Optional.ofNullable(result.rootRowIdColumnRef())
+            List<String> rowIdColumnNames = Optional.ofNullable(result.rootRowIdColumnRefs())
+                    .orElse(List.of())
+                    .stream()
                     .map(ColumnRefOperator::getName)
-                    .orElse(null);
-            return new OlapIvmAnalyzeResult(Optional.empty(), Optional.ofNullable(rowIdColumnName));
+                    .collect(Collectors.toList());
+            return new OlapIvmAnalyzeResult(Optional.empty(), Optional.of(rowIdColumnNames));
         } catch (Exception e) {
             return new OlapIvmAnalyzeResult(Optional.of(e.getMessage()), Optional.empty());
         }
@@ -414,7 +416,7 @@ public class MaterializedViewAnalyzer {
                     statement.getQueryStopIndex()));
 
             MaterializedView.RefreshMode refreshMode = IVMAnalyzer.getRefreshMode(statement);
-            Optional<String> olapIvmPkColumn = Optional.empty();
+            Optional<List<String>> olapIvmPkColumns = Optional.empty();
             if (refreshMode.isIncrementalOrAuto()) {
                 if (hasOnlyOlapBaseTables(queryStatement)) {
                     OlapIvmAnalyzeResult olapIvmAnalyzeResult = analyzeOlapIvmRewrite(context, queryStatement);
@@ -429,8 +431,8 @@ public class MaterializedViewAnalyzer {
                     } else {
                         statement.setCurrentRefreshMode(refreshMode);
                         statement.setKeysType(KeysType.PRIMARY_KEYS);
-                        olapIvmPkColumn = olapIvmAnalyzeResult.rowIdColumnName();
-                        if (olapIvmPkColumn.isEmpty()) {
+                        olapIvmPkColumns = olapIvmAnalyzeResult.rowIdColumnNames();
+                        if (olapIvmPkColumns.isEmpty() || olapIvmPkColumns.get().isEmpty()) {
                             throw new SemanticException("Failed to derive row-id column for OLAP IVM");
                         }
                         statement.setIvmViewDef(AstToSQLBuilder.buildSimple(queryStatement));
@@ -481,8 +483,8 @@ public class MaterializedViewAnalyzer {
 
             // set the sort keys into createMaterializedViewStatement
             List<String> sortKeys = genMaterializedViewSortKeys(statement);
-            if (olapIvmPkColumn.isPresent() && statement.getCurrentRefreshMode().isIncrementalOrAuto()) {
-                sortKeys = Lists.newArrayList(olapIvmPkColumn.get());
+            if (olapIvmPkColumns.isPresent() && statement.getCurrentRefreshMode().isIncrementalOrAuto()) {
+                sortKeys = Lists.newArrayList(olapIvmPkColumns.get());
             }
             statement.setSortKeys(sortKeys);
 
