@@ -190,6 +190,13 @@ public class MaterializedViewAnalyzer {
     }
 
     public static Optional<String> validateOlapIvmRewrite(ConnectContext context, QueryStatement queryStatement) {
+        return analyzeOlapIvmRewrite(context, queryStatement).unsupportedReason();
+    }
+
+    public record OlapIvmAnalyzeResult(Optional<String> unsupportedReason, Optional<String> rowIdColumnName) {
+    }
+
+    public static OlapIvmAnalyzeResult analyzeOlapIvmRewrite(ConnectContext context, QueryStatement queryStatement) {
         try {
             ColumnRefFactory columnRefFactory = new ColumnRefFactory();
             LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, context)
@@ -199,13 +206,16 @@ public class MaterializedViewAnalyzer {
                     IvmRowIdDeriver.deriveAndRewrite(logicalPlan.getRoot(), optimizerContext);
             if (!result.success()) {
                 if (result.unsupportedReason() != null) {
-                    return Optional.of(result.unsupportedReason());
+                    return new OlapIvmAnalyzeResult(Optional.of(result.unsupportedReason()), Optional.empty());
                 }
-                return Optional.of("unsupported query pattern for OLAP IVM");
+                return new OlapIvmAnalyzeResult(Optional.of("unsupported query pattern for OLAP IVM"), Optional.empty());
             }
-            return Optional.empty();
+            String rowIdColumnName = Optional.ofNullable(result.rootRowIdColumnRef())
+                    .map(ColumnRefOperator::getName)
+                    .orElse(null);
+            return new OlapIvmAnalyzeResult(Optional.empty(), Optional.ofNullable(rowIdColumnName));
         } catch (Exception e) {
-            return Optional.of(e.getMessage());
+            return new OlapIvmAnalyzeResult(Optional.of(e.getMessage()), Optional.empty());
         }
     }
 
@@ -404,9 +414,11 @@ public class MaterializedViewAnalyzer {
                     statement.getQueryStopIndex()));
 
             MaterializedView.RefreshMode refreshMode = IVMAnalyzer.getRefreshMode(statement);
+            Optional<String> olapIvmPkColumn = Optional.empty();
             if (refreshMode.isIncrementalOrAuto()) {
                 if (hasOnlyOlapBaseTables(queryStatement)) {
-                    Optional<String> unsupportedReason = validateOlapIvmRewrite(context, queryStatement);
+                    OlapIvmAnalyzeResult olapIvmAnalyzeResult = analyzeOlapIvmRewrite(context, queryStatement);
+                    Optional<String> unsupportedReason = olapIvmAnalyzeResult.unsupportedReason();
                     if (unsupportedReason.isPresent()) {
                         if (refreshMode.isIncremental()) {
                             throw new SemanticException("Failed to rewrite the query for IVM: %s",
@@ -416,6 +428,12 @@ public class MaterializedViewAnalyzer {
                         }
                     } else {
                         statement.setCurrentRefreshMode(refreshMode);
+                        statement.setKeysType(KeysType.PRIMARY_KEYS);
+                        olapIvmPkColumn = olapIvmAnalyzeResult.rowIdColumnName();
+                        if (olapIvmPkColumn.isEmpty()) {
+                            throw new SemanticException("Failed to derive row-id column for OLAP IVM");
+                        }
+                        statement.setIvmViewDef(AstToSQLBuilder.buildSimple(queryStatement));
                     }
                 } else {
                     IVMAnalyzer ivmAnalyzer = new IVMAnalyzer(context, statement, statement.getQueryStatement());
@@ -463,6 +481,9 @@ public class MaterializedViewAnalyzer {
 
             // set the sort keys into createMaterializedViewStatement
             List<String> sortKeys = genMaterializedViewSortKeys(statement);
+            if (olapIvmPkColumn.isPresent() && statement.getCurrentRefreshMode().isIncrementalOrAuto()) {
+                sortKeys = Lists.newArrayList(olapIvmPkColumn.get());
+            }
             statement.setSortKeys(sortKeys);
 
             // set the columns into createMaterializedViewStatement

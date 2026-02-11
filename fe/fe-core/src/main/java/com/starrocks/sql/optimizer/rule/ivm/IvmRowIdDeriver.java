@@ -34,7 +34,8 @@ import java.util.Map;
 import java.util.Optional;
 
 public class IvmRowIdDeriver {
-    public record Result(boolean success, OptExpression rewrittenRoot, String unsupportedReason) {
+    public record Result(boolean success, OptExpression rewrittenRoot, String unsupportedReason,
+                         ColumnRefOperator rootRowIdColumnRef) {
     }
 
     private IvmRowIdDeriver() {
@@ -45,11 +46,12 @@ public class IvmRowIdDeriver {
 
         root.getOp().accept(new CollectorVisitor(context), root, null);
         if (!context.isSupported()) {
-            return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"));
+            return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"), null);
         }
 
         OptExpression rewritten = root.getOp().accept(new RewriteVisitor(context), root, null);
-        return new Result(true, rewritten, null);
+        ColumnRefOperator rootRowId = context.getRowId(root).orElse(null);
+        return new Result(true, rewritten, null, rootRowId);
     }
 
     private static class CollectorVisitor extends OptExpressionVisitor<Void, Void> {
