@@ -21,6 +21,7 @@ import com.starrocks.catalog.BaseTableInfo;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.OlapTable;
+import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
@@ -210,6 +211,12 @@ public final class MVIVMBasedRefreshProcessor extends BaseMVRefreshProcessor {
             return maxTvrDelta;
         }
 
+        // OLAP IVM uses row-id based rewrite. Delta traits are not wired for OLAP yet,
+        // so keep refresh driven by table visible versions.
+        if (snapshotTable instanceof OlapTable) {
+            return maxTvrDelta;
+        }
+
         // check the delta traits between the max delta
         List<TvrTableDeltaTrait> tableDeltaTraits = GlobalStateMgr.getCurrentState().getMetadataMgr()
                 .listTableDeltaTraits(baseTableInfo.getDbName(), snapshotTable,
@@ -267,6 +274,9 @@ public final class MVIVMBasedRefreshProcessor extends BaseMVRefreshProcessor {
         // current tvr snapshot
         TvrVersionRange currentTvrSnapshot = GlobalStateMgr.getCurrentState().getMetadataMgr()
                 .getCurrentTvrSnapshot(baseTableInfo.getDbName(), table);
+        if (table instanceof OlapTable && (currentTvrSnapshot == null || currentTvrSnapshot.isEmpty())) {
+            currentTvrSnapshot = getCurrentOlapTvrSnapshot((OlapTable) table);
+        }
         if (currentTvrSnapshot == null || !(currentTvrSnapshot instanceof TvrTableSnapshot)) {
             logger.warn("Current tvr snapshot is null for base table: {}, db: {}",
                     baseTableInfo.getTableName(), baseTableInfo.getDbName());
@@ -301,6 +311,17 @@ public final class MVIVMBasedRefreshProcessor extends BaseMVRefreshProcessor {
             return TvrTableDelta.of(beforeVersion, currentVersion);
         }
         return TvrTableDelta.of(beforeVersion, currentVersion);
+    }
+
+    private TvrTableSnapshot getCurrentOlapTvrSnapshot(OlapTable olapTable) {
+        long maxVisibleVersion = olapTable.getAllPhysicalPartitions().stream()
+                .mapToLong(PhysicalPartition::getVisibleVersion)
+                .max()
+                .orElse(TvrVersion.MIN_TIME);
+        if (maxVisibleVersion <= 0L) {
+            return TvrTableSnapshot.empty();
+        }
+        return TvrTableSnapshot.of(maxVisibleVersion);
     }
 
     // TODO: We may introduce a smarter way to determine which incremental snapshot to refresh later.
