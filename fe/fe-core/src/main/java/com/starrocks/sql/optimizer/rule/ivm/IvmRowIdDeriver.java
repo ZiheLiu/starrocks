@@ -42,11 +42,13 @@ public class IvmRowIdDeriver {
 
     public static Result deriveAndRewrite(OptExpression root, OptimizerContext optimizerContext) {
         IvmRowIdContext context = new IvmRowIdContext(optimizerContext.getColumnRefFactory());
-        new CollectorVisitor(context).visit(root, null);
+
+        root.getOp().accept(new CollectorVisitor(context), root, null);
         if (!context.isSupported()) {
             return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"));
         }
-        OptExpression rewritten = new RewriteVisitor(context).visit(root, null);
+
+        OptExpression rewritten = root.getOp().accept(new RewriteVisitor(context), root, null);
         return new Result(true, rewritten, null);
     }
 
