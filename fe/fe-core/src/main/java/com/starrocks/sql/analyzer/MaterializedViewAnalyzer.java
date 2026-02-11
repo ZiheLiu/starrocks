@@ -115,6 +115,7 @@ import com.starrocks.sql.optimizer.base.PhysicalPropertySet;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rewrite.ScalarOperatorRewriter;
+import com.starrocks.sql.optimizer.rule.ivm.IvmRowIdDeriver;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.MvUtils;
 import com.starrocks.sql.optimizer.rule.tvr.common.TvrOpUtils;
 import com.starrocks.sql.optimizer.transformer.ExpressionMapping;
@@ -186,6 +187,39 @@ public class MaterializedViewAnalyzer {
 
     public static void analyze(StatementBase stmt, ConnectContext session) {
         new MaterializedViewAnalyzerVisitor().visit(stmt, session);
+    }
+
+    public static Optional<String> validateOlapIvmRewrite(ConnectContext context, QueryStatement queryStatement) {
+        try {
+            ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+            LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, context)
+                    .transform(queryStatement.getQueryRelation());
+            OptimizerContext optimizerContext = OptimizerFactory.initContext(context, columnRefFactory);
+            IvmRowIdDeriver.Result result =
+                    IvmRowIdDeriver.deriveAndRewrite(logicalPlan.getRoot(), optimizerContext);
+            if (!result.success()) {
+                if (result.unsupportedReason() != null) {
+                    return Optional.of(result.unsupportedReason());
+                }
+                return Optional.of("unsupported query pattern for OLAP IVM");
+            }
+            return Optional.empty();
+        } catch (Exception e) {
+            return Optional.of(e.getMessage());
+        }
+    }
+
+    private static boolean hasOnlyOlapBaseTables(QueryStatement queryStatement) {
+        Map<TableName, Table> tableNameTableMap = AnalyzerUtils.collectAllConnectorTableAndView(queryStatement);
+        for (Table table : tableNameTableMap.values()) {
+            if (table == null || table.isView()) {
+                continue;
+            }
+            if (!(table instanceof OlapTable)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     public static Set<BaseTableInfo> getBaseTableInfos(QueryStatement queryStatement, boolean withCheck) {
@@ -371,23 +405,37 @@ public class MaterializedViewAnalyzer {
 
             MaterializedView.RefreshMode refreshMode = IVMAnalyzer.getRefreshMode(statement);
             if (refreshMode.isIncrementalOrAuto()) {
-                IVMAnalyzer ivmAnalyzer = new IVMAnalyzer(context, statement, statement.getQueryStatement());
-                Optional<IVMAnalyzer.IVMAnalyzeResult> ivmAnalyzeResult = ivmAnalyzer.rewrite(refreshMode);
-                if (ivmAnalyzeResult.isPresent()) {
-                    IVMAnalyzer.IVMAnalyzeResult result = ivmAnalyzeResult.get();
-                    queryStatement = result.queryStatement();
-                    // re-analyze again
-                    Analyzer.analyze(queryStatement, context);
-                    statement.setIvmViewDef(AstToSQLBuilder.buildSimple(queryStatement));
-                    statement.setQueryStatement(queryStatement);
-                    // use primary key as default keys type for ivm
-                    if (result.needRetractableSink()) {
-                        statement.setKeysType(KeysType.PRIMARY_KEYS);
+                if (hasOnlyOlapBaseTables(queryStatement)) {
+                    Optional<String> unsupportedReason = validateOlapIvmRewrite(context, queryStatement);
+                    if (unsupportedReason.isPresent()) {
+                        if (refreshMode.isIncremental()) {
+                            throw new SemanticException("Failed to rewrite the query for IVM: %s",
+                                    unsupportedReason.get());
+                        } else {
+                            statement.setCurrentRefreshMode(MaterializedView.RefreshMode.PCT);
+                        }
+                    } else {
+                        statement.setCurrentRefreshMode(refreshMode);
                     }
-                    statement.setCurrentRefreshMode(result.currentRefreshMode());
                 } else {
-                    // if not ivm, set query statement directly
-                    statement.setCurrentRefreshMode(MaterializedView.RefreshMode.PCT);
+                    IVMAnalyzer ivmAnalyzer = new IVMAnalyzer(context, statement, statement.getQueryStatement());
+                    Optional<IVMAnalyzer.IVMAnalyzeResult> ivmAnalyzeResult = ivmAnalyzer.rewrite(refreshMode);
+                    if (ivmAnalyzeResult.isPresent()) {
+                        IVMAnalyzer.IVMAnalyzeResult result = ivmAnalyzeResult.get();
+                        queryStatement = result.queryStatement();
+                        // re-analyze again
+                        Analyzer.analyze(queryStatement, context);
+                        statement.setIvmViewDef(AstToSQLBuilder.buildSimple(queryStatement));
+                        statement.setQueryStatement(queryStatement);
+                        // use primary key as default keys type for ivm
+                        if (result.needRetractableSink()) {
+                            statement.setKeysType(KeysType.PRIMARY_KEYS);
+                        }
+                        statement.setCurrentRefreshMode(result.currentRefreshMode());
+                    } else {
+                        // if not ivm, set query statement directly
+                        statement.setCurrentRefreshMode(MaterializedView.RefreshMode.PCT);
+                    }
                 }
             } else {
                 statement.setCurrentRefreshMode(refreshMode);

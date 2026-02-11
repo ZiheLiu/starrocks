@@ -20,6 +20,7 @@ import com.google.common.collect.Multimap;
 import com.starrocks.catalog.BaseTableInfo;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.MaterializedView;
+import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Table;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
@@ -98,6 +99,11 @@ public final class MVIVMBasedRefreshProcessor extends BaseMVRefreshProcessor {
             throw new SemanticException("IVM based refresh only supports complete refresh, but got partial refresh");
         }
         syncAndCheckPCTPartitions(taskRunContext);
+        if (mvContext.getCtx() != null) {
+            boolean hasOnlyOlapBaseTable = snapshotBaseTables.values().stream()
+                    .allMatch(snapshotInfo -> snapshotInfo.getBaseTable() instanceof OlapTable);
+            mvContext.getCtx().getSessionVariable().setEnableOlapIVMRefresh(hasOnlyOlapBaseTable);
+        }
 
         // collect change snapshots
         try (Timer ignored = Tracers.watchScope("MVRefreshCheckChangedVersionRanges")) {
@@ -193,10 +199,10 @@ public final class MVIVMBasedRefreshProcessor extends BaseMVRefreshProcessor {
             throw new SemanticException("Base table %s.%s does not exist",
                     baseTableInfo.getDbName(), baseTableInfo.getTableName());
         }
-        if (!IVMAnalyzer.isTableTypeIVMSupported(snapshotTable.getType())) {
-            throw new SemanticException(String.format("Only support %s tables for MVIVMBasedRefreshProcessor, " +
-                    "but got: %s", Joiner.on(",").join(IVMAnalyzer.SUPPORTED_TABLE_TYPES),
-                    snapshotTable.getType()));
+        if (!IVMAnalyzer.isTableTypeIVMSupported(snapshotTable.getType())
+                && !(snapshotTable instanceof OlapTable)) {
+            throw new SemanticException(String.format("Only support %s and OLAP tables for MVIVMBasedRefreshProcessor, " +
+                    "but got: %s", Joiner.on(",").join(IVMAnalyzer.SUPPORTED_TABLE_TYPES), snapshotTable.getType()));
         }
         final TvrTableDelta maxTvrDelta = getMaxBaseTableChangedDelta(baseTableInfo, snapshotTable, mvTvrVersionRangeMap);
         // if no change, return empty
@@ -398,6 +404,9 @@ public final class MVIVMBasedRefreshProcessor extends BaseMVRefreshProcessor {
 
         // set tvr target mvid
         ctx.getSessionVariable().setEnableIVMRefresh(true);
+        boolean hasOnlyOlapBaseTable = snapshotBaseTables.values().stream()
+                .allMatch(snapshotInfo -> snapshotInfo.getBaseTable() instanceof OlapTable);
+        ctx.getSessionVariable().setEnableOlapIVMRefresh(hasOnlyOlapBaseTable);
         ctx.getSessionVariable().setTvrTargetMvid(GsonUtils.GSON.toJson(mv.getMvId()));
 
         final Set<Table> baseTables = snapshotBaseTables.values()
