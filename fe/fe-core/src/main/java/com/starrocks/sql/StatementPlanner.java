@@ -88,7 +88,6 @@ import com.starrocks.transaction.GlobalTransactionMgr;
 import com.starrocks.transaction.RemoteTransactionMgr;
 import com.starrocks.transaction.RunningTxnExceedException;
 import com.starrocks.transaction.TransactionState;
-import io.trino.sql.tree.ExplainType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
