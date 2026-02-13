@@ -301,8 +301,8 @@ public class InsertPlanner {
         if (insertStmt.usePartialUpdate()) {
             inferOutputSchemaForPartialUpdate(insertStmt);
         } else {
-            outputBaseSchema = targetTable.getBaseSchema();
-            outputFullSchema = targetTable.getFullSchema();
+            outputBaseSchema = new ArrayList<>(targetTable.getBaseSchema());
+            outputFullSchema = new ArrayList<>(targetTable.getFullSchema());
         }
 
         if (targetTable.isIcebergTable()) {
