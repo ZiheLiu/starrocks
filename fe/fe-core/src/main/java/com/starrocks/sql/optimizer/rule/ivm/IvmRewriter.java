@@ -197,13 +197,17 @@ public class IvmRewriter {
                 ConstantOperator.createTinyInt((byte) 0),
                 Lists.newArrayList(isDeleteAction, ConstantOperator.createTinyInt((byte) 1)));
 
-        Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newLinkedHashMap();
+        Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap();
         for (ColumnRefOperator outputColumn : rootOutputColumns) {
-            projectMap.put(outputColumn, outputColumn);
+            if (!outputColumn.equals(actionColumn)) {
+                projectMap.put(outputColumn, outputColumn);
+            }
         }
         projectMap.put(loadOpColumn, loadOpExpr);
+
         requiredColumns.union(loadOpColumn);
         rootTaskContext.getRequiredColumns().union(loadOpColumn);
+
         return OptExpression.create(new LogicalProjectOperator(projectMap), root);
     }
 
