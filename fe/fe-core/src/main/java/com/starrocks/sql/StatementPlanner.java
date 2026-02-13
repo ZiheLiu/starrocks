@@ -80,6 +80,7 @@ import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
 import com.starrocks.sql.spm.SPMPlanner;
 import com.starrocks.thrift.TAuthenticateParams;
+import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TResultSinkType;
 import com.starrocks.transaction.BeginTransactionException;
 import com.starrocks.transaction.ExplicitTxnStatementValidator;
@@ -87,6 +88,7 @@ import com.starrocks.transaction.GlobalTransactionMgr;
 import com.starrocks.transaction.RemoteTransactionMgr;
 import com.starrocks.transaction.RunningTxnExceedException;
 import com.starrocks.transaction.TransactionState;
+import io.trino.sql.tree.ExplainType;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -164,6 +166,7 @@ public class StatementPlanner {
             } else if (stmt instanceof InsertStmt) {
                 ExecPlan plan = planInsertStmt(plannerMetaLocker, (InsertStmt) stmt, session);
                 setExplainToQueryDetail(plan, stmt, session, ResourceGroupClassifier.QueryType.INSERT);
+                LOG.warn("[TEST] explain_costs={}", plan.getExplainString(TExplainLevel.COSTS));
                 return plan;
             } else if (stmt instanceof UpdateStmt) {
                 return new UpdatePlanner().plan((UpdateStmt) stmt, session);

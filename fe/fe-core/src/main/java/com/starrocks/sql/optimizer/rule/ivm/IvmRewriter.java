@@ -203,6 +203,7 @@ public class IvmRewriter {
         }
         projectMap.put(loadOpColumn, loadOpExpr);
         requiredColumns.union(loadOpColumn);
+        rootTaskContext.getRequiredColumns().union(loadOpColumn);
         return OptExpression.create(new LogicalProjectOperator(projectMap), root);
     }
 
