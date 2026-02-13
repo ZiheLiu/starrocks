@@ -555,7 +555,7 @@ public class QueryOptimizer extends Optimizer {
         if (context.getSessionVariable().isEnableIVMRefresh() && !context.getSessionVariable().isEnableOlapIVMRefresh()) {
             scheduler.rewriteIterative(tree, rootTaskContext, RuleSet.TVR_REWRITE_RULES);
         }
-        IvmRewriter.rewrite(tree, rootTaskContext, scheduler);
+        IvmRewriter.rewrite(tree, rootTaskContext, scheduler, requiredColumns);
 
         if (sessionVariable.isEnableFineGrainedRangePredicate()) {
             scheduler.rewriteAtMostOnce(tree, rootTaskContext, RuleSet.FINE_GRAINED_RANGE_PREDICATE_RULES);

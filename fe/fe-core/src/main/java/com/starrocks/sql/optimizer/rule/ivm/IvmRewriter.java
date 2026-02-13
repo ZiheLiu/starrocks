@@ -32,6 +32,7 @@ import com.starrocks.sql.optimizer.ExpressionContext;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.OptimizerContext;
+import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
@@ -55,7 +56,8 @@ public class IvmRewriter {
     private IvmRewriter() {
     }
 
-    public static void rewrite(OptExpression tree, TaskContext rootTaskContext, TaskScheduler scheduler) {
+    public static void rewrite(OptExpression tree, TaskContext rootTaskContext, TaskScheduler scheduler,
+                               ColumnRefSet requiredColumns) {
         OptimizerContext optimizerContext = rootTaskContext.getOptimizerContext();
         if (!optimizerContext.getSessionVariable().isEnableOlapIVMRefresh()) {
             return;
@@ -90,7 +92,7 @@ public class IvmRewriter {
         OptExpression rewrittenRoot = actionResult.rewrittenRoot();
         deriveLogicalProperty(rewrittenRoot);
         if (isPrimaryKeyTargetMv(optimizerContext)) {
-            rewrittenRoot = appendPkLoadOpColumn(rewrittenRoot, rootTaskContext);
+            rewrittenRoot = appendPkLoadOpColumn(rewrittenRoot, rootTaskContext, requiredColumns);
         }
         tree.setChild(0, rewrittenRoot);
         deriveLogicalProperty(tree);
@@ -172,7 +174,8 @@ public class IvmRewriter {
         return targetMv.getKeysType() == KeysType.PRIMARY_KEYS;
     }
 
-    private static OptExpression appendPkLoadOpColumn(OptExpression root, TaskContext rootTaskContext) {
+    private static OptExpression appendPkLoadOpColumn(OptExpression root, TaskContext rootTaskContext,
+                                                      ColumnRefSet requiredColumns) {
         ColumnRefOperator actionColumn = IvmRuleUtils.findActionColumn(root).orElse(null);
         if (actionColumn == null) {
             return root;
@@ -199,7 +202,7 @@ public class IvmRewriter {
             projectMap.put(outputColumn, outputColumn);
         }
         projectMap.put(loadOpColumn, loadOpExpr);
-        rootTaskContext.getRequiredColumns().union(loadOpColumn);
+        requiredColumns.union(loadOpColumn);
         return OptExpression.create(new LogicalProjectOperator(projectMap), root);
     }
 
