@@ -65,6 +65,7 @@ public class IvmRewriter {
 
         OptExpression originalPlan = tree.getInputs().get(0);
         OptExpression ivmInput = originalPlan;
+
         ivmInput = bindBaseTableVersionForIvm(ivmInput, optimizerContext);
 
         IvmRowIdDeriver.Result rowIdResult = IvmRowIdDeriver.deriveAndRewrite(ivmInput, optimizerContext);
@@ -76,12 +77,12 @@ public class IvmRewriter {
         tree.setChild(0, OptExpression.create(new LogicalDeltaOperator(), rowIdResult.rewrittenRoot()));
         deriveLogicalProperty(tree);
         scheduler.rewriteIterative(tree, rootTaskContext, RuleSet.OLAP_IVM_DELTA_REWRITE_RULES);
-
         if (IvmRuleUtils.containsLogicalDelta(tree.getInputs().get(0))) {
             tree.setChild(0, originalPlan);
             deriveLogicalProperty(tree);
             return;
         }
+
         IvmActionColumnDeriver.Result actionResult =
                 IvmActionColumnDeriver.deriveAndRewrite(tree.getInputs().get(0), optimizerContext);
         if (!actionResult.success()) {
@@ -89,6 +90,7 @@ public class IvmRewriter {
             deriveLogicalProperty(tree);
             return;
         }
+
         OptExpression rewrittenRoot = actionResult.rewrittenRoot();
         deriveLogicalProperty(rewrittenRoot);
         if (isPrimaryKeyTargetMv(optimizerContext)) {

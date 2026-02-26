@@ -146,7 +146,7 @@ public class IvmRowIdDeriver {
         }
 
         private List<ColumnRefOperator> mapRowIdsThroughProjection(
-                Map<ColumnRefOperator, com.starrocks.sql.optimizer.operator.scalar.ScalarOperator> projectionMap,
+                Map<ColumnRefOperator, ScalarOperator> projectionMap,
                 List<ColumnRefOperator> inputRowIds) {
             List<ColumnRefOperator> outputRowIds = new ArrayList<>(inputRowIds.size());
             for (int i = 0; i < inputRowIds.size(); i++) {
@@ -178,9 +178,8 @@ public class IvmRowIdDeriver {
             }
         }
 
-        private Optional<ColumnRefOperator> findOutputRef(
-                Map<ColumnRefOperator, com.starrocks.sql.optimizer.operator.scalar.ScalarOperator> columnRefMap,
-                ColumnRefOperator input) {
+        private Optional<ColumnRefOperator> findOutputRef(Map<ColumnRefOperator, ScalarOperator> columnRefMap,
+                                                          ColumnRefOperator input) {
             return columnRefMap.entrySet().stream()
                     .filter(entry -> entry.getValue().equals(input))
                     .map(Map.Entry::getKey)
