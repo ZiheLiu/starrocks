@@ -27,6 +27,9 @@ import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.AggType;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEAnchorOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEConsumeOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEProduceOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
@@ -49,7 +52,6 @@ import org.apache.commons.collections4.CollectionUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 public class IvmDeltaAggregateRule extends TransformationRule {
     public IvmDeltaAggregateRule() {
@@ -124,29 +126,49 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         OptExpression fromSnapshot = OptExpression.create(
                 new LogicalVersionOperator(fromVersion, (byte) -1), minusProject);
 
-        List<List<ColumnRefOperator>> unionChildrenOutputs = List.of(unionOutputColumns, unionOutputColumns);
-        OptExpression versionUnion = OptExpression.create(
-                new LogicalUnionOperator(unionOutputColumns, unionChildrenOutputs, true),
-                toSnapshot, fromSnapshot);
-
-        OptExpression deltaInput = OptExpression.create(new LogicalDeltaOperator(), aggChild);
-        LogicalAggregationOperator affectedKeysAgg = new LogicalAggregationOperator(
+        OptExpression deltaInputForPlus = OptExpression.create(new LogicalDeltaOperator(), aggChild);
+        LogicalAggregationOperator affectedKeysAggForPlus = new LogicalAggregationOperator(
                 AggType.GLOBAL, originalGroupingKeys, Maps.newHashMap());
-        OptExpression affectedKeys = OptExpression.create(affectedKeysAgg, deltaInput);
+        OptExpression affectedKeysForPlus = OptExpression.create(affectedKeysAggForPlus, deltaInputForPlus);
+        int cteId = context.getCteContext().getNextCteId();
+        OptExpression affectedKeysProduce = OptExpression.create(new LogicalCTEProduceOperator(cteId), affectedKeysForPlus);
 
-        List<ScalarOperator> joinConjuncts = originalGroupingKeys.stream()
-                .map(groupKey -> new BinaryPredicateOperator(
-                        BinaryType.EQ, originalToUnionCols.get(groupKey), groupKey))
-                .collect(Collectors.toList());
-        ScalarOperator onPredicate = Utils.compoundAnd(joinConjuncts);
-        if (onPredicate == null) {
+        Map<ColumnRefOperator, ColumnRefOperator> plusConsumeMap = Maps.newHashMap();
+        for (ColumnRefOperator groupKey : originalGroupingKeys) {
+            plusConsumeMap.put(groupKey, groupKey);
+        }
+        OptExpression affectedKeysConsumeForPlus = OptExpression.create(new LogicalCTEConsumeOperator(cteId, plusConsumeMap));
+
+        Map<ColumnRefOperator, ColumnRefOperator> minusConsumeMap = Maps.newHashMap();
+        List<ColumnRefOperator> affectedGroupingKeysForMinus = Lists.newArrayListWithCapacity(originalGroupingKeys.size());
+        for (ColumnRefOperator groupKey : originalGroupingKeys) {
+            ColumnRefOperator minusConsumeKey = columnRefFactory.create(
+                    groupKey.getName(), groupKey.getType(), groupKey.isNullable());
+            minusConsumeMap.put(minusConsumeKey, groupKey);
+            affectedGroupingKeysForMinus.add(minusConsumeKey);
+        }
+        OptExpression affectedKeysConsumeForMinus = OptExpression.create(new LogicalCTEConsumeOperator(cteId, minusConsumeMap));
+
+        ScalarOperator plusOnPredicate = buildSemiJoinPredicate(originalGroupingKeys, originalGroupingKeys, originalToUnionCols);
+        ScalarOperator minusOnPredicate = buildSemiJoinPredicate(
+                originalGroupingKeys, affectedGroupingKeysForMinus, originalToUnionCols);
+        if (plusOnPredicate == null || minusOnPredicate == null) {
             return List.of();
         }
 
-        OptExpression semiJoin = OptExpression.create(
-                new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, onPredicate),
-                versionUnion,
-                affectedKeys);
+        OptExpression plusSemiJoin = OptExpression.create(
+                new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, plusOnPredicate),
+                toSnapshot,
+                affectedKeysConsumeForPlus);
+        OptExpression minusSemiJoin = OptExpression.create(
+                new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, minusOnPredicate),
+                fromSnapshot,
+                affectedKeysConsumeForMinus);
+
+        List<List<ColumnRefOperator>> unionChildrenOutputs = List.of(unionOutputColumns, unionOutputColumns);
+        OptExpression semiJoinedUnion = OptExpression.create(
+                new LogicalUnionOperator(unionOutputColumns, unionChildrenOutputs, true),
+                plusSemiJoin, minusSemiJoin);
 
         // Align rewritten child slots back to original aggregate input slots so upper operators can keep old slot ids.
         Map<ColumnRefOperator, ScalarOperator> alignedProjectMap = Maps.newHashMap();
@@ -168,7 +190,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             }
         }
         alignedProjectMap.put(actionColumn, actionColumn);
-        OptExpression alignedInput = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), semiJoin);
+        OptExpression alignedInput = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), semiJoinedUnion);
 
         List<ColumnRefOperator> rewrittenGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size() + 1);
         rewrittenGroupingKeys.addAll(originalGroupingKeys);
@@ -180,7 +202,11 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 .setGroupingKeys(rewrittenGroupingKeys)
                 .setPartitionByColumns(rewrittenPartitionBys)
                 .build();
-        return List.of(OptExpression.create(rewrittenAgg, alignedInput));
+        OptExpression rewrittenAggExpr = OptExpression.create(rewrittenAgg, alignedInput);
+        OptExpression cteAnchor = OptExpression.create(new LogicalCTEAnchorOperator(cteId),
+                affectedKeysProduce,
+                rewrittenAggExpr);
+        return List.of(cteAnchor);
     }
 
     private boolean isSupportedAggregate(LogicalAggregationOperator agg) {
@@ -194,6 +220,25 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return false;
         }
         return agg.getAggregations().values().stream().noneMatch(CallOperator::isDistinct);
+    }
+
+    private ScalarOperator buildSemiJoinPredicate(List<ColumnRefOperator> leftGroupingKeys,
+                                                  List<ColumnRefOperator> rightGroupingKeys,
+                                                  Map<ColumnRefOperator, ColumnRefOperator> originalToUnionCols) {
+        if (leftGroupingKeys.size() != rightGroupingKeys.size()) {
+            return null;
+        }
+        List<ScalarOperator> joinConjuncts = Lists.newArrayListWithCapacity(leftGroupingKeys.size());
+        for (int i = 0; i < leftGroupingKeys.size(); i++) {
+            ColumnRefOperator leftKey = leftGroupingKeys.get(i);
+            ColumnRefOperator rightKey = rightGroupingKeys.get(i);
+            ColumnRefOperator mappedLeft = originalToUnionCols.get(leftKey);
+            if (mappedLeft == null) {
+                return null;
+            }
+            joinConjuncts.add(new BinaryPredicateOperator(BinaryType.EQ, mappedLeft, rightKey));
+        }
+        return Utils.compoundAnd(joinConjuncts);
     }
 
     private LogicalOlapScanOperator findCandidateOlapScan(OptExpression root) {
