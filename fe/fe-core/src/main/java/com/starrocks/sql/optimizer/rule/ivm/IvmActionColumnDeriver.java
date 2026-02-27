@@ -14,6 +14,7 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
+import com.google.api.client.util.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.Column;
 import com.starrocks.sql.optimizer.OptExpression;
@@ -27,6 +28,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -53,17 +55,16 @@ public class IvmActionColumnDeriver {
         public OptExpression visit(OptExpression expression, Void context) {
             boolean hasChildChanged = false;
             List<OptExpression> children = expression.getInputs();
-            OptExpression[] rewrittenChildren = new OptExpression[children.size()];
-            for (int i = 0; i < children.size(); i++) {
-                OptExpression child = children.get(i);
+            List<OptExpression> rewrittenChildren = Lists.newArrayListWithCapacity(children.size());
+            for (OptExpression child : children) {
                 OptExpression rewrittenChild = child.getOp().accept(this, child, null);
-                rewrittenChildren[i] = rewrittenChild;
+                rewrittenChildren.add(rewrittenChild);
                 hasChildChanged = hasChildChanged || rewrittenChild != child;
             }
             if (!hasChildChanged) {
                 return expression;
             }
-            return OptExpression.create(expression.getOp(), expression.getTvrMeta(), List.of(rewrittenChildren));
+            return OptExpression.create(expression.getOp(), expression.getTvrMeta(), rewrittenChildren);
         }
 
         @Override
