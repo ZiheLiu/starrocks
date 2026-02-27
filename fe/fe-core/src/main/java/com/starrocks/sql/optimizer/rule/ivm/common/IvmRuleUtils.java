@@ -20,7 +20,9 @@ import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.Projection;
+import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
@@ -50,6 +52,18 @@ public class IvmRuleUtils {
         return false;
     }
 
+    public static boolean containsLogicalVersion(OptExpression root) {
+        if (root.getOp().getOpType() == OperatorType.LOGICAL_VERSION) {
+            return true;
+        }
+        for (OptExpression child : root.getInputs()) {
+            if (containsLogicalVersion(child)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public static long getLatestVisibleVersion(OlapTable table) {
         long maxVisibleVersion = 0;
         for (PhysicalPartition partition : table.getAllPhysicalPartitions()) {
@@ -72,6 +86,17 @@ public class IvmRuleUtils {
             return project.getColumnRefMap().keySet().stream()
                     .filter(IvmRuleUtils::isActionColumn)
                     .findFirst();
+        }
+        if (expression.getOp() instanceof LogicalAggregationOperator agg) {
+            return agg.getGroupingKeys().stream()
+                    .filter(IvmRuleUtils::isActionColumn)
+                    .findFirst();
+        }
+        if (expression.getOp() instanceof LogicalJoinOperator join) {
+            if (join.getJoinType().isLeftSemiJoin() && !expression.getInputs().isEmpty()) {
+                return findActionColumn(expression.inputAt(0));
+            }
+            return Optional.empty();
         }
         if (expression.getOp() instanceof LogicalFilterOperator filter) {
             Projection projection = filter.getProjection();

@@ -47,6 +47,10 @@ public abstract class OptExpressionVisitor<R, C> {
         return visit(optExpression, context);
     }
 
+    public R visitLogicalVersion(OptExpression optExpression, C context) {
+        return visit(optExpression, context);
+    }
+
     public R visitLogicalLimit(OptExpression optExpression, C context) {
         return visit(optExpression, context);
     }

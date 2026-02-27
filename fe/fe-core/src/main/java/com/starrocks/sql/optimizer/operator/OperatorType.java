@@ -48,6 +48,7 @@ public enum OperatorType {
     LOGICAL_AGGR,
     LOGICAL_FILTER,
     LOGICAL_DELTA,
+    LOGICAL_VERSION,
     LOGICAL_LIMIT,
     LOGICAL_TOPN,
     LOGICAL_APPLY,

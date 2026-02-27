@@ -22,6 +22,7 @@ import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.Projection;
+import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
@@ -142,6 +143,22 @@ public class IvmRowIdDeriver {
             LogicalProjectOperator project = (LogicalProjectOperator) expression.getOp();
             List<ColumnRefOperator> outputRowIds = mapRowIdsThroughProjection(project.getColumnRefMap(), childRowIds);
             this.context.putRowIds(expression, outputRowIds);
+            return null;
+        }
+
+        @Override
+        public Void visitLogicalAggregate(OptExpression expression, Void context) {
+            collectChildren(expression);
+            if (expression.getInputs().size() != 1) {
+                this.context.markUnsupported("aggregate must be unary in OLAP IVM row-id derive");
+                return null;
+            }
+            LogicalAggregationOperator agg = (LogicalAggregationOperator) expression.getOp();
+            if (agg.getGroupingKeys().isEmpty()) {
+                this.context.markUnsupported("aggregate without group by is not supported in OLAP IVM row-id derive");
+                return null;
+            }
+            this.context.putRowIds(expression, agg.getGroupingKeys());
             return null;
         }
 
@@ -338,6 +355,16 @@ public class IvmRowIdDeriver {
                     .setColumnRefMap(projectMap)
                     .build();
             return OptExpression.create(newProject, rewrittenChild);
+        }
+
+        @Override
+        public OptExpression visitLogicalAggregate(OptExpression expression, Void context) {
+            OptExpression child = expression.inputAt(0);
+            OptExpression rewrittenChild = child.getOp().accept(this, child, null);
+            if (rewrittenChild == child) {
+                return expression;
+            }
+            return OptExpression.create(expression.getOp(), rewrittenChild);
         }
     }
 }

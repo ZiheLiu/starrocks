@@ -77,7 +77,8 @@ public class IvmRewriter {
         tree.setChild(0, OptExpression.create(new LogicalDeltaOperator(), rowIdResult.rewrittenRoot()));
         deriveLogicalProperty(tree);
         scheduler.rewriteIterative(tree, rootTaskContext, RuleSet.OLAP_IVM_DELTA_REWRITE_RULES);
-        if (IvmRuleUtils.containsLogicalDelta(tree.getInputs().get(0))) {
+        if (IvmRuleUtils.containsLogicalDelta(tree.getInputs().get(0))
+                || IvmRuleUtils.containsLogicalVersion(tree.getInputs().get(0))) {
             tree.setChild(0, originalPlan);
             deriveLogicalProperty(tree);
             return;

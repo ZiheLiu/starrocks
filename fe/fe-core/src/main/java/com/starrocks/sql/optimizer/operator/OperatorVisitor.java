@@ -52,6 +52,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalTopNOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalTreeAnchorOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalValuesOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalViewScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalWindowOperator;
 import com.starrocks.sql.optimizer.operator.logical.MockOperator;
@@ -252,6 +253,10 @@ public abstract class OperatorVisitor<R, C> {
     }
 
     public R visitLogicalDelta(LogicalDeltaOperator node, C context) {
+        return visitOperator(node, context);
+    }
+
+    public R visitLogicalVersion(LogicalVersionOperator node, C context) {
         return visitOperator(node, context);
     }
 
