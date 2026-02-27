@@ -33,9 +33,13 @@ import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
+import com.starrocks.sql.optimizer.base.Ordering;
+import com.starrocks.sql.optimizer.operator.Operator;
+import com.starrocks.sql.optimizer.operator.SortPhase;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalTopNOperator;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
@@ -211,7 +215,12 @@ public class IvmRewriter {
         requiredColumns.union(loadOpColumn);
         rootTaskContext.getRequiredColumns().union(loadOpColumn);
 
-        return OptExpression.create(new LogicalProjectOperator(projectMap), root);
+        OptExpression projectExpr = OptExpression.create(new LogicalProjectOperator(projectMap), root);
+        // DELETE must come first: __op=1 for DELETE, __op=0 for INSERT.
+        List<Ordering> orderings = List.of(new Ordering(loadOpColumn, false, false));
+        LogicalTopNOperator topN = new LogicalTopNOperator(
+                orderings, Operator.DEFAULT_LIMIT, Operator.DEFAULT_OFFSET, SortPhase.PARTIAL);
+        return OptExpression.create(topN, projectExpr);
     }
 
     private static MvId parseTargetMvId(OptimizerContext optimizerContext) {

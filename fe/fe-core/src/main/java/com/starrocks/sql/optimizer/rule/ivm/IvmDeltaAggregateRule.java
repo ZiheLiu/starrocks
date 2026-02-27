@@ -46,6 +46,7 @@ import com.starrocks.sql.optimizer.rule.transformation.materialization.OptExpres
 import com.starrocks.type.IntegerType;
 import org.apache.commons.collections4.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -172,11 +173,12 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         List<ColumnRefOperator> rewrittenGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size() + 1);
         rewrittenGroupingKeys.addAll(originalGroupingKeys);
         rewrittenGroupingKeys.add(actionColumn);
+        List<ColumnRefOperator> rewrittenPartitionBys = new ArrayList<>(originalGroupingKeys);
 
         LogicalAggregationOperator rewrittenAgg = LogicalAggregationOperator.builder()
                 .withOperator(agg)
                 .setGroupingKeys(rewrittenGroupingKeys)
-                .setPartitionByColumns(rewrittenGroupingKeys)
+                .setPartitionByColumns(rewrittenPartitionBys)
                 .build();
         return List.of(OptExpression.create(rewrittenAgg, alignedInput));
     }
