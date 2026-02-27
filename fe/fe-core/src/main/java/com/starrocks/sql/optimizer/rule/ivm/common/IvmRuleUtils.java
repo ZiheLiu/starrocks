@@ -21,6 +21,7 @@ import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEAnchorOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
@@ -105,6 +106,12 @@ public class IvmRuleUtils {
                         .filter(IvmRuleUtils::isActionColumn)
                         .findFirst();
             }
+        }
+        if (expression.getOp() instanceof LogicalCTEAnchorOperator) {
+            if (expression.getInputs().size() >= 2) {
+                return findActionColumn(expression.inputAt(1));
+            }
+            return Optional.empty();
         }
         if (expression.getInputs().size() == 1) {
             return findActionColumn(expression.inputAt(0));
