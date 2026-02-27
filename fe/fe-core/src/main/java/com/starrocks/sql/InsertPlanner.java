@@ -134,6 +134,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -465,6 +466,7 @@ public class InsertPlanner {
                 session.getSessionVariable().setPreferComputeNode(false);
                 session.getSessionVariable().setUseComputeNodes(0);
                 OlapTableSink olapTableSink = (OlapTableSink) dataSink;
+                setIvmLocalShuffleExprsIfNeeded(insertStmt, targetTable, tupleDesc, olapTableSink);
                 TableRef tableRef = insertStmt.getTableRef();
                 TableName catalogDbTable = TableName.fromTableRef(tableRef);
                 Database db = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(session, catalogDbTable.getCatalog(),
@@ -672,6 +674,39 @@ public class InsertPlanner {
             return;
         }
         outputFullSchema.add(new Column(Load.LOAD_OP_COLUMN, IntegerType.TINYINT, false));
+    }
+
+    private void setIvmLocalShuffleExprsIfNeeded(InsertStmt insertStmt, Table targetTable, TupleDescriptor tupleDesc,
+                                                 OlapTableSink olapTableSink) {
+        if (!insertStmt.isSystem()) {
+            return;
+        }
+        if (!(targetTable instanceof MaterializedView) || !(targetTable instanceof OlapTable olapTable)) {
+            return;
+        }
+        if (olapTable.getKeysType() != KeysType.PRIMARY_KEYS) {
+            return;
+        }
+        boolean hasLoadOpSchema = outputFullSchema.stream()
+                .anyMatch(col -> col != null && Load.LOAD_OP_COLUMN.equalsIgnoreCase(col.getName()));
+        if (!hasLoadOpSchema) {
+            return;
+        }
+
+        Map<String, SlotDescriptor> slotByName = tupleDesc.getSlots().stream()
+                .filter(slot -> slot.getColumn() != null)
+                .collect(Collectors.toMap(slot -> slot.getColumn().getName().toLowerCase(Locale.ROOT),
+                        slot -> slot, (left, right) -> left));
+        List<Expr> localShuffleExprs = Lists.newArrayList();
+        for (Column keyColumn : olapTable.getKeyColumnsInOrder()) {
+            SlotDescriptor slot = slotByName.get(keyColumn.getName().toLowerCase(Locale.ROOT));
+            if (slot != null) {
+                localShuffleExprs.add(new SlotRef(slot));
+            }
+        }
+        if (!localShuffleExprs.isEmpty()) {
+            olapTableSink.setLocalShuffleExprs(localShuffleExprs);
+        }
     }
 
     private void castLiteralToTargetColumnsType(InsertStmt insertStatement) {
