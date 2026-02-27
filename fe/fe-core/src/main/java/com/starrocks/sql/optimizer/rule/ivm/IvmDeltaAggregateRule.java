@@ -39,7 +39,6 @@ import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
-import com.starrocks.sql.optimizer.rewrite.ReplaceColumnRefRewriter;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
@@ -148,28 +147,38 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 versionUnion,
                 affectedKeys);
 
-        ReplaceColumnRefRewriter aggCallRewriter = new ReplaceColumnRefRewriter(originalToUnionCols);
-        Map<ColumnRefOperator, CallOperator> rewrittenAggCalls = Maps.newHashMap();
-        for (Map.Entry<ColumnRefOperator, CallOperator> entry : agg.getAggregations().entrySet()) {
-            ScalarOperator rewritten = aggCallRewriter.rewrite(entry.getValue());
-            Preconditions.checkState(rewritten instanceof CallOperator,
-                    "Aggregate call rewrite must keep CallOperator, but got: %s", rewritten);
-            rewrittenAggCalls.put(entry.getKey(), (CallOperator) rewritten);
+        // Align rewritten child slots back to original aggregate input slots so upper operators can keep old slot ids.
+        Map<ColumnRefOperator, ScalarOperator> alignedProjectMap = Maps.newHashMap();
+        for (ColumnRefOperator originalGroupingKey : originalGroupingKeys) {
+            ColumnRefOperator mappedGroupKey = originalToUnionCols.get(originalGroupingKey);
+            Preconditions.checkState(mappedGroupKey != null,
+                    "Missing mapped group key for %s in IVM delta aggregate rewrite", originalGroupingKey);
+            alignedProjectMap.put(originalGroupingKey, mappedGroupKey);
         }
+        for (CallOperator call : agg.getAggregations().values()) {
+            for (ColumnRefOperator usedColumn : call.getUsedColumns().getColumnRefOperators(columnRefFactory)) {
+                if (alignedProjectMap.containsKey(usedColumn)) {
+                    continue;
+                }
+                ColumnRefOperator mappedUsedColumn = originalToUnionCols.get(usedColumn);
+                if (mappedUsedColumn != null) {
+                    alignedProjectMap.put(usedColumn, mappedUsedColumn);
+                }
+            }
+        }
+        alignedProjectMap.put(actionColumn, actionColumn);
+        OptExpression alignedInput = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), semiJoin);
 
         List<ColumnRefOperator> rewrittenGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size() + 1);
-        for (ColumnRefOperator originalGroupingKey : originalGroupingKeys) {
-            rewrittenGroupingKeys.add(originalToUnionCols.get(originalGroupingKey));
-        }
+        rewrittenGroupingKeys.addAll(originalGroupingKeys);
         rewrittenGroupingKeys.add(actionColumn);
 
         LogicalAggregationOperator rewrittenAgg = LogicalAggregationOperator.builder()
                 .withOperator(agg)
                 .setGroupingKeys(rewrittenGroupingKeys)
                 .setPartitionByColumns(rewrittenGroupingKeys)
-                .setAggregations(rewrittenAggCalls)
                 .build();
-        return List.of(OptExpression.create(rewrittenAgg, semiJoin));
+        return List.of(OptExpression.create(rewrittenAgg, alignedInput));
     }
 
     private boolean isSupportedAggregate(LogicalAggregationOperator agg) {
