@@ -79,6 +79,12 @@ public class LogicalTopNOperator extends LogicalOperator {
         this(limit, null, null, null, DEFAULT_LIMIT, orderByElements, offset, sortPhase, TopNType.ROW_NUMBER, false);
     }
 
+    public LogicalTopNOperator(List<Ordering> orderByElements, long limit, long offset,
+                               SortPhase sortPhase, boolean perPipeline) {
+        this(orderByElements, limit, offset, sortPhase);
+        this.perPipeline = perPipeline;
+    }
+
     private LogicalTopNOperator() {
         super(OperatorType.LOGICAL_TOPN);
     }

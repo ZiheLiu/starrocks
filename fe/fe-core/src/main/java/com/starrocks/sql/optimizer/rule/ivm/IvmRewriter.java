@@ -34,6 +34,7 @@ import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.base.Ordering;
+import com.starrocks.sql.optimizer.operator.Operator;
 import com.starrocks.sql.optimizer.operator.SortPhase;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
@@ -217,11 +218,8 @@ public class IvmRewriter {
         OptExpression projectExpr = OptExpression.create(new LogicalProjectOperator(projectMap), root);
         // DELETE must come first: __op=1 for DELETE, __op=0 for INSERT.
         List<Ordering> orderings = List.of(new Ordering(loadOpColumn, false, false));
-        LogicalTopNOperator topN = LogicalTopNOperator.builder()
-                .setOrderByElements(orderings)
-                .setSortPhase(SortPhase.PARTIAL)
-                .setPerPipeline(true)
-                .build();
+        LogicalTopNOperator topN = new LogicalTopNOperator(
+                orderings, Operator.DEFAULT_LIMIT, Operator.DEFAULT_OFFSET, SortPhase.PARTIAL, true);
         return OptExpression.create(topN, projectExpr);
     }
 
