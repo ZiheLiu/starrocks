@@ -28,7 +28,6 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
