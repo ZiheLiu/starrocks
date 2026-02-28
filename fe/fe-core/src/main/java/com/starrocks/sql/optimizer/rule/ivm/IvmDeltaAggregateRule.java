@@ -280,6 +280,32 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return null;
         }
 
+        // Align rewritten child slots back to original aggregate input slots so upper expressions can keep old slot ids.
+        Map<ColumnRefOperator, ScalarOperator> alignedProjectMap = Maps.newHashMap();
+        for (ColumnRefOperator originalGroupingKey : originalGroupingKeys) {
+            ColumnRefOperator mappedGroupKey = originalToMapped.get(originalGroupingKey);
+            Preconditions.checkState(mappedGroupKey != null,
+                    "Missing mapped group key for %s in IVM delta aggregate rewrite", originalGroupingKey);
+            alignedProjectMap.put(originalGroupingKey, mappedGroupKey);
+        }
+        for (CallOperator call : agg.getAggregations().values()) {
+            for (ColumnRefOperator usedColumn : call.getUsedColumns().getColumnRefOperators(columnRefFactory)) {
+                if (alignedProjectMap.containsKey(usedColumn)) {
+                    continue;
+                }
+                ColumnRefOperator mappedUsedColumn = originalToMapped.get(usedColumn);
+                if (mappedUsedColumn != null) {
+                    alignedProjectMap.put(usedColumn, mappedUsedColumn);
+                }
+            }
+        }
+        alignedProjectMap.put(actionColumn, actionColumn);
+        changesInput = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), changesInput);
+        for (ColumnRefOperator alignedCol : alignedProjectMap.keySet()) {
+            originalToMapped.put(alignedCol, alignedCol);
+        }
+        mappedGroupingKeys = Lists.newArrayList(originalGroupingKeys);
+
         // Build delta aggregate over changes:
         // 1) total row-count delta (sum(action))
         // 2) per-output retractable deltas (COUNT/SUM/AVG supported).
