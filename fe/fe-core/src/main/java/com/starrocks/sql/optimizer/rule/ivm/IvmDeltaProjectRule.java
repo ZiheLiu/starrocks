@@ -34,9 +34,10 @@ public class IvmDeltaProjectRule extends TransformationRule {
 
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
+        LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
         LogicalProjectOperator project = (LogicalProjectOperator) input.inputAt(0).getOp();
         OptExpression projectChild = input.inputAt(0).inputAt(0);
-        OptExpression deltaChild = OptExpression.create(new LogicalDeltaOperator(), projectChild);
+        OptExpression deltaChild = OptExpression.create(new LogicalDeltaOperator(delta.isRootDelta()), projectChild);
         OptExpression rewritten = OptExpression.create(project, deltaChild);
         return List.of(rewritten);
     }

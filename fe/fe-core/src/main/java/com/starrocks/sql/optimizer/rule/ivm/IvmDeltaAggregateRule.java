@@ -59,7 +59,6 @@ import com.starrocks.type.Type;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -74,13 +73,14 @@ public class IvmDeltaAggregateRule extends TransformationRule {
 
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
+        LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
         LogicalAggregationOperator agg = (LogicalAggregationOperator) input.inputAt(0).getOp();
         OptExpression aggChild = input.inputAt(0).inputAt(0);
         if (!isSupportedAggregate(agg)) {
             return List.of();
         }
 
-        OptExpression optimized = tryRewriteByChangesAndMv(input, context, agg, aggChild);
+        OptExpression optimized = tryRewriteByChangesAndMv(context, delta, agg, aggChild);
         if (optimized != null) {
             return List.of(optimized);
         }
@@ -143,7 +143,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         OptExpression fromSnapshot = OptExpression.create(
                 new LogicalVersionOperator(fromVersion, (byte) -1), minusProject);
 
-        OptExpression deltaInputForPlus = OptExpression.create(new LogicalDeltaOperator(), aggChild);
+        OptExpression deltaInputForPlus = OptExpression.create(new LogicalDeltaOperator(false), aggChild);
         LogicalAggregationOperator affectedKeysAggForPlus = new LogicalAggregationOperator(
                 AggType.GLOBAL, originalGroupingKeys, Maps.newHashMap());
         OptExpression affectedKeysForPlus = OptExpression.create(affectedKeysAggForPlus, deltaInputForPlus);
@@ -226,13 +226,14 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         return List.of(cteAnchor);
     }
 
-    private OptExpression tryRewriteByChangesAndMv(OptExpression input, OptimizerContext context,
+    private OptExpression tryRewriteByChangesAndMv(OptimizerContext context,
+                                                   LogicalDeltaOperator delta,
                                                    LogicalAggregationOperator agg, OptExpression aggChild) {
-        MaterializedView targetMv = resolveTargetMv(context);
-        if (targetMv == null || targetMv.getKeysType() != KeysType.PRIMARY_KEYS) {
+        if (!delta.isRootDelta()) {
             return null;
         }
-        if (!isRootAggregationForTargetMv(agg, targetMv)) {
+        MaterializedView targetMv = resolveTargetMv(context);
+        if (targetMv == null || targetMv.getKeysType() != KeysType.PRIMARY_KEYS) {
             return null;
         }
 
@@ -456,31 +457,6 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return null;
         }
         return targetMv;
-    }
-
-    private boolean isRootAggregationForTargetMv(LogicalAggregationOperator agg, MaterializedView targetMv) {
-        Set<String> visibleMvColumnNames = new HashSet<>();
-        for (Column column : targetMv.getFullSchema()) {
-            if (column == null || column.isHidden()) {
-                continue;
-            }
-            visibleMvColumnNames.add(column.getName().toLowerCase());
-        }
-        if (visibleMvColumnNames.isEmpty()) {
-            return false;
-        }
-
-        Set<String> aggOutputColumnNames = new HashSet<>();
-        for (ColumnRefOperator groupingKey : agg.getGroupingKeys()) {
-            aggOutputColumnNames.add(groupingKey.getName().toLowerCase());
-        }
-        for (ColumnRefOperator aggOutput : agg.getAggregations().keySet()) {
-            aggOutputColumnNames.add(aggOutput.getName().toLowerCase());
-        }
-        if (aggOutputColumnNames.isEmpty()) {
-            return false;
-        }
-        return aggOutputColumnNames.equals(visibleMvColumnNames);
     }
 
     private RetractableAggInfo buildRetractableAggInfo(ColumnRefOperator outputRef, CallOperator call,

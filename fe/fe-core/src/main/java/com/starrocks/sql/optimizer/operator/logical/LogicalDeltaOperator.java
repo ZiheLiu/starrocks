@@ -30,8 +30,19 @@ import java.util.List;
  * It should be eliminated by IVM delta rewrite rules before physical optimization.
  */
 public class LogicalDeltaOperator extends LogicalOperator {
+    private final boolean isRootDelta;
+
     public LogicalDeltaOperator() {
+        this(false);
+    }
+
+    public LogicalDeltaOperator(boolean isRootDelta) {
         super(OperatorType.LOGICAL_DELTA);
+        this.isRootDelta = isRootDelta;
+    }
+
+    public boolean isRootDelta() {
+        return isRootDelta;
     }
 
     @Override
