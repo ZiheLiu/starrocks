@@ -61,9 +61,11 @@ import com.starrocks.type.Type;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public class IvmDeltaAggregateRule extends TransformationRule {
     public IvmDeltaAggregateRule() {
@@ -230,6 +232,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     private OptExpression tryRewriteByChangesAndMv(OptimizerContext context,
                                                    LogicalDeltaOperator delta,
                                                    LogicalAggregationOperator agg, OptExpression aggChild) {
+        // This fast path is only valid for the root IVM aggregate refresh on primary-key MV.
         if (!delta.isRootDelta()) {
             return null;
         }
@@ -238,6 +241,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return null;
         }
 
+        // Align aggregate input/grouping columns to the duplicated "changes" subtree.
         ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
         List<ColumnRefOperator> originalChildOutputs = aggChild.getOutputColumns().getColumnRefOperators(columnRefFactory);
         List<ColumnRefOperator> originalGroupingKeys = agg.getGroupingKeys();
@@ -261,6 +265,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             mappedGroupingKeys.add(mapped);
         }
 
+        // Rewrite base scans to CHANGES scans and ensure __ACTION__ is available in the subtree.
         OptExpression changesInput = rewriteOlapScansToChanges(clonedChild);
         if (changesInput == null) {
             return null;
@@ -275,6 +280,9 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return null;
         }
 
+        // Build delta aggregate over changes:
+        // 1) total row-count delta (sum(action))
+        // 2) per-output retractable deltas (COUNT/SUM/AVG supported).
         ColumnRefOperator deltaCount1Ref = columnRefFactory.create("__delta_count1", IntegerType.BIGINT, false);
         Map<ColumnRefOperator, CallOperator> deltaAggCalls = Maps.newHashMap();
         deltaAggCalls.put(deltaCount1Ref, sumCall(IntegerType.BIGINT, actionColumn));
@@ -295,11 +303,13 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 AggType.GLOBAL, mappedGroupingKeys, deltaAggCalls);
         OptExpression deltaAggExpr = OptExpression.create(deltaAgg, changesInput);
 
+        // Scan current MV state and bind visible/hidden state columns for each aggregate output.
         MvScanInfo mvScanInfo = buildMvScan(
                 targetMv, originalGroupingKeys, aggInfos, columnRefFactory, delta.getMvColumnMapping());
         if (mvScanInfo == null) {
             return null;
         }
+        // Merge "delta state" with current MV state on grouping keys.
         ScalarOperator joinOn = buildJoinOnByKeys(mappedGroupingKeys, mvScanInfo.groupingKeyRefs);
         if (joinOn == null) {
             return null;
@@ -316,6 +326,9 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             insertProjectMap.put(originalGroupingKeys.get(i), mappedGroupingKeys.get(i));
         }
 
+        // Materialize old/new visible values and hidden states:
+        // - delete branch emits old state with action=-1 when old row exists
+        // - insert branch emits new state with action=+1 when new row exists
         List<ColumnRefOperator> hiddenOutputRefs = Lists.newArrayList();
         for (RetractableAggInfo info : aggInfos) {
             ScalarOperator oldVisible = info.computeOldVisible(mvScanInfo, columnRefFactory);
@@ -340,10 +353,33 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 addOperator(coalesceZero(mvScanInfo.totalCountRef), deltaCount1Ref, IntegerType.BIGINT),
                 ConstantOperator.createBigint(0));
 
+        // Build DELETE and INSERT change streams, then union them as final MV changes.
+        // Keep mergeJoin under one CTE producer so two branches consume the same affected rows snapshot.
+        Set<ColumnRefOperator> consumeRefs = new HashSet<>();
+        for (ScalarOperator expr : deleteProjectMap.values()) {
+            consumeRefs.addAll(expr.getUsedColumns().getColumnRefOperators(columnRefFactory));
+        }
+        for (ScalarOperator expr : insertProjectMap.values()) {
+            consumeRefs.addAll(expr.getUsedColumns().getColumnRefOperators(columnRefFactory));
+        }
+        consumeRefs.addAll(oldExists.getUsedColumns().getColumnRefOperators(columnRefFactory));
+        consumeRefs.addAll(newExists.getUsedColumns().getColumnRefOperators(columnRefFactory));
+
+        int mergeCteId = context.getCteContext().getNextCteId();
+        OptExpression mergeProduce = OptExpression.create(new LogicalCTEProduceOperator(mergeCteId), mergeJoin);
+        Map<ColumnRefOperator, ColumnRefOperator> deleteConsumeMap = Maps.newHashMap();
+        Map<ColumnRefOperator, ColumnRefOperator> insertConsumeMap = Maps.newHashMap();
+        for (ColumnRefOperator ref : consumeRefs) {
+            deleteConsumeMap.put(ref, ref);
+            insertConsumeMap.put(ref, ref);
+        }
+        OptExpression deleteConsume = OptExpression.create(new LogicalCTEConsumeOperator(mergeCteId, deleteConsumeMap));
+        OptExpression insertConsume = OptExpression.create(new LogicalCTEConsumeOperator(mergeCteId, insertConsumeMap));
+
         OptExpression deleteBranch = OptExpression.create(new LogicalProjectOperator(deleteProjectMap),
-                OptExpression.create(new LogicalFilterOperator(oldExists), mergeJoin));
+                OptExpression.create(new LogicalFilterOperator(oldExists), deleteConsume));
         OptExpression insertBranch = OptExpression.create(new LogicalProjectOperator(insertProjectMap),
-                OptExpression.create(new LogicalFilterOperator(newExists), mergeJoin));
+                OptExpression.create(new LogicalFilterOperator(newExists), insertConsume));
 
         List<ColumnRefOperator> unionOutputs = Lists.newArrayList();
         unionOutputs.addAll(originalGroupingKeys);
@@ -351,8 +387,9 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         unionOutputs.addAll(hiddenOutputRefs);
         unionOutputs.add(finalActionColumn);
         List<List<ColumnRefOperator>> childOutputCols = List.of(unionOutputs, unionOutputs);
-        return OptExpression.create(new LogicalUnionOperator(unionOutputs, childOutputCols, true),
+        OptExpression unionChanges = OptExpression.create(new LogicalUnionOperator(unionOutputs, childOutputCols, true),
                 deleteBranch, insertBranch);
+        return OptExpression.create(new LogicalCTEAnchorOperator(mergeCteId), mergeProduce, unionChanges);
     }
 
     private boolean isSupportedAggregate(LogicalAggregationOperator agg) {
