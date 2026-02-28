@@ -293,7 +293,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 AggType.GLOBAL, mappedGroupingKeys, deltaAggCalls);
         OptExpression deltaAggExpr = OptExpression.create(deltaAgg, changesInput);
 
-        MvScanInfo mvScanInfo = buildMvScan(targetMv, originalGroupingKeys, aggInfos, columnRefFactory);
+        MvScanInfo mvScanInfo = buildMvScan(targetMv, originalGroupingKeys, aggInfos, columnRefFactory,
+                delta.getMvColumnMapping());
         if (mvScanInfo == null) {
             return null;
         }
@@ -536,7 +537,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     }
 
     private MvScanInfo buildMvScan(MaterializedView targetMv, List<ColumnRefOperator> groupingKeys,
-                                   List<RetractableAggInfo> infos, ColumnRefFactory columnRefFactory) {
+                                   List<RetractableAggInfo> infos, ColumnRefFactory columnRefFactory,
+                                   Map<ColumnRefOperator, Column> mvColumnMapping) {
         Map<String, Column> mvColumnByName = Maps.newHashMap();
         for (Column column : targetMv.getFullSchema()) {
             mvColumnByName.put(column.getName().toLowerCase(), column);
@@ -545,12 +547,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         Map<ColumnRefOperator, Column> colRefToMeta = Maps.newHashMap();
         Map<Column, ColumnRefOperator> metaToColRef = Maps.newHashMap();
         List<ColumnRefOperator> groupKeyRefs = Lists.newArrayListWithCapacity(groupingKeys.size());
-        for (int i = 0; i < groupingKeys.size(); i++) {
-            ColumnRefOperator groupingKey = groupingKeys.get(i);
-            Column mvColumn = mvColumnByName.get(groupingKey.getName().toLowerCase());
-            if (mvColumn == null) {
-                mvColumn = mvColumnByName.get(IvmRuleUtils.groupingKeyStateColumnName(i).toLowerCase());
-            }
+        for (ColumnRefOperator groupingKey : groupingKeys) {
+            Column mvColumn = mvColumnMapping.get(groupingKey);
             if (mvColumn == null) {
                 return null;
             }
@@ -560,14 +558,15 @@ public class IvmDeltaAggregateRule extends TransformationRule {
 
         Column totalCountColumn = null;
         for (RetractableAggInfo info : infos) {
-            Column visible = mvColumnByName.get(info.outputRef.getName().toLowerCase());
-            if (visible == null) {
+            Column mvColumn = mvColumnMapping.get(info.outputRef);
+            if (mvColumn == null) {
                 return null;
             }
-            info.mvVisibleRef = createScanColumnRef(columnRefFactory, targetMv, visible, colRefToMeta, metaToColRef);
+            info.mvVisibleRef = createScanColumnRef(columnRefFactory, targetMv, mvColumn, colRefToMeta, metaToColRef);
+            String visibleName = mvColumn.getName();
 
             if (info.kind == AggKind.COUNT_COLUMN || info.kind == AggKind.SUM_COLUMN || info.kind == AggKind.AVG_COLUMN) {
-                Column cnt1 = mvColumnByName.get(IvmRuleUtils.count1StateColumnName(info.outputRef.getName()).toLowerCase());
+                Column cnt1 = mvColumnByName.get(IvmRuleUtils.count1StateColumnName(visibleName).toLowerCase());
                 if (cnt1 == null) {
                     return null;
                 }
@@ -577,8 +576,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 }
             }
             if (info.kind == AggKind.AVG_COLUMN) {
-                Column sum = mvColumnByName.get(IvmRuleUtils.sumStateColumnName(info.outputRef.getName()).toLowerCase());
-                Column count = mvColumnByName.get(IvmRuleUtils.countStateColumnName(info.outputRef.getName()).toLowerCase());
+                Column sum = mvColumnByName.get(IvmRuleUtils.sumStateColumnName(visibleName).toLowerCase());
+                Column count = mvColumnByName.get(IvmRuleUtils.countStateColumnName(visibleName).toLowerCase());
                 if (sum == null || count == null) {
                     return null;
                 }
@@ -586,7 +585,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 info.mvCountStateRef = createScanColumnRef(columnRefFactory, targetMv, count, colRefToMeta, metaToColRef);
             }
             if (info.kind == AggKind.COUNT_ONE && totalCountColumn == null) {
-                totalCountColumn = visible;
+                totalCountColumn = mvColumn;
             }
         }
         if (totalCountColumn == null) {

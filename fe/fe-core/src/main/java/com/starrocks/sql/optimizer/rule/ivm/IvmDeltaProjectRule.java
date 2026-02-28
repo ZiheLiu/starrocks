@@ -14,16 +14,20 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
+import com.google.common.collect.Maps;
+import com.starrocks.catalog.Column;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
+import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
+import java.util.Map;
 
 public class IvmDeltaProjectRule extends TransformationRule {
     public IvmDeltaProjectRule() {
@@ -36,8 +40,21 @@ public class IvmDeltaProjectRule extends TransformationRule {
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
         LogicalProjectOperator project = (LogicalProjectOperator) input.inputAt(0).getOp();
+
+        boolean isTrivialProject = project.getColumnRefMap().entrySet().stream().allMatch(e -> e.getKey() == e.getValue());
+        boolean isRootDelta = isTrivialProject && delta.isRootDelta();
+
+        Map<ColumnRefOperator, Column> childMvColumnMapping = Maps.newHashMap();
+        if (isRootDelta) {
+            for (Map.Entry<ColumnRefOperator, Column> entry : delta.getMvColumnMapping().entrySet()) {
+                ColumnRefOperator childRef = (ColumnRefOperator) project.getColumnRefMap().get(entry.getKey());
+                childMvColumnMapping.put(childRef, entry.getValue());
+            }
+        }
+
         OptExpression projectChild = input.inputAt(0).inputAt(0);
-        OptExpression deltaChild = OptExpression.create(new LogicalDeltaOperator(delta.isRootDelta()), projectChild);
+        OptExpression deltaChild = OptExpression.create(
+                new LogicalDeltaOperator(isRootDelta, childMvColumnMapping), projectChild);
         OptExpression rewritten = OptExpression.create(project, deltaChild);
         return List.of(rewritten);
     }

@@ -18,6 +18,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.gson.JsonSyntaxException;
+import com.starrocks.catalog.Column;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.MvId;
@@ -78,7 +79,14 @@ public class IvmRewriter {
             return;
         }
 
-        tree.setChild(0, OptExpression.create(new LogicalDeltaOperator(true), rowIdResult.rewrittenRoot()));
+        MaterializedView targetMv = loadTargetMv(optimizerContext);
+        Map<ColumnRefOperator, Column> mvColumnMapping = Maps.newHashMap();
+        if (targetMv != null) {
+            deriveLogicalProperty(rowIdResult.rewrittenRoot());
+            mvColumnMapping = buildMvColumnMapping(rowIdResult.rewrittenRoot(), optimizerContext, targetMv);
+        }
+
+        tree.setChild(0, OptExpression.create(new LogicalDeltaOperator(true, mvColumnMapping), rowIdResult.rewrittenRoot()));
         deriveLogicalProperty(tree);
         scheduler.rewriteIterative(tree, rootTaskContext, RuleSet.OLAP_IVM_DELTA_REWRITE_RULES);
         if (IvmRuleUtils.containsLogicalDelta(tree.getInputs().get(0))
@@ -244,6 +252,21 @@ public class IvmRewriter {
             context.deriveLogicalProperty();
             root.setLogicalProperty(context.getRootProperty());
         }
+    }
+
+    private static Map<ColumnRefOperator, Column> buildMvColumnMapping(
+            OptExpression root, OptimizerContext optimizerContext, MaterializedView targetMv) {
+        List<ColumnRefOperator> outputColumns = root.getOutputColumns()
+                .getColumnRefOperators(optimizerContext.getColumnRefFactory());
+        List<Column> orderedOutputColumns = targetMv.getOrderedOutputColumns(true);
+        if (outputColumns.size() != orderedOutputColumns.size()) {
+            return Maps.newHashMap();
+        }
+        Map<ColumnRefOperator, Column> mapping = Maps.newHashMapWithExpectedSize(outputColumns.size());
+        for (int i = 0; i < outputColumns.size(); i++) {
+            mapping.put(outputColumns.get(i), orderedOutputColumns.get(i));
+        }
+        return mapping;
     }
 
     private static class BaseTableVersionBinder extends OptExpressionVisitor<OptExpression, Void> {

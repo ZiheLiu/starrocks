@@ -14,6 +14,8 @@
 
 package com.starrocks.sql.optimizer.operator.logical;
 
+import com.google.common.collect.Maps;
+import com.starrocks.catalog.Column;
 import com.starrocks.sql.optimizer.ExpressionContext;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
@@ -21,9 +23,12 @@ import com.starrocks.sql.optimizer.RowOutputInfo;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.OperatorVisitor;
+import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.property.DomainProperty;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A logical marker operator for incremental maintenance rewrite.
@@ -31,18 +36,29 @@ import java.util.List;
  */
 public class LogicalDeltaOperator extends LogicalOperator {
     private final boolean isRootDelta;
+    private final Map<ColumnRefOperator, Column> mvColumnMapping;
 
     public LogicalDeltaOperator() {
-        this(false);
+        this(false, Maps.newHashMap());
     }
 
     public LogicalDeltaOperator(boolean isRootDelta) {
+        this(isRootDelta, Maps.newHashMap());
+    }
+
+    public LogicalDeltaOperator(boolean isRootDelta, Map<ColumnRefOperator, Column> mvColumnMapping) {
         super(OperatorType.LOGICAL_DELTA);
         this.isRootDelta = isRootDelta;
+        this.mvColumnMapping = Collections.unmodifiableMap(
+                mvColumnMapping == null ? Maps.newHashMap() : Maps.newHashMap(mvColumnMapping));
     }
 
     public boolean isRootDelta() {
         return isRootDelta;
+    }
+
+    public Map<ColumnRefOperator, Column> getMvColumnMapping() {
+        return mvColumnMapping;
     }
 
     @Override
