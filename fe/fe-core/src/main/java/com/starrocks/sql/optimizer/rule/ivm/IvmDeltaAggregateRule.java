@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.Column;
+import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.OlapTable;
@@ -25,6 +26,7 @@ import com.starrocks.sql.ast.InsertStmt;
 import com.starrocks.sql.ast.JoinOperator;
 import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.ast.expression.BinaryType;
+import com.starrocks.sql.ast.expression.ExprUtils;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.Utils;
@@ -293,8 +295,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 AggType.GLOBAL, mappedGroupingKeys, deltaAggCalls);
         OptExpression deltaAggExpr = OptExpression.create(deltaAgg, changesInput);
 
-        MvScanInfo mvScanInfo = buildMvScan(targetMv, originalGroupingKeys, aggInfos, columnRefFactory,
-                delta.getMvColumnMapping());
+        MvScanInfo mvScanInfo = buildMvScan(
+                targetMv, originalGroupingKeys, aggInfos, columnRefFactory, delta.getMvColumnMapping());
         if (mvScanInfo == null) {
             return null;
         }
@@ -625,7 +627,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     }
 
     private static CallOperator sumCall(Type returnType, ScalarOperator arg) {
-        return new CallOperator(FunctionSet.SUM, returnType, List.of(arg));
+        return createBuiltinCall(FunctionSet.SUM, returnType, List.of(arg));
     }
 
     private static ScalarOperator coalesceZero(ScalarOperator input) {
@@ -639,15 +641,27 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     }
 
     private static ScalarOperator addOperator(ScalarOperator left, ScalarOperator right, Type type) {
-        return new CallOperator(FunctionSet.ADD, type, List.of(left, right));
+        return createBuiltinCall(FunctionSet.ADD, type, List.of(left, right));
     }
 
     private static ScalarOperator multiplyOperator(ScalarOperator left, ScalarOperator right, Type type) {
-        return new CallOperator(FunctionSet.MULTIPLY, type, List.of(left, right));
+        return createBuiltinCall(FunctionSet.MULTIPLY, type, List.of(left, right));
     }
 
     private static ScalarOperator divideOperator(ScalarOperator left, ScalarOperator right, Type type) {
-        return new CallOperator(FunctionSet.DIVIDE, type, List.of(left, right));
+        return createBuiltinCall(FunctionSet.DIVIDE, type, List.of(left, right));
+    }
+
+    private static CallOperator createBuiltinCall(String fnName, Type returnType, List<ScalarOperator> args) {
+        Type[] argTypes = args.stream().map(ScalarOperator::getType).toArray(Type[]::new);
+        Function fn = ExprUtils.getBuiltinFunction(fnName, argTypes, Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
+        if (fn == null) {
+            return new CallOperator(fnName, returnType, args);
+        }
+        Function copied = fn.copy();
+        copied = copied.updateArgType(argTypes);
+        copied.setRetType(returnType);
+        return new CallOperator(fnName, returnType, args, copied);
     }
 
     private static ConstantOperator zeroConstant(Type type) {
