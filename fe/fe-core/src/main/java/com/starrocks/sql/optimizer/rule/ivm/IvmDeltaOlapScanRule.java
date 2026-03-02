@@ -14,17 +14,22 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
+import com.google.common.collect.Maps;
+import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
+import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
+import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
+import java.util.Map;
 
 public class IvmDeltaOlapScanRule extends TransformationRule {
     public IvmDeltaOlapScanRule() {
@@ -35,10 +40,12 @@ public class IvmDeltaOlapScanRule extends TransformationRule {
 
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
+        LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
         LogicalOlapScanOperator scan = (LogicalOlapScanOperator) input.inputAt(0).getOp();
         if (!(scan.getTable() instanceof OlapTable olapTable)) {
             return List.of();
         }
+
         Long fromVersion = scan.getTableVersion();
         if (fromVersion == null) {
             return List.of();
@@ -47,11 +54,24 @@ public class IvmDeltaOlapScanRule extends TransformationRule {
         if (toVersion <= fromVersion) {
             return List.of();
         }
-        LogicalOlapScanOperator rewrittenScan = LogicalOlapScanOperator.builder()
+
+        Map<ColumnRefOperator, Column> newColRefToMeta = Maps.newHashMap(scan.getColRefToColumnMetaMap());
+        Map<Column, ColumnRefOperator> newMetaToColRef = Maps.newHashMap(scan.getColumnMetaToColRefMap());
+        ColumnRefOperator actionColumnRef = delta.getActionColumn();
+        if (actionColumnRef != null) {
+            Column actionMeta = new Column(IvmRuleUtils.ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE, false);
+            context.getColumnRefFactory().updateColumnRefToColumns(actionColumnRef, actionMeta, scan.getTable());
+            newColRefToMeta.put(actionColumnRef, actionMeta);
+            newMetaToColRef.put(actionMeta, actionColumnRef);
+        }
+
+        LogicalOlapScanOperator newScan = LogicalOlapScanOperator.builder()
                 .withOperator(scan)
                 .setTableVersion(null)
                 .setChangesVersionRange(fromVersion, toVersion)
+                .setColRefToColumnMetaMap(newColRefToMeta)
+                .setColumnMetaToColRefMap(newMetaToColRef)
                 .build();
-        return List.of(OptExpression.create(rewrittenScan));
+        return List.of(OptExpression.create(newScan));
     }
 }

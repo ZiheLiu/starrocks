@@ -26,9 +26,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
-import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
-import com.starrocks.type.IntegerType;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -59,9 +57,9 @@ public class IvmVersionOlapScanRule extends TransformationRule {
         for (ColumnRefOperator outputColumn : outputColumns) {
             projectMap.put(outputColumn, outputColumn);
         }
-        ColumnRefOperator actionColumn = context.getColumnRefFactory().create(
-                IvmRuleUtils.ACTION_COLUMN_NAME, IntegerType.TINYINT, false);
-        projectMap.put(actionColumn, ConstantOperator.createTinyInt(version.getAction()));
+        if (version.getActionColumn() != null) {
+            projectMap.put(version.getActionColumn(), ConstantOperator.createTinyInt(version.getAction()));
+        }
 
         return List.of(OptExpression.create(new LogicalProjectOperator(projectMap), OptExpression.create(rewrittenScan)));
     }

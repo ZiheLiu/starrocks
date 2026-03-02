@@ -21,6 +21,7 @@ import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.RowOutputInfo;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
+import com.starrocks.sql.optimizer.operator.ColumnOutputInfo;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.OperatorVisitor;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
@@ -35,20 +36,31 @@ import java.util.Map;
  * It should be eliminated by IVM delta rewrite rules before physical optimization.
  */
 public class LogicalDeltaOperator extends LogicalOperator {
-    private final boolean isRootDelta;
-    private final Map<ColumnRefOperator, Column> mvColumnMapping;
+    private boolean isRootDelta;
+    private ColumnRefOperator actionColumn;
+    private Map<ColumnRefOperator, Column> mvColumnMapping;
 
     public LogicalDeltaOperator() {
-        this(false, Maps.newHashMap());
+        this(false, null, Maps.newHashMap());
     }
 
     public LogicalDeltaOperator(boolean isRootDelta) {
-        this(isRootDelta, Maps.newHashMap());
+        this(isRootDelta, null, Maps.newHashMap());
     }
 
     public LogicalDeltaOperator(boolean isRootDelta, Map<ColumnRefOperator, Column> mvColumnMapping) {
+        this(isRootDelta, null, mvColumnMapping);
+    }
+
+    public LogicalDeltaOperator(boolean isRootDelta, ColumnRefOperator actionColumn) {
+        this(isRootDelta, actionColumn, Maps.newHashMap());
+    }
+
+    public LogicalDeltaOperator(boolean isRootDelta, ColumnRefOperator actionColumn,
+                                Map<ColumnRefOperator, Column> mvColumnMapping) {
         super(OperatorType.LOGICAL_DELTA);
         this.isRootDelta = isRootDelta;
+        this.actionColumn = actionColumn;
         this.mvColumnMapping = Collections.unmodifiableMap(
                 mvColumnMapping == null ? Maps.newHashMap() : Maps.newHashMap(mvColumnMapping));
     }
@@ -57,18 +69,30 @@ public class LogicalDeltaOperator extends LogicalOperator {
         return isRootDelta;
     }
 
+    public ColumnRefOperator getActionColumn() {
+        return actionColumn;
+    }
+
     public Map<ColumnRefOperator, Column> getMvColumnMapping() {
         return mvColumnMapping;
     }
 
     @Override
     public ColumnRefSet getOutputColumns(ExpressionContext expressionContext) {
-        return expressionContext.getChildLogicalProperty(0).getOutputColumns();
+        ColumnRefSet outputColumns = expressionContext.getChildLogicalProperty(0).getOutputColumns().clone();
+        if (actionColumn != null) {
+            outputColumns.union(actionColumn);
+        }
+        return outputColumns;
     }
 
     @Override
     public RowOutputInfo deriveRowOutputInfo(List<OptExpression> inputs) {
-        return projectInputRow(inputs.get(0).getRowOutputInfo());
+        RowOutputInfo rowOutputInfo = projectInputRow(inputs.get(0).getRowOutputInfo());
+        if (actionColumn == null) {
+            return rowOutputInfo;
+        }
+        return rowOutputInfo.addColsToRow(List.of(new ColumnOutputInfo(actionColumn, actionColumn)), false);
     }
 
     @Override
@@ -85,4 +109,27 @@ public class LogicalDeltaOperator extends LogicalOperator {
     public <R, C> R accept(OptExpressionVisitor<R, C> visitor, OptExpression optExpression, C context) {
         return visitor.visitLogicalDelta(optExpression, context);
     }
+
+    public static class Builder extends LogicalOperator.Builder<LogicalDeltaOperator, LogicalDeltaOperator.Builder> {
+        @Override
+        protected LogicalDeltaOperator newInstance() {
+            return new LogicalDeltaOperator();
+        }
+
+        @Override
+        public Builder withOperator(LogicalDeltaOperator operator) {
+            super.withOperator(operator);
+            builder.isRootDelta = operator.isRootDelta;
+            builder.actionColumn = operator.actionColumn;
+            builder.mvColumnMapping = operator.mvColumnMapping;
+
+            return this;
+        }
+
+        public Builder setRootDelta(boolean isRootDelta) {
+            builder.isRootDelta = isRootDelta;
+            return this;
+        }
+    }
+
 }

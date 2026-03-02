@@ -86,7 +86,10 @@ public class IvmRewriter {
             mvColumnMapping = buildMvColumnMapping(rowIdResult.rewrittenRoot(), optimizerContext, targetMv);
         }
 
-        tree.setChild(0, OptExpression.create(new LogicalDeltaOperator(true, mvColumnMapping), rowIdResult.rewrittenRoot()));
+        ColumnRefOperator actionColumn = optimizerContext.getColumnRefFactory()
+                .create(IvmRuleUtils.ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE, false);
+        tree.setChild(0, OptExpression.create(
+                new LogicalDeltaOperator(true, actionColumn, mvColumnMapping), rowIdResult.rewrittenRoot()));
         deriveLogicalProperty(tree);
         scheduler.rewriteIterative(tree, rootTaskContext, RuleSet.OLAP_IVM_DELTA_REWRITE_RULES);
         if (IvmRuleUtils.containsLogicalDelta(tree.getInputs().get(0))
@@ -96,15 +99,7 @@ public class IvmRewriter {
             return;
         }
 
-        IvmActionColumnDeriver.Result actionResult =
-                IvmActionColumnDeriver.deriveAndRewrite(tree.getInputs().get(0), optimizerContext);
-        if (!actionResult.success()) {
-            tree.setChild(0, originalPlan);
-            deriveLogicalProperty(tree);
-            return;
-        }
-
-        OptExpression rewrittenRoot = actionResult.rewrittenRoot();
+        OptExpression rewrittenRoot = tree.getInputs().get(0);
         deriveLogicalProperty(rewrittenRoot);
         if (isPrimaryKeyTargetMv(optimizerContext)) {
             rewrittenRoot = appendPkLoadOpColumn(rewrittenRoot, rootTaskContext, requiredColumns);

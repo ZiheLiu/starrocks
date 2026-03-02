@@ -22,10 +22,12 @@ import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalCTEAnchorOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
 import com.starrocks.type.IntegerType;
@@ -89,6 +91,16 @@ public class IvmRuleUtils {
             return project.getColumnRefMap().keySet().stream()
                     .filter(IvmRuleUtils::isActionColumn)
                     .findFirst();
+        }
+        if (expression.getOp() instanceof LogicalDeltaOperator delta) {
+            if (delta.getActionColumn() != null) {
+                return Optional.of(delta.getActionColumn());
+            }
+        }
+        if (expression.getOp() instanceof LogicalVersionOperator version) {
+            if (version.getActionColumn() != null) {
+                return Optional.of(version.getActionColumn());
+            }
         }
         if (expression.getOp() instanceof LogicalAggregationOperator agg) {
             return agg.getGroupingKeys().stream()

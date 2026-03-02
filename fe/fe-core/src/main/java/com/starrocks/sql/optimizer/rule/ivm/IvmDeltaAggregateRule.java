@@ -137,15 +137,13 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             plusProjectMap.put(unionOutput, toMappedOutputs.get(i));
             minusProjectMap.put(unionOutput, fromMappedOutputs.get(i));
         }
-        plusProjectMap.put(actionColumn, ConstantOperator.createTinyInt((byte) 1));
-        minusProjectMap.put(actionColumn, ConstantOperator.createTinyInt((byte) -1));
 
         OptExpression plusProject = OptExpression.create(new LogicalProjectOperator(plusProjectMap), toChild);
         OptExpression minusProject = OptExpression.create(new LogicalProjectOperator(minusProjectMap), fromChild);
         OptExpression toSnapshot = OptExpression.create(
-                new LogicalVersionOperator(toVersion, (byte) 1), plusProject);
+                new LogicalVersionOperator(toVersion, (byte) 1, actionColumn), plusProject);
         OptExpression fromSnapshot = OptExpression.create(
-                new LogicalVersionOperator(fromVersion, (byte) -1), minusProject);
+                new LogicalVersionOperator(fromVersion, (byte) -1, actionColumn), minusProject);
 
         OptExpression deltaInputForPlus = OptExpression.create(new LogicalDeltaOperator(false), aggChild);
         LogicalAggregationOperator affectedKeysAggForPlus = new LogicalAggregationOperator(
@@ -235,7 +233,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
      */
     private OptExpression tryRewriteByChangesAndMv(OptimizerContext context,
                                                    LogicalDeltaOperator delta,
-                                                   LogicalAggregationOperator agg, OptExpression aggChild) {
+                                                   LogicalAggregationOperator agg,
+                                                   OptExpression child) {
         // This fast path is only valid for the root IVM aggregate refresh on primary-key MV.
         if (!delta.isRootDelta()) {
             return null;
@@ -244,23 +243,23 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         if (targetMv == null || targetMv.getKeysType() != KeysType.PRIMARY_KEYS) {
             return null;
         }
-
         // Align aggregate input/grouping columns to the duplicated "changes" subtree.
         ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
-        List<ColumnRefOperator> originalChildOutputs = aggChild.getOutputColumns().getColumnRefOperators(columnRefFactory);
+        List<ColumnRefOperator> originalChildOutputs = child.getOutputColumns().getColumnRefOperators(columnRefFactory);
         List<ColumnRefOperator> originalGroupingKeys = agg.getGroupingKeys();
         if (originalGroupingKeys.stream().anyMatch(k -> !originalChildOutputs.contains(k))) {
             return null;
         }
 
-        // Clone aggregation: step 1 clone grouping keys
+        // Clone child.
         OptExpressionDuplicator childDuplicator = new OptExpressionDuplicator(columnRefFactory, context);
-        OptExpression newChild = childDuplicator.duplicate(aggChild);
+        OptExpression newChild = childDuplicator.duplicate(child);
         List<ColumnRefOperator> newChildOutputs = childDuplicator.getMappedColumns(originalChildOutputs);
         Map<ColumnRefOperator, ColumnRefOperator> originalToNewColumns = Maps.newHashMap();
         for (int i = 0; i < originalChildOutputs.size(); i++) {
             originalToNewColumns.put(originalChildOutputs.get(i), newChildOutputs.get(i));
         }
+        // Create newGroupingKeys by cloned child.
         List<ColumnRefOperator> newGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size());
         for (ColumnRefOperator groupingKey : originalGroupingKeys) {
             ColumnRefOperator mapped = originalToNewColumns.get(groupingKey);
@@ -270,20 +269,10 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             newGroupingKeys.add(mapped);
         }
 
-        // Rewrite base scans to CHANGES scans and ensure __ACTION__ is available in the subtree.
-        OptExpression deltaScan = rewriteOlapScansToChanges(newChild);
-        if (deltaScan == null) {
-            return null;
-        }
-        IvmActionColumnDeriver.Result actionResult = IvmActionColumnDeriver.deriveAndRewrite(deltaScan, context);
-        if (!actionResult.success()) {
-            return null;
-        }
-        deltaScan = actionResult.rewrittenRoot();
-        ColumnRefOperator actionColumn = IvmRuleUtils.findActionColumn(deltaScan).orElse(null);
-        if (actionColumn == null) {
-            return null;
-        }
+        LogicalDeltaOperator newDelta = new LogicalDeltaOperator.Builder().withOperator(delta).setRootDelta(false).build();
+        OptExpression newChildOptExpr = OptExpression.create(newDelta, newChild);
+
+        ColumnRefOperator actionColumn = delta.getActionColumn();
 
         // Build delta aggregate over changes:
         // 1) total row-count delta (sum(action))
@@ -306,7 +295,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         }
         LogicalAggregationOperator deltaAgg = new LogicalAggregationOperator(
                 AggType.GLOBAL, newGroupingKeys, deltaAggCalls);
-        OptExpression deltaAggExpr = OptExpression.create(deltaAgg, deltaScan);
+        OptExpression deltaAggExpr = OptExpression.create(deltaAgg, newChildOptExpr);
 
         // Scan current MV state and bind visible/hidden state columns for each aggregate output.
         MvScanInfo mvScanInfo = buildMvScan(
@@ -451,41 +440,6 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             predicates.add(new BinaryPredicateOperator(BinaryType.EQ, leftKeys.get(i), rightKeys.get(i)));
         }
         return Utils.compoundAnd(predicates);
-    }
-
-    private OptExpression rewriteOlapScansToChanges(OptExpression root) {
-        if (root.getOp() instanceof LogicalOlapScanOperator scan) {
-            if (!(scan.getTable() instanceof OlapTable olapTable)) {
-                return null;
-            }
-            Long fromVersion = scan.getTableVersion();
-            if (fromVersion == null) {
-                return null;
-            }
-            long toVersion = IvmRuleUtils.getLatestVisibleVersion(olapTable);
-            if (toVersion <= fromVersion) {
-                return null;
-            }
-            LogicalOlapScanOperator rewrittenScan = LogicalOlapScanOperator.builder()
-                    .withOperator(scan)
-                    .setTableVersion(null)
-                    .setChangesVersionRange(fromVersion, toVersion)
-                    .build();
-            return OptExpression.create(rewrittenScan);
-        }
-
-        if (root.getInputs().isEmpty()) {
-            return root;
-        }
-        List<OptExpression> rewrittenChildren = Lists.newArrayListWithCapacity(root.getInputs().size());
-        for (OptExpression child : root.getInputs()) {
-            OptExpression rewrittenChild = rewriteOlapScansToChanges(child);
-            if (rewrittenChild == null) {
-                return null;
-            }
-            rewrittenChildren.add(rewrittenChild);
-        }
-        return OptExpression.create(root.getOp(), root.getTvrMeta(), rewrittenChildren);
     }
 
     private LogicalOlapScanOperator findCandidateOlapScan(OptExpression root) {

@@ -23,6 +23,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
+import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
@@ -43,7 +44,6 @@ public class IvmDeltaProjectRule extends TransformationRule {
 
         boolean isTrivialProject = project.getColumnRefMap().entrySet().stream().allMatch(e -> e.getKey() == e.getValue());
         boolean isRootDelta = isTrivialProject && delta.isRootDelta();
-
         Map<ColumnRefOperator, Column> childMvColumnMapping = Maps.newHashMap();
         if (isRootDelta) {
             for (Map.Entry<ColumnRefOperator, Column> entry : delta.getMvColumnMapping().entrySet()) {
@@ -52,10 +52,21 @@ public class IvmDeltaProjectRule extends TransformationRule {
             }
         }
 
-        OptExpression projectChild = input.inputAt(0).inputAt(0);
-        OptExpression deltaChild = OptExpression.create(
-                new LogicalDeltaOperator(isRootDelta, childMvColumnMapping), projectChild);
-        OptExpression rewritten = OptExpression.create(project, deltaChild);
+        Map<ColumnRefOperator, ScalarOperator> newProjectMap = project.getColumnRefMap();
+        ColumnRefOperator actionColumn = delta.getActionColumn();
+        if (actionColumn != null) {
+            newProjectMap = Maps.newHashMap(newProjectMap);
+            newProjectMap.put(actionColumn, actionColumn);
+        }
+
+        LogicalProjectOperator newProject = LogicalProjectOperator.builder()
+                .withOperator(project)
+                .setColumnRefMap(newProjectMap)
+                .build();
+        LogicalDeltaOperator newDelta = new LogicalDeltaOperator(isRootDelta, actionColumn, childMvColumnMapping);
+        OptExpression child = input.inputAt(0).inputAt(0);
+
+        OptExpression rewritten = OptExpression.create(newProject, OptExpression.create(newDelta, child));
         return List.of(rewritten);
     }
 }
