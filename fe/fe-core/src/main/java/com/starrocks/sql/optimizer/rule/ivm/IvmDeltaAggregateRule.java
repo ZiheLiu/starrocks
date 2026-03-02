@@ -48,6 +48,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.IsNullPredicateOperator;
@@ -229,6 +230,9 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         return List.of(cteAnchor);
     }
 
+    /**
+     * Fast path for root aggregate IVM refresh on PK MV: rewrite by merging {@code CHANGES} with current MV state.
+     */
     private OptExpression tryRewriteByChangesAndMv(OptimizerContext context,
                                                    LogicalDeltaOperator delta,
                                                    LogicalAggregationOperator agg, OptExpression aggChild) {
@@ -249,62 +253,37 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return null;
         }
 
+        // Clone aggregation: step 1 clone grouping keys
         OptExpressionDuplicator childDuplicator = new OptExpressionDuplicator(columnRefFactory, context);
-        OptExpression clonedChild = childDuplicator.duplicate(aggChild);
-        List<ColumnRefOperator> mappedOutputs = childDuplicator.getMappedColumns(originalChildOutputs);
-        Map<ColumnRefOperator, ColumnRefOperator> originalToMapped = Maps.newHashMap();
+        OptExpression newChild = childDuplicator.duplicate(aggChild);
+        List<ColumnRefOperator> newChildOutputs = childDuplicator.getMappedColumns(originalChildOutputs);
+        Map<ColumnRefOperator, ColumnRefOperator> originalToNewColumns = Maps.newHashMap();
         for (int i = 0; i < originalChildOutputs.size(); i++) {
-            originalToMapped.put(originalChildOutputs.get(i), mappedOutputs.get(i));
+            originalToNewColumns.put(originalChildOutputs.get(i), newChildOutputs.get(i));
         }
-        List<ColumnRefOperator> mappedGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size());
+        List<ColumnRefOperator> newGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size());
         for (ColumnRefOperator groupingKey : originalGroupingKeys) {
-            ColumnRefOperator mapped = originalToMapped.get(groupingKey);
+            ColumnRefOperator mapped = originalToNewColumns.get(groupingKey);
             if (mapped == null) {
                 return null;
             }
-            mappedGroupingKeys.add(mapped);
+            newGroupingKeys.add(mapped);
         }
 
         // Rewrite base scans to CHANGES scans and ensure __ACTION__ is available in the subtree.
-        OptExpression changesInput = rewriteOlapScansToChanges(clonedChild);
-        if (changesInput == null) {
+        OptExpression deltaScan = rewriteOlapScansToChanges(newChild);
+        if (deltaScan == null) {
             return null;
         }
-        IvmActionColumnDeriver.Result actionResult = IvmActionColumnDeriver.deriveAndRewrite(changesInput, context);
+        IvmActionColumnDeriver.Result actionResult = IvmActionColumnDeriver.deriveAndRewrite(deltaScan, context);
         if (!actionResult.success()) {
             return null;
         }
-        changesInput = actionResult.rewrittenRoot();
-        ColumnRefOperator actionColumn = IvmRuleUtils.findActionColumn(changesInput).orElse(null);
+        deltaScan = actionResult.rewrittenRoot();
+        ColumnRefOperator actionColumn = IvmRuleUtils.findActionColumn(deltaScan).orElse(null);
         if (actionColumn == null) {
             return null;
         }
-
-        // Align rewritten child slots back to original aggregate input slots so upper expressions can keep old slot ids.
-        Map<ColumnRefOperator, ScalarOperator> alignedProjectMap = Maps.newHashMap();
-        for (ColumnRefOperator originalGroupingKey : originalGroupingKeys) {
-            ColumnRefOperator mappedGroupKey = originalToMapped.get(originalGroupingKey);
-            Preconditions.checkState(mappedGroupKey != null,
-                    "Missing mapped group key for %s in IVM delta aggregate rewrite", originalGroupingKey);
-            alignedProjectMap.put(originalGroupingKey, mappedGroupKey);
-        }
-        for (CallOperator call : agg.getAggregations().values()) {
-            for (ColumnRefOperator usedColumn : call.getUsedColumns().getColumnRefOperators(columnRefFactory)) {
-                if (alignedProjectMap.containsKey(usedColumn)) {
-                    continue;
-                }
-                ColumnRefOperator mappedUsedColumn = originalToMapped.get(usedColumn);
-                if (mappedUsedColumn != null) {
-                    alignedProjectMap.put(usedColumn, mappedUsedColumn);
-                }
-            }
-        }
-        alignedProjectMap.put(actionColumn, actionColumn);
-        changesInput = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), changesInput);
-        for (ColumnRefOperator alignedCol : alignedProjectMap.keySet()) {
-            originalToMapped.put(alignedCol, alignedCol);
-        }
-        mappedGroupingKeys = Lists.newArrayList(originalGroupingKeys);
 
         // Build delta aggregate over changes:
         // 1) total row-count delta (sum(action))
@@ -314,7 +293,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         deltaAggCalls.put(deltaCount1Ref, sumCall(IntegerType.BIGINT, actionColumn));
         List<RetractableAggInfo> aggInfos = Lists.newArrayListWithCapacity(agg.getAggregations().size());
         for (Map.Entry<ColumnRefOperator, CallOperator> entry : agg.getAggregations().entrySet()) {
-            RetractableAggInfo info = buildRetractableAggInfo(entry.getKey(), entry.getValue(), originalToMapped,
+            RetractableAggInfo info = buildRetractableAggInfo(entry.getKey(), entry.getValue(), originalToNewColumns,
                     actionColumn, deltaCount1Ref, columnRefFactory);
             if (info == null) {
                 return null;
@@ -326,8 +305,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             aggInfos.add(info);
         }
         LogicalAggregationOperator deltaAgg = new LogicalAggregationOperator(
-                AggType.GLOBAL, mappedGroupingKeys, deltaAggCalls);
-        OptExpression deltaAggExpr = OptExpression.create(deltaAgg, changesInput);
+                AggType.GLOBAL, newGroupingKeys, deltaAggCalls);
+        OptExpression deltaAggExpr = OptExpression.create(deltaAgg, deltaScan);
 
         // Scan current MV state and bind visible/hidden state columns for each aggregate output.
         MvScanInfo mvScanInfo = buildMvScan(
@@ -336,11 +315,11 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return null;
         }
         // Merge "delta state" with current MV state on grouping keys.
-        ScalarOperator joinOn = buildJoinOnByKeys(mappedGroupingKeys, mvScanInfo.groupingKeyRefs);
+        ScalarOperator joinOn = buildJoinOnByKeys(newGroupingKeys, mvScanInfo.groupingKeyRefs);
         if (joinOn == null) {
             return null;
         }
-        OptExpression mergeJoin = OptExpression.create(
+        OptExpression joinExpr = OptExpression.create(
                 new LogicalJoinOperator(JoinOperator.LEFT_OUTER_JOIN, joinOn),
                 deltaAggExpr,
                 mvScanInfo.scanExpr);
@@ -348,8 +327,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         Map<ColumnRefOperator, ScalarOperator> deleteProjectMap = Maps.newHashMap();
         Map<ColumnRefOperator, ScalarOperator> insertProjectMap = Maps.newHashMap();
         for (int i = 0; i < originalGroupingKeys.size(); i++) {
-            deleteProjectMap.put(originalGroupingKeys.get(i), mappedGroupingKeys.get(i));
-            insertProjectMap.put(originalGroupingKeys.get(i), mappedGroupingKeys.get(i));
+            deleteProjectMap.put(originalGroupingKeys.get(i), newGroupingKeys.get(i));
+            insertProjectMap.put(originalGroupingKeys.get(i), newGroupingKeys.get(i));
         }
 
         // Materialize old/new visible values and hidden states:
@@ -392,7 +371,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         consumeRefs.addAll(newExists.getUsedColumns().getColumnRefOperators(columnRefFactory));
 
         int mergeCteId = context.getCteContext().getNextCteId();
-        OptExpression mergeProduce = OptExpression.create(new LogicalCTEProduceOperator(mergeCteId), mergeJoin);
+        OptExpression mergeProduce = OptExpression.create(new LogicalCTEProduceOperator(mergeCteId), joinExpr);
         Map<ColumnRefOperator, ColumnRefOperator> deleteConsumeMap = Maps.newHashMap();
         Map<ColumnRefOperator, ColumnRefOperator> insertConsumeMap = Maps.newHashMap();
         for (ColumnRefOperator ref : consumeRefs) {
@@ -415,7 +394,20 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         List<List<ColumnRefOperator>> childOutputCols = List.of(unionOutputs, unionOutputs);
         OptExpression unionChanges = OptExpression.create(new LogicalUnionOperator(unionOutputs, childOutputCols, true),
                 deleteBranch, insertBranch);
-        return OptExpression.create(new LogicalCTEAnchorOperator(mergeCteId), mergeProduce, unionChanges);
+        // Align final output slots to original aggregate outputs, and map ACTION back to the original action slot.
+        Map<ColumnRefOperator, ScalarOperator> alignedProjectMap = Maps.newHashMap();
+        for (ColumnRefOperator groupingKey : originalGroupingKeys) {
+            alignedProjectMap.put(groupingKey, groupingKey);
+        }
+        for (ColumnRefOperator outputRef : agg.getAggregations().keySet()) {
+            alignedProjectMap.put(outputRef, outputRef);
+        }
+        for (ColumnRefOperator hiddenOutputRef : hiddenOutputRefs) {
+            alignedProjectMap.put(hiddenOutputRef, hiddenOutputRef);
+        }
+        alignedProjectMap.put(actionColumn, finalActionColumn);
+        OptExpression alignedUnionChanges = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), unionChanges);
+        return OptExpression.create(new LogicalCTEAnchorOperator(mergeCteId), mergeProduce, alignedUnionChanges);
     }
 
     private boolean isSupportedAggregate(LogicalAggregationOperator agg) {
@@ -694,12 +686,12 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     }
 
     private static ScalarOperator coalesceZero(ScalarOperator input) {
-        return new com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator(input.getType(), null,
+        return new CaseWhenOperator(input.getType(), null,
                 input, List.of(new IsNullPredicateOperator(input), zeroConstant(input.getType())));
     }
 
     private static ScalarOperator nullToZero(ScalarOperator nullableExpr, ScalarOperator nonNullExpr, Type type) {
-        return new com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator(type, null,
+        return new CaseWhenOperator(type, null,
                 nonNullExpr, List.of(new IsNullPredicateOperator(nullableExpr), zeroConstant(type)));
     }
 
@@ -802,14 +794,14 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                     ScalarOperator oldCnt1 = coalesceZero(mvCount1StateRef);
                     ScalarOperator oldSum = coalesceZero(mvSumStateRef);
                     ScalarOperator oldCnt = coalesceZero(mvCountStateRef);
-                    ScalarOperator oldAvg = new com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator(
+                    ScalarOperator oldAvg = new CaseWhenOperator(
                             outputRef.getType(), null, divideOperator(oldSum, oldCnt, outputRef.getType()),
                             List.of(new BinaryPredicateOperator(BinaryType.LE, oldCnt, ConstantOperator.createBigint(0L)),
                                     ConstantOperator.createNull(outputRef.getType())));
                     ScalarOperator newCnt1 = addOperator(oldCnt1, totalCountDeltaRef, IntegerType.BIGINT);
                     ScalarOperator newSum = addOperator(oldSum, avgDeltaSumRef, outputRef.getType());
                     ScalarOperator newCnt = addOperator(oldCnt, avgDeltaCountRef, IntegerType.BIGINT);
-                    ScalarOperator newAvg = new com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator(
+                    ScalarOperator newAvg = new CaseWhenOperator(
                             outputRef.getType(), null, divideOperator(newSum, newCnt, outputRef.getType()),
                             List.of(new BinaryPredicateOperator(BinaryType.LE, newCnt, ConstantOperator.createBigint(0L)),
                                     ConstantOperator.createNull(outputRef.getType())));
