@@ -635,8 +635,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                     factory.create(deltaOutputRef.getName(), deltaOutputRef.getType(), deltaOutputRef.isNullable());
             ColumnRefOperator newMvColRef = factory.create(mvColRef.getName(), mvColRef.getType(), mvColRef.isNullable());
 
-            newToOldMapping.put(newDeltaOutputRef, newMvColRef);
-            newToOldMapping.put(newMvColRef, newDeltaOutputRef);
+            newToOldMapping.put(newDeltaOutputRef, deltaOutputRef);
+            newToOldMapping.put(newMvColRef, mvColRef);
 
             RetractableAggInfo cloned = new RetractableAggInfo(outputRef, kind, newDeltaOutputRef, deltaAggCall);
             cloned.mvColRef = newMvColRef;
@@ -660,16 +660,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         }
     }
 
-    private static final class MvScanInfo {
-        private final OptExpression scanExpr;
-        private final List<ColumnRefOperator> groupingKeyRefs;
-        private final ColumnRefOperator totalCountRef;
-
-        private MvScanInfo(OptExpression scanExpr, List<ColumnRefOperator> groupingKeyRefs, ColumnRefOperator totalCountRef) {
-            this.scanExpr = scanExpr;
-            this.groupingKeyRefs = groupingKeyRefs;
-            this.totalCountRef = totalCountRef;
-        }
+    private record MvScanInfo(OptExpression scanExpr, List<ColumnRefOperator> groupingKeyRefs, ColumnRefOperator totalCountRef) {
     }
 
 }
