@@ -844,7 +844,7 @@ public class MaterializedViewAnalyzer {
                     continue;
                 }
                 if (FunctionSet.SUM.equals(fnName)) {
-                    if (!isSingleSlotRefArg(aggFn)) {
+                    if (!isNumericSlotRefArg(aggFn)) {
                         return;
                     }
                     addHelperColumnIfAbsent(helperColumns, existingColumnNames,
@@ -853,7 +853,7 @@ public class MaterializedViewAnalyzer {
                     continue;
                 }
                 if (FunctionSet.AVG.equals(fnName)) {
-                    if (!isSingleSlotRefArg(aggFn)) {
+                    if (!isNumericSlotRefArg(aggFn)) {
                         return;
                     }
                     addHelperColumnIfAbsent(helperColumns, existingColumnNames,
@@ -937,7 +937,7 @@ public class MaterializedViewAnalyzer {
                     continue;
                 }
                 if (FunctionSet.SUM.equals(fnName)) {
-                    if (!isSingleSlotRefArg(aggFn)) {
+                    if (!isNumericSlotRefArg(aggFn)) {
                         return false;
                     }
                     FunctionCallExpr count1Helper = new FunctionCallExpr(
@@ -947,7 +947,7 @@ public class MaterializedViewAnalyzer {
                     continue;
                 }
                 if (FunctionSet.AVG.equals(fnName)) {
-                    if (!isSingleSlotRefArg(aggFn)) {
+                    if (!isNumericSlotRefArg(aggFn)) {
                         return false;
                     }
                     Expr argExpr = aggFn.getChild(0).clone();
@@ -1049,6 +1049,10 @@ public class MaterializedViewAnalyzer {
 
         private boolean isSingleSlotRefArg(FunctionCallExpr fn) {
             return fn.getChildren().size() == 1 && fn.getChild(0) instanceof SlotRef;
+        }
+
+        private boolean isNumericSlotRefArg(FunctionCallExpr fn) {
+            return isSingleSlotRefArg(fn) && fn.getChild(0).getType() != null && fn.getChild(0).getType().isNumericType();
         }
 
         private List<Index> genMaterializedViewIndexes(CreateMaterializedViewStatement statement) {

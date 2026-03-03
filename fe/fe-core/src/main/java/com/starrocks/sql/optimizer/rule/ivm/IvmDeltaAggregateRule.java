@@ -476,8 +476,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         if (FunctionSet.COUNT.equals(fnName)) {
             ScalarOperator bigintAction = castOperator(actionColumn, IntegerType.BIGINT);
             if (isCountStarOrOne(call)) {
-                return new RetractableAggInfo(oldOutput, AggKind.COUNT_ONE,
-                        deltaRef, sumCall(IntegerType.BIGINT, bigintAction));
+                return new RetractableAggInfo(oldOutput, AggKind.COUNT_ONE, deltaRef, sumCall(IntegerType.BIGINT, actionColumn));
             }
             if (call.getArguments().size() != 1 || !(call.getChild(0) instanceof ColumnRefOperator arg)) {
                 return null;
@@ -488,8 +487,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             }
 
             ScalarOperator countExpr = nullToZero(mappedArg, bigintAction, IntegerType.BIGINT);
-            return new RetractableAggInfo(oldOutput, AggKind.COUNT_COLUMN,
-                    deltaRef, sumCall(IntegerType.BIGINT, countExpr));
+            return new RetractableAggInfo(oldOutput, AggKind.COUNT_COLUMN, deltaRef, sumCall(IntegerType.BIGINT, countExpr));
         }
         if (FunctionSet.SUM.equals(fnName)) {
             if (call.getArguments().size() != 1 || !(call.getChild(0) instanceof ColumnRefOperator arg)) {
@@ -501,8 +499,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             }
             ScalarOperator typedAction = castOperator(actionColumn, mappedArg.getType());
             ScalarOperator scaled = multiplyOperator(mappedArg, typedAction, oldOutput.getType());
-            return new RetractableAggInfo(oldOutput, AggKind.SUM_COLUMN,
-                    deltaRef, sumCall(oldOutput.getType(), scaled));
+            return new RetractableAggInfo(oldOutput, AggKind.SUM_COLUMN, deltaRef, sumCall(oldOutput.getType(), scaled));
         }
 
         return null;
