@@ -48,6 +48,7 @@ import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.IsNullPredicateOperator;
@@ -473,9 +474,10 @@ public class IvmDeltaAggregateRule extends TransformationRule {
 
         ColumnRefOperator deltaRef = columnRefFactory.create("__delta_" + oldOutput.getName(), oldOutput.getType(), false);
         if (FunctionSet.COUNT.equals(fnName)) {
+            ScalarOperator bigintAction = castOperator(actionColumn, IntegerType.BIGINT);
             if (isCountStarOrOne(call)) {
                 return new RetractableAggInfo(oldOutput, AggKind.COUNT_ONE,
-                        deltaRef, sumCall(IntegerType.BIGINT, actionColumn));
+                        deltaRef, sumCall(IntegerType.BIGINT, bigintAction));
             }
             if (call.getArguments().size() != 1 || !(call.getChild(0) instanceof ColumnRefOperator arg)) {
                 return null;
@@ -485,7 +487,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                 return null;
             }
 
-            ScalarOperator countExpr = nullToZero(mappedArg, actionColumn, IntegerType.BIGINT);
+            ScalarOperator countExpr = nullToZero(mappedArg, bigintAction, IntegerType.BIGINT);
             return new RetractableAggInfo(oldOutput, AggKind.COUNT_COLUMN,
                     deltaRef, sumCall(IntegerType.BIGINT, countExpr));
         }
@@ -497,7 +499,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             if (mappedArg == null) {
                 return null;
             }
-            ScalarOperator scaled = multiplyOperator(mappedArg, actionColumn, oldOutput.getType());
+            ScalarOperator typedAction = castOperator(actionColumn, mappedArg.getType());
+            ScalarOperator scaled = multiplyOperator(mappedArg, typedAction, oldOutput.getType());
             return new RetractableAggInfo(oldOutput, AggKind.SUM_COLUMN,
                     deltaRef, sumCall(oldOutput.getType(), scaled));
         }
@@ -583,6 +586,13 @@ public class IvmDeltaAggregateRule extends TransformationRule {
 
     private static ScalarOperator divideOperator(ScalarOperator left, ScalarOperator right, Type type) {
         return createBuiltinCall(FunctionSet.DIVIDE, type, List.of(left, right));
+    }
+
+    private static ScalarOperator castOperator(ScalarOperator input, Type targetType) {
+        if (input.getType().matchesType(targetType)) {
+            return input;
+        }
+        return new CastOperator(targetType, input, true);
     }
 
     private static ScalarOperator avgFromSumCount(ScalarOperator sumExpr, ScalarOperator countExpr, Type type) {
