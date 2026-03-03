@@ -19,10 +19,8 @@ import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.RowOutputInfo;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
-import com.starrocks.sql.optimizer.operator.ColumnOutputInfo;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.OperatorVisitor;
-import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.property.DomainProperty;
 
 import java.util.List;
@@ -33,48 +31,24 @@ import java.util.List;
  */
 public class LogicalVersionOperator extends LogicalOperator {
     private final long tableVersion;
-    private final byte action;
-    private final ColumnRefOperator actionColumn;
 
-    public LogicalVersionOperator(long tableVersion, byte action) {
-        this(tableVersion, action, null);
-    }
-
-    public LogicalVersionOperator(long tableVersion, byte action, ColumnRefOperator actionColumn) {
+    public LogicalVersionOperator(long tableVersion) {
         super(OperatorType.LOGICAL_VERSION);
         this.tableVersion = tableVersion;
-        this.action = action;
-        this.actionColumn = actionColumn;
     }
 
     public long getTableVersion() {
         return tableVersion;
     }
 
-    public byte getAction() {
-        return action;
-    }
-
-    public ColumnRefOperator getActionColumn() {
-        return actionColumn;
-    }
-
     @Override
     public ColumnRefSet getOutputColumns(ExpressionContext expressionContext) {
-        ColumnRefSet outputColumns = expressionContext.getChildLogicalProperty(0).getOutputColumns().clone();
-        if (actionColumn != null) {
-            outputColumns.union(actionColumn);
-        }
-        return outputColumns;
+        return expressionContext.getChildLogicalProperty(0).getOutputColumns();
     }
 
     @Override
     public RowOutputInfo deriveRowOutputInfo(List<OptExpression> inputs) {
-        RowOutputInfo rowOutputInfo = projectInputRow(inputs.get(0).getRowOutputInfo());
-        if (actionColumn == null) {
-            return rowOutputInfo;
-        }
-        return rowOutputInfo.addColsToRow(List.of(new ColumnOutputInfo(actionColumn, actionColumn)), false);
+        return projectInputRow(inputs.get(0).getRowOutputInfo());
     }
 
     @Override

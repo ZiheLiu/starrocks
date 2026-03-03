@@ -14,7 +14,6 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.Column;
@@ -62,13 +61,14 @@ import com.starrocks.type.Type;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 public class IvmDeltaAggregateRule extends TransformationRule {
+    private static final byte DELETE_ACTION = -1;
+    private static final byte INSERT_ACTION = 1;
+
     public IvmDeltaAggregateRule() {
         super(RuleType.TF_OLAP_IVM_DELTA_AGGREGATE,
                 Pattern.create(OperatorType.LOGICAL_DELTA)
@@ -79,17 +79,17 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
         LogicalAggregationOperator agg = (LogicalAggregationOperator) input.inputAt(0).getOp();
-        OptExpression aggChild = input.inputAt(0).inputAt(0);
+        OptExpression child = input.inputAt(0).inputAt(0);
         if (!isSupportedAggregate(agg)) {
             return List.of();
         }
 
-        OptExpression optimized = tryRewriteByChangesAndMv(context, delta, agg, aggChild);
+        OptExpression optimized = tryRewriteByChangesAndMv(context, delta, agg, child);
         if (optimized != null) {
             return List.of(optimized);
         }
 
-        LogicalOlapScanOperator boundScan = findCandidateOlapScan(aggChild);
+        LogicalOlapScanOperator boundScan = findCandidateOlapScan(child);
         if (boundScan == null || !(boundScan.getTable() instanceof OlapTable olapTable)) {
             return List.of();
         }
@@ -103,128 +103,53 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         }
 
         ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
-        List<ColumnRefOperator> originalChildOutputs = aggChild.getOutputColumns().getColumnRefOperators(columnRefFactory);
-        List<ColumnRefOperator> originalGroupingKeys = agg.getGroupingKeys();
+        List<ColumnRefOperator> finalChildOutputs = child.getOutputColumns().getColumnRefOperators(columnRefFactory);
+        List<ColumnRefOperator> finalGroupingKeys = agg.getGroupingKeys();
 
-        if (originalGroupingKeys.stream().anyMatch(k -> !originalChildOutputs.contains(k))) {
+        if (finalGroupingKeys.stream().anyMatch(k -> !finalChildOutputs.contains(k))) {
             return List.of();
         }
 
-        // Build +R@toVersion and -R@fromVersion branches by version markers, then push version down by rewrite rules.
-        OptExpressionDuplicator toDuplicator = new OptExpressionDuplicator(columnRefFactory, context);
-        OptExpression toChild = toDuplicator.duplicate(aggChild);
-        List<ColumnRefOperator> toMappedOutputs = toDuplicator.getMappedColumns(originalChildOutputs);
-        OptExpressionDuplicator fromDuplicator = new OptExpressionDuplicator(columnRefFactory, context);
-        OptExpression fromChild = fromDuplicator.duplicate(aggChild);
-        List<ColumnRefOperator> fromMappedOutputs = fromDuplicator.getMappedColumns(originalChildOutputs);
+        // Snapshot: Child -> Project -> Version
+        SnapshotInfo toSnapshot = createSnapshotChild(context, finalGroupingKeys, child, finalChildOutputs, toVersion, (byte) 1);
+        SnapshotInfo fromSnapshot =
+                createSnapshotChild(context, finalGroupingKeys, child, finalChildOutputs, fromVersion, (byte) -1);
 
-        Map<ColumnRefOperator, ColumnRefOperator> originalToUnionCols = Maps.newHashMap();
-        List<ColumnRefOperator> unionOutputColumns = Lists.newArrayListWithCapacity(originalChildOutputs.size() + 1);
-        for (ColumnRefOperator originalOutput : originalChildOutputs) {
-            ColumnRefOperator unionOutput = columnRefFactory.create(
-                    originalOutput.getName(), originalOutput.getType(), originalOutput.isNullable());
-            unionOutputColumns.add(unionOutput);
-            originalToUnionCols.put(originalOutput, unionOutput);
-        }
-        ColumnRefOperator actionColumn = columnRefFactory.create(
-                IvmRuleUtils.ACTION_COLUMN_NAME, IntegerType.TINYINT, false);
-        unionOutputColumns.add(actionColumn);
-
-        Map<ColumnRefOperator, ScalarOperator> plusProjectMap = Maps.newLinkedHashMap();
-        Map<ColumnRefOperator, ScalarOperator> minusProjectMap = Maps.newLinkedHashMap();
-        for (int i = 0; i < originalChildOutputs.size(); i++) {
-            ColumnRefOperator unionOutput = unionOutputColumns.get(i);
-            plusProjectMap.put(unionOutput, toMappedOutputs.get(i));
-            minusProjectMap.put(unionOutput, fromMappedOutputs.get(i));
-        }
-
-        OptExpression plusProject = OptExpression.create(new LogicalProjectOperator(plusProjectMap), toChild);
-        OptExpression minusProject = OptExpression.create(new LogicalProjectOperator(minusProjectMap), fromChild);
-        OptExpression toSnapshot = OptExpression.create(
-                new LogicalVersionOperator(toVersion, (byte) 1, actionColumn), plusProject);
-        OptExpression fromSnapshot = OptExpression.create(
-                new LogicalVersionOperator(fromVersion, (byte) -1, actionColumn), minusProject);
-
-        OptExpression deltaInputForPlus = OptExpression.create(new LogicalDeltaOperator(false), aggChild);
-        LogicalAggregationOperator affectedKeysAggForPlus = new LogicalAggregationOperator(
-                AggType.GLOBAL, originalGroupingKeys, Maps.newHashMap());
-        OptExpression affectedKeysForPlus = OptExpression.create(affectedKeysAggForPlus, deltaInputForPlus);
+        // DistinctAgg left semi join (Child -> DistinctAgg).
+        SnapshotInfo affectedKeysChild = cloneChild(context, finalGroupingKeys, child, finalChildOutputs);
+        List<ColumnRefOperator> affectedKeys = affectedKeysChild.groupingKeys;
+        LogicalAggregationOperator affectedKeysOperator =
+                new LogicalAggregationOperator(AggType.GLOBAL, affectedKeys, Maps.newHashMap());
+        OptExpression affectedKeysOptExpr = OptExpression.create(affectedKeysOperator,
+                OptExpression.create(new LogicalDeltaOperator(false), affectedKeysChild.optExpression));
         int cteId = context.getCteContext().getNextCteId();
-        OptExpression affectedKeysProduce = OptExpression.create(new LogicalCTEProduceOperator(cteId), affectedKeysForPlus);
+        OptExpression affectedKeysProducer = OptExpression.create(new LogicalCTEProduceOperator(cteId), affectedKeysOptExpr);
 
-        Map<ColumnRefOperator, ColumnRefOperator> plusConsumeMap = Maps.newHashMap();
-        for (ColumnRefOperator groupKey : originalGroupingKeys) {
-            plusConsumeMap.put(groupKey, groupKey);
-        }
-        OptExpression affectedKeysConsumeForPlus = OptExpression.create(new LogicalCTEConsumeOperator(cteId, plusConsumeMap));
-
-        Map<ColumnRefOperator, ColumnRefOperator> minusConsumeMap = Maps.newHashMap();
-        List<ColumnRefOperator> affectedGroupingKeysForMinus = Lists.newArrayListWithCapacity(originalGroupingKeys.size());
-        for (ColumnRefOperator groupKey : originalGroupingKeys) {
-            ColumnRefOperator minusConsumeKey = columnRefFactory.create(
-                    groupKey.getName(), groupKey.getType(), groupKey.isNullable());
-            minusConsumeMap.put(minusConsumeKey, groupKey);
-            affectedGroupingKeysForMinus.add(minusConsumeKey);
-        }
-        OptExpression affectedKeysConsumeForMinus = OptExpression.create(new LogicalCTEConsumeOperator(cteId, minusConsumeMap));
-
-        ScalarOperator plusOnPredicate = buildSemiJoinPredicate(originalGroupingKeys, originalGroupingKeys, originalToUnionCols);
-        ScalarOperator minusOnPredicate = buildSemiJoinPredicate(
-                originalGroupingKeys, affectedGroupingKeysForMinus, originalToUnionCols);
-        if (plusOnPredicate == null || minusOnPredicate == null) {
+        OptExpression toJoin = createLeftSemiJoin(columnRefFactory, cteId, affectedKeys, toSnapshot);
+        OptExpression fromJoin = createLeftSemiJoin(columnRefFactory, cteId, affectedKeys, fromSnapshot);
+        if (toJoin == null || fromJoin == null) {
             return List.of();
         }
 
-        OptExpression plusSemiJoin = OptExpression.create(
-                new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, plusOnPredicate),
-                toSnapshot,
-                affectedKeysConsumeForPlus);
-        OptExpression minusSemiJoin = OptExpression.create(
-                new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, minusOnPredicate),
-                fromSnapshot,
-                affectedKeysConsumeForMinus);
-
-        List<List<ColumnRefOperator>> unionChildrenOutputs = List.of(unionOutputColumns, unionOutputColumns);
-        OptExpression semiJoinedUnion = OptExpression.create(
+        // Union All to/from left semi join.
+        List<List<ColumnRefOperator>> unionChildrenOutputs = List.of(toSnapshot.outputColumns, fromSnapshot.outputColumns);
+        List<ColumnRefOperator> unionOutputColumns = new ArrayList<>(finalChildOutputs);
+        unionOutputColumns.add(delta.getActionColumn());
+        OptExpression unionOptExpr = OptExpression.create(
                 new LogicalUnionOperator(unionOutputColumns, unionChildrenOutputs, true),
-                plusSemiJoin, minusSemiJoin);
+                toJoin, fromJoin);
 
-        // Align rewritten child slots back to original aggregate input slots so upper operators can keep old slot ids.
-        Map<ColumnRefOperator, ScalarOperator> alignedProjectMap = Maps.newHashMap();
-        for (ColumnRefOperator originalGroupingKey : originalGroupingKeys) {
-            ColumnRefOperator mappedGroupKey = originalToUnionCols.get(originalGroupingKey);
-            Preconditions.checkState(mappedGroupKey != null,
-                    "Missing mapped group key for %s in IVM delta aggregate rewrite", originalGroupingKey);
-            alignedProjectMap.put(originalGroupingKey, mappedGroupKey);
-        }
-        for (CallOperator call : agg.getAggregations().values()) {
-            for (ColumnRefOperator usedColumn : call.getUsedColumns().getColumnRefOperators(columnRefFactory)) {
-                if (alignedProjectMap.containsKey(usedColumn)) {
-                    continue;
-                }
-                ColumnRefOperator mappedUsedColumn = originalToUnionCols.get(usedColumn);
-                if (mappedUsedColumn != null) {
-                    alignedProjectMap.put(usedColumn, mappedUsedColumn);
-                }
-            }
-        }
-        alignedProjectMap.put(actionColumn, actionColumn);
-        OptExpression alignedInput = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), semiJoinedUnion);
-
-        List<ColumnRefOperator> rewrittenGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size() + 1);
-        rewrittenGroupingKeys.addAll(originalGroupingKeys);
-        rewrittenGroupingKeys.add(actionColumn);
-        List<ColumnRefOperator> rewrittenPartitionBys = new ArrayList<>(originalGroupingKeys);
-
-        LogicalAggregationOperator rewrittenAgg = LogicalAggregationOperator.builder()
+        // New Aggregation grouping on original grouping keys + action column, partition by original grouping keys.
+        List<ColumnRefOperator> newGroupingKeys = new ArrayList<>(finalGroupingKeys);
+        newGroupingKeys.add(delta.getActionColumn());
+        LogicalAggregationOperator newAgg = LogicalAggregationOperator.builder()
                 .withOperator(agg)
-                .setGroupingKeys(rewrittenGroupingKeys)
-                .setPartitionByColumns(rewrittenPartitionBys)
+                .setGroupingKeys(newGroupingKeys)
+                .setPartitionByColumns(finalGroupingKeys) // Grouping keys except actionColumn.
                 .build();
-        OptExpression rewrittenAggExpr = OptExpression.create(rewrittenAgg, alignedInput);
+        OptExpression newAggOptExpr = OptExpression.create(newAgg, unionOptExpr);
         OptExpression cteAnchor = OptExpression.create(new LogicalCTEAnchorOperator(cteId),
-                affectedKeysProduce,
-                rewrittenAggExpr);
+                affectedKeysProducer, newAggOptExpr);
         return List.of(cteAnchor);
     }
 
@@ -245,158 +170,226 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         }
         // Align aggregate input/grouping columns to the duplicated "changes" subtree.
         ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
-        List<ColumnRefOperator> originalChildOutputs = child.getOutputColumns().getColumnRefOperators(columnRefFactory);
-        List<ColumnRefOperator> originalGroupingKeys = agg.getGroupingKeys();
-        if (originalGroupingKeys.stream().anyMatch(k -> !originalChildOutputs.contains(k))) {
+        List<ColumnRefOperator> oldChildOutputs = child.getOutputColumns().getColumnRefOperators(columnRefFactory);
+        List<ColumnRefOperator> finalGroupingKeys = agg.getGroupingKeys();
+        if (finalGroupingKeys.stream().anyMatch(k -> !oldChildOutputs.contains(k))) {
             return null;
         }
 
-        // Clone child.
-        OptExpressionDuplicator childDuplicator = new OptExpressionDuplicator(columnRefFactory, context);
-        OptExpression newChild = childDuplicator.duplicate(child);
-        List<ColumnRefOperator> newChildOutputs = childDuplicator.getMappedColumns(originalChildOutputs);
-        Map<ColumnRefOperator, ColumnRefOperator> originalToNewColumns = Maps.newHashMap();
-        for (int i = 0; i < originalChildOutputs.size(); i++) {
-            originalToNewColumns.put(originalChildOutputs.get(i), newChildOutputs.get(i));
-        }
-        // Create newGroupingKeys by cloned child.
-        List<ColumnRefOperator> newGroupingKeys = Lists.newArrayListWithCapacity(originalGroupingKeys.size());
-        for (ColumnRefOperator groupingKey : originalGroupingKeys) {
-            ColumnRefOperator mapped = originalToNewColumns.get(groupingKey);
-            if (mapped == null) {
-                return null;
-            }
-            newGroupingKeys.add(mapped);
-        }
+        // DeltaChild.
+        SnapshotInfo deltaChild = cloneChild(context, finalGroupingKeys, child, oldChildOutputs);
 
-        LogicalDeltaOperator newDelta = new LogicalDeltaOperator.Builder().withOperator(delta).setRootDelta(false).build();
-        OptExpression newChildOptExpr = OptExpression.create(newDelta, newChild);
-
-        ColumnRefOperator actionColumn = delta.getActionColumn();
-
-        // Build delta aggregate over changes:
-        // 1) total row-count delta (sum(action))
-        // 2) per-output retractable deltas (COUNT/SUM/AVG supported).
-        ColumnRefOperator deltaCount1Ref = columnRefFactory.create("__delta_count1", IntegerType.BIGINT, false);
+        // DeltaChild -> DeltaAggregate.
+        ColumnRefOperator deltaActionColumn =
+                columnRefFactory.create(IvmRuleUtils.ACTION_COLUMN_NAME, IntegerType.TINYINT, false);
         Map<ColumnRefOperator, CallOperator> deltaAggCalls = Maps.newHashMap();
-        deltaAggCalls.put(deltaCount1Ref, sumCall(IntegerType.BIGINT, actionColumn));
         List<RetractableAggInfo> aggInfos = Lists.newArrayListWithCapacity(agg.getAggregations().size());
+        Map<ColumnRefOperator, CallOperator> avgAggCalls = Maps.newHashMap();
+        RetractableAggInfo totalCountInfo = null;
         for (Map.Entry<ColumnRefOperator, CallOperator> entry : agg.getAggregations().entrySet()) {
-            RetractableAggInfo info = buildRetractableAggInfo(entry.getKey(), entry.getValue(), originalToNewColumns,
-                    actionColumn, deltaCount1Ref, columnRefFactory);
+            String fnName = entry.getValue().getFnName().toLowerCase();
+            if (FunctionSet.AVG.equals(fnName)) {
+                avgAggCalls.put(entry.getKey(), entry.getValue());
+                continue;
+            }
+
+            RetractableAggInfo info = buildRetractableAggInfo(
+                    entry.getKey(), entry.getValue(), deltaChild.oldToNewMapping, deltaActionColumn, columnRefFactory);
             if (info == null) {
                 return null;
             }
-            if (info.deltaAggCall != null) {
-                deltaAggCalls.put(info.deltaOutputRef, info.deltaAggCall);
+
+            deltaAggCalls.put(info.deltaOutputRef, info.deltaAggCall);
+            if (info.kind == AggKind.COUNT_ONE && totalCountInfo == null) {
+                totalCountInfo = info;
             }
-            deltaAggCalls.putAll(info.extraDeltaCalls);
             aggInfos.add(info);
         }
-        LogicalAggregationOperator deltaAgg = new LogicalAggregationOperator(
-                AggType.GLOBAL, newGroupingKeys, deltaAggCalls);
-        OptExpression deltaAggExpr = OptExpression.create(deltaAgg, newChildOptExpr);
+        if (totalCountInfo == null) {
+            return null;
+        }
+        LogicalAggregationOperator deltaAgg =
+                new LogicalAggregationOperator(AggType.GLOBAL, deltaChild.groupingKeys, deltaAggCalls);
+        LogicalDeltaOperator newDelta = new LogicalDeltaOperator.Builder().withOperator(delta).setRootDelta(false).build();
+        OptExpression deltaAggOptExpr = OptExpression.create(deltaAgg, OptExpression.create(newDelta, deltaChild.optExpression));
 
-        // Scan current MV state and bind visible/hidden state columns for each aggregate output.
+        // MV Scan
         MvScanInfo mvScanInfo = buildMvScan(
-                targetMv, originalGroupingKeys, aggInfos, columnRefFactory, delta.getMvColumnMapping());
+                targetMv, finalGroupingKeys, aggInfos, columnRefFactory, delta.getMvColumnMapping(), totalCountInfo);
         if (mvScanInfo == null) {
             return null;
         }
-        // Merge "delta state" with current MV state on grouping keys.
-        ScalarOperator joinOn = buildJoinOnByKeys(newGroupingKeys, mvScanInfo.groupingKeyRefs);
+
+        // DeltaAggregate left outer join MV Scan on grouping keys.
+        ScalarOperator joinOn = buildJoinOnByKeys(deltaChild.groupingKeys, mvScanInfo.groupingKeyRefs);
         if (joinOn == null) {
             return null;
         }
-        OptExpression joinExpr = OptExpression.create(
-                new LogicalJoinOperator(JoinOperator.LEFT_OUTER_JOIN, joinOn),
-                deltaAggExpr,
-                mvScanInfo.scanExpr);
+        OptExpression joinExpr = OptExpression.create(new LogicalJoinOperator(JoinOperator.LEFT_OUTER_JOIN, joinOn),
+                deltaAggOptExpr, mvScanInfo.scanExpr);
 
+        // Split delete/insert filter and project
+        Map<ColumnRefOperator, ColumnRefOperator> deleteConsumerToProducerMap = Maps.newHashMap();
+        Map<ColumnRefOperator, ColumnRefOperator> insertConsumerToProducerMap = Maps.newHashMap();
         Map<ColumnRefOperator, ScalarOperator> deleteProjectMap = Maps.newHashMap();
         Map<ColumnRefOperator, ScalarOperator> insertProjectMap = Maps.newHashMap();
-        for (int i = 0; i < originalGroupingKeys.size(); i++) {
-            deleteProjectMap.put(originalGroupingKeys.get(i), newGroupingKeys.get(i));
-            insertProjectMap.put(originalGroupingKeys.get(i), newGroupingKeys.get(i));
+        Map<ColumnRefOperator, ColumnRefOperator> deleteFinalToConsumerOutputMap = Maps.newHashMap();
+        Map<ColumnRefOperator, ColumnRefOperator> insertFinalToConsumerOutputMap = Maps.newHashMap();
+
+        int mergeCteId = context.getCteContext().getNextCteId();
+        ColumnRefOperator finalActionColumn = delta.getActionColumn();
+
+        OptExpression deleteBranch = createSplit(deltaChild, aggInfos, mvScanInfo,
+                finalGroupingKeys, finalActionColumn, columnRefFactory, mergeCteId,
+                (byte) -1, deleteConsumerToProducerMap, deleteProjectMap, deleteFinalToConsumerOutputMap);
+        OptExpression insertBranch = createSplit(deltaChild, aggInfos, mvScanInfo,
+                finalGroupingKeys, delta.getActionColumn(), columnRefFactory, mergeCteId,
+                (byte) 1, insertConsumerToProducerMap, insertProjectMap, insertFinalToConsumerOutputMap);
+        OptExpression joinProducer = OptExpression.create(new LogicalCTEProduceOperator(mergeCteId), joinExpr);
+
+        List<ColumnRefOperator> finalOutputs = Lists.newArrayList();
+        finalOutputs.addAll(finalGroupingKeys);
+        finalOutputs.addAll(agg.getAggregations().keySet());
+        finalOutputs.add(finalActionColumn);
+        List<ColumnRefOperator> deleteOutputs = finalOutputs.stream().map(deleteFinalToConsumerOutputMap::get).toList();
+        List<ColumnRefOperator> insertOutputs = finalOutputs.stream().map(insertFinalToConsumerOutputMap::get).toList();
+        List<List<ColumnRefOperator>> childOutputCols = List.of(deleteOutputs, insertOutputs);
+
+        LogicalUnionOperator unionOperator = new LogicalUnionOperator(finalOutputs, childOutputCols, true);
+        OptExpression unionChanges = OptExpression.create(unionOperator, deleteBranch, insertBranch);
+
+        return OptExpression.create(new LogicalCTEAnchorOperator(mergeCteId), joinProducer, unionChanges);
+    }
+
+    private record SnapshotInfo(OptExpression optExpression, List<ColumnRefOperator> outputColumns,
+                                List<ColumnRefOperator> groupingKeys, Map<ColumnRefOperator, ColumnRefOperator> oldToNewMapping) {
+    }
+
+    private SnapshotInfo cloneChild(OptimizerContext context,
+                                    List<ColumnRefOperator> oldGroupingKeys,
+                                    OptExpression child,
+                                    List<ColumnRefOperator> oldOutputs) {
+        ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
+
+        OptExpressionDuplicator duplicator = new OptExpressionDuplicator(columnRefFactory, context);
+        OptExpression newChildExpr = duplicator.duplicate(child);
+        List<ColumnRefOperator> newOutputs = duplicator.getMappedColumns(oldOutputs);
+
+        List<ColumnRefOperator> newGroupingKeys = Lists.newArrayListWithCapacity(oldGroupingKeys.size());
+        for (ColumnRefOperator groupingKey : oldGroupingKeys) {
+            ColumnRefOperator newGroupingKey = duplicator.getColumnMapping().get(groupingKey);
+            newGroupingKeys.add(newGroupingKey);
         }
 
-        // Materialize old/new visible values and hidden states:
-        // - delete branch emits old state with action=-1 when old row exists
-        // - insert branch emits new state with action=+1 when new row exists
-        List<ColumnRefOperator> hiddenOutputRefs = Lists.newArrayList();
-        for (RetractableAggInfo info : aggInfos) {
-            ScalarOperator oldVisible = info.computeOldVisible(mvScanInfo, columnRefFactory);
-            ScalarOperator newVisible = info.computeNewVisible(mvScanInfo, columnRefFactory);
-            deleteProjectMap.put(info.outputRef, oldVisible);
-            insertProjectMap.put(info.outputRef, newVisible);
-            for (HiddenStateRef hiddenStateRef : info.hiddenStateRefs) {
-                hiddenOutputRefs.add(hiddenStateRef.outputRef);
-                deleteProjectMap.put(hiddenStateRef.outputRef, hiddenStateRef.oldExpr);
-                insertProjectMap.put(hiddenStateRef.outputRef, hiddenStateRef.newExpr);
+        return new SnapshotInfo(newChildExpr, newOutputs, newGroupingKeys, duplicator.getColumnMapping());
+    }
+
+    private SnapshotInfo createSnapshotChild(OptimizerContext context,
+                                             List<ColumnRefOperator> groupingKeys,
+                                             OptExpression child,
+                                             List<ColumnRefOperator> oldOutputs,
+                                             long version, byte actionValue) {
+        ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
+
+        // Child
+        SnapshotInfo clonedChild = cloneChild(context, groupingKeys, child, oldOutputs);
+
+        // Project
+        Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap();
+        for (ColumnRefOperator out : clonedChild.outputColumns) {
+            projectMap.put(out, out);
+        }
+        ColumnRefOperator actionColumn = columnRefFactory.create(IvmRuleUtils.ACTION_COLUMN_NAME, IntegerType.TINYINT, false);
+        projectMap.put(actionColumn, ConstantOperator.createTinyInt(actionValue));
+        LogicalProjectOperator projectOperator = new LogicalProjectOperator(projectMap);
+
+        // Version
+        LogicalVersionOperator versionOperator = new LogicalVersionOperator(version);
+
+        // Child -> Project -> Version
+        OptExpression optExpr =
+                OptExpression.create(versionOperator, OptExpression.create(projectOperator, clonedChild.optExpression));
+        return new SnapshotInfo(optExpr, clonedChild.groupingKeys, clonedChild.outputColumns, clonedChild.oldToNewMapping);
+    }
+
+    private OptExpression createLeftSemiJoin(ColumnRefFactory columnRefFactory, int cteId,
+                                             List<ColumnRefOperator> rightProducerOutputColumns, SnapshotInfo leftSnapshotInfo) {
+        List<ColumnRefOperator> consumerOutputColumns = Lists.newArrayList();
+        Map<ColumnRefOperator, ColumnRefOperator> consumerMap = Maps.newHashMap();
+        for (ColumnRefOperator inputCol : rightProducerOutputColumns) {
+            ColumnRefOperator outputCol = columnRefFactory.create(inputCol.getName(), inputCol.getType(), inputCol.isNullable());
+            consumerMap.put(outputCol, inputCol);
+            consumerOutputColumns.add(outputCol);
+        }
+        OptExpression rightConsumer = OptExpression.create(new LogicalCTEConsumeOperator(cteId, consumerMap));
+
+        // (Snapshot) left semi join (AffectedKeysConsumer)
+        ScalarOperator toOnPredicate = buildSemiJoinPredicate(leftSnapshotInfo.groupingKeys, consumerOutputColumns);
+        if (toOnPredicate == null) {
+            return null;
+        }
+        return OptExpression.create(
+                new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, toOnPredicate),
+                leftSnapshotInfo.optExpression,
+                rightConsumer);
+    }
+
+    // left outer join -> consumer -> filter -> project -> union all
+    private OptExpression createSplit(SnapshotInfo leftChild, List<RetractableAggInfo> leftAggInfos, MvScanInfo right,
+                                      List<ColumnRefOperator> finalOutputGroupingKeys, ColumnRefOperator finalActionColumn,
+                                      ColumnRefFactory factory, int cteId, byte actionValue,
+                                      Map<ColumnRefOperator, ColumnRefOperator> consumerToProducerMap,
+                                      Map<ColumnRefOperator, ScalarOperator> projectMap,
+                                      Map<ColumnRefOperator, ColumnRefOperator> finalToConsumerMap) {
+        for (int i = 0; i < leftChild.groupingKeys.size(); i++) {
+            ColumnRefOperator producerOutput = leftChild.groupingKeys.get(i);
+            ColumnRefOperator finalOutput = finalOutputGroupingKeys.get(i);
+
+            ColumnRefOperator consumerOutput =
+                    factory.create(producerOutput.getName(), producerOutput.getType(), producerOutput.isNullable());
+            consumerToProducerMap.put(consumerOutput, producerOutput);
+            projectMap.put(consumerOutput, consumerOutput);
+            finalToConsumerMap.put(finalOutput, consumerOutput);
+        }
+
+        RetractableAggInfo consumerCount1 = null;
+        for (RetractableAggInfo info : leftAggInfos) {
+            ColumnRefOperator finalOutput = info.outputRef;
+
+            RetractableAggInfo consumerInfo = info.cloneColumnRef(factory, consumerToProducerMap);
+            ScalarOperator consumerCall = actionValue == DELETE_ACTION ?
+                    consumerInfo.computeDeleteColumn(right, factory) :
+                    consumerInfo.computeInsertColumn(right, factory);
+            ColumnRefOperator consumerOutput =
+                    factory.create(finalOutput.getName(), finalOutput.getType(), finalOutput.isNullable());
+            projectMap.put(consumerOutput, consumerCall);
+            finalToConsumerMap.put(finalOutput, consumerOutput);
+
+            if (info.kind == AggKind.COUNT_ONE && consumerCount1 == null) {
+                consumerCount1 = consumerInfo;
             }
         }
 
-        ColumnRefOperator finalActionColumn = columnRefFactory.create(
-                IvmRuleUtils.ACTION_COLUMN_NAME, IntegerType.TINYINT, false);
-        deleteProjectMap.put(finalActionColumn, ConstantOperator.createTinyInt((byte) -1));
-        insertProjectMap.put(finalActionColumn, ConstantOperator.createTinyInt((byte) 1));
+        if (consumerCount1 == null) {
+            return null;
+        }
 
-        ScalarOperator oldExists = new BinaryPredicateOperator(BinaryType.GT,
-                coalesceZero(mvScanInfo.totalCountRef), ConstantOperator.createBigint(0));
-        ScalarOperator newExists = new BinaryPredicateOperator(BinaryType.GT,
-                addOperator(coalesceZero(mvScanInfo.totalCountRef), deltaCount1Ref, IntegerType.BIGINT),
-                ConstantOperator.createBigint(0));
+        ColumnRefOperator consumerActionColumn =
+                factory.create(finalActionColumn.getName(), finalActionColumn.getType(), finalActionColumn.isNullable());
+        projectMap.put(consumerActionColumn, ConstantOperator.createTinyInt(actionValue));
+        finalToConsumerMap.put(finalActionColumn, consumerActionColumn);
 
-        // Build DELETE and INSERT change streams, then union them as final MV changes.
-        // Keep mergeJoin under one CTE producer so two branches consume the same affected rows snapshot.
-        Set<ColumnRefOperator> consumeRefs = new HashSet<>();
-        for (ScalarOperator expr : deleteProjectMap.values()) {
-            consumeRefs.addAll(expr.getUsedColumns().getColumnRefOperators(columnRefFactory));
-        }
-        for (ScalarOperator expr : insertProjectMap.values()) {
-            consumeRefs.addAll(expr.getUsedColumns().getColumnRefOperators(columnRefFactory));
-        }
-        consumeRefs.addAll(oldExists.getUsedColumns().getColumnRefOperators(columnRefFactory));
-        consumeRefs.addAll(newExists.getUsedColumns().getColumnRefOperators(columnRefFactory));
+        ColumnRefOperator consumerCount0 =
+                factory.create(right.totalCountRef.getName(), right.totalCountRef.getType(), right.totalCountRef.isNullable());
+        consumerToProducerMap.put(consumerCount0, right.totalCountRef);
+        ScalarOperator existCount = actionValue == DELETE_ACTION ?
+                coalesceZero(consumerCount0) :
+                addOperator(coalesceZero(consumerCount0), consumerCount1.deltaOutputRef, IntegerType.BIGINT);
+        ScalarOperator existPredicate = new BinaryPredicateOperator(BinaryType.GT, existCount, ConstantOperator.createBigint(0));
 
-        int mergeCteId = context.getCteContext().getNextCteId();
-        OptExpression mergeProduce = OptExpression.create(new LogicalCTEProduceOperator(mergeCteId), joinExpr);
-        Map<ColumnRefOperator, ColumnRefOperator> deleteConsumeMap = Maps.newHashMap();
-        Map<ColumnRefOperator, ColumnRefOperator> insertConsumeMap = Maps.newHashMap();
-        for (ColumnRefOperator ref : consumeRefs) {
-            deleteConsumeMap.put(ref, ref);
-            insertConsumeMap.put(ref, ref);
-        }
-        OptExpression deleteConsume = OptExpression.create(new LogicalCTEConsumeOperator(mergeCteId, deleteConsumeMap));
-        OptExpression insertConsume = OptExpression.create(new LogicalCTEConsumeOperator(mergeCteId, insertConsumeMap));
-
-        OptExpression deleteBranch = OptExpression.create(new LogicalProjectOperator(deleteProjectMap),
-                OptExpression.create(new LogicalFilterOperator(oldExists), deleteConsume));
-        OptExpression insertBranch = OptExpression.create(new LogicalProjectOperator(insertProjectMap),
-                OptExpression.create(new LogicalFilterOperator(newExists), insertConsume));
-
-        List<ColumnRefOperator> unionOutputs = Lists.newArrayList();
-        unionOutputs.addAll(originalGroupingKeys);
-        unionOutputs.addAll(agg.getAggregations().keySet());
-        unionOutputs.addAll(hiddenOutputRefs);
-        unionOutputs.add(finalActionColumn);
-        List<List<ColumnRefOperator>> childOutputCols = List.of(unionOutputs, unionOutputs);
-        OptExpression unionChanges = OptExpression.create(new LogicalUnionOperator(unionOutputs, childOutputCols, true),
-                deleteBranch, insertBranch);
-        // Align final output slots to original aggregate outputs, and map ACTION back to the original action slot.
-        Map<ColumnRefOperator, ScalarOperator> alignedProjectMap = Maps.newHashMap();
-        for (ColumnRefOperator groupingKey : originalGroupingKeys) {
-            alignedProjectMap.put(groupingKey, groupingKey);
-        }
-        for (ColumnRefOperator outputRef : agg.getAggregations().keySet()) {
-            alignedProjectMap.put(outputRef, outputRef);
-        }
-        for (ColumnRefOperator hiddenOutputRef : hiddenOutputRefs) {
-            alignedProjectMap.put(hiddenOutputRef, hiddenOutputRef);
-        }
-        alignedProjectMap.put(actionColumn, finalActionColumn);
-        OptExpression alignedUnionChanges = OptExpression.create(new LogicalProjectOperator(alignedProjectMap), unionChanges);
-        return OptExpression.create(new LogicalCTEAnchorOperator(mergeCteId), mergeProduce, alignedUnionChanges);
+        OptExpression consumer = OptExpression.create(new LogicalCTEConsumeOperator(cteId, consumerToProducerMap));
+        return OptExpression.create(new LogicalProjectOperator(projectMap),
+                OptExpression.create(new LogicalFilterOperator(existPredicate), consumer));
     }
 
     private boolean isSupportedAggregate(LogicalAggregationOperator agg) {
@@ -413,8 +406,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     }
 
     private ScalarOperator buildSemiJoinPredicate(List<ColumnRefOperator> leftGroupingKeys,
-                                                  List<ColumnRefOperator> rightGroupingKeys,
-                                                  Map<ColumnRefOperator, ColumnRefOperator> originalToUnionCols) {
+                                                  List<ColumnRefOperator> rightGroupingKeys) {
         if (leftGroupingKeys.size() != rightGroupingKeys.size()) {
             return null;
         }
@@ -422,11 +414,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         for (int i = 0; i < leftGroupingKeys.size(); i++) {
             ColumnRefOperator leftKey = leftGroupingKeys.get(i);
             ColumnRefOperator rightKey = rightGroupingKeys.get(i);
-            ColumnRefOperator mappedLeft = originalToUnionCols.get(leftKey);
-            if (mappedLeft == null) {
-                return null;
-            }
-            joinConjuncts.add(new BinaryPredicateOperator(BinaryType.EQ, mappedLeft, rightKey));
+            joinConjuncts.add(new BinaryPredicateOperator(BinaryType.EQ, leftKey, rightKey));
         }
         return Utils.compoundAnd(joinConjuncts);
     }
@@ -470,145 +458,77 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         return targetMv;
     }
 
-    private RetractableAggInfo buildRetractableAggInfo(ColumnRefOperator outputRef, CallOperator call,
-                                                       Map<ColumnRefOperator, ColumnRefOperator> originalToMapped,
+    private RetractableAggInfo buildRetractableAggInfo(ColumnRefOperator oldOutput, CallOperator call,
+                                                       Map<ColumnRefOperator, ColumnRefOperator> oldToNewMapping,
                                                        ColumnRefOperator actionColumn,
-                                                       ColumnRefOperator deltaCount1Ref,
                                                        ColumnRefFactory columnRefFactory) {
         String fnName = call.getFnName().toLowerCase();
         if (call.isDistinct()) {
             return null;
         }
+
+        ColumnRefOperator deltaRef = columnRefFactory.create("__delta_" + oldOutput.getName(), oldOutput.getType(), false);
         if (FunctionSet.COUNT.equals(fnName)) {
             if (isCountStarOrOne(call)) {
-                RetractableAggInfo info = new RetractableAggInfo(outputRef, AggKind.COUNT_ONE, deltaCount1Ref,
-                        null);
-                info.totalCountDeltaRef = deltaCount1Ref;
-                return info;
+                return new RetractableAggInfo(oldOutput, AggKind.COUNT_ONE,
+                        deltaRef, sumCall(IntegerType.BIGINT, actionColumn));
             }
             if (call.getArguments().size() != 1 || !(call.getChild(0) instanceof ColumnRefOperator arg)) {
                 return null;
             }
-            ColumnRefOperator mappedArg = originalToMapped.get(arg);
+            ColumnRefOperator mappedArg = oldToNewMapping.get(arg);
             if (mappedArg == null) {
                 return null;
             }
-            ColumnRefOperator deltaRef = columnRefFactory.create(
-                    "__delta_" + outputRef.getName(), IntegerType.BIGINT, false);
+
             ScalarOperator countExpr = nullToZero(mappedArg, actionColumn, IntegerType.BIGINT);
-            RetractableAggInfo info = new RetractableAggInfo(outputRef, AggKind.COUNT_COLUMN, deltaRef,
-                    sumCall(IntegerType.BIGINT, countExpr));
-            info.totalCountDeltaRef = deltaCount1Ref;
-            return info;
+            return new RetractableAggInfo(oldOutput, AggKind.COUNT_COLUMN,
+                    deltaRef, sumCall(IntegerType.BIGINT, countExpr));
         }
         if (FunctionSet.SUM.equals(fnName)) {
             if (call.getArguments().size() != 1 || !(call.getChild(0) instanceof ColumnRefOperator arg)) {
                 return null;
             }
-            ColumnRefOperator mappedArg = originalToMapped.get(arg);
+            ColumnRefOperator mappedArg = oldToNewMapping.get(arg);
             if (mappedArg == null) {
                 return null;
             }
-            ColumnRefOperator deltaRef = columnRefFactory.create(
-                    "__delta_" + outputRef.getName(), outputRef.getType(), true);
-            ScalarOperator scaled = nullToZero(mappedArg,
-                    multiplyOperator(mappedArg, actionColumn, outputRef.getType()), outputRef.getType());
-            RetractableAggInfo info = new RetractableAggInfo(outputRef, AggKind.SUM_COLUMN, deltaRef,
-                    sumCall(outputRef.getType(), scaled));
-            info.totalCountDeltaRef = deltaCount1Ref;
-            return info;
+            ScalarOperator scaled = multiplyOperator(mappedArg, actionColumn, oldOutput.getType());
+            return new RetractableAggInfo(oldOutput, AggKind.SUM_COLUMN,
+                    deltaRef, sumCall(oldOutput.getType(), scaled));
         }
-        if (FunctionSet.AVG.equals(fnName)) {
-            if (call.getArguments().size() != 1 || !(call.getChild(0) instanceof ColumnRefOperator arg)) {
-                return null;
-            }
-            ColumnRefOperator mappedArg = originalToMapped.get(arg);
-            if (mappedArg == null) {
-                return null;
-            }
-            ColumnRefOperator deltaRef = columnRefFactory.create(
-                    "__delta_" + outputRef.getName(), outputRef.getType(), true);
-            ColumnRefOperator deltaSumRef = columnRefFactory.create(
-                    "__delta_sum_" + outputRef.getName(), outputRef.getType(), true);
-            ColumnRefOperator deltaCountRef = columnRefFactory.create(
-                    "__delta_count_" + outputRef.getName(), IntegerType.BIGINT, false);
-            ScalarOperator scaled = nullToZero(mappedArg,
-                    multiplyOperator(mappedArg, actionColumn, outputRef.getType()), outputRef.getType());
-            RetractableAggInfo info = new RetractableAggInfo(outputRef, AggKind.AVG_COLUMN, deltaRef,
-                    sumCall(outputRef.getType(), scaled));
-            info.avgDeltaSumRef = deltaSumRef;
-            info.avgDeltaCountRef = deltaCountRef;
-            info.totalCountDeltaRef = deltaCount1Ref;
-            info.extraDeltaCalls.put(deltaSumRef, sumCall(outputRef.getType(), scaled));
-            info.extraDeltaCalls.put(deltaCountRef, sumCall(IntegerType.BIGINT, nullToZero(mappedArg, actionColumn,
-                    IntegerType.BIGINT)));
-            return info;
-        }
+
         return null;
     }
 
-    private MvScanInfo buildMvScan(MaterializedView targetMv, List<ColumnRefOperator> groupingKeys,
+    private MvScanInfo buildMvScan(MaterializedView targetMv, List<ColumnRefOperator> aggGroupingKeys,
                                    List<RetractableAggInfo> infos, ColumnRefFactory columnRefFactory,
-                                   Map<ColumnRefOperator, Column> mvColumnMapping) {
-        Map<String, Column> mvColumnByName = Maps.newHashMap();
-        for (Column column : targetMv.getFullSchema()) {
-            mvColumnByName.put(column.getName().toLowerCase(), column);
-        }
-
+                                   Map<ColumnRefOperator, Column> mvColumnMapping, RetractableAggInfo totalCountInfo) {
         Map<ColumnRefOperator, Column> colRefToMeta = Maps.newHashMap();
         Map<Column, ColumnRefOperator> metaToColRef = Maps.newHashMap();
-        List<ColumnRefOperator> groupKeyRefs = Lists.newArrayListWithCapacity(groupingKeys.size());
-        for (ColumnRefOperator groupingKey : groupingKeys) {
+        List<ColumnRefOperator> groupingColumns = Lists.newArrayListWithCapacity(aggGroupingKeys.size());
+        for (ColumnRefOperator groupingKey : aggGroupingKeys) {
             Column mvColumn = mvColumnMapping.get(groupingKey);
             if (mvColumn == null) {
                 return null;
             }
-            ColumnRefOperator ref = createScanColumnRef(columnRefFactory, targetMv, mvColumn, colRefToMeta, metaToColRef);
-            groupKeyRefs.add(ref);
+            ColumnRefOperator col = createScanColumnRef(columnRefFactory, targetMv, mvColumn, colRefToMeta, metaToColRef);
+            groupingColumns.add(col);
         }
 
-        Column totalCountColumn = null;
         for (RetractableAggInfo info : infos) {
             Column mvColumn = mvColumnMapping.get(info.outputRef);
             if (mvColumn == null) {
                 return null;
             }
-            info.mvVisibleRef = createScanColumnRef(columnRefFactory, targetMv, mvColumn, colRefToMeta, metaToColRef);
-            String visibleName = mvColumn.getName();
-
-            if (info.kind == AggKind.COUNT_COLUMN || info.kind == AggKind.SUM_COLUMN || info.kind == AggKind.AVG_COLUMN) {
-                Column cnt1 = mvColumnByName.get(IvmRuleUtils.count1StateColumnName(visibleName).toLowerCase());
-                if (cnt1 == null) {
-                    return null;
-                }
-                info.mvCount1StateRef = createScanColumnRef(columnRefFactory, targetMv, cnt1, colRefToMeta, metaToColRef);
-                if (totalCountColumn == null) {
-                    totalCountColumn = cnt1;
-                }
-            }
-            if (info.kind == AggKind.AVG_COLUMN) {
-                Column sum = mvColumnByName.get(IvmRuleUtils.sumStateColumnName(visibleName).toLowerCase());
-                Column count = mvColumnByName.get(IvmRuleUtils.countStateColumnName(visibleName).toLowerCase());
-                if (sum == null || count == null) {
-                    return null;
-                }
-                info.mvSumStateRef = createScanColumnRef(columnRefFactory, targetMv, sum, colRefToMeta, metaToColRef);
-                info.mvCountStateRef = createScanColumnRef(columnRefFactory, targetMv, count, colRefToMeta, metaToColRef);
-            }
-            if (info.kind == AggKind.COUNT_ONE && totalCountColumn == null) {
-                totalCountColumn = mvColumn;
-            }
+            info.mvColRef = createScanColumnRef(columnRefFactory, targetMv, mvColumn, colRefToMeta, metaToColRef);
         }
-        if (totalCountColumn == null) {
-            return null;
-        }
+        ColumnRefOperator totalCountColumn = totalCountInfo.mvColRef;
 
-        ColumnRefOperator totalCountRef = createScanColumnRef(columnRefFactory, targetMv, totalCountColumn,
-                colRefToMeta, metaToColRef);
         LogicalOlapScanOperator scan = new LogicalOlapScanOperator(targetMv, colRefToMeta, metaToColRef, null,
                 Operator.DEFAULT_LIMIT, null, targetMv.getBaseIndexMetaId(), targetMv.getAllPartitionIds(), null,
                 false, Lists.newArrayList(), Lists.newArrayList(), Lists.newArrayList(), false, null);
-        return new MvScanInfo(OptExpression.create(scan), groupKeyRefs, totalCountRef);
+        return new MvScanInfo(OptExpression.create(scan), groupingColumns, totalCountColumn);
     }
 
     private ColumnRefOperator createScanColumnRef(ColumnRefFactory factory, MaterializedView targetMv, Column column,
@@ -661,6 +581,13 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         return createBuiltinCall(FunctionSet.DIVIDE, type, List.of(left, right));
     }
 
+    private static ScalarOperator avgFromSumCount(ScalarOperator sumExpr, ScalarOperator countExpr, Type type) {
+        ScalarOperator safeCount = coalesceZero(countExpr);
+        return new CaseWhenOperator(type, null, divideOperator(sumExpr, safeCount, type),
+                List.of(new BinaryPredicateOperator(BinaryType.LE, safeCount, ConstantOperator.createBigint(0L)),
+                        ConstantOperator.createNull(type)));
+    }
+
     private static CallOperator createBuiltinCall(String fnName, Type returnType, List<ScalarOperator> args) {
         Type[] argTypes = args.stream().map(ScalarOperator::getType).toArray(Type[]::new);
         Function fn = ExprUtils.getBuiltinFunction(fnName, argTypes, Function.CompareMode.IS_NONSTRICT_SUPERTYPE_OF);
@@ -684,36 +611,15 @@ public class IvmDeltaAggregateRule extends TransformationRule {
     private enum AggKind {
         COUNT_ONE,
         COUNT_COLUMN,
-        SUM_COLUMN,
-        AVG_COLUMN
-    }
-
-    private static final class HiddenStateRef {
-        private final ColumnRefOperator outputRef;
-        private final ScalarOperator oldExpr;
-        private final ScalarOperator newExpr;
-
-        private HiddenStateRef(ColumnRefOperator outputRef, ScalarOperator oldExpr, ScalarOperator newExpr) {
-            this.outputRef = outputRef;
-            this.oldExpr = oldExpr;
-            this.newExpr = newExpr;
-        }
+        SUM_COLUMN
     }
 
     private static final class RetractableAggInfo {
         private final ColumnRefOperator outputRef;
         private final AggKind kind;
-        private final ColumnRefOperator deltaOutputRef;
         private final CallOperator deltaAggCall;
-        private final Map<ColumnRefOperator, CallOperator> extraDeltaCalls = Maps.newHashMap();
-        private ColumnRefOperator totalCountDeltaRef;
-        private ColumnRefOperator avgDeltaSumRef;
-        private ColumnRefOperator avgDeltaCountRef;
-        private ColumnRefOperator mvVisibleRef;
-        private ColumnRefOperator mvCount1StateRef;
-        private ColumnRefOperator mvSumStateRef;
-        private ColumnRefOperator mvCountStateRef;
-        private final List<HiddenStateRef> hiddenStateRefs = Lists.newArrayList();
+        private final ColumnRefOperator deltaOutputRef;
+        private ColumnRefOperator mvColRef;
 
         private RetractableAggInfo(ColumnRefOperator outputRef, AggKind kind, ColumnRefOperator deltaOutputRef,
                                    CallOperator deltaAggCall) {
@@ -723,65 +629,33 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             this.deltaAggCall = deltaAggCall;
         }
 
-        private ScalarOperator computeOldVisible(MvScanInfo scanInfo, ColumnRefFactory factory) {
+        private RetractableAggInfo cloneColumnRef(ColumnRefFactory factory,
+                                                  Map<ColumnRefOperator, ColumnRefOperator> newToOldMapping) {
+            ColumnRefOperator newDeltaOutputRef =
+                    factory.create(deltaOutputRef.getName(), deltaOutputRef.getType(), deltaOutputRef.isNullable());
+            ColumnRefOperator newMvColRef = factory.create(mvColRef.getName(), mvColRef.getType(), mvColRef.isNullable());
+
+            newToOldMapping.put(newDeltaOutputRef, newMvColRef);
+            newToOldMapping.put(newMvColRef, newDeltaOutputRef);
+
+            RetractableAggInfo cloned = new RetractableAggInfo(outputRef, kind, newDeltaOutputRef, deltaAggCall);
+            cloned.mvColRef = newMvColRef;
+
+            return cloned;
+        }
+
+        private ScalarOperator computeDeleteColumn(MvScanInfo scanInfo, ColumnRefFactory factory) {
             return switch (kind) {
-                case COUNT_ONE -> coalesceZero(mvVisibleRef);
-                case COUNT_COLUMN -> {
-                    ScalarOperator oldCnt1 = coalesceZero(mvCount1StateRef);
-                    ScalarOperator oldCntCol = coalesceZero(mvVisibleRef);
-                    ColumnRefOperator stateRef = factory.create(IvmRuleUtils.count1StateColumnName(outputRef.getName()),
-                            IntegerType.BIGINT, false);
-                    hiddenStateRefs.add(new HiddenStateRef(stateRef, oldCnt1,
-                            addOperator(oldCnt1, totalCountDeltaRef, IntegerType.BIGINT)));
-                    yield oldCntCol;
-                }
-                case SUM_COLUMN -> {
-                    ScalarOperator oldCnt1 = coalesceZero(mvCount1StateRef);
-                    ScalarOperator oldSum = coalesceZero(mvVisibleRef);
-                    ColumnRefOperator stateRef = factory.create(IvmRuleUtils.count1StateColumnName(outputRef.getName()),
-                            IntegerType.BIGINT, false);
-                    hiddenStateRefs.add(new HiddenStateRef(stateRef, oldCnt1,
-                            addOperator(oldCnt1, totalCountDeltaRef, IntegerType.BIGINT)));
-                    yield oldSum;
-                }
-                case AVG_COLUMN -> {
-                    ScalarOperator oldCnt1 = coalesceZero(mvCount1StateRef);
-                    ScalarOperator oldSum = coalesceZero(mvSumStateRef);
-                    ScalarOperator oldCnt = coalesceZero(mvCountStateRef);
-                    ScalarOperator oldAvg = new CaseWhenOperator(
-                            outputRef.getType(), null, divideOperator(oldSum, oldCnt, outputRef.getType()),
-                            List.of(new BinaryPredicateOperator(BinaryType.LE, oldCnt, ConstantOperator.createBigint(0L)),
-                                    ConstantOperator.createNull(outputRef.getType())));
-                    ScalarOperator newCnt1 = addOperator(oldCnt1, totalCountDeltaRef, IntegerType.BIGINT);
-                    ScalarOperator newSum = addOperator(oldSum, avgDeltaSumRef, outputRef.getType());
-                    ScalarOperator newCnt = addOperator(oldCnt, avgDeltaCountRef, IntegerType.BIGINT);
-                    ScalarOperator newAvg = new CaseWhenOperator(
-                            outputRef.getType(), null, divideOperator(newSum, newCnt, outputRef.getType()),
-                            List.of(new BinaryPredicateOperator(BinaryType.LE, newCnt, ConstantOperator.createBigint(0L)),
-                                    ConstantOperator.createNull(outputRef.getType())));
-                    hiddenStateRefs.add(new HiddenStateRef(factory.create(IvmRuleUtils.count1StateColumnName(outputRef.getName()),
-                            IntegerType.BIGINT, false), oldCnt1, newCnt1));
-                    hiddenStateRefs.add(new HiddenStateRef(factory.create(IvmRuleUtils.sumStateColumnName(outputRef.getName()),
-                            outputRef.getType(), true), oldSum, newSum));
-                    hiddenStateRefs.add(new HiddenStateRef(factory.create(IvmRuleUtils.countStateColumnName(outputRef.getName()),
-                            IntegerType.BIGINT, false), oldCnt, newCnt));
-                    this.cachedNewVisible = newAvg;
-                    yield oldAvg;
-                }
+                case COUNT_ONE -> coalesceZero(mvColRef);
+                case COUNT_COLUMN, SUM_COLUMN -> coalesceZero(mvColRef);
             };
         }
 
-        private ScalarOperator cachedNewVisible;
-
-        private ScalarOperator computeNewVisible(MvScanInfo scanInfo, ColumnRefFactory factory) {
-            if (cachedNewVisible != null) {
-                return cachedNewVisible;
-            }
+        private ScalarOperator computeInsertColumn(MvScanInfo scanInfo, ColumnRefFactory factory) {
             return switch (kind) {
-                case COUNT_ONE -> addOperator(coalesceZero(mvVisibleRef), deltaOutputRef, IntegerType.BIGINT);
-                case COUNT_COLUMN -> addOperator(coalesceZero(mvVisibleRef), deltaOutputRef, IntegerType.BIGINT);
-                case SUM_COLUMN -> addOperator(coalesceZero(mvVisibleRef), deltaOutputRef, outputRef.getType());
-                case AVG_COLUMN -> cachedNewVisible;
+                case COUNT_ONE -> addOperator(coalesceZero(mvColRef), deltaOutputRef, IntegerType.BIGINT);
+                case COUNT_COLUMN -> addOperator(coalesceZero(mvColRef), deltaOutputRef, IntegerType.BIGINT);
+                case SUM_COLUMN -> addOperator(coalesceZero(mvColRef), deltaOutputRef, outputRef.getType());
             };
         }
     }

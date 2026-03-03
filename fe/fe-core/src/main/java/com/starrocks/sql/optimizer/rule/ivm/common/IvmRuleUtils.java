@@ -27,7 +27,6 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
-import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
 import com.starrocks.type.IntegerType;
@@ -95,11 +94,6 @@ public class IvmRuleUtils {
         if (expression.getOp() instanceof LogicalDeltaOperator delta) {
             if (delta.getActionColumn() != null) {
                 return Optional.of(delta.getActionColumn());
-            }
-        }
-        if (expression.getOp() instanceof LogicalVersionOperator version) {
-            if (version.getActionColumn() != null) {
-                return Optional.of(version.getActionColumn());
             }
         }
         if (expression.getOp() instanceof LogicalAggregationOperator agg) {

@@ -14,21 +14,16 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
-import com.google.common.collect.Maps;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
-import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
-import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
-import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
-import java.util.Map;
 
 public class IvmVersionFilterRule extends TransformationRule {
     public IvmVersionFilterRule() {
@@ -41,28 +36,8 @@ public class IvmVersionFilterRule extends TransformationRule {
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalVersionOperator version = (LogicalVersionOperator) input.getOp();
         LogicalFilterOperator filter = (LogicalFilterOperator) input.inputAt(0).getOp();
-        LogicalFilterOperator rewrittenFilter = filter;
-        ColumnRefOperator childActionColumn = null;
-        if (version.getActionColumn() != null) {
-            childActionColumn = context.getColumnRefFactory().create(
-                    version.getActionColumn().getName(),
-                    version.getActionColumn().getType(),
-                    version.getActionColumn().isNullable());
-            if (filter.getProjection() != null) {
-                Map<ColumnRefOperator, ScalarOperator> projectionMap = Maps.newHashMap(filter.getProjection().getColumnRefMap());
-                projectionMap.put(version.getActionColumn(), childActionColumn);
-                rewrittenFilter = new LogicalFilterOperator.Builder()
-                        .withOperator(filter)
-                        .setProjection(new Projection(
-                                projectionMap,
-                                Maps.newHashMap(filter.getProjection().getCommonSubOperatorMap())))
-                        .build();
-            }
-        }
-
         OptExpression filterChild = input.inputAt(0).inputAt(0);
-        OptExpression versionChild = OptExpression.create(
-                new LogicalVersionOperator(version.getTableVersion(), version.getAction(), childActionColumn), filterChild);
-        return List.of(OptExpression.create(rewrittenFilter, versionChild));
+        OptExpression versionChild = OptExpression.create(new LogicalVersionOperator(version.getTableVersion()), filterChild);
+        return List.of(OptExpression.create(filter, versionChild));
     }
 }

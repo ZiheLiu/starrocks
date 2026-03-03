@@ -23,7 +23,6 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
-import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
@@ -56,9 +55,6 @@ public class IvmVersionOlapScanRule extends TransformationRule {
         Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newLinkedHashMap();
         for (ColumnRefOperator outputColumn : outputColumns) {
             projectMap.put(outputColumn, outputColumn);
-        }
-        if (version.getActionColumn() != null) {
-            projectMap.put(version.getActionColumn(), ConstantOperator.createTinyInt(version.getAction()));
         }
 
         return List.of(OptExpression.create(new LogicalProjectOperator(projectMap), OptExpression.create(rewrittenScan)));
