@@ -224,8 +224,9 @@ public class IvmRewriter {
         // DELETE must come first: __op=1 for DELETE, __op=0 for INSERT.
         List<Ordering> orderings = List.of(new Ordering(loadOpColumn, false, false));
         LogicalTopNOperator.Builder topNBuilder = LogicalTopNOperator.builder()
+                .withOperator(
+                        new LogicalTopNOperator(orderings, Operator.DEFAULT_LIMIT, Operator.DEFAULT_OFFSET, SortPhase.PARTIAL))
                 .setOrderByElements(orderings)
-                .setSortPhase(SortPhase.PARTIAL)
                 .setPerPipeline(true)
                 .setPartitionByColumns(rootRowIdColumns)
                 .setPartitionLimit(Operator.DEFAULT_LIMIT);
