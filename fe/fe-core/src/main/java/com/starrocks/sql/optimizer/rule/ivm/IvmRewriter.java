@@ -229,6 +229,7 @@ public class IvmRewriter {
                 .setOrderByElements(orderings)
                 .setPerPipeline(true)
                 .setPartitionByColumns(rootRowIdColumns)
+                .setShuffleColumns(rootRowIdColumns)
                 .setPartitionLimit(Operator.DEFAULT_LIMIT);
         LogicalTopNOperator topN = topNBuilder.build();
         return OptExpression.create(topN, projectExpr);
