@@ -56,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class IvmRewriter {
     private IvmRewriter() {
@@ -102,7 +103,8 @@ public class IvmRewriter {
         OptExpression rewrittenRoot = tree.getInputs().get(0);
         deriveLogicalProperty(rewrittenRoot);
         if (isPrimaryKeyTargetMv(optimizerContext)) {
-            rewrittenRoot = appendPkLoadOpColumn(rewrittenRoot, rootTaskContext, requiredColumns);
+            rewrittenRoot =
+                    appendPkLoadOpColumn(rewrittenRoot, rootTaskContext, requiredColumns, rowIdResult.rootRowIdColumnRefs());
         }
         tree.setChild(0, rewrittenRoot);
         deriveLogicalProperty(tree);
@@ -185,7 +187,8 @@ public class IvmRewriter {
     }
 
     private static OptExpression appendPkLoadOpColumn(OptExpression root, TaskContext rootTaskContext,
-                                                      ColumnRefSet requiredColumns) {
+                                                      ColumnRefSet requiredColumns,
+                                                      List<ColumnRefOperator> rootRowIdColumns) {
         ColumnRefOperator actionColumn = IvmRuleUtils.findActionColumn(root).orElse(null);
         if (actionColumn == null) {
             return root;
@@ -221,8 +224,13 @@ public class IvmRewriter {
         OptExpression projectExpr = OptExpression.create(new LogicalProjectOperator(projectMap), root);
         // DELETE must come first: __op=1 for DELETE, __op=0 for INSERT.
         List<Ordering> orderings = List.of(new Ordering(loadOpColumn, false, false));
-        LogicalTopNOperator topN = new LogicalTopNOperator(
-                orderings, Operator.DEFAULT_LIMIT, Operator.DEFAULT_OFFSET, SortPhase.PARTIAL, true);
+        LogicalTopNOperator.Builder topNBuilder = LogicalTopNOperator.builder()
+                .setOrderByElements(orderings)
+                .setSortPhase(SortPhase.PARTIAL)
+                .setPerPipeline(true)
+                .setPartitionByColumns(rootRowIdColumns)
+                .setPartitionLimit(Operator.DEFAULT_LIMIT);
+        LogicalTopNOperator topN = topNBuilder.build();
         return OptExpression.create(topN, projectExpr);
     }
 
