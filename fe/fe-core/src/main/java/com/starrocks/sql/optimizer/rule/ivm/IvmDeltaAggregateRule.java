@@ -210,7 +210,11 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         }
         LogicalAggregationOperator deltaAgg =
                 new LogicalAggregationOperator(AggType.GLOBAL, deltaChild.groupingKeys, deltaAggCalls);
-        LogicalDeltaOperator newDelta = new LogicalDeltaOperator.Builder().withOperator(delta).setRootDelta(false).build();
+        LogicalDeltaOperator newDelta = new LogicalDeltaOperator.Builder()
+                .withOperator(delta)
+                .setRootDelta(false)
+                .setActionColumn(deltaActionColumn)
+                .build();
         OptExpression deltaAggOptExpr = OptExpression.create(deltaAgg, OptExpression.create(newDelta, deltaChild.optExpression));
 
         // MV Scan

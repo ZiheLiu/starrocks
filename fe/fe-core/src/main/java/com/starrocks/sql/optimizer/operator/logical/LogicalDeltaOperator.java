@@ -130,6 +130,11 @@ public class LogicalDeltaOperator extends LogicalOperator {
             builder.isRootDelta = isRootDelta;
             return this;
         }
+
+        public Builder setActionColumn(ColumnRefOperator actionColumn) {
+            builder.actionColumn = actionColumn;
+            return this;
+        }
     }
 
 }
