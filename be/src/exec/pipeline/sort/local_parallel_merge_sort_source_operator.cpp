@@ -60,6 +60,18 @@ bool LocalParallelMergeSortSourceOperator::is_finished() const {
 StatusOr<ChunkPtr> LocalParallelMergeSortSourceOperator::pull_chunk(RuntimeState* state) {
     ChunkPtr chunk = _merger->try_get_next(_merge_parallel_id);
 
+    if (chunk != nullptr && !chunk->is_empty()) {
+        LOG(WARNING) << "[IVM_DEBUG_LOCAL_PARALLEL_MERGE_SOURCE][pull_chunk]"
+                     << " node_id=" << _plan_node_id << ", driver_seq=" << _driver_sequence
+                     << ", merge_parallel_id=" << _merge_parallel_id << ", rows=" << chunk->num_rows()
+                     << ", cols=" << chunk->num_columns();
+        for (size_t i = 0; i < chunk->num_rows(); ++i) {
+            LOG(WARNING) << "[IVM_DEBUG_LOCAL_PARALLEL_MERGE_SOURCE][row]"
+                         << " node_id=" << _plan_node_id << ", driver_seq=" << _driver_sequence << ", row_index=" << i
+                         << ", row=" << chunk->debug_row(i);
+        }
+    }
+
     if (_merger->is_finished()) {
         _is_finished = true;
     }
