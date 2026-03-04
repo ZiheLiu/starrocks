@@ -14,7 +14,10 @@
 
 #include "runtime/sender_queue.h"
 
+#include <algorithm>
 #include <atomic>
+#include <sstream>
+#include <vector>
 
 #include "column/chunk.h"
 #include "gen_cpp/data.pb.h"
@@ -30,6 +33,32 @@
 #include "util/uid_util.h"
 
 namespace starrocks {
+
+namespace {
+std::string debug_slot_id_to_index(const Chunk::SlotHashMap& slot_id_to_index) {
+    std::vector<std::pair<SlotId, size_t>> pairs;
+    pairs.reserve(slot_id_to_index.size());
+    for (const auto& kv : slot_id_to_index) {
+        pairs.emplace_back(kv.first, kv.second);
+    }
+    std::sort(pairs.begin(), pairs.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second < rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+    std::ostringstream oss;
+    oss << "{";
+    for (size_t i = 0; i < pairs.size(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << pairs[i].first << "->" << pairs[i].second;
+    }
+    oss << "}";
+    return oss.str();
+}
+} // namespace
 
 Status DataStreamRecvr::SenderQueue::_build_chunk_meta(const ChunkPB& pb_chunk) {
     if (UNLIKELY(pb_chunk.is_nulls().empty() || pb_chunk.slot_id_map().empty())) {
@@ -132,6 +161,11 @@ Status DataStreamRecvr::SenderQueue::_deserialize_chunk(const ChunkPB& pchunk, C
             });
         }
     }
+    LOG(WARNING) << "[IVM_DEBUG_SLOT_MAP][ExchangeSource][after_deserialize]"
+                 << " fragment_instance_id=" << print_id(_recvr->fragment_instance_id())
+                 << ", node_id=" << _recvr->dest_node_id() << ", rows=" << chunk->num_rows()
+                 << ", cols=" << chunk->num_columns()
+                 << ", slot_id_to_index=" << debug_slot_id_to_index(chunk->get_slot_id_to_index_map());
     return Status::OK();
 }
 

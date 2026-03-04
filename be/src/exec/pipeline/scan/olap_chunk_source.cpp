@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <sstream>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -65,6 +66,30 @@ namespace {
 constexpr const char* kChangesActionColumnName = "__ACTION__";
 constexpr int16_t kChangesActionValue = 1;
 constexpr int16_t kChangesDeleteActionValue = -1;
+
+std::string debug_slot_id_to_index(const Chunk::SlotHashMap& slot_id_to_index) {
+    std::vector<std::pair<SlotId, size_t>> pairs;
+    pairs.reserve(slot_id_to_index.size());
+    for (const auto& kv : slot_id_to_index) {
+        pairs.emplace_back(kv.first, kv.second);
+    }
+    std::sort(pairs.begin(), pairs.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second < rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+    std::ostringstream oss;
+    oss << "{";
+    for (size_t i = 0; i < pairs.size(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << pairs[i].first << "->" << pairs[i].second;
+    }
+    oss << "}";
+    return oss.str();
+}
 } // namespace
 
 OlapChunkSource::OlapChunkSource(ScanOperator* op, RuntimeProfile* runtime_profile, MorselPtr&& morsel,
@@ -1022,6 +1047,14 @@ Status OlapChunkSource::_read_chunk_from_storage(RuntimeState* state, Chunk* chu
             size_t after_rows = chunk->num_rows();
             COUNTER_UPDATE(_expr_filter_counter, before_rows - after_rows);
             DCHECK_CHUNK(chunk);
+        }
+
+        if (_is_changes_query) {
+            LOG(WARNING) << "[IVM_DEBUG_SLOT_MAP][OlapChunkSource][emit_chunk]"
+                         << " node_id=" << _scan_op->get_plan_node_id() << ", tablet_id=" << _scan_range->tablet_id
+                         << ", rows=" << chunk->num_rows() << ", cols=" << chunk->num_columns()
+                         << ", pk_changes_delete_phase=" << _is_pk_changes_delete_phase
+                         << ", slot_id_to_index=" << debug_slot_id_to_index(chunk->get_slot_id_to_index_map());
         }
         TRY_CATCH_ALLOC_SCOPE_END()
 

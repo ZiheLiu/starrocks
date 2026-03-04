@@ -16,10 +16,13 @@
 
 #include <arpa/inet.h>
 
+#include <algorithm>
 #include <iostream>
 #include <memory>
 #include <random>
+#include <sstream>
 #include <utility>
+#include <vector>
 
 #include "common/config.h"
 #include "exec/partition/bucket_aware_partition.h"
@@ -39,6 +42,32 @@
 #include "util/internal_service_recoverable_stub.h"
 
 namespace starrocks::pipeline {
+
+namespace {
+std::string debug_slot_id_to_index(const Chunk::SlotHashMap& slot_id_to_index) {
+    std::vector<std::pair<SlotId, size_t>> pairs;
+    pairs.reserve(slot_id_to_index.size());
+    for (const auto& kv : slot_id_to_index) {
+        pairs.emplace_back(kv.first, kv.second);
+    }
+    std::sort(pairs.begin(), pairs.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second < rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+    std::ostringstream oss;
+    oss << "{";
+    for (size_t i = 0; i < pairs.size(); ++i) {
+        if (i != 0) {
+            oss << ", ";
+        }
+        oss << pairs[i].first << "->" << pairs[i].second;
+    }
+    oss << "}";
+    return oss.str();
+}
+} // namespace
 
 class ExchangeSinkOperator::Channel {
 public:
@@ -713,6 +742,11 @@ void ExchangeSinkOperator::close(RuntimeState* state) {
 
 Status ExchangeSinkOperator::serialize_chunk(const Chunk* src, ChunkPB* dst, bool* is_first_chunk, int num_receivers) {
     VLOG_ROW << "[ExchangeSinkOperator] serializing " << src->num_rows() << " rows";
+    LOG(WARNING) << "[IVM_DEBUG_SLOT_MAP][ExchangeSink][before_serialize]"
+                 << " node_id=" << _plan_node_id << ", sender_id=" << _sender_id << ", driver_seq=" << _driver_sequence
+                 << ", first_chunk=" << *is_first_chunk << ", rows=" << src->num_rows()
+                 << ", cols=" << src->num_columns()
+                 << ", slot_id_to_index=" << debug_slot_id_to_index(src->get_slot_id_to_index_map());
     auto unserialized_bytes = src->bytes_usage();
     COUNTER_UPDATE(_raw_input_bytes_counter, unserialized_bytes * num_receivers);
     int64_t serialization_time_ns = 0;
