@@ -64,8 +64,8 @@ namespace starrocks::pipeline {
 
 namespace {
 constexpr const char* kChangesActionColumnName = "__ACTION__";
-constexpr int16_t kChangesActionValue = 1;
-constexpr int16_t kChangesDeleteActionValue = -1;
+constexpr int8_t kChangesActionValue = 1;
+constexpr int8_t kChangesDeleteActionValue = -1;
 
 std::string debug_slot_id_to_index(const Chunk::SlotHashMap& slot_id_to_index) {
     std::vector<std::pair<SlotId, size_t>> pairs;
@@ -397,7 +397,7 @@ Status OlapChunkSource::_init_scanner_columns(std::vector<uint32_t>& scanner_col
             if (_changes_action_field == nullptr) {
                 _changes_action_field =
                         std::make_shared<Field>(std::numeric_limits<ColumnId>::max(), kChangesActionColumnName,
-                                                LogicalType::TYPE_SMALLINT, true);
+                                                LogicalType::TYPE_TINYINT, true);
             }
             continue;
         }
@@ -1009,12 +1009,12 @@ Status OlapChunkSource::_read_chunk_from_storage(RuntimeState* state, Chunk* chu
             return status;
         }
         if (_is_changes_query && _changes_action_slot != nullptr) {
-            int16_t action_value = (_is_pk_changes_query && _is_pk_changes_delete_phase) ? kChangesDeleteActionValue
-                                                                                         : kChangesActionValue;
-            auto action_column = Int16Column::create();
+            int8_t action_value = (_is_pk_changes_query && _is_pk_changes_delete_phase) ? kChangesDeleteActionValue
+                                                                                        : kChangesActionValue;
+            auto action_column = Int8Column::create();
             if (chunk->num_rows() > 0) {
-                std::vector<int16_t> action_values(chunk->num_rows(), action_value);
-                action_column->append_numbers(action_values.data(), action_values.size() * sizeof(int16_t));
+                std::vector<int8_t> action_values(chunk->num_rows(), action_value);
+                action_column->append_numbers(action_values.data(), action_values.size() * sizeof(int8_t));
             }
             if (chunk->schema()->get_field_by_name(kChangesActionColumnName) == nullptr) {
                 chunk->append_column(std::move(action_column), _changes_action_field);
