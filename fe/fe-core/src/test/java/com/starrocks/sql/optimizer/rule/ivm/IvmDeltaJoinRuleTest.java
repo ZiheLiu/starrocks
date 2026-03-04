@@ -26,7 +26,6 @@ import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
-import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
@@ -99,8 +98,7 @@ public class IvmDeltaJoinRuleTest {
         Assertions.assertTrue(union.getOutputColumnRefOp().contains(actionRef));
 
         // Branch 1: delta(left) join version(right, right_from=2)
-        Assertions.assertTrue(rewritten.inputAt(0).getOp() instanceof LogicalProjectOperator);
-        OptExpression firstJoin = rewritten.inputAt(0).inputAt(0);
+        OptExpression firstJoin = rewritten.inputAt(0);
         Assertions.assertTrue(firstJoin.getOp() instanceof LogicalJoinOperator);
         Assertions.assertTrue(firstJoin.inputAt(0).getOp() instanceof LogicalDeltaOperator);
         Assertions.assertTrue(firstJoin.inputAt(1).getOp() instanceof LogicalVersionOperator);
@@ -108,13 +106,86 @@ public class IvmDeltaJoinRuleTest {
                 ((LogicalVersionOperator) firstJoin.inputAt(1).getOp()).getVersionRefType());
 
         // Branch 2: version(left, left_to=3) join delta(right)
-        Assertions.assertTrue(rewritten.inputAt(1).getOp() instanceof LogicalProjectOperator);
-        OptExpression secondJoin = rewritten.inputAt(1).inputAt(0);
+        OptExpression secondJoin = rewritten.inputAt(1);
         Assertions.assertTrue(secondJoin.getOp() instanceof LogicalJoinOperator);
         Assertions.assertTrue(secondJoin.inputAt(0).getOp() instanceof LogicalVersionOperator);
         Assertions.assertEquals(LogicalVersionOperator.VersionRefType.TO_VERSION,
                 ((LogicalVersionOperator) secondJoin.inputAt(0).getOp()).getVersionRefType());
         Assertions.assertTrue(secondJoin.inputAt(1).getOp() instanceof LogicalDeltaOperator);
+    }
+
+    @Test
+    public void testTransformLeftOuterJoin(@Mocked OlapTable leftTable,
+                                           @Mocked OlapTable rightTable) {
+        new Expectations() {
+            {
+                leftTable.getBaseIndexMetaId();
+                result = 1L;
+                rightTable.getBaseIndexMetaId();
+                result = 1L;
+            }
+        };
+
+        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
+        ColumnRefOperator leftRef = columnRefFactory.create("l_id", IntegerType.INT, false);
+        ColumnRefOperator rightRef = columnRefFactory.create("r_id", IntegerType.INT, false);
+        ColumnRefOperator rightValueRef = columnRefFactory.create("r_v", IntegerType.INT, true);
+        ColumnRefOperator actionRef = columnRefFactory.create("__op", IntegerType.TINYINT, false);
+
+        Column leftColumn = new Column("l_id", IntegerType.INT, false);
+        Column rightColumn = new Column("r_id", IntegerType.INT, false);
+        Column rightValueColumn = new Column("r_v", IntegerType.INT, true);
+        LogicalOlapScanOperator leftScan = LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(leftTable,
+                        Maps.newHashMap(Map.of(leftRef, leftColumn)),
+                        Maps.newHashMap(Map.of(leftColumn, leftRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build();
+        LogicalOlapScanOperator rightScan = LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(rightTable,
+                        Maps.newHashMap(Map.of(rightRef, rightColumn, rightValueRef, rightValueColumn)),
+                        Maps.newHashMap(Map.of(rightColumn, rightRef, rightValueColumn, rightValueRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(2L)
+                .build();
+
+        OptExpression leftExpr = OptExpression.create(leftScan);
+        OptExpression rightExpr = OptExpression.create(rightScan);
+        BinaryPredicateOperator onPredicate = new BinaryPredicateOperator(BinaryType.EQ, leftRef, rightRef);
+        OptExpression joinExpr = OptExpression.create(new LogicalJoinOperator(JoinOperator.LEFT_OUTER_JOIN, onPredicate),
+                leftExpr, rightExpr);
+        OptExpression deltaJoinExpr = OptExpression.create(new LogicalDeltaOperator(true, actionRef), joinExpr);
+        deriveLogicalProperty(deltaJoinExpr);
+
+        List<OptExpression> result = new IvmDeltaJoinRule().transform(deltaJoinExpr, context);
+        Assertions.assertEquals(1, result.size());
+
+        OptExpression rewritten = result.get(0);
+        Assertions.assertTrue(rewritten.getOp() instanceof LogicalUnionOperator);
+        Assertions.assertEquals(2, rewritten.arity());
+
+        OptExpression firstJoin = rewritten.inputAt(0);
+        Assertions.assertTrue(firstJoin.getOp() instanceof LogicalJoinOperator);
+        Assertions.assertEquals(JoinOperator.LEFT_OUTER_JOIN, ((LogicalJoinOperator) firstJoin.getOp()).getJoinType());
+        Assertions.assertTrue(firstJoin.inputAt(0).getOp() instanceof LogicalDeltaOperator);
+        Assertions.assertTrue(firstJoin.inputAt(1).getOp() instanceof LogicalVersionOperator);
+        Assertions.assertEquals(LogicalVersionOperator.VersionRefType.FROM_VERSION,
+                ((LogicalVersionOperator) firstJoin.inputAt(1).getOp()).getVersionRefType());
+
+        OptExpression secondJoin = rewritten.inputAt(1);
+        Assertions.assertTrue(secondJoin.getOp() instanceof LogicalJoinOperator);
+        Assertions.assertEquals(JoinOperator.INNER_JOIN, ((LogicalJoinOperator) secondJoin.getOp()).getJoinType());
+        Assertions.assertTrue(secondJoin.inputAt(0).getOp() instanceof LogicalVersionOperator);
+        Assertions.assertEquals(LogicalVersionOperator.VersionRefType.TO_VERSION,
+                ((LogicalVersionOperator) secondJoin.inputAt(0).getOp()).getVersionRefType());
+        Assertions.assertTrue(secondJoin.inputAt(1).getOp() instanceof LogicalUnionOperator);
+        Assertions.assertEquals(2, secondJoin.inputAt(1).arity());
     }
 
     private static void deriveLogicalProperty(OptExpression expression) {
