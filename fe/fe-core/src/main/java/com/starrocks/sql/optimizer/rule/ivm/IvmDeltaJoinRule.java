@@ -15,21 +15,20 @@
 package com.starrocks.sql.optimizer.rule.ivm;
 
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.starrocks.sql.ast.JoinOperator;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
+import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
-import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
-import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
+import com.starrocks.sql.optimizer.rule.transformation.materialization.OptExpressionDuplicator;
 
 import java.util.List;
 import java.util.Map;
@@ -52,6 +51,7 @@ public class IvmDeltaJoinRule extends TransformationRule {
 
         OptExpression leftChild = joinExpr.inputAt(0);
         OptExpression rightChild = joinExpr.inputAt(1);
+        ColumnRefFactory factory = context.getColumnRefFactory();
 
         List<ColumnRefOperator> joinOutputColumns =
                 joinExpr.getOutputColumns().getColumnRefOperators(context.getColumnRefFactory());
@@ -65,39 +65,89 @@ public class IvmDeltaJoinRule extends TransformationRule {
         List<List<ColumnRefOperator>> unionChildOutputs = Lists.newArrayList();
 
         // delta(t1) INNER JOIN t2@from_version
-        OptExpression leftDelta = OptExpression.create(new LogicalDeltaOperator(false, actionColumn), leftChild);
-        OptExpression rightFromVersion = OptExpression.create(LogicalVersionOperator.fromVersion(), rightChild);
-        OptExpression leftDeltaJoin = createBranch(join, leftDelta, rightFromVersion, finalOutputColumns, actionColumn);
-        unionChildren.add(leftDeltaJoin);
-        unionChildOutputs.add(finalOutputColumns);
+        BranchResult branch1 = buildBranch(factory, context, join, joinOutputColumns, actionColumn, leftChild, rightChild, true);
+        if (branch1 == null || branch1.outputs == null) {
+            return List.of();
+        }
+        unionChildren.add(branch1.branchExpr);
+        unionChildOutputs.add(branch1.outputs);
 
         // t1@to_version INNER JOIN delta(t2)
-        OptExpression leftToVersion = OptExpression.create(LogicalVersionOperator.toVersion(), leftChild);
-        OptExpression rightDelta = OptExpression.create(new LogicalDeltaOperator(false, actionColumn), rightChild);
-        OptExpression rightDeltaJoin = createBranch(join, leftToVersion, rightDelta, finalOutputColumns, actionColumn);
-        unionChildren.add(rightDeltaJoin);
-        unionChildOutputs.add(finalOutputColumns);
+        BranchResult branch2 = buildBranch(factory, context, join, joinOutputColumns, actionColumn, leftChild, rightChild, false);
+        if (branch2 == null || branch2.outputs == null) {
+            return List.of();
+        }
+        unionChildren.add(branch2.branchExpr);
+        unionChildOutputs.add(branch2.outputs);
 
         LogicalUnionOperator unionOperator = new LogicalUnionOperator(finalOutputColumns, unionChildOutputs, true);
         return List.of(OptExpression.create(unionOperator, unionChildren));
     }
 
-    private OptExpression createBranch(LogicalJoinOperator join,
-                                       OptExpression left,
-                                       OptExpression right,
-                                       List<ColumnRefOperator> finalOutputColumns,
-                                       ColumnRefOperator actionColumn) {
-        LogicalJoinOperator newJoin = LogicalJoinOperator.builder().withOperator(join).build();
-        OptExpression joinExpr = OptExpression.create(newJoin, left, right);
+    private BranchInput duplicateChildren(ColumnRefFactory columnRefFactory,
+                                          OptimizerContext context,
+                                          OptExpression leftChild,
+                                          OptExpression rightChild) {
+        OptExpressionDuplicator leftDuplicator = new OptExpressionDuplicator(columnRefFactory, context);
+        OptExpressionDuplicator rightDuplicator = new OptExpressionDuplicator(columnRefFactory, context);
+        OptExpression newLeftChild = leftDuplicator.duplicate(leftChild);
+        OptExpression newRightChild = rightDuplicator.duplicate(rightChild);
+        return new BranchInput(newLeftChild, newRightChild,
+                leftDuplicator.getColumnMapping(), rightDuplicator.getColumnMapping());
+    }
 
-        Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newLinkedHashMap();
-        for (ColumnRefOperator output : finalOutputColumns) {
-            if (actionColumn != null && actionColumn.equals(output)) {
-                projectMap.put(output, actionColumn);
-            } else {
-                projectMap.put(output, output);
-            }
+    private BranchResult buildBranch(ColumnRefFactory columnRefFactory,
+                                     OptimizerContext context,
+                                     LogicalJoinOperator join,
+                                     List<ColumnRefOperator> joinOutputColumns,
+                                     ColumnRefOperator actionColumn,
+                                     OptExpression leftChild,
+                                     OptExpression rightChild,
+                                     boolean isLeftDelta) {
+        BranchInput branchInput = duplicateChildren(columnRefFactory, context, leftChild, rightChild);
+        OptExpression left;
+        OptExpression right;
+        if (isLeftDelta) {
+            left = OptExpression.create(new LogicalDeltaOperator(false, actionColumn), branchInput.leftChild);
+            right = OptExpression.create(LogicalVersionOperator.fromVersion(), branchInput.rightChild);
+        } else {
+            left = OptExpression.create(LogicalVersionOperator.toVersion(), branchInput.leftChild);
+            right = OptExpression.create(new LogicalDeltaOperator(false, actionColumn), branchInput.rightChild);
         }
-        return OptExpression.create(new LogicalProjectOperator(projectMap), joinExpr);
+        List<ColumnRefOperator> outputs = deriveBranchOutputs(joinOutputColumns, actionColumn, branchInput);
+        if (outputs == null) {
+            return null;
+        }
+        LogicalJoinOperator newJoin = LogicalJoinOperator.builder().withOperator(join).build();
+        return new BranchResult(OptExpression.create(newJoin, left, right), outputs);
+    }
+
+    private List<ColumnRefOperator> deriveBranchOutputs(List<ColumnRefOperator> joinOutputColumns,
+                                                        ColumnRefOperator actionColumn,
+                                                        BranchInput branch) {
+        List<ColumnRefOperator> outputs = Lists.newArrayListWithCapacity(
+                joinOutputColumns.size() + (actionColumn == null ? 0 : 1));
+        for (ColumnRefOperator output : joinOutputColumns) {
+            ColumnRefOperator mappedOutput = branch.leftColumnMapping.get(output);
+            if (mappedOutput == null) {
+                mappedOutput = branch.rightColumnMapping.get(output);
+            }
+            if (mappedOutput == null) {
+                return null;
+            }
+            outputs.add(mappedOutput);
+        }
+        if (actionColumn != null) {
+            outputs.add(actionColumn);
+        }
+        return outputs;
+    }
+
+    private record BranchInput(OptExpression leftChild, OptExpression rightChild,
+                               Map<ColumnRefOperator, ColumnRefOperator> leftColumnMapping,
+                               Map<ColumnRefOperator, ColumnRefOperator> rightColumnMapping) {
+    }
+
+    private record BranchResult(OptExpression branchExpr, List<ColumnRefOperator> outputs) {
     }
 }
