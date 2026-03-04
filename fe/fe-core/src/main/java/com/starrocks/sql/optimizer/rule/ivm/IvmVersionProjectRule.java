@@ -37,7 +37,9 @@ public class IvmVersionProjectRule extends TransformationRule {
         LogicalVersionOperator version = (LogicalVersionOperator) input.getOp();
         LogicalProjectOperator project = (LogicalProjectOperator) input.inputAt(0).getOp();
         OptExpression projectChild = input.inputAt(0).inputAt(0);
-        OptExpression versionChild = OptExpression.create(new LogicalVersionOperator(version.getTableVersion()), projectChild);
+        LogicalVersionOperator newVersion =
+                new LogicalVersionOperator(version.getVersionRefType(), version.getTableVersion());
+        OptExpression versionChild = OptExpression.create(newVersion, projectChild);
         return List.of(OptExpression.create(project, versionChild));
     }
 }

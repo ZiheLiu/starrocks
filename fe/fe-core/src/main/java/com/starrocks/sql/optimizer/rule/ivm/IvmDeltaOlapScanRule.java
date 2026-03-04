@@ -22,6 +22,7 @@ import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalValuesOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
@@ -51,6 +52,11 @@ public class IvmDeltaOlapScanRule extends TransformationRule {
             return List.of();
         }
         long toVersion = IvmRuleUtils.getLatestVisibleVersion(olapTable);
+        if (toVersion == fromVersion) {
+            List<ColumnRefOperator> outputColumns =
+                    input.getOutputColumns().getColumnRefOperators(context.getColumnRefFactory());
+            return List.of(OptExpression.create(new LogicalValuesOperator(outputColumns, List.of())));
+        }
         if (toVersion <= fromVersion) {
             return List.of();
         }

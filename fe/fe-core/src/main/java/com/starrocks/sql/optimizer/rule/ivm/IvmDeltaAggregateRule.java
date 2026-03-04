@@ -20,7 +20,6 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.MaterializedView;
-import com.starrocks.catalog.OlapTable;
 import com.starrocks.sql.ast.InsertStmt;
 import com.starrocks.sql.ast.JoinOperator;
 import com.starrocks.sql.ast.KeysType;
@@ -90,19 +89,6 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return List.of(optimized);
         }
 
-        LogicalOlapScanOperator boundScan = findCandidateOlapScan(child);
-        if (boundScan == null || !(boundScan.getTable() instanceof OlapTable olapTable)) {
-            return List.of();
-        }
-        Long fromVersion = boundScan.getTableVersion();
-        if (fromVersion == null) {
-            return List.of();
-        }
-        long toVersion = IvmRuleUtils.getLatestVisibleVersion(olapTable);
-        if (toVersion <= fromVersion) {
-            return List.of();
-        }
-
         ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
         List<ColumnRefOperator> finalChildOutputs = child.getOutputColumns().getColumnRefOperators(columnRefFactory);
         List<ColumnRefOperator> finalGroupingKeys = agg.getGroupingKeys();
@@ -112,9 +98,11 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         }
 
         // Snapshot: Child -> Project -> Version
-        SnapshotInfo toSnapshot = createSnapshotChild(context, finalGroupingKeys, child, finalChildOutputs, toVersion, (byte) 1);
+        SnapshotInfo toSnapshot = createSnapshotChild(context, finalGroupingKeys, child, finalChildOutputs,
+                LogicalVersionOperator.VersionRefType.TO_VERSION, (byte) 1);
         SnapshotInfo fromSnapshot =
-                createSnapshotChild(context, finalGroupingKeys, child, finalChildOutputs, fromVersion, (byte) -1);
+                createSnapshotChild(context, finalGroupingKeys, child, finalChildOutputs,
+                        LogicalVersionOperator.VersionRefType.FROM_VERSION, (byte) -1);
 
         // DistinctAgg left semi join (Child -> DistinctAgg).
         SnapshotInfo affectedKeysChild = cloneChild(context, finalGroupingKeys, child, finalChildOutputs);
@@ -293,7 +281,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                                              List<ColumnRefOperator> groupingKeys,
                                              OptExpression child,
                                              List<ColumnRefOperator> oldOutputs,
-                                             long version, byte actionValue) {
+                                             LogicalVersionOperator.VersionRefType versionRefType,
+                                             byte actionValue) {
         ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
 
         // Child
@@ -309,7 +298,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         LogicalProjectOperator projectOperator = new LogicalProjectOperator(projectMap);
 
         // Version
-        LogicalVersionOperator versionOperator = new LogicalVersionOperator(version);
+        LogicalVersionOperator versionOperator = new LogicalVersionOperator(versionRefType);
 
         // Child -> Project -> Version
         OptExpression optExpr =
@@ -433,24 +422,6 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             predicates.add(new BinaryPredicateOperator(BinaryType.EQ, leftKeys.get(i), rightKeys.get(i)));
         }
         return Utils.compoundAnd(predicates);
-    }
-
-    private LogicalOlapScanOperator findCandidateOlapScan(OptExpression root) {
-        List<LogicalOlapScanOperator> scans = Lists.newArrayList();
-        collectOlapScans(root, scans);
-        if (scans.isEmpty()) {
-            return null;
-        }
-        return scans.get(0);
-    }
-
-    private void collectOlapScans(OptExpression root, List<LogicalOlapScanOperator> scans) {
-        if (root.getOp() instanceof LogicalOlapScanOperator scan) {
-            scans.add(scan);
-        }
-        for (OptExpression child : root.getInputs()) {
-            collectOlapScans(child, scans);
-        }
     }
 
     private MaterializedView resolveTargetMv(OptimizerContext context) {

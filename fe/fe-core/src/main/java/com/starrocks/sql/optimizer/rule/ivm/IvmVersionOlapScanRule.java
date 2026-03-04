@@ -15,6 +15,7 @@
 package com.starrocks.sql.optimizer.rule.ivm;
 
 import com.google.common.collect.Maps;
+import com.starrocks.catalog.OlapTable;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
@@ -25,6 +26,7 @@ import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
+import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.ArrayList;
@@ -43,10 +45,14 @@ public class IvmVersionOlapScanRule extends TransformationRule {
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalVersionOperator version = (LogicalVersionOperator) input.getOp();
         LogicalOlapScanOperator scan = (LogicalOlapScanOperator) input.inputAt(0).getOp();
+        Long resolvedVersion = resolveVersion(version, scan);
+        if (resolvedVersion == null) {
+            return List.of();
+        }
 
         LogicalOlapScanOperator rewrittenScan = LogicalOlapScanOperator.builder()
                 .withOperator(scan)
-                .setTableVersion(version.getTableVersion())
+                .setTableVersion(resolvedVersion)
                 .setChangesVersionRange(null, null)
                 .build();
 
@@ -58,5 +64,18 @@ public class IvmVersionOlapScanRule extends TransformationRule {
         }
 
         return List.of(OptExpression.create(new LogicalProjectOperator(projectMap), OptExpression.create(rewrittenScan)));
+    }
+
+    private Long resolveVersion(LogicalVersionOperator version, LogicalOlapScanOperator scan) {
+        if (version.isExactVersion()) {
+            return version.getTableVersion();
+        }
+        if (version.getVersionRefType() == LogicalVersionOperator.VersionRefType.FROM_VERSION) {
+            return scan.getTableVersion();
+        }
+        if (!(scan.getTable() instanceof OlapTable olapTable)) {
+            return null;
+        }
+        return IvmRuleUtils.getLatestVisibleVersion(olapTable);
     }
 }

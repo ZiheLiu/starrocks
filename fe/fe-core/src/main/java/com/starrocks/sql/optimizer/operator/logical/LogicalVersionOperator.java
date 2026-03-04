@@ -30,15 +30,43 @@ import java.util.List;
  * It should be eliminated by IVM version rewrite rules before physical optimization.
  */
 public class LogicalVersionOperator extends LogicalOperator {
-    private final long tableVersion;
+    public enum VersionRefType {
+        EXACT,
+        FROM_VERSION,
+        TO_VERSION
+    }
 
-    public LogicalVersionOperator(long tableVersion) {
+    private final VersionRefType versionRefType;
+    private final Long tableVersion;
+
+    public LogicalVersionOperator(VersionRefType versionRefType) {
+        this(versionRefType, null);
+    }
+
+    public LogicalVersionOperator(VersionRefType versionRefType, Long tableVersion) {
         super(OperatorType.LOGICAL_VERSION);
+        this.versionRefType = versionRefType;
         this.tableVersion = tableVersion;
     }
 
-    public long getTableVersion() {
+    public static LogicalVersionOperator fromVersion() {
+        return new LogicalVersionOperator(VersionRefType.FROM_VERSION);
+    }
+
+    public static LogicalVersionOperator toVersion() {
+        return new LogicalVersionOperator(VersionRefType.TO_VERSION);
+    }
+
+    public VersionRefType getVersionRefType() {
+        return versionRefType;
+    }
+
+    public Long getTableVersion() {
         return tableVersion;
+    }
+
+    public boolean isExactVersion() {
+        return versionRefType == VersionRefType.EXACT;
     }
 
     @Override
