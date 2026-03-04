@@ -14,9 +14,11 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
+import com.starrocks.sql.ast.JoinOperator;
 import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
@@ -24,6 +26,7 @@ import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
@@ -159,6 +162,42 @@ public class IvmRowIdDeriver {
                 return null;
             }
             this.context.putRowIds(expression, agg.getGroupingKeys());
+            return null;
+        }
+
+        @Override
+        public Void visitLogicalJoin(OptExpression expression, Void context) {
+            collectChildren(expression);
+            if (expression.getInputs().size() != 2) {
+                this.context.markUnsupported("join must be binary in OLAP IVM row-id derive");
+                return null;
+            }
+
+            LogicalJoinOperator join = (LogicalJoinOperator) expression.getOp();
+            JoinOperator joinType = join.getJoinType();
+            if (!joinType.isInnerJoin() && !joinType.isCrossJoin()) {
+                this.context.markUnsupported("only inner/cross join is supported in OLAP IVM row-id derive");
+                return null;
+            }
+
+            List<ColumnRefOperator> leftRowIds = this.context.getRowIds(expression.inputAt(0)).orElse(null);
+            List<ColumnRefOperator> rightRowIds = this.context.getRowIds(expression.inputAt(1)).orElse(null);
+            if (leftRowIds == null || leftRowIds.isEmpty() || rightRowIds == null || rightRowIds.isEmpty()) {
+                this.context.markUnsupported("join child row-id is missing in OLAP IVM row-id derive");
+                return null;
+            }
+
+            List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
+            inputRowIds.addAll(leftRowIds);
+            inputRowIds.addAll(rightRowIds);
+            if (join.getProjection() == null) {
+                this.context.putRowIds(expression, inputRowIds);
+                return null;
+            }
+
+            List<ColumnRefOperator> outputRowIds =
+                    mapRowIdsThroughProjection(join.getProjection().getColumnRefMap(), inputRowIds);
+            this.context.putRowIds(expression, outputRowIds);
             return null;
         }
 
@@ -365,6 +404,63 @@ public class IvmRowIdDeriver {
                 return expression;
             }
             return OptExpression.create(expression.getOp(), rewrittenChild);
+        }
+
+        @Override
+        public OptExpression visitLogicalJoin(OptExpression expression, Void context) {
+            OptExpression leftChild = expression.inputAt(0);
+            OptExpression rightChild = expression.inputAt(1);
+            OptExpression rewrittenLeft = leftChild.getOp().accept(this, leftChild, null);
+            OptExpression rewrittenRight = rightChild.getOp().accept(this, rightChild, null);
+            LogicalJoinOperator join = (LogicalJoinOperator) expression.getOp();
+
+            if (join.getProjection() == null) {
+                if (rewrittenLeft == leftChild && rewrittenRight == rightChild) {
+                    return expression;
+                }
+                return OptExpression.create(join, rewrittenLeft, rewrittenRight);
+            }
+
+            List<ColumnRefOperator> rowIds = this.context.getRowIds(expression).orElse(null);
+            List<ColumnRefOperator> leftRowIds = this.context.getRowIds(leftChild).orElse(null);
+            List<ColumnRefOperator> rightRowIds = this.context.getRowIds(rightChild).orElse(null);
+            if (rowIds == null || leftRowIds == null || rightRowIds == null) {
+                if (rewrittenLeft == leftChild && rewrittenRight == rightChild) {
+                    return expression;
+                }
+                return OptExpression.create(join, rewrittenLeft, rewrittenRight);
+            }
+
+            List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
+            inputRowIds.addAll(leftRowIds);
+            inputRowIds.addAll(rightRowIds);
+            if (rowIds.size() != inputRowIds.size()) {
+                if (rewrittenLeft == leftChild && rewrittenRight == rightChild) {
+                    return expression;
+                }
+                return OptExpression.create(join, rewrittenLeft, rewrittenRight);
+            }
+
+            Map<ColumnRefOperator, ScalarOperator> projectionMap = Maps.newHashMap(join.getProjection().getColumnRefMap());
+            boolean projectionChanged = false;
+            for (int i = 0; i < rowIds.size(); i++) {
+                ColumnRefOperator rowId = rowIds.get(i);
+                if (!projectionMap.containsKey(rowId)) {
+                    projectionMap.put(rowId, inputRowIds.get(i));
+                    projectionChanged = true;
+                }
+            }
+            if (!projectionChanged && rewrittenLeft == leftChild && rewrittenRight == rightChild) {
+                return expression;
+            }
+
+            LogicalJoinOperator newJoin = LogicalJoinOperator.builder()
+                    .withOperator(join)
+                    .setProjection(new Projection(
+                            projectionMap,
+                            Maps.newHashMap(join.getProjection().getCommonSubOperatorMap())))
+                    .build();
+            return OptExpression.create(newJoin, rewrittenLeft, rewrittenRight);
         }
     }
 }
