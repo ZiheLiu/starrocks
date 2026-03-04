@@ -1055,6 +1055,11 @@ Status OlapChunkSource::_read_chunk_from_storage(RuntimeState* state, Chunk* chu
                          << ", rows=" << chunk->num_rows() << ", cols=" << chunk->num_columns()
                          << ", pk_changes_delete_phase=" << _is_pk_changes_delete_phase
                          << ", slot_id_to_index=" << debug_slot_id_to_index(chunk->get_slot_id_to_index_map());
+            for (size_t i = 0; i < chunk->num_rows(); ++i) {
+                LOG(WARNING) << "[IVM_DEBUG_SLOT_MAP][OlapChunkSource][emit_chunk_row]"
+                             << " node_id=" << _scan_op->get_plan_node_id() << ", tablet_id=" << _scan_range->tablet_id
+                             << ", row_index=" << i << ", row=" << chunk->debug_row(i);
+            }
         }
         TRY_CATCH_ALLOC_SCOPE_END()
 
