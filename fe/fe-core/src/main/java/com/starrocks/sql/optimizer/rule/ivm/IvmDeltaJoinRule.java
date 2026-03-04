@@ -105,32 +105,42 @@ public class IvmDeltaJoinRule extends TransformationRule {
                                      OptExpression rightChild,
                                      boolean isLeftDelta) {
         BranchInput branchInput = duplicateChildren(columnRefFactory, context, leftChild, rightChild);
+        ColumnRefOperator branchActionColumn = duplicateActionColumn(columnRefFactory, actionColumn);
         OptExpression left;
         OptExpression right;
         if (isLeftDelta) {
-            left = OptExpression.create(new LogicalDeltaOperator(false, actionColumn), branchInput.leftChild);
+            left = OptExpression.create(new LogicalDeltaOperator(false, branchActionColumn), branchInput.leftChild);
             right = OptExpression.create(LogicalVersionOperator.fromVersion(), branchInput.rightChild);
         } else {
             left = OptExpression.create(LogicalVersionOperator.toVersion(), branchInput.leftChild);
-            right = OptExpression.create(new LogicalDeltaOperator(false, actionColumn), branchInput.rightChild);
+            right = OptExpression.create(new LogicalDeltaOperator(false, branchActionColumn), branchInput.rightChild);
         }
-        List<ColumnRefOperator> outputs = deriveBranchOutputs(joinOutputColumns, actionColumn, branchInput);
+
+        List<ColumnRefOperator> outputs = deriveBranchOutputs(joinOutputColumns, branchActionColumn, branchInput);
         if (outputs == null) {
             return null;
         }
+
         LogicalJoinOperator newJoin = LogicalJoinOperator.builder().withOperator(join).build();
         return new BranchResult(OptExpression.create(newJoin, left, right), outputs);
+    }
+
+    private ColumnRefOperator duplicateActionColumn(ColumnRefFactory columnRefFactory, ColumnRefOperator actionColumn) {
+        if (actionColumn == null) {
+            return null;
+        }
+        return columnRefFactory.create(actionColumn.getName(), actionColumn.getType(), actionColumn.isNullable());
     }
 
     private List<ColumnRefOperator> deriveBranchOutputs(List<ColumnRefOperator> joinOutputColumns,
                                                         ColumnRefOperator actionColumn,
                                                         BranchInput branch) {
-        List<ColumnRefOperator> outputs = Lists.newArrayListWithCapacity(
-                joinOutputColumns.size() + (actionColumn == null ? 0 : 1));
+        List<ColumnRefOperator> outputs =
+                Lists.newArrayListWithCapacity(joinOutputColumns.size() + (actionColumn == null ? 0 : 1));
         for (ColumnRefOperator output : joinOutputColumns) {
-            ColumnRefOperator mappedOutput = branch.leftColumnMapping.get(output);
+            ColumnRefOperator mappedOutput = branch.leftOldToNew.get(output);
             if (mappedOutput == null) {
-                mappedOutput = branch.rightColumnMapping.get(output);
+                mappedOutput = branch.rightOldToNew.get(output);
             }
             if (mappedOutput == null) {
                 return null;
@@ -144,10 +154,11 @@ public class IvmDeltaJoinRule extends TransformationRule {
     }
 
     private record BranchInput(OptExpression leftChild, OptExpression rightChild,
-                               Map<ColumnRefOperator, ColumnRefOperator> leftColumnMapping,
-                               Map<ColumnRefOperator, ColumnRefOperator> rightColumnMapping) {
+                               Map<ColumnRefOperator, ColumnRefOperator> leftOldToNew,
+                               Map<ColumnRefOperator, ColumnRefOperator> rightOldToNew) {
     }
 
     private record BranchResult(OptExpression branchExpr, List<ColumnRefOperator> outputs) {
     }
+
 }
