@@ -204,8 +204,8 @@ public class IvmDeltaJoinRule extends TransformationRule {
                 .build();
         OptExpression branchExpr = OptExpression.create(branchJoin,
                 duplicatedJoin.joinExpr().inputAt(0), duplicatedJoin.joinExpr().inputAt(1));
-        deriveLogicalPropertyRecursively(branchExpr);
 
+        Map<ColumnRefOperator, ColumnRefOperator> nullOldToNew = Maps.newHashMap();
         if (nullSideOutputs != null) {
             Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap();
             for (ColumnRefOperator output : joinOutputColumns) {
@@ -214,23 +214,29 @@ public class IvmDeltaJoinRule extends TransformationRule {
                     return null;
                 }
                 if (nullSideOutputs.contains(output)) {
-                    projectMap.put(mappedOutput, ConstantOperator.createNull(output.getType()));
+                    ColumnRefOperator newRef = factory.create(output.getName(), output.getType(), output.isNullable());
+                    nullOldToNew.put(mappedOutput, newRef);
+                    projectMap.put(newRef, ConstantOperator.createNull(output.getType()));
                 } else {
                     projectMap.put(mappedOutput, mappedOutput);
                 }
             }
             branchExpr = OptExpression.create(new LogicalProjectOperator(projectMap), branchExpr);
-            deriveLogicalPropertyRecursively(branchExpr);
         }
 
         ColumnRefOperator branchAction = duplicateActionColumn(factory, actionColumn);
-        List<ColumnRefOperator> outputs =
-                deriveBranchOutputs(joinOutputColumns, branchAction, duplicatedJoin.columnMapping());
+        List<ColumnRefOperator> outputs = deriveBranchOutputs(joinOutputColumns, branchAction, duplicatedJoin.columnMapping());
         if (outputs == null) {
             return null;
         }
+        for (int i = 0; i < outputs.size(); i++) {
+            ColumnRefOperator output = outputs.get(i);
+            if (nullOldToNew.containsKey(output)) {
+                outputs.set(i, nullOldToNew.get(output));
+            }
+        }
         OptExpression branchDelta = OptExpression.create(new LogicalDeltaOperator(false, branchAction), branchExpr);
-        deriveLogicalPropertyRecursively(branchDelta);
+
         return new BranchResult(branchDelta, outputs);
     }
 
@@ -717,13 +723,6 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return new CallOperator(fnName, returnType, args);
         }
         return new CallOperator(fnName, returnType, args, fn.copy());
-    }
-
-    private void deriveLogicalPropertyRecursively(OptExpression expression) {
-        for (OptExpression child : expression.getInputs()) {
-            deriveLogicalPropertyRecursively(child);
-        }
-        expression.deriveLogicalPropertyItself();
     }
 
     private record DuplicatedJoin(OptExpression joinExpr,
