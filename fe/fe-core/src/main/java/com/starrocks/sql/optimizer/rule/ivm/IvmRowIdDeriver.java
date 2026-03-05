@@ -175,8 +175,8 @@ public class IvmRowIdDeriver {
 
             LogicalJoinOperator join = (LogicalJoinOperator) expression.getOp();
             JoinOperator joinType = join.getJoinType();
-            if (!joinType.isInnerJoin() && !joinType.isCrossJoin()) {
-                this.context.markUnsupported("only inner/cross join is supported in OLAP IVM row-id derive");
+            if (!joinType.isInnerJoin() && !joinType.isCrossJoin() && !joinType.isLeftOuterJoin()) {
+                this.context.markUnsupported("only inner/cross/left outer join is supported in OLAP IVM row-id derive");
                 return null;
             }
 
