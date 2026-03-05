@@ -175,8 +175,10 @@ public class IvmRowIdDeriver {
 
             LogicalJoinOperator join = (LogicalJoinOperator) expression.getOp();
             JoinOperator joinType = join.getJoinType();
-            if (!joinType.isInnerJoin() && !joinType.isCrossJoin() && !joinType.isLeftOuterJoin()) {
-                this.context.markUnsupported("only inner/cross/left outer join is supported in OLAP IVM row-id derive");
+            if (!joinType.isInnerJoin() && !joinType.isCrossJoin()
+                    && !joinType.isLeftOuterJoin() && !joinType.isLeftAntiJoin()) {
+                this.context.markUnsupported(
+                        "only inner/cross/left outer/left anti join is supported in OLAP IVM row-id derive");
                 return null;
             }
 
@@ -187,9 +189,7 @@ public class IvmRowIdDeriver {
                 return null;
             }
 
-            List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
-            inputRowIds.addAll(leftRowIds);
-            inputRowIds.addAll(rightRowIds);
+            List<ColumnRefOperator> inputRowIds = getJoinInputRowIds(joinType, leftRowIds, rightRowIds);
             if (join.getProjection() == null) {
                 this.context.putRowIds(expression, inputRowIds);
                 return null;
@@ -199,6 +199,18 @@ public class IvmRowIdDeriver {
                     mapRowIdsThroughProjection(join.getProjection().getColumnRefMap(), inputRowIds);
             this.context.putRowIds(expression, outputRowIds);
             return null;
+        }
+
+        private List<ColumnRefOperator> getJoinInputRowIds(JoinOperator joinType,
+                                                            List<ColumnRefOperator> leftRowIds,
+                                                            List<ColumnRefOperator> rightRowIds) {
+            if (joinType.isLeftAntiJoin()) {
+                return Lists.newArrayList(leftRowIds);
+            }
+            List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
+            inputRowIds.addAll(leftRowIds);
+            inputRowIds.addAll(rightRowIds);
+            return inputRowIds;
         }
 
         private List<ColumnRefOperator> mapRowIdsThroughProjection(
@@ -431,9 +443,7 @@ public class IvmRowIdDeriver {
                 return OptExpression.create(join, rewrittenLeft, rewrittenRight);
             }
 
-            List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
-            inputRowIds.addAll(leftRowIds);
-            inputRowIds.addAll(rightRowIds);
+            List<ColumnRefOperator> inputRowIds = getJoinInputRowIds(join.getJoinType(), leftRowIds, rightRowIds);
             if (rowIds.size() != inputRowIds.size()) {
                 if (rewrittenLeft == leftChild && rewrittenRight == rightChild) {
                     return expression;
@@ -461,6 +471,18 @@ public class IvmRowIdDeriver {
                             Maps.newHashMap(join.getProjection().getCommonSubOperatorMap())))
                     .build();
             return OptExpression.create(newJoin, rewrittenLeft, rewrittenRight);
+        }
+
+        private List<ColumnRefOperator> getJoinInputRowIds(JoinOperator joinType,
+                                                            List<ColumnRefOperator> leftRowIds,
+                                                            List<ColumnRefOperator> rightRowIds) {
+            if (joinType.isLeftAntiJoin()) {
+                return Lists.newArrayList(leftRowIds);
+            }
+            List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
+            inputRowIds.addAll(leftRowIds);
+            inputRowIds.addAll(rightRowIds);
+            return inputRowIds;
         }
     }
 }
