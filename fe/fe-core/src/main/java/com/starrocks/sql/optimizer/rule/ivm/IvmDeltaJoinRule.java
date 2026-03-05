@@ -204,6 +204,7 @@ public class IvmDeltaJoinRule extends TransformationRule {
                 .build();
         OptExpression branchExpr = OptExpression.create(branchJoin,
                 duplicatedJoin.joinExpr().inputAt(0), duplicatedJoin.joinExpr().inputAt(1));
+        deriveLogicalPropertyRecursively(branchExpr);
 
         if (nullSideOutputs != null) {
             Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap();
@@ -219,6 +220,7 @@ public class IvmDeltaJoinRule extends TransformationRule {
                 }
             }
             branchExpr = OptExpression.create(new LogicalProjectOperator(projectMap), branchExpr);
+            deriveLogicalPropertyRecursively(branchExpr);
         }
 
         ColumnRefOperator branchAction = duplicateActionColumn(factory, actionColumn);
@@ -228,6 +230,7 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return null;
         }
         OptExpression branchDelta = OptExpression.create(new LogicalDeltaOperator(false, branchAction), branchExpr);
+        deriveLogicalPropertyRecursively(branchDelta);
         return new BranchResult(branchDelta, outputs);
     }
 
@@ -714,6 +717,13 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return new CallOperator(fnName, returnType, args);
         }
         return new CallOperator(fnName, returnType, args, fn.copy());
+    }
+
+    private void deriveLogicalPropertyRecursively(OptExpression expression) {
+        for (OptExpression child : expression.getInputs()) {
+            deriveLogicalPropertyRecursively(child);
+        }
+        expression.deriveLogicalPropertyItself();
     }
 
     private record DuplicatedJoin(OptExpression joinExpr,
