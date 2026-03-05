@@ -176,9 +176,9 @@ public class IvmRowIdDeriver {
             LogicalJoinOperator join = (LogicalJoinOperator) expression.getOp();
             JoinOperator joinType = join.getJoinType();
             if (!joinType.isInnerJoin() && !joinType.isCrossJoin()
-                    && !joinType.isLeftOuterJoin() && !joinType.isLeftAntiJoin()) {
+                    && !joinType.isLeftOuterJoin() && !joinType.isLeftAntiJoin() && !joinType.isLeftSemiJoin()) {
                 this.context.markUnsupported(
-                        "only inner/cross/left outer/left anti join is supported in OLAP IVM row-id derive");
+                        "only inner/cross/left outer/left semi/left anti join is supported in OLAP IVM row-id derive");
                 return null;
             }
 
@@ -204,7 +204,7 @@ public class IvmRowIdDeriver {
         private List<ColumnRefOperator> getJoinInputRowIds(JoinOperator joinType,
                                                             List<ColumnRefOperator> leftRowIds,
                                                             List<ColumnRefOperator> rightRowIds) {
-            if (joinType.isLeftAntiJoin()) {
+            if (joinType.isLeftAntiJoin() || joinType.isLeftSemiJoin()) {
                 return Lists.newArrayList(leftRowIds);
             }
             List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
@@ -476,7 +476,7 @@ public class IvmRowIdDeriver {
         private List<ColumnRefOperator> getJoinInputRowIds(JoinOperator joinType,
                                                             List<ColumnRefOperator> leftRowIds,
                                                             List<ColumnRefOperator> rightRowIds) {
-            if (joinType.isLeftAntiJoin()) {
+            if (joinType.isLeftAntiJoin() || joinType.isLeftSemiJoin()) {
                 return Lists.newArrayList(leftRowIds);
             }
             List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
