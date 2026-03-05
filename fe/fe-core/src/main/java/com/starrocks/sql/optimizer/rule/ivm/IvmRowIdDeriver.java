@@ -176,9 +176,12 @@ public class IvmRowIdDeriver {
             LogicalJoinOperator join = (LogicalJoinOperator) expression.getOp();
             JoinOperator joinType = join.getJoinType();
             if (!joinType.isInnerJoin() && !joinType.isCrossJoin()
-                    && !joinType.isLeftOuterJoin() && !joinType.isLeftAntiJoin() && !joinType.isLeftSemiJoin()) {
+                    && !joinType.isLeftOuterJoin() && !joinType.isRightOuterJoin() && !joinType.isFullOuterJoin()
+                    && !joinType.isLeftAntiJoin() && !joinType.isRightAntiJoin()
+                    && !joinType.isLeftSemiJoin() && !joinType.isRightSemiJoin()) {
                 this.context.markUnsupported(
-                        "only inner/cross/left outer/left semi/left anti join is supported in OLAP IVM row-id derive");
+                        "only inner/cross/left outer/right outer/full outer/left semi/right semi/left anti/right anti "
+                                + "join is supported in OLAP IVM row-id derive");
                 return null;
             }
 
@@ -206,6 +209,9 @@ public class IvmRowIdDeriver {
                                                             List<ColumnRefOperator> rightRowIds) {
             if (joinType.isLeftAntiJoin() || joinType.isLeftSemiJoin()) {
                 return Lists.newArrayList(leftRowIds);
+            }
+            if (joinType.isRightAntiJoin() || joinType.isRightSemiJoin()) {
+                return Lists.newArrayList(rightRowIds);
             }
             List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
             inputRowIds.addAll(leftRowIds);
@@ -478,6 +484,9 @@ public class IvmRowIdDeriver {
                                                             List<ColumnRefOperator> rightRowIds) {
             if (joinType.isLeftAntiJoin() || joinType.isLeftSemiJoin()) {
                 return Lists.newArrayList(leftRowIds);
+            }
+            if (joinType.isRightAntiJoin() || joinType.isRightSemiJoin()) {
+                return Lists.newArrayList(rightRowIds);
             }
             List<ColumnRefOperator> inputRowIds = Lists.newArrayListWithCapacity(leftRowIds.size() + rightRowIds.size());
             inputRowIds.addAll(leftRowIds);
