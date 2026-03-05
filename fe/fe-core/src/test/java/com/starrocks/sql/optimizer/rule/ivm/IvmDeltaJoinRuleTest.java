@@ -254,6 +254,58 @@ public class IvmDeltaJoinRuleTest {
         Assertions.assertTrue(union.inputAt(2).getOp() instanceof LogicalProjectOperator);
     }
 
+    @Test
+    public void testTransformRightSemiJoin(@Mocked OlapTable leftTable,
+                                           @Mocked OlapTable rightTable) {
+        new Expectations() {
+            {
+                leftTable.getBaseIndexMetaId();
+                result = 1L;
+                rightTable.getBaseIndexMetaId();
+                result = 1L;
+            }
+        };
+
+        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
+        ColumnRefOperator leftRef = columnRefFactory.create("l_id", IntegerType.INT, false);
+        ColumnRefOperator rightRef = columnRefFactory.create("r_id", IntegerType.INT, false);
+        ColumnRefOperator actionRef = columnRefFactory.create("__op", IntegerType.TINYINT, false);
+
+        Column leftColumn = new Column("l_id", IntegerType.INT, false);
+        Column rightColumn = new Column("r_id", IntegerType.INT, false);
+        LogicalOlapScanOperator leftScan = LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(leftTable,
+                        Maps.newHashMap(Map.of(leftRef, leftColumn)),
+                        Maps.newHashMap(Map.of(leftColumn, leftRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build();
+        LogicalOlapScanOperator rightScan = LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(rightTable,
+                        Maps.newHashMap(Map.of(rightRef, rightColumn)),
+                        Maps.newHashMap(Map.of(rightColumn, rightRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(2L)
+                .build();
+
+        OptExpression leftExpr = OptExpression.create(leftScan);
+        OptExpression rightExpr = OptExpression.create(rightScan);
+        BinaryPredicateOperator onPredicate = new BinaryPredicateOperator(BinaryType.EQ, leftRef, rightRef);
+        OptExpression joinExpr = OptExpression.create(new LogicalJoinOperator(JoinOperator.RIGHT_SEMI_JOIN, onPredicate),
+                leftExpr, rightExpr);
+        OptExpression deltaJoinExpr = OptExpression.create(new LogicalDeltaOperator(true, actionRef), joinExpr);
+        deriveLogicalProperty(deltaJoinExpr);
+
+        List<OptExpression> result = new IvmDeltaJoinRule().transform(deltaJoinExpr, context);
+        Assertions.assertEquals(1, result.size());
+        Assertions.assertTrue(result.get(0).getOp() instanceof LogicalCTEAnchorOperator);
+    }
+
     private static void assertUnsupportedJoinRewrite(OlapTable leftTable,
                                                      OlapTable rightTable,
                                                      JoinOperator joinType) {
