@@ -30,6 +30,9 @@ import com.starrocks.sql.optimizer.base.ColumnRefSet;
 import com.starrocks.sql.optimizer.operator.AggType;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEAnchorOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEConsumeOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEProduceOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
@@ -86,16 +89,21 @@ public class IvmDeltaJoinRule extends TransformationRule {
         List<List<ColumnRefOperator>> unionChildOutputs = Lists.newArrayList();
 
         if (joinType.isLeftAntiJoin()) {
-            List<BranchResult> antiBranches =
-                    buildLeftAntiJoinBranches(factory, context, joinExpr, joinOutputColumns, actionColumn);
-            for (BranchResult branch : antiBranches) {
-                if (!appendBranch(unionChildren, unionChildOutputs, branch)) {
-                    return List.of();
-                }
-            }
-            if (antiBranches.size() != 3) {
+            LeftAntiRewriteResult antiRewrite =
+                    buildLeftAntiJoinRewrite(factory, context, joinExpr, joinOutputColumns, actionColumn);
+            if (antiRewrite == null) {
                 return List.of();
             }
+            if (!appendBranch(unionChildren, unionChildOutputs, antiRewrite.leftDeltaBranch())
+                    || !appendBranch(unionChildren, unionChildOutputs, antiRewrite.rightInsertBranch())
+                    || !appendBranch(unionChildren, unionChildOutputs, antiRewrite.rightDeleteBranch())) {
+                return List.of();
+            }
+            LogicalUnionOperator unionOperator = new LogicalUnionOperator(finalOutputColumns, unionChildOutputs, true);
+            OptExpression unionExpr = OptExpression.create(unionOperator, unionChildren);
+            OptExpression cteAnchor = OptExpression.create(new LogicalCTEAnchorOperator(antiRewrite.cteId()),
+                    antiRewrite.rightFlatProducer(), unionExpr);
+            return List.of(cteAnchor);
         } else {
             // branch1: delta(t1) join t2@from_version
             JoinOperator branch1JoinType = joinType.isLeftOuterJoin() ? JoinOperator.LEFT_OUTER_JOIN : joinType;
@@ -121,64 +129,61 @@ public class IvmDeltaJoinRule extends TransformationRule {
         return List.of(OptExpression.create(unionOperator, unionChildren));
     }
 
-    private List<BranchResult> buildLeftAntiJoinBranches(ColumnRefFactory factory,
-                                                         OptimizerContext context,
-                                                         OptExpression joinExpr,
-                                                         List<ColumnRefOperator> joinOutputColumns,
-                                                         ColumnRefOperator actionColumn) {
+    private LeftAntiRewriteResult buildLeftAntiJoinRewrite(ColumnRefFactory factory,
+                                                           OptimizerContext context,
+                                                           OptExpression joinExpr,
+                                                           List<ColumnRefOperator> joinOutputColumns,
+                                                           ColumnRefOperator actionColumn) {
         if (actionColumn == null) {
-            return List.of();
+            return null;
         }
         LogicalJoinOperator join = (LogicalJoinOperator) joinExpr.getOp();
         List<JoinKeyPair> joinKeyPairs = deriveJoinKeyPairs(join, joinExpr.inputAt(0), joinExpr.inputAt(1));
         if (joinKeyPairs.isEmpty()) {
-            return List.of();
-        }
-
-        BranchResult leftDeltaBranch =
-                buildBranch(factory, context, joinExpr, JoinOperator.LEFT_ANTI_JOIN, joinOutputColumns, actionColumn, true);
-        BranchResult rightInsertDeleteBranch =
-                buildLeftAntiRightChangeBranch(factory, context, joinExpr, joinOutputColumns, actionColumn, joinKeyPairs, true);
-        BranchResult rightDeleteInsertBranch =
-                buildLeftAntiRightChangeBranch(factory, context, joinExpr, joinOutputColumns, actionColumn, joinKeyPairs, false);
-        if (leftDeltaBranch == null || rightInsertDeleteBranch == null || rightDeleteInsertBranch == null) {
-            return List.of();
-        }
-        return List.of(leftDeltaBranch, rightInsertDeleteBranch, rightDeleteInsertBranch);
-    }
-
-    // For left anti join: right insert causes left delete(action=-1), right delete causes left insert(action=+1).
-    private BranchResult buildLeftAntiRightChangeBranch(ColumnRefFactory factory,
-                                                        OptimizerContext context,
-                                                        OptExpression joinExpr,
-                                                        List<ColumnRefOperator> joinOutputColumns,
-                                                        ColumnRefOperator actionColumn,
-                                                        List<JoinKeyPair> joinKeyPairs,
-                                                        boolean onRightInsert) {
-        DuplicatedJoin mainJoin = duplicateJoin(factory, context, joinExpr);
-        LogicalJoinOperator mainJoinOp = (LogicalJoinOperator) mainJoin.joinExpr().getOp();
-        ColumnRefOperator branchActionColumn = duplicateActionColumn(factory, actionColumn);
-
-        List<ColumnRefOperator> mappedLeftKeys = mapLeftJoinKeys(joinKeyPairs, mainJoin.columnMapping());
-        List<ColumnRefOperator> mappedRightKeys = mapRightJoinKeys(joinKeyPairs, mainJoin.columnMapping());
-        if (mappedLeftKeys.isEmpty() || mappedRightKeys.isEmpty()) {
             return null;
         }
 
-        OptExpression leftToVersion = OptExpression.create(LogicalVersionOperator.toVersion(), mainJoin.joinExpr().inputAt(0));
+        int cteId = context.getCteContext().getNextCteId();
+        RightFlatProducerResult rightFlat =
+                buildLeftAntiRightFlatProducer(factory, context, joinExpr, actionColumn, joinKeyPairs, cteId);
+        if (rightFlat == null) {
+            return null;
+        }
+        BranchResult leftDeltaBranch =
+                buildBranch(factory, context, joinExpr, JoinOperator.LEFT_ANTI_JOIN, joinOutputColumns, actionColumn, true);
+        BranchResult rightInsertBranch = buildLeftAntiRightChangeBranchFromCte(factory, context, joinExpr,
+                joinOutputColumns, actionColumn, joinKeyPairs, rightFlat, true);
+        BranchResult rightDeleteBranch = buildLeftAntiRightChangeBranchFromCte(factory, context, joinExpr,
+                joinOutputColumns, actionColumn, joinKeyPairs, rightFlat, false);
+        if (leftDeltaBranch == null || rightInsertBranch == null || rightDeleteBranch == null) {
+            return null;
+        }
+        return new LeftAntiRewriteResult(cteId, rightFlat.producer(), leftDeltaBranch, rightInsertBranch, rightDeleteBranch);
+    }
 
-        // right_delta: select k, sum(__action__) as delta_cnt from delta_t2 group by k
-        OptExpression mainRightDelta = OptExpression.create(new LogicalDeltaOperator(false, branchActionColumn),
-                mainJoin.joinExpr().inputAt(1));
+    private RightFlatProducerResult buildLeftAntiRightFlatProducer(ColumnRefFactory factory,
+                                                                   OptimizerContext context,
+                                                                   OptExpression joinExpr,
+                                                                   ColumnRefOperator actionColumn,
+                                                                   List<JoinKeyPair> joinKeyPairs,
+                                                                   int cteId) {
+        DuplicatedJoin producerJoin = duplicateJoin(factory, context, joinExpr);
+        List<ColumnRefOperator> mappedRightKeys = mapRightJoinKeys(joinKeyPairs, producerJoin.columnMapping());
+        if (mappedRightKeys.isEmpty() || mappedRightKeys.stream().anyMatch(k -> k == null)) {
+            return null;
+        }
+        ColumnRefOperator branchActionColumn = duplicateActionColumn(factory, actionColumn);
+
+        OptExpression rightDeltaInput = OptExpression.create(new LogicalDeltaOperator(false, branchActionColumn),
+                producerJoin.joinExpr().inputAt(1));
         ColumnRefOperator deltaCntRef = factory.create("__delta_cnt", IntegerType.BIGINT, false);
         Map<ColumnRefOperator, CallOperator> rightDeltaAggMap = Maps.newHashMap();
         rightDeltaAggMap.put(deltaCntRef, createBuiltinCall(FunctionSet.SUM, IntegerType.BIGINT,
                 List.of(branchActionColumn)));
         LogicalAggregationOperator rightDeltaAggOp = new LogicalAggregationOperator(AggType.GLOBAL,
                 mappedRightKeys, rightDeltaAggMap);
-        OptExpression rightDeltaAgg = OptExpression.create(rightDeltaAggOp, mainRightDelta);
+        OptExpression rightDeltaAgg = OptExpression.create(rightDeltaAggOp, rightDeltaInput);
 
-        // right_from: select t2.k, count(1) as cnt0 from t2@from left semi join delta_t2 on key group by t2.k
         DuplicatedJoin fromJoin = duplicateJoin(factory, context, joinExpr);
         DuplicatedJoin semiDeltaJoin = duplicateJoin(factory, context, joinExpr);
         List<ColumnRefOperator> fromRightKeys = mapRightJoinKeys(joinKeyPairs, fromJoin.columnMapping());
@@ -195,8 +200,8 @@ public class IvmDeltaJoinRule extends TransformationRule {
         ColumnRefOperator semiAction = duplicateActionColumn(factory, actionColumn);
         OptExpression semiDeltaRight = OptExpression.create(new LogicalDeltaOperator(false, semiAction),
                 semiDeltaJoin.joinExpr().inputAt(1));
-        LogicalJoinOperator rightSemiJoinOp = new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, rightSemiOn);
-        OptExpression rightSemiJoin = OptExpression.create(rightSemiJoinOp, fromVersionRight, semiDeltaRight);
+        OptExpression rightSemiJoin = OptExpression.create(new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, rightSemiOn),
+                fromVersionRight, semiDeltaRight);
 
         ColumnRefOperator cnt0Ref = factory.create("__cnt0", IntegerType.BIGINT, false);
         Map<ColumnRefOperator, CallOperator> rightFromAggMap = Maps.newHashMap();
@@ -206,13 +211,12 @@ public class IvmDeltaJoinRule extends TransformationRule {
                 fromRightKeys, rightFromAggMap);
         OptExpression rightFromAgg = OptExpression.create(rightFromAggOp, rightSemiJoin);
 
-        // right_flat = right_delta left join right_from on k.
         ScalarOperator rightFlatOn = buildEquiPredicate(mappedRightKeys, fromRightKeys);
         if (rightFlatOn == null) {
             return null;
         }
-        LogicalJoinOperator rightFlatJoinOp = new LogicalJoinOperator(JoinOperator.LEFT_OUTER_JOIN, rightFlatOn);
-        OptExpression rightFlatJoin = OptExpression.create(rightFlatJoinOp, rightDeltaAgg, rightFromAgg);
+        OptExpression rightFlatJoin = OptExpression.create(new LogicalJoinOperator(JoinOperator.LEFT_OUTER_JOIN, rightFlatOn),
+                rightDeltaAgg, rightFromAgg);
 
         ColumnRefOperator flatCnt0Ref = factory.create("__flat_cnt0", IntegerType.BIGINT, false);
         ColumnRefOperator flatCnt1Ref = factory.create("__flat_cnt1", IntegerType.BIGINT, false);
@@ -227,45 +231,70 @@ public class IvmDeltaJoinRule extends TransformationRule {
         rightFlatProjectMap.put(flatCnt0Ref, cnt0Coalesce);
         rightFlatProjectMap.put(flatCnt1Ref, cnt1Expr);
         OptExpression rightFlatProject = OptExpression.create(new LogicalProjectOperator(rightFlatProjectMap), rightFlatJoin);
+        OptExpression rightFlatProducer = OptExpression.create(new LogicalCTEProduceOperator(cteId), rightFlatProject);
+        return new RightFlatProducerResult(cteId, rightFlatProducer, mappedRightKeys, flatCnt0Ref, flatCnt1Ref);
+    }
+
+    // For left anti join: right insert causes left delete(action=-1), right delete causes left insert(action=+1).
+    private BranchResult buildLeftAntiRightChangeBranchFromCte(ColumnRefFactory factory,
+                                                               OptimizerContext context,
+                                                               OptExpression joinExpr,
+                                                               List<ColumnRefOperator> joinOutputColumns,
+                                                               ColumnRefOperator actionColumn,
+                                                               List<JoinKeyPair> joinKeyPairs,
+                                                               RightFlatProducerResult rightFlat,
+                                                               boolean onRightInsert) {
+        DuplicatedJoin branchJoin = duplicateJoin(factory, context, joinExpr);
+        LogicalJoinOperator branchJoinOp = (LogicalJoinOperator) branchJoin.joinExpr().getOp();
+        List<ColumnRefOperator> branchRightKeys = mapRightJoinKeys(joinKeyPairs, branchJoin.columnMapping());
+        if (branchRightKeys.isEmpty() || branchRightKeys.stream().anyMatch(k -> k == null)) {
+            return null;
+        }
+        ColumnRefOperator branchActionColumn = duplicateActionColumn(factory, actionColumn);
+        OptExpression leftToVersion = OptExpression.create(LogicalVersionOperator.toVersion(), branchJoin.joinExpr().inputAt(0));
+
+        Map<ColumnRefOperator, ColumnRefOperator> consumeMap = Maps.newLinkedHashMap();
+        for (int i = 0; i < branchRightKeys.size(); i++) {
+            consumeMap.put(branchRightKeys.get(i), rightFlat.rightKeys().get(i));
+        }
+        ColumnRefOperator branchCnt0Ref = factory.create("__branch_cnt0", IntegerType.BIGINT, false);
+        ColumnRefOperator branchCnt1Ref = factory.create("__branch_cnt1", IntegerType.BIGINT, false);
+        consumeMap.put(branchCnt0Ref, rightFlat.cnt0Ref());
+        consumeMap.put(branchCnt1Ref, rightFlat.cnt1Ref());
+        OptExpression rightFlatConsume = OptExpression.create(new LogicalCTEConsumeOperator(rightFlat.cteId(), consumeMap));
 
         ScalarOperator filterPredicate;
         if (onRightInsert) {
             filterPredicate = Utils.compoundAnd(
-                    new BinaryPredicateOperator(BinaryType.EQ, flatCnt0Ref, ConstantOperator.createBigint(0L)),
-                    new BinaryPredicateOperator(BinaryType.GT, flatCnt1Ref, ConstantOperator.createBigint(0L)));
+                    new BinaryPredicateOperator(BinaryType.EQ, branchCnt0Ref, ConstantOperator.createBigint(0L)),
+                    new BinaryPredicateOperator(BinaryType.GT, branchCnt1Ref, ConstantOperator.createBigint(0L)));
         } else {
             filterPredicate = Utils.compoundAnd(
-                    new BinaryPredicateOperator(BinaryType.GT, flatCnt0Ref, ConstantOperator.createBigint(0L)),
-                    new BinaryPredicateOperator(BinaryType.EQ, flatCnt1Ref, ConstantOperator.createBigint(0L)));
+                    new BinaryPredicateOperator(BinaryType.GT, branchCnt0Ref, ConstantOperator.createBigint(0L)),
+                    new BinaryPredicateOperator(BinaryType.EQ, branchCnt1Ref, ConstantOperator.createBigint(0L)));
         }
-        OptExpression rightFlatFiltered = OptExpression.create(new LogicalFilterOperator(filterPredicate), rightFlatProject);
+        OptExpression rightFlatFiltered = OptExpression.create(new LogicalFilterOperator(filterPredicate), rightFlatConsume);
 
-        Map<ColumnRefOperator, ScalarOperator> rightKeyProjectMap = Maps.newLinkedHashMap();
-        for (ColumnRefOperator mappedRightKey : mappedRightKeys) {
-            rightKeyProjectMap.put(mappedRightKey, mappedRightKey);
-        }
-        OptExpression rightKeyOnly = OptExpression.create(new LogicalProjectOperator(rightKeyProjectMap), rightFlatFiltered);
-
-        LogicalJoinOperator leftAntiJoin = LogicalJoinOperator.builder()
-                .withOperator(mainJoinOp)
-                .setJoinType(JoinOperator.LEFT_ANTI_JOIN)
+        LogicalJoinOperator leftSemiJoin = LogicalJoinOperator.builder()
+                .withOperator(branchJoinOp)
+                .setJoinType(JoinOperator.LEFT_SEMI_JOIN)
                 .build();
-        OptExpression antiJoinExpr = OptExpression.create(leftAntiJoin, leftToVersion, rightKeyOnly);
+        OptExpression semiJoinExpr = OptExpression.create(leftSemiJoin, leftToVersion, rightFlatFiltered);
 
         byte actionValue = onRightInsert ? (byte) -1 : (byte) 1;
         Map<ColumnRefOperator, ScalarOperator> branchProjectMap = Maps.newLinkedHashMap();
         for (ColumnRefOperator output : joinOutputColumns) {
-            ColumnRefOperator mappedOutput = mainJoin.columnMapping().get(output);
+            ColumnRefOperator mappedOutput = branchJoin.columnMapping().get(output);
             if (mappedOutput == null) {
                 return null;
             }
             branchProjectMap.put(mappedOutput, mappedOutput);
         }
         branchProjectMap.put(branchActionColumn, ConstantOperator.createTinyInt(actionValue));
-        OptExpression branchExpr = OptExpression.create(new LogicalProjectOperator(branchProjectMap), antiJoinExpr);
+        OptExpression branchExpr = OptExpression.create(new LogicalProjectOperator(branchProjectMap), semiJoinExpr);
 
         List<ColumnRefOperator> outputs = deriveBranchOutputs(joinOutputColumns, branchActionColumn,
-                mainJoin.columnMapping());
+                branchJoin.columnMapping());
         if (outputs == null) {
             return null;
         }
@@ -428,11 +457,6 @@ public class IvmDeltaJoinRule extends TransformationRule {
         return pairs;
     }
 
-    private List<ColumnRefOperator> mapLeftJoinKeys(List<JoinKeyPair> keyPairs,
-                                                    Map<ColumnRefOperator, ColumnRefOperator> oldToNew) {
-        return keyPairs.stream().map(JoinKeyPair::leftKey).map(oldToNew::get).collect(Collectors.toList());
-    }
-
     private List<ColumnRefOperator> mapRightJoinKeys(List<JoinKeyPair> keyPairs,
                                                      Map<ColumnRefOperator, ColumnRefOperator> oldToNew) {
         return keyPairs.stream().map(JoinKeyPair::rightKey).map(oldToNew::get).collect(Collectors.toList());
@@ -524,6 +548,20 @@ public class IvmDeltaJoinRule extends TransformationRule {
     }
 
     private record DuplicatedJoin(OptExpression joinExpr, Map<ColumnRefOperator, ColumnRefOperator> columnMapping) {
+    }
+
+    private record RightFlatProducerResult(int cteId,
+                                           OptExpression producer,
+                                           List<ColumnRefOperator> rightKeys,
+                                           ColumnRefOperator cnt0Ref,
+                                           ColumnRefOperator cnt1Ref) {
+    }
+
+    private record LeftAntiRewriteResult(int cteId,
+                                         OptExpression rightFlatProducer,
+                                         BranchResult leftDeltaBranch,
+                                         BranchResult rightInsertBranch,
+                                         BranchResult rightDeleteBranch) {
     }
 
     private record JoinKeyPair(ColumnRefOperator leftKey, ColumnRefOperator rightKey) {
