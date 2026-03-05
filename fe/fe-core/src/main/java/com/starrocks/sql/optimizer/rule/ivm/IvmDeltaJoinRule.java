@@ -84,6 +84,13 @@ public class IvmDeltaJoinRule extends TransformationRule {
                     .build();
             joinExpr = OptExpression.create(leftAntiJoin, joinExpr.inputAt(1), joinExpr.inputAt(0));
             join = leftAntiJoin;
+        } else if (join.getJoinType().isRightOuterJoin()) {
+            LogicalJoinOperator leftOuterJoin = LogicalJoinOperator.builder()
+                    .withOperator(join)
+                    .setJoinType(JoinOperator.LEFT_OUTER_JOIN)
+                    .build();
+            joinExpr = OptExpression.create(leftOuterJoin, joinExpr.inputAt(1), joinExpr.inputAt(0));
+            join = leftOuterJoin;
         }
         if (join.getJoinType().isLeftSemiJoin()) {
             return transformLeftSemiJoin(input, context, joinExpr);
