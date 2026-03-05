@@ -258,7 +258,20 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return null;
         }
         ColumnRefOperator branchActionColumn = duplicateActionColumn(factory, actionColumn);
-        OptExpression leftToVersion = OptExpression.create(LogicalVersionOperator.toVersion(), branchJoin.joinExpr().inputAt(0));
+        // semi join:
+        // select t1.*, -1 as __action__ from t1@from_version left semi join right_insert on t1.k = right_insert.k
+        // union all
+        // select t1.*, +1 as __action__ from t1@to_version left semi join right_delete on t1.k = right_delete.k
+        //
+        // anti join:
+        // select t1.*, +1 as __action__ from t1@to_version left semi join right_insert on t1.k = right_insert.k
+        // union all
+        // select t1.*, -1 as __action__ from t1@from_version left semi join right_delete on t1.k = right_delete.k
+        boolean useToVersion = isSemiJoin == onRightInsert;
+        LogicalVersionOperator leftVersionOp = useToVersion
+                ? LogicalVersionOperator.toVersion()
+                : LogicalVersionOperator.fromVersion();
+        OptExpression leftWithVersion = OptExpression.create(leftVersionOp, branchJoin.joinExpr().inputAt(0));
 
         Map<ColumnRefOperator, ColumnRefOperator> consumeMap = Maps.newLinkedHashMap();
         for (int i = 0; i < branchRightKeys.size(); i++) {
@@ -286,7 +299,7 @@ public class IvmDeltaJoinRule extends TransformationRule {
                 .withOperator(branchJoinOp)
                 .setJoinType(JoinOperator.LEFT_SEMI_JOIN)
                 .build();
-        OptExpression semiJoinExpr = OptExpression.create(leftSemiJoin, leftToVersion, rightFlatFiltered);
+        OptExpression semiJoinExpr = OptExpression.create(leftSemiJoin, leftWithVersion, rightFlatFiltered);
 
         byte actionValue;
         if (isSemiJoin) {

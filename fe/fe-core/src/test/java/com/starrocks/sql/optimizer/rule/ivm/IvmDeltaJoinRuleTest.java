@@ -265,6 +265,10 @@ public class IvmDeltaJoinRuleTest {
                 ((LogicalJoinOperator) union.inputAt(1).inputAt(0).getOp()).getJoinType());
         Assertions.assertEquals(JoinOperator.LEFT_SEMI_JOIN,
                 ((LogicalJoinOperator) union.inputAt(2).inputAt(0).getOp()).getJoinType());
+        Assertions.assertEquals(LogicalVersionOperator.VersionRefType.FROM_VERSION,
+                ((LogicalVersionOperator) union.inputAt(1).inputAt(0).inputAt(0).getOp()).getVersionRefType());
+        Assertions.assertEquals(LogicalVersionOperator.VersionRefType.TO_VERSION,
+                ((LogicalVersionOperator) union.inputAt(2).inputAt(0).inputAt(0).getOp()).getVersionRefType());
         Assertions.assertTrue(union.inputAt(1).inputAt(0).inputAt(1).getOp() instanceof LogicalFilterOperator);
         Assertions.assertTrue(union.inputAt(1).inputAt(0).inputAt(1).inputAt(0).getOp() instanceof LogicalCTEConsumeOperator);
         Assertions.assertTrue(union.inputAt(2).inputAt(0).inputAt(1).inputAt(0).getOp() instanceof LogicalCTEConsumeOperator);
@@ -341,6 +345,10 @@ public class IvmDeltaJoinRuleTest {
                 ((LogicalJoinOperator) union.inputAt(1).inputAt(0).getOp()).getJoinType());
         Assertions.assertEquals(JoinOperator.LEFT_SEMI_JOIN,
                 ((LogicalJoinOperator) union.inputAt(2).inputAt(0).getOp()).getJoinType());
+        Assertions.assertEquals(LogicalVersionOperator.VersionRefType.TO_VERSION,
+                ((LogicalVersionOperator) union.inputAt(1).inputAt(0).inputAt(0).getOp()).getVersionRefType());
+        Assertions.assertEquals(LogicalVersionOperator.VersionRefType.FROM_VERSION,
+                ((LogicalVersionOperator) union.inputAt(2).inputAt(0).inputAt(0).getOp()).getVersionRefType());
         Assertions.assertTrue(union.inputAt(1).inputAt(0).inputAt(1).inputAt(0).getOp() instanceof LogicalCTEConsumeOperator);
         Assertions.assertTrue(union.inputAt(2).inputAt(0).inputAt(1).inputAt(0).getOp() instanceof LogicalCTEConsumeOperator);
     }
