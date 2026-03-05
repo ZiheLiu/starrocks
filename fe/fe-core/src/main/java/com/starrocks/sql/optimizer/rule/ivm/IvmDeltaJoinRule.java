@@ -73,6 +73,9 @@ public class IvmDeltaJoinRule extends TransformationRule {
         if (join.getJoinType().isLeftSemiJoin()) {
             return transformLeftSemiJoin(input, context, joinExpr);
         }
+        if (join.getJoinType().isLeftAntiJoin()) {
+            return transformLeftAntiJoin(input, context, joinExpr);
+        }
         if (!join.getJoinType().isInnerJoin()) {
             return List.of();
         }
@@ -101,6 +104,19 @@ public class IvmDeltaJoinRule extends TransformationRule {
     private List<OptExpression> transformLeftSemiJoin(OptExpression input,
                                                       OptimizerContext context,
                                                       OptExpression joinExpr) {
+        return transformLeftSemiAntiJoin(input, context, joinExpr, true);
+    }
+
+    private List<OptExpression> transformLeftAntiJoin(OptExpression input,
+                                                      OptimizerContext context,
+                                                      OptExpression joinExpr) {
+        return transformLeftSemiAntiJoin(input, context, joinExpr, false);
+    }
+
+    private List<OptExpression> transformLeftSemiAntiJoin(OptExpression input,
+                                                          OptimizerContext context,
+                                                          OptExpression joinExpr,
+                                                          boolean isSemiJoin) {
         ColumnRefFactory factory = context.getColumnRefFactory();
         LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
         ColumnRefOperator actionColumn = delta.getActionColumn();
@@ -130,12 +146,16 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return List.of();
         }
 
-        BranchResult part1 = buildLeftSemiPart1Branch(factory, context, joinExpr, actionColumn,
-                joinOutputColumns, joinKeyPairs, flipProducer);
-        BranchResult part2 = buildLeftSemiFlipBranch(factory, context, joinExpr, actionColumn,
-                joinOutputColumns, joinKeyPairs, flipProducer, true);
-        BranchResult part3 = buildLeftSemiFlipBranch(factory, context, joinExpr, actionColumn,
-                joinOutputColumns, joinKeyPairs, flipProducer, false);
+        BranchResult part1 = buildLeftSemiAntiPart1Branch(factory, context, joinExpr, actionColumn,
+                joinOutputColumns, joinKeyPairs, flipProducer, isSemiJoin);
+        BranchResult part2 = buildLeftSemiAntiFlipBranch(factory, context, joinExpr, actionColumn,
+                joinOutputColumns, joinKeyPairs, flipProducer, true,
+                isSemiJoin ? LogicalVersionOperator.toVersion() : LogicalVersionOperator.fromVersion(),
+                isSemiJoin ? (byte) 1 : (byte) -1);
+        BranchResult part3 = buildLeftSemiAntiFlipBranch(factory, context, joinExpr, actionColumn,
+                joinOutputColumns, joinKeyPairs, flipProducer, false,
+                isSemiJoin ? LogicalVersionOperator.fromVersion() : LogicalVersionOperator.toVersion(),
+                isSemiJoin ? (byte) -1 : (byte) 1);
         if (part1 == null || part2 == null || part3 == null) {
             return List.of();
         }
@@ -273,13 +293,14 @@ public class IvmDeltaJoinRule extends TransformationRule {
         return new FlipProducerResult(cteId, flipKeys, cnt0, cnt1, producer);
     }
 
-    private BranchResult buildLeftSemiPart1Branch(ColumnRefFactory factory,
-                                                  OptimizerContext context,
-                                                  OptExpression joinExpr,
-                                                  ColumnRefOperator actionColumn,
-                                                  List<ColumnRefOperator> joinOutputColumns,
-                                                  List<JoinKeyPair> joinKeyPairs,
-                                                  FlipProducerResult flip) {
+    private BranchResult buildLeftSemiAntiPart1Branch(ColumnRefFactory factory,
+                                                      OptimizerContext context,
+                                                      OptExpression joinExpr,
+                                                      ColumnRefOperator actionColumn,
+                                                      List<ColumnRefOperator> joinOutputColumns,
+                                                      List<JoinKeyPair> joinKeyPairs,
+                                                      FlipProducerResult flip,
+                                                      boolean isSemiJoin) {
         DuplicatedJoin branchJoin = duplicateJoin(factory, context, joinExpr);
         LogicalJoinOperator branchJoinOp = (LogicalJoinOperator) branchJoin.joinExpr().getOp();
         List<ColumnRefOperator> branchRightKeys = mapRightJoinKeys(joinKeyPairs, branchJoin.columnMapping());
@@ -291,16 +312,23 @@ public class IvmDeltaJoinRule extends TransformationRule {
         OptExpression dR = OptExpression.create(new LogicalDeltaOperator(false, branchAction), branchJoin.joinExpr().inputAt(0));
 
         FlipConsumeResult flipConsume = createFlipConsumeForBranch(factory, flip, branchRightKeys);
-        ScalarOperator k11 = Utils.compoundAnd(
-                new BinaryPredicateOperator(BinaryType.GT, flipConsume.cnt0(), ConstantOperator.createBigint(0L)),
-                new BinaryPredicateOperator(BinaryType.GT, flipConsume.cnt1(), ConstantOperator.createBigint(0L)));
-        OptExpression k11Filter = OptExpression.create(new LogicalFilterOperator(k11), flipConsume.consume());
+        ScalarOperator part1Predicate;
+        if (isSemiJoin) {
+            part1Predicate = Utils.compoundAnd(
+                    new BinaryPredicateOperator(BinaryType.GT, flipConsume.cnt0(), ConstantOperator.createBigint(0L)),
+                    new BinaryPredicateOperator(BinaryType.GT, flipConsume.cnt1(), ConstantOperator.createBigint(0L)));
+        } else {
+            part1Predicate = Utils.compoundAnd(
+                    new BinaryPredicateOperator(BinaryType.EQ, flipConsume.cnt0(), ConstantOperator.createBigint(0L)),
+                    new BinaryPredicateOperator(BinaryType.EQ, flipConsume.cnt1(), ConstantOperator.createBigint(0L)));
+        }
+        OptExpression part1Filter = OptExpression.create(new LogicalFilterOperator(part1Predicate), flipConsume.consume());
 
         LogicalJoinOperator semiJoin = LogicalJoinOperator.builder()
                 .withOperator(branchJoinOp)
                 .setJoinType(JoinOperator.LEFT_SEMI_JOIN)
                 .build();
-        OptExpression part1 = OptExpression.create(semiJoin, dR, k11Filter);
+        OptExpression part1 = OptExpression.create(semiJoin, dR, part1Filter);
 
         List<ColumnRefOperator> outputs = deriveBranchOutputs(joinOutputColumns, branchAction, branchJoin.columnMapping());
         if (outputs == null) {
@@ -309,14 +337,16 @@ public class IvmDeltaJoinRule extends TransformationRule {
         return new BranchResult(part1, outputs);
     }
 
-    private BranchResult buildLeftSemiFlipBranch(ColumnRefFactory factory,
-                                                 OptimizerContext context,
-                                                 OptExpression joinExpr,
-                                                 ColumnRefOperator actionColumn,
-                                                 List<ColumnRefOperator> joinOutputColumns,
-                                                 List<JoinKeyPair> joinKeyPairs,
-                                                 FlipProducerResult flip,
-                                                 boolean isUp) {
+    private BranchResult buildLeftSemiAntiFlipBranch(ColumnRefFactory factory,
+                                                     OptimizerContext context,
+                                                     OptExpression joinExpr,
+                                                     ColumnRefOperator actionColumn,
+                                                     List<ColumnRefOperator> joinOutputColumns,
+                                                     List<JoinKeyPair> joinKeyPairs,
+                                                     FlipProducerResult flip,
+                                                     boolean isUp,
+                                                     LogicalVersionOperator versionOperator,
+                                                     byte outAction) {
         DuplicatedJoin branchJoin = duplicateJoin(factory, context, joinExpr);
         LogicalJoinOperator branchJoinOp = (LogicalJoinOperator) branchJoin.joinExpr().getOp();
         List<ColumnRefOperator> branchRightKeys = mapRightJoinKeys(joinKeyPairs, branchJoin.columnMapping());
@@ -325,24 +355,18 @@ public class IvmDeltaJoinRule extends TransformationRule {
         }
 
         ColumnRefOperator branchAction = duplicateActionColumn(factory, actionColumn);
-        LogicalVersionOperator versionOperator = isUp
-                ? LogicalVersionOperator.toVersion()
-                : LogicalVersionOperator.fromVersion();
         OptExpression leftVersion = OptExpression.create(versionOperator, branchJoin.joinExpr().inputAt(0));
 
         FlipConsumeResult flipConsume = createFlipConsumeForBranch(factory, flip, branchRightKeys);
         ScalarOperator predicate;
-        byte outAction;
         if (isUp) {
             predicate = Utils.compoundAnd(
                     new BinaryPredicateOperator(BinaryType.EQ, flipConsume.cnt0(), ConstantOperator.createBigint(0L)),
                     new BinaryPredicateOperator(BinaryType.GT, flipConsume.cnt1(), ConstantOperator.createBigint(0L)));
-            outAction = 1;
         } else {
             predicate = Utils.compoundAnd(
                     new BinaryPredicateOperator(BinaryType.GT, flipConsume.cnt0(), ConstantOperator.createBigint(0L)),
                     new BinaryPredicateOperator(BinaryType.EQ, flipConsume.cnt1(), ConstantOperator.createBigint(0L)));
-            outAction = -1;
         }
         OptExpression filteredFlip = OptExpression.create(new LogicalFilterOperator(predicate), flipConsume.consume());
 
