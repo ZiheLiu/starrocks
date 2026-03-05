@@ -98,6 +98,7 @@ import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.MetaUtils;
 import com.starrocks.sql.common.TypeManager;
 import com.starrocks.sql.optimizer.dump.HiveMetaStoreTableDumpInfo;
+import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.type.BooleanType;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.NullType;
@@ -941,7 +942,7 @@ public class QueryAnalyzer {
 
         private List<Column> getChangesMetaColumns() {
             List<Column> columns = new ArrayList<>();
-            columns.add(new Column(CHANGE_ACTION_COLUMN_NAME, IntegerType.SMALLINT));
+            columns.add(new Column(CHANGE_ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE));
             return columns;
         }
 

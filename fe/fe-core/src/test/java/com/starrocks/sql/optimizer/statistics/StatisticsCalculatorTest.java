@@ -50,6 +50,7 @@ import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CompoundPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
+import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.plan.ConnectorPlanTestBase;
 import com.starrocks.type.DateType;
 import com.starrocks.type.IntegerType;
@@ -304,11 +305,11 @@ public class StatisticsCalculatorTest {
         }
 
         ColumnRefOperator keyRef = new ColumnRefOperator(20001, IntegerType.BIGINT, "t1d", true);
-        ColumnRefOperator actionRef = new ColumnRefOperator(20002, IntegerType.SMALLINT, "__ACTION__", true);
+        ColumnRefOperator actionRef = new ColumnRefOperator(20002, IvmRuleUtils.ACTION_COLUMN_TYPE, "__ACTION__", true);
         Map<ColumnRefOperator, Column> refToColumn = Maps.newHashMap();
         Map<Column, ColumnRefOperator> columnToRef = Maps.newHashMap();
         Column keyColumn = table.getColumn("t1d");
-        Column actionColumn = new Column("__ACTION__", IntegerType.SMALLINT);
+        Column actionColumn = new Column("__ACTION__", IvmRuleUtils.ACTION_COLUMN_TYPE);
         refToColumn.put(keyRef, keyColumn);
         refToColumn.put(actionRef, actionColumn);
         columnToRef.put(keyColumn, keyRef);

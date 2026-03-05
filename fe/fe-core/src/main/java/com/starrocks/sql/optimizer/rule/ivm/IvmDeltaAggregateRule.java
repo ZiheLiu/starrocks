@@ -158,8 +158,8 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             return null;
         }
         // Align aggregate input/grouping columns to the duplicated "changes" subtree.
-        ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
-        List<ColumnRefOperator> oldChildOutputs = child.getOutputColumns().getColumnRefOperators(columnRefFactory);
+        ColumnRefFactory factory = context.getColumnRefFactory();
+        List<ColumnRefOperator> oldChildOutputs = child.getOutputColumns().getColumnRefOperators(factory);
         List<ColumnRefOperator> finalGroupingKeys = agg.getGroupingKeys();
         if (finalGroupingKeys.stream().anyMatch(k -> !oldChildOutputs.contains(k))) {
             return null;
@@ -170,7 +170,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
 
         // DeltaChild -> DeltaAggregate.
         ColumnRefOperator deltaActionColumn =
-                columnRefFactory.create(IvmRuleUtils.ACTION_COLUMN_NAME, IntegerType.TINYINT, false);
+                factory.create(IvmRuleUtils.ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE, false);
         Map<ColumnRefOperator, CallOperator> deltaAggCalls = Maps.newHashMap();
         List<RetractableAggInfo> aggInfos = Lists.newArrayListWithCapacity(agg.getAggregations().size());
         Map<ColumnRefOperator, CallOperator> avgAggCalls = Maps.newHashMap();
@@ -183,7 +183,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
             }
 
             RetractableAggInfo info = buildRetractableAggInfo(
-                    entry.getKey(), entry.getValue(), deltaChild.oldToNewMapping, deltaActionColumn, columnRefFactory);
+                    entry.getKey(), entry.getValue(), deltaChild.oldToNewMapping, deltaActionColumn, factory);
             if (info == null) {
                 return null;
             }
@@ -208,7 +208,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
 
         // MV Scan
         MvScanInfo mvScanInfo = buildMvScan(
-                targetMv, finalGroupingKeys, aggInfos, columnRefFactory, delta.getMvColumnMapping(), totalCountInfo);
+                targetMv, finalGroupingKeys, aggInfos, factory, delta.getMvColumnMapping(), totalCountInfo);
         if (mvScanInfo == null) {
             return null;
         }
@@ -233,10 +233,10 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         ColumnRefOperator finalActionColumn = delta.getActionColumn();
 
         OptExpression deleteBranch = createSplit(deltaChild, aggInfos, mvScanInfo,
-                finalGroupingKeys, finalActionColumn, columnRefFactory, mergeCteId,
+                finalGroupingKeys, finalActionColumn, factory, mergeCteId,
                 (byte) -1, deleteConsumerToProducerMap, deleteProjectMap, deleteFinalToConsumerOutputMap);
         OptExpression insertBranch = createSplit(deltaChild, aggInfos, mvScanInfo,
-                finalGroupingKeys, delta.getActionColumn(), columnRefFactory, mergeCteId,
+                finalGroupingKeys, delta.getActionColumn(), factory, mergeCteId,
                 (byte) 1, insertConsumerToProducerMap, insertProjectMap, insertFinalToConsumerOutputMap);
         OptExpression joinProducer = OptExpression.create(new LogicalCTEProduceOperator(mergeCteId), joinExpr);
 
@@ -283,7 +283,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
                                              List<ColumnRefOperator> oldOutputs,
                                              LogicalVersionOperator.VersionRefType versionRefType,
                                              byte actionValue) {
-        ColumnRefFactory columnRefFactory = context.getColumnRefFactory();
+        ColumnRefFactory factory = context.getColumnRefFactory();
 
         // Child
         SnapshotInfo clonedChild = cloneChild(context, groupingKeys, child, oldOutputs);
@@ -293,7 +293,7 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         for (ColumnRefOperator out : clonedChild.outputColumns) {
             projectMap.put(out, out);
         }
-        ColumnRefOperator actionColumn = columnRefFactory.create(IvmRuleUtils.ACTION_COLUMN_NAME, IntegerType.TINYINT, false);
+        ColumnRefOperator actionColumn = factory.create(IvmRuleUtils.ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE, false);
         projectMap.put(actionColumn, ConstantOperator.createTinyInt(actionValue));
         LogicalProjectOperator projectOperator = new LogicalProjectOperator(projectMap);
 
