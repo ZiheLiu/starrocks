@@ -154,9 +154,9 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return List.of();
         }
 
-        List<OptExpression> unionChildren = List.of(
+        List<OptExpression> unionChildren = Lists.newArrayList(
                 innerBranch.branchExpr(), leftNullBranch.branchExpr(), rightNullBranch.branchExpr());
-        List<List<ColumnRefOperator>> unionChildOutputs = List.of(
+        List<List<ColumnRefOperator>> unionChildOutputs = Lists.newArrayList(
                 innerBranch.outputs(), leftNullBranch.outputs(), rightNullBranch.outputs());
         LogicalUnionOperator unionOperator = new LogicalUnionOperator(finalOutputColumns, unionChildOutputs, true);
         return List.of(OptExpression.create(unionOperator, unionChildren));
@@ -184,8 +184,8 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return List.of();
         }
 
-        List<OptExpression> unionChildren = List.of(innerBranch.branchExpr(), antiNullBranch.branchExpr());
-        List<List<ColumnRefOperator>> unionChildOutputs = List.of(innerBranch.outputs(), antiNullBranch.outputs());
+        List<OptExpression> unionChildren = Lists.newArrayList(innerBranch.branchExpr(), antiNullBranch.branchExpr());
+        List<List<ColumnRefOperator>> unionChildOutputs = Lists.newArrayList(innerBranch.outputs(), antiNullBranch.outputs());
         LogicalUnionOperator unionOperator = new LogicalUnionOperator(finalOutputColumns, unionChildOutputs, true);
         return List.of(OptExpression.create(unionOperator, unionChildren));
     }
@@ -337,7 +337,8 @@ public class IvmDeltaJoinRule extends TransformationRule {
                 OptExpression.create(new LogicalDeltaOperator(false, rightAction), deltaJoin.joinExpr().inputAt(1));
 
         List<ColumnRefOperator> unionOutputKeys = createKeyRefs(factory, leftKeys);
-        LogicalUnionOperator keyUnion = new LogicalUnionOperator(unionOutputKeys, List.of(leftKeys, rightKeys), true);
+        LogicalUnionOperator keyUnion =
+                new LogicalUnionOperator(unionOutputKeys, Lists.newArrayList(leftKeys, rightKeys), true);
         OptExpression allKeys = OptExpression.create(keyUnion, deltaLeft, deltaRight);
         OptExpression distinctKeys =
                 OptExpression.create(new LogicalAggregationOperator(AggType.GLOBAL, unionOutputKeys, Maps.newHashMap()), allKeys);
