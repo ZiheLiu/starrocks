@@ -23,9 +23,13 @@ import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.OptimizerFactory;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEAnchorOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalCTEProduceOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalDeltaOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.scalar.BinaryPredicateOperator;
@@ -127,7 +131,67 @@ public class IvmDeltaJoinRuleTest {
     @Test
     public void testTransformLeftSemiJoinUnsupported(@Mocked OlapTable leftTable,
                                                      @Mocked OlapTable rightTable) {
-        assertUnsupportedJoinRewrite(leftTable, rightTable, JoinOperator.LEFT_SEMI_JOIN);
+        new Expectations() {
+            {
+                leftTable.getBaseIndexMetaId();
+                result = 1L;
+                rightTable.getBaseIndexMetaId();
+                result = 1L;
+            }
+        };
+
+        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
+        ColumnRefOperator leftRef = columnRefFactory.create("l_id", IntegerType.INT, false);
+        ColumnRefOperator rightRef = columnRefFactory.create("r_id", IntegerType.INT, false);
+        ColumnRefOperator actionRef = columnRefFactory.create("__op", IntegerType.TINYINT, false);
+
+        Column leftColumn = new Column("l_id", IntegerType.INT, false);
+        Column rightColumn = new Column("r_id", IntegerType.INT, false);
+        LogicalOlapScanOperator leftScan = LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(leftTable,
+                        Maps.newHashMap(Map.of(leftRef, leftColumn)),
+                        Maps.newHashMap(Map.of(leftColumn, leftRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build();
+        LogicalOlapScanOperator rightScan = LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(rightTable,
+                        Maps.newHashMap(Map.of(rightRef, rightColumn)),
+                        Maps.newHashMap(Map.of(rightColumn, rightRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(2L)
+                .build();
+
+        OptExpression leftExpr = OptExpression.create(leftScan);
+        OptExpression rightExpr = OptExpression.create(rightScan);
+        BinaryPredicateOperator onPredicate = new BinaryPredicateOperator(BinaryType.EQ, leftRef, rightRef);
+        OptExpression joinExpr = OptExpression.create(new LogicalJoinOperator(JoinOperator.LEFT_SEMI_JOIN, onPredicate),
+                leftExpr, rightExpr);
+        OptExpression deltaJoinExpr = OptExpression.create(new LogicalDeltaOperator(true, actionRef), joinExpr);
+        deriveLogicalProperty(deltaJoinExpr);
+
+        List<OptExpression> result = new IvmDeltaJoinRule().transform(deltaJoinExpr, context);
+        Assertions.assertEquals(1, result.size());
+
+        OptExpression rewritten = result.get(0);
+        Assertions.assertTrue(rewritten.getOp() instanceof LogicalCTEAnchorOperator);
+        Assertions.assertTrue(rewritten.inputAt(0).getOp() instanceof LogicalCTEProduceOperator);
+        Assertions.assertTrue(rewritten.inputAt(1).getOp() instanceof LogicalCTEAnchorOperator);
+        Assertions.assertTrue(rewritten.inputAt(1).inputAt(0).getOp() instanceof LogicalCTEProduceOperator);
+        Assertions.assertTrue(rewritten.inputAt(1).inputAt(1).getOp() instanceof LogicalUnionOperator);
+        OptExpression union = rewritten.inputAt(1).inputAt(1);
+        Assertions.assertEquals(3, union.arity());
+        Assertions.assertTrue(union.inputAt(0).getOp() instanceof LogicalJoinOperator);
+        Assertions.assertEquals(JoinOperator.LEFT_SEMI_JOIN, ((LogicalJoinOperator) union.inputAt(0).getOp()).getJoinType());
+        Assertions.assertTrue(union.inputAt(0).inputAt(0).getOp() instanceof LogicalDeltaOperator);
+        Assertions.assertTrue(union.inputAt(0).inputAt(1).getOp() instanceof LogicalFilterOperator);
+        Assertions.assertTrue(union.inputAt(1).getOp() instanceof LogicalProjectOperator);
+        Assertions.assertTrue(union.inputAt(2).getOp() instanceof LogicalProjectOperator);
     }
 
     private static void assertUnsupportedJoinRewrite(OlapTable leftTable,
