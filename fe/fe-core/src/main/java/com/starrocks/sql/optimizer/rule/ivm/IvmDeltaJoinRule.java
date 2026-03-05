@@ -91,6 +91,9 @@ public class IvmDeltaJoinRule extends TransformationRule {
         if (join.getJoinType().isLeftAntiJoin()) {
             return transformLeftAntiJoin(input, context, joinExpr);
         }
+        if (join.getJoinType().isLeftOuterJoin()) {
+            return transformLeftOuterJoin(input, context, joinExpr);
+        }
         if (!join.getJoinType().isInnerJoin()) {
             return List.of();
         }
@@ -112,6 +115,68 @@ public class IvmDeltaJoinRule extends TransformationRule {
             return List.of();
         }
 
+        LogicalUnionOperator unionOperator = new LogicalUnionOperator(finalOutputColumns, unionChildOutputs, true);
+        return List.of(OptExpression.create(unionOperator, unionChildren));
+    }
+
+    private List<OptExpression> transformLeftOuterJoin(OptExpression input,
+                                                       OptimizerContext context,
+                                                       OptExpression joinExpr) {
+        LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
+        ColumnRefFactory factory = context.getColumnRefFactory();
+        ColumnRefOperator actionColumn = delta.getActionColumn();
+        if (actionColumn == null) {
+            return List.of();
+        }
+
+        ColumnRefSet originalRightOutputs = joinExpr.inputAt(1).getOutputColumns();
+        List<ColumnRefOperator> finalOutputColumns = input.getOutputColumns().getColumnRefOperators(factory);
+        List<ColumnRefOperator> joinOutputColumns = getJoinOutputsWithoutAction(finalOutputColumns, actionColumn);
+
+        DuplicatedJoin innerBranchJoin = duplicateJoin(factory, context, joinExpr);
+        LogicalJoinOperator innerJoin = LogicalJoinOperator.builder()
+                .withOperator((LogicalJoinOperator) innerBranchJoin.joinExpr().getOp())
+                .setJoinType(JoinOperator.INNER_JOIN)
+                .build();
+        ColumnRefOperator innerAction = duplicateActionColumn(factory, actionColumn);
+        List<ColumnRefOperator> innerOutputs =
+                deriveBranchOutputs(joinOutputColumns, innerAction, innerBranchJoin.columnMapping());
+        if (innerOutputs == null) {
+            return List.of();
+        }
+        OptExpression deltaInner = OptExpression.create(new LogicalDeltaOperator(false, innerAction),
+                OptExpression.create(innerJoin, innerBranchJoin.joinExpr().inputAt(0), innerBranchJoin.joinExpr().inputAt(1)));
+
+        DuplicatedJoin antiBranchJoin = duplicateJoin(factory, context, joinExpr);
+        LogicalJoinOperator leftAntiJoin = LogicalJoinOperator.builder()
+                .withOperator((LogicalJoinOperator) antiBranchJoin.joinExpr().getOp())
+                .setJoinType(JoinOperator.LEFT_ANTI_JOIN)
+                .build();
+        OptExpression antiJoinExpr =
+                OptExpression.create(leftAntiJoin, antiBranchJoin.joinExpr().inputAt(0), antiBranchJoin.joinExpr().inputAt(1));
+        Map<ColumnRefOperator, ScalarOperator> nullProjectMap = Maps.newHashMap();
+        for (ColumnRefOperator output : joinOutputColumns) {
+            ColumnRefOperator mappedOutput = antiBranchJoin.columnMapping().get(output);
+            if (mappedOutput == null) {
+                return List.of();
+            }
+            if (originalRightOutputs.contains(output)) {
+                nullProjectMap.put(mappedOutput, ConstantOperator.createNull(output.getType()));
+            } else {
+                nullProjectMap.put(mappedOutput, mappedOutput);
+            }
+        }
+        OptExpression antiWithNullRight = OptExpression.create(new LogicalProjectOperator(nullProjectMap), antiJoinExpr);
+        ColumnRefOperator antiAction = duplicateActionColumn(factory, actionColumn);
+        List<ColumnRefOperator> antiOutputs =
+                deriveBranchOutputs(joinOutputColumns, antiAction, antiBranchJoin.columnMapping());
+        if (antiOutputs == null) {
+            return List.of();
+        }
+        OptExpression deltaAntiNull = OptExpression.create(new LogicalDeltaOperator(false, antiAction), antiWithNullRight);
+
+        List<OptExpression> unionChildren = List.of(deltaInner, deltaAntiNull);
+        List<List<ColumnRefOperator>> unionChildOutputs = List.of(innerOutputs, antiOutputs);
         LogicalUnionOperator unionOperator = new LogicalUnionOperator(finalOutputColumns, unionChildOutputs, true);
         return List.of(OptExpression.create(unionOperator, unionChildren));
     }
