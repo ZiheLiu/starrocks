@@ -1397,7 +1397,7 @@ public class QueryAnalyzer {
                 }
 
                 outputFields.add(new Field(fieldResolveName, field.getType(), subquery.getResolveTableName(),
-                        field.getOriginExpression()));
+                        field.getOriginExpression(), field.isVisible(), field.isNullable()));
 
             }
             Scope scope = new Scope(RelationId.of(subquery), new RelationFields(outputFields.build()));
