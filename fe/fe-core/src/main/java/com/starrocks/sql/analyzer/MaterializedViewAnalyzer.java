@@ -56,6 +56,7 @@ import com.starrocks.common.ErrorReport;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.Pair;
 import com.starrocks.common.util.DateUtils;
+import com.starrocks.common.util.ParseUtil;
 import com.starrocks.common.util.PropertyAnalyzer;
 import com.starrocks.common.util.TimeUtils;
 import com.starrocks.connector.iceberg.IcebergPartitionTransform;
@@ -218,7 +219,8 @@ public class MaterializedViewAnalyzer {
             List<ColumnRefOperator> rowIdColumns = Optional.ofNullable(result.rootRowIdColumnRefs()).orElse(List.of());
             List<String> rowIdColumnNames = rowIdColumns.stream().map(ColumnRefOperator::getName).toList();
             Optional<QueryStatement> rewrittenQueryStatement =
-                    rewriteOlapIvmQueryStatementIfNeeded(context, logicalPlan, result.rewrittenRoot(), rowIdColumns);
+                    rewriteOlapIvmQueryStatementIfNeeded(context, queryStatement, logicalPlan, result.rewrittenRoot(),
+                            rowIdColumns);
             return new OlapIvmAnalyzeResult(Optional.empty(), Optional.of(rowIdColumnNames), rewrittenQueryStatement);
         } catch (Exception e) {
             return new OlapIvmAnalyzeResult(Optional.ofNullable(e.getMessage()), Optional.empty(), Optional.empty());
@@ -226,6 +228,7 @@ public class MaterializedViewAnalyzer {
     }
 
     private static Optional<QueryStatement> rewriteOlapIvmQueryStatementIfNeeded(ConnectContext context,
+                                                                                 QueryStatement originQueryStatement,
                                                                                  LogicalPlan logicalPlan,
                                                                                  OptExpression rewrittenRoot,
                                                                                  List<ColumnRefOperator> rowIdColumns) {
@@ -240,12 +243,39 @@ public class MaterializedViewAnalyzer {
             return Optional.empty();
         }
         outputColumns.addAll(extraRowIdColumns);
-        String rewrittenSql = new LogicalPlan2SQLBuilder().toSQL(rewrittenRoot, outputColumns);
+        String rewrittenSql = buildAliasedOlapIvmRewriteSql(context, originQueryStatement,
+                new LogicalPlan2SQLBuilder().toSQL(rewrittenRoot, outputColumns), extraRowIdColumns);
         StatementBase statement = SqlParser.parseSingleStatement(rewrittenSql, context.getSessionVariable().getSqlMode());
         if (!(statement instanceof QueryStatement rewrittenQueryStatement)) {
             throw new SemanticException("Failed to rebuild query statement for OLAP IVM");
         }
         return Optional.of(rewrittenQueryStatement);
+    }
+
+    private static String buildAliasedOlapIvmRewriteSql(ConnectContext context, QueryStatement originQueryStatement,
+                                                        String rewrittenSql,
+                                                        List<ColumnRefOperator> extraRowIdColumns) {
+        StatementBase statement = SqlParser.parseSingleStatement(rewrittenSql, context.getSessionVariable().getSqlMode());
+        if (!(statement instanceof QueryStatement rewrittenQueryStatement)) {
+            throw new SemanticException("Failed to rebuild query statement for OLAP IVM");
+        }
+        Analyzer.analyze(rewrittenQueryStatement, context);
+
+        List<String> sourceColumnNames = rewrittenQueryStatement.getQueryRelation().getColumnOutputNames();
+        List<String> targetColumnNames = new ArrayList<>(originQueryStatement.getQueryRelation().getColumnOutputNames());
+        targetColumnNames.addAll(extraRowIdColumns.stream().map(ColumnRefOperator::getName).toList());
+        Preconditions.checkState(sourceColumnNames.size() == targetColumnNames.size(),
+                "OLAP IVM rewrite output columns mismatch");
+        if (sourceColumnNames.equals(targetColumnNames)) {
+            return rewrittenSql;
+        }
+
+        String relationAlias = "ivm_rewrite_0";
+        String selectSql = IntStream.range(0, targetColumnNames.size())
+                .mapToObj(i -> ParseUtil.backquote(relationAlias) + "." + ParseUtil.backquote(sourceColumnNames.get(i))
+                        + " AS " + ParseUtil.backquote(targetColumnNames.get(i)))
+                .collect(Collectors.joining(", "));
+        return "SELECT " + selectSql + " FROM (" + rewrittenSql + ") " + ParseUtil.backquote(relationAlias);
     }
 
     private static boolean hasOnlyOlapBaseTables(QueryStatement queryStatement) {

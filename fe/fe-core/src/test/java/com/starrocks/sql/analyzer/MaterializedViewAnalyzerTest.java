@@ -244,6 +244,22 @@ public class MaterializedViewAnalyzerTest {
     }
 
     @Test
+    public void testCreateIncrementalMvPreservesWindowAliasAfterRewrite() {
+        String sql = "create materialized view ivm_window_alias_mv\n" +
+                "distributed by hash(sum_amount)\n" +
+                "refresh incremental as\n" +
+                "select sum(v2) over(partition by v1 order by pk rows between unbounded preceding and current row) " +
+                "as sum_amount\n" +
+                "from tprimary";
+        CreateMaterializedViewStatement statement = (CreateMaterializedViewStatement) analyzeSuccess(sql);
+
+        Assertions.assertTrue(statement.getIvmViewDef().contains("sum_amount"));
+        Assertions.assertEquals("sum_amount", statement.getQueryStatement().getQueryRelation().getColumnOutputNames().get(0));
+        Assertions.assertTrue(statement.getQueryStatement().getQueryRelation().getColumnOutputNames().stream()
+                .anyMatch(IvmRowIdDeriver::isDerivedRowIdColumnName));
+    }
+
+    @Test
     public void testNondeterministicFunction() {
         analyzeFail("create materialized view mv partition by k1 distributed by hash(k2) buckets 3 refresh async " +
                         "as select  k1, k2, rand() from tbl1 group by k1, k2",
