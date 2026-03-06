@@ -269,10 +269,14 @@ public class IvmRowIdDeriver {
                 final int idx = i;
                 ColumnRefOperator output = findOutputRef(projectionMap, input).orElseGet(
                         () -> this.context.getColumnRefFactory().create(
-                                DERIVED_ROW_ID_COLUMN_PREFIX + idx, input.getType(), input.isNullable()));
+                                derivedRowIdColumnName(idx, input), input.getType(), input.isNullable()));
                 outputRowIds.add(output);
             }
             return outputRowIds;
+        }
+
+        private String derivedRowIdColumnName(int idx, ColumnRefOperator input) {
+            return DERIVED_ROW_ID_COLUMN_PREFIX + idx + "_" + input.getName();
         }
 
         private ColumnRefOperator getOrCreateKeyRef(LogicalOlapScanOperator scan, Column keyColumn) {

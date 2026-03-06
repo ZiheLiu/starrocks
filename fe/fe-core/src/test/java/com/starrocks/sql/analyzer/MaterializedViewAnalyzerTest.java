@@ -469,11 +469,11 @@ public class MaterializedViewAnalyzerTest {
                 "as select v1 from tprimary";
         CreateMaterializedViewStatement statement = (CreateMaterializedViewStatement) analyzeSuccess(sql);
         Assertions.assertEquals(KeysType.PRIMARY_KEYS, statement.getKeysType());
-        Assertions.assertEquals(List.of("__row_id_0"), statement.getSortKeys());
+        Assertions.assertEquals(List.of("__row_id_0_pk"), statement.getSortKeys());
         Assertions.assertEquals(List.of(), statement.getQueryOutputIndices());
         List<Column> mvColumns = statement.getMvColumnItems();
         Assertions.assertEquals(2, mvColumns.size());
-        Assertions.assertEquals("__row_id_0", mvColumns.get(0).getName());
+        Assertions.assertEquals("__row_id_0_pk", mvColumns.get(0).getName());
         Assertions.assertTrue(mvColumns.get(0).isKey());
         Assertions.assertTrue(mvColumns.get(0).isHidden());
         Assertions.assertEquals("v1", mvColumns.get(1).getName());
