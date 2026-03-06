@@ -27,6 +27,8 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalWindowOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.statistics.StatisticStorage;
 import com.starrocks.type.IntegerType;
@@ -107,6 +109,17 @@ public class IvmRuleUtils {
             }
             return Optional.empty();
         }
+        if (expression.getOp() instanceof LogicalWindowOperator window) {
+            Projection projection = window.getProjection();
+            if (projection != null) {
+                Optional<ColumnRefOperator> actionColumn = projection.getColumnRefMap().keySet().stream()
+                        .filter(IvmRuleUtils::isActionColumn)
+                        .findFirst();
+                if (actionColumn.isPresent()) {
+                    return actionColumn;
+                }
+            }
+        }
         if (expression.getOp() instanceof LogicalFilterOperator filter) {
             Projection projection = filter.getProjection();
             if (projection != null) {
@@ -120,6 +133,11 @@ public class IvmRuleUtils {
                 return findActionColumn(expression.inputAt(1));
             }
             return Optional.empty();
+        }
+        if (expression.getOp() instanceof LogicalUnionOperator union) {
+            return union.getOutputColumnRefOp().stream()
+                    .filter(IvmRuleUtils::isActionColumn)
+                    .findFirst();
         }
         if (expression.getInputs().size() == 1) {
             return findActionColumn(expression.inputAt(0));

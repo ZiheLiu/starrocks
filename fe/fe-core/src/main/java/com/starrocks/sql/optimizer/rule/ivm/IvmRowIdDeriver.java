@@ -23,12 +23,14 @@ import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptExpressionVisitor;
 import com.starrocks.sql.optimizer.OptimizerContext;
+import com.starrocks.sql.optimizer.base.Ordering;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalWindowOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRowIdContext;
@@ -162,6 +164,39 @@ public class IvmRowIdDeriver {
                 return null;
             }
             this.context.putRowIds(expression, agg.getGroupingKeys());
+            return null;
+        }
+
+        @Override
+        public Void visitLogicalWindow(OptExpression expression, Void context) {
+            collectChildren(expression);
+            if (expression.getInputs().size() != 1) {
+                this.context.markUnsupported("window must be unary in OLAP IVM row-id derive");
+                return null;
+            }
+            LogicalWindowOperator window = (LogicalWindowOperator) expression.getOp();
+            if (window.getPartitionExpressions().isEmpty()) {
+                this.context.markUnsupported("window without partition by is not supported in OLAP IVM row-id derive");
+                return null;
+            }
+            if (window.getPartitionExpressions().stream().anyMatch(partition -> !(partition instanceof ColumnRefOperator))) {
+                this.context.markUnsupported("window partition by expression must be column refs in OLAP IVM row-id derive");
+                return null;
+            }
+
+            List<ColumnRefOperator> childRowIds = this.context.getRowIds(expression.inputAt(0)).orElse(null);
+            if (childRowIds == null || childRowIds.isEmpty()) {
+                this.context.markUnsupported("window child row-id is missing in OLAP IVM row-id derive");
+                return null;
+            }
+            if (window.getProjection() == null) {
+                this.context.putRowIds(expression, childRowIds);
+                return null;
+            }
+
+            List<ColumnRefOperator> outputRowIds =
+                    mapRowIdsThroughProjection(window.getProjection().getColumnRefMap(), childRowIds);
+            this.context.putRowIds(expression, outputRowIds);
             return null;
         }
 
@@ -425,6 +460,55 @@ public class IvmRowIdDeriver {
         }
 
         @Override
+        public OptExpression visitLogicalWindow(OptExpression expression, Void context) {
+            OptExpression child = expression.inputAt(0);
+            OptExpression rewrittenChild = child.getOp().accept(this, child, null);
+            LogicalWindowOperator window = (LogicalWindowOperator) expression.getOp();
+
+            List<ColumnRefOperator> childRowIds = this.context.getRowIds(child).orElse(null);
+            if (childRowIds == null || childRowIds.isEmpty()) {
+                if (rewrittenChild == child) {
+                    return expression;
+                }
+                return OptExpression.create(window, rewrittenChild);
+            }
+
+            List<Ordering> newOrderings = Lists.newArrayList(window.getOrderByElements());
+            List<Ordering> newEnforcedOrderings = Lists.newArrayList(window.getEnforceSortColumns());
+            boolean orderingChanged = appendRowIdsToOrderings(newOrderings, childRowIds);
+            boolean enforceOrderingChanged = appendRowIdsToOrderings(newEnforcedOrderings, childRowIds);
+
+            boolean projectionChanged = false;
+            Projection newProjection = window.getProjection();
+            List<ColumnRefOperator> rowIds = this.context.getRowIds(expression).orElse(null);
+            if (newProjection != null && rowIds != null && rowIds.size() == childRowIds.size()) {
+                Map<ColumnRefOperator, ScalarOperator> projectionMap = Maps.newHashMap(newProjection.getColumnRefMap());
+                for (int i = 0; i < rowIds.size(); i++) {
+                    ColumnRefOperator rowId = rowIds.get(i);
+                    if (!projectionMap.containsKey(rowId)) {
+                        projectionMap.put(rowId, childRowIds.get(i));
+                        projectionChanged = true;
+                    }
+                }
+                if (projectionChanged) {
+                    newProjection = new Projection(projectionMap, Maps.newHashMap(newProjection.getCommonSubOperatorMap()));
+                }
+            }
+
+            if (!orderingChanged && !enforceOrderingChanged && !projectionChanged && rewrittenChild == child) {
+                return expression;
+            }
+
+            LogicalWindowOperator.Builder builder = LogicalWindowOperator.builder().withOperator(window)
+                    .setOrderByElements(newOrderings)
+                    .setEnforceSortColumns(newEnforcedOrderings);
+            if (projectionChanged) {
+                builder.setProjection(newProjection);
+            }
+            return OptExpression.create(builder.build(), rewrittenChild);
+        }
+
+        @Override
         public OptExpression visitLogicalJoin(OptExpression expression, Void context) {
             OptExpression leftChild = expression.inputAt(0);
             OptExpression rightChild = expression.inputAt(1);
@@ -492,6 +576,18 @@ public class IvmRowIdDeriver {
             inputRowIds.addAll(leftRowIds);
             inputRowIds.addAll(rightRowIds);
             return inputRowIds;
+        }
+
+        private boolean appendRowIdsToOrderings(List<Ordering> orderings, List<ColumnRefOperator> rowIds) {
+            boolean changed = false;
+            for (ColumnRefOperator rowId : rowIds) {
+                boolean exists = orderings.stream().anyMatch(ordering -> ordering.getColumnRef().equals(rowId));
+                if (!exists) {
+                    orderings.add(new Ordering(rowId, true, true));
+                    changed = true;
+                }
+            }
+            return changed;
         }
     }
 }
