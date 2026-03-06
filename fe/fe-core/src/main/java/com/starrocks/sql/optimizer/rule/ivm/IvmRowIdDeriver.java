@@ -42,11 +42,17 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 public class IvmRowIdDeriver {
+    public static final String DERIVED_ROW_ID_COLUMN_PREFIX = "__row_id_";
+
     public record Result(boolean success, OptExpression rewrittenRoot, String unsupportedReason,
                          List<ColumnRefOperator> rootRowIdColumnRefs) {
     }
 
     private IvmRowIdDeriver() {
+    }
+
+    public static boolean isDerivedRowIdColumnName(String columnName) {
+        return columnName != null && columnName.startsWith(DERIVED_ROW_ID_COLUMN_PREFIX);
     }
 
     public static Result deriveAndRewrite(OptExpression root, OptimizerContext optimizerContext) {
@@ -240,8 +246,8 @@ public class IvmRowIdDeriver {
         }
 
         private List<ColumnRefOperator> getJoinInputRowIds(JoinOperator joinType,
-                                                            List<ColumnRefOperator> leftRowIds,
-                                                            List<ColumnRefOperator> rightRowIds) {
+                                                           List<ColumnRefOperator> leftRowIds,
+                                                           List<ColumnRefOperator> rightRowIds) {
             if (joinType.isLeftAntiJoin() || joinType.isLeftSemiJoin()) {
                 return Lists.newArrayList(leftRowIds);
             }
@@ -263,7 +269,7 @@ public class IvmRowIdDeriver {
                 final int idx = i;
                 ColumnRefOperator output = findOutputRef(projectionMap, input).orElseGet(
                         () -> this.context.getColumnRefFactory().create(
-                                "__row_id_" + idx, input.getType(), input.isNullable()));
+                                DERIVED_ROW_ID_COLUMN_PREFIX + idx, input.getType(), input.isNullable()));
                 outputRowIds.add(output);
             }
             return outputRowIds;
@@ -473,11 +479,6 @@ public class IvmRowIdDeriver {
                 return OptExpression.create(window, rewrittenChild);
             }
 
-            List<Ordering> newOrderings = Lists.newArrayList(window.getOrderByElements());
-            List<Ordering> newEnforcedOrderings = Lists.newArrayList(window.getEnforceSortColumns());
-            boolean orderingChanged = appendRowIdsToOrderings(newOrderings, childRowIds);
-            boolean enforceOrderingChanged = appendRowIdsToOrderings(newEnforcedOrderings, childRowIds);
-
             boolean projectionChanged = false;
             Projection newProjection = window.getProjection();
             List<ColumnRefOperator> rowIds = this.context.getRowIds(expression).orElse(null);
@@ -494,16 +495,31 @@ public class IvmRowIdDeriver {
                     newProjection = new Projection(projectionMap, Maps.newHashMap(newProjection.getCommonSubOperatorMap()));
                 }
             }
+            boolean orderingChanged = false;
+            List<Ordering> orderByElements = Lists.newArrayList(window.getOrderByElements());
+            List<Ordering> enforceSortColumns = Lists.newArrayList(window.getEnforceSortColumns());
+            for (ColumnRefOperator childRowId : childRowIds) {
+                if (!containsOrderingColumn(orderByElements, childRowId)) {
+                    orderByElements.add(new Ordering(childRowId, true, true));
+                    orderingChanged = true;
+                }
+                if (!containsOrderingColumn(enforceSortColumns, childRowId)) {
+                    enforceSortColumns.add(new Ordering(childRowId, true, true));
+                    orderingChanged = true;
+                }
+            }
 
-            if (!orderingChanged && !enforceOrderingChanged && !projectionChanged && rewrittenChild == child) {
+            if (!projectionChanged && !orderingChanged && rewrittenChild == child) {
                 return expression;
             }
 
-            LogicalWindowOperator.Builder builder = LogicalWindowOperator.builder().withOperator(window)
-                    .setOrderByElements(newOrderings)
-                    .setEnforceSortColumns(newEnforcedOrderings);
+            LogicalWindowOperator.Builder builder = LogicalWindowOperator.builder().withOperator(window);
             if (projectionChanged) {
                 builder.setProjection(newProjection);
+            }
+            if (orderingChanged) {
+                builder.setOrderByElements(orderByElements);
+                builder.setEnforceSortColumns(enforceSortColumns);
             }
             return OptExpression.create(builder.build(), rewrittenChild);
         }
@@ -564,8 +580,8 @@ public class IvmRowIdDeriver {
         }
 
         private List<ColumnRefOperator> getJoinInputRowIds(JoinOperator joinType,
-                                                            List<ColumnRefOperator> leftRowIds,
-                                                            List<ColumnRefOperator> rightRowIds) {
+                                                           List<ColumnRefOperator> leftRowIds,
+                                                           List<ColumnRefOperator> rightRowIds) {
             if (joinType.isLeftAntiJoin() || joinType.isLeftSemiJoin()) {
                 return Lists.newArrayList(leftRowIds);
             }
@@ -578,16 +594,8 @@ public class IvmRowIdDeriver {
             return inputRowIds;
         }
 
-        private boolean appendRowIdsToOrderings(List<Ordering> orderings, List<ColumnRefOperator> rowIds) {
-            boolean changed = false;
-            for (ColumnRefOperator rowId : rowIds) {
-                boolean exists = orderings.stream().anyMatch(ordering -> ordering.getColumnRef().equals(rowId));
-                if (!exists) {
-                    orderings.add(new Ordering(rowId, true, true));
-                    changed = true;
-                }
-            }
-            return changed;
+        private boolean containsOrderingColumn(List<Ordering> orderings, ColumnRefOperator target) {
+            return orderings.stream().anyMatch(ordering -> ordering.getColumnRef().equals(target));
         }
     }
 }

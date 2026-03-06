@@ -130,6 +130,7 @@ import com.starrocks.sql.parser.ParsingException;
 import com.starrocks.sql.parser.SqlParser;
 import com.starrocks.sql.plan.ExecPlan;
 import com.starrocks.sql.plan.PlanFragmentBuilder;
+import com.starrocks.sql.spm.LogicalPlan2SQLBuilder;
 import com.starrocks.type.IntegerType;
 import com.starrocks.type.PrimitiveType;
 import com.starrocks.type.ScalarType;
@@ -195,7 +196,9 @@ public class MaterializedViewAnalyzer {
         return analyzeOlapIvmRewrite(context, queryStatement).unsupportedReason();
     }
 
-    public record OlapIvmAnalyzeResult(Optional<String> unsupportedReason, Optional<List<String>> rowIdColumnNames) {
+    public record OlapIvmAnalyzeResult(Optional<String> unsupportedReason,
+                                       Optional<List<String>> rowIdColumnNames,
+                                       Optional<QueryStatement> rewrittenQueryStatement) {
     }
 
     public static OlapIvmAnalyzeResult analyzeOlapIvmRewrite(ConnectContext context, QueryStatement queryStatement) {
@@ -204,23 +207,45 @@ public class MaterializedViewAnalyzer {
             LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, context)
                     .transform(queryStatement.getQueryRelation());
             OptimizerContext optimizerContext = OptimizerFactory.initContext(context, columnRefFactory);
-            IvmRowIdDeriver.Result result =
-                    IvmRowIdDeriver.deriveAndRewrite(logicalPlan.getRoot(), optimizerContext);
+            IvmRowIdDeriver.Result result = IvmRowIdDeriver.deriveAndRewrite(logicalPlan.getRoot(), optimizerContext);
             if (!result.success()) {
                 if (result.unsupportedReason() != null) {
-                    return new OlapIvmAnalyzeResult(Optional.of(result.unsupportedReason()), Optional.empty());
+                    return new OlapIvmAnalyzeResult(Optional.of(result.unsupportedReason()), Optional.empty(), Optional.empty());
                 }
-                return new OlapIvmAnalyzeResult(Optional.of("unsupported query pattern for OLAP IVM"), Optional.empty());
+                return new OlapIvmAnalyzeResult(Optional.of("unsupported query pattern for OLAP IVM"), Optional.empty(),
+                        Optional.empty());
             }
-            List<String> rowIdColumnNames = Optional.ofNullable(result.rootRowIdColumnRefs())
-                    .orElse(List.of())
-                    .stream()
-                    .map(ColumnRefOperator::getName)
-                    .collect(Collectors.toList());
-            return new OlapIvmAnalyzeResult(Optional.empty(), Optional.of(rowIdColumnNames));
+            List<ColumnRefOperator> rowIdColumns = Optional.ofNullable(result.rootRowIdColumnRefs()).orElse(List.of());
+            List<String> rowIdColumnNames = rowIdColumns.stream().map(ColumnRefOperator::getName).toList();
+            Optional<QueryStatement> rewrittenQueryStatement =
+                    rewriteOlapIvmQueryStatementIfNeeded(context, logicalPlan, result.rewrittenRoot(), rowIdColumns);
+            return new OlapIvmAnalyzeResult(Optional.empty(), Optional.of(rowIdColumnNames), rewrittenQueryStatement);
         } catch (Exception e) {
-            return new OlapIvmAnalyzeResult(Optional.of(e.getMessage()), Optional.empty());
+            return new OlapIvmAnalyzeResult(Optional.ofNullable(e.getMessage()), Optional.empty(), Optional.empty());
         }
+    }
+
+    private static Optional<QueryStatement> rewriteOlapIvmQueryStatementIfNeeded(ConnectContext context,
+                                                                                 LogicalPlan logicalPlan,
+                                                                                 OptExpression rewrittenRoot,
+                                                                                 List<ColumnRefOperator> rowIdColumns) {
+        List<ColumnRefOperator> outputColumns = new ArrayList<>(logicalPlan.getOutputColumn());
+        Set<Integer> outputColumnIds = outputColumns.stream()
+                .map(ColumnRefOperator::getId)
+                .collect(Collectors.toSet());
+        List<ColumnRefOperator> extraRowIdColumns = rowIdColumns.stream()
+                .filter(columnRef -> outputColumnIds.add(columnRef.getId()))
+                .toList();
+        if (rewrittenRoot == logicalPlan.getRoot() && extraRowIdColumns.isEmpty()) {
+            return Optional.empty();
+        }
+        outputColumns.addAll(extraRowIdColumns);
+        String rewrittenSql = new LogicalPlan2SQLBuilder().toSQL(rewrittenRoot, outputColumns);
+        StatementBase statement = SqlParser.parseSingleStatement(rewrittenSql, context.getSessionVariable().getSqlMode());
+        if (!(statement instanceof QueryStatement rewrittenQueryStatement)) {
+            throw new SemanticException("Failed to rebuild query statement for OLAP IVM");
+        }
+        return Optional.of(rewrittenQueryStatement);
     }
 
     private static boolean hasOnlyOlapBaseTables(QueryStatement queryStatement) {
@@ -436,6 +461,11 @@ public class MaterializedViewAnalyzer {
                         olapIvmPkColumns = olapIvmAnalyzeResult.rowIdColumnNames();
                         if (olapIvmPkColumns.isEmpty() || olapIvmPkColumns.get().isEmpty()) {
                             throw new SemanticException("Failed to derive row-id column for OLAP IVM");
+                        }
+                        if (olapIvmAnalyzeResult.rewrittenQueryStatement().isPresent()) {
+                            queryStatement = olapIvmAnalyzeResult.rewrittenQueryStatement().get();
+                            Analyzer.analyze(queryStatement, context);
+                            statement.setQueryStatement(queryStatement);
                         }
                         if (rewriteOlapIvmRetractableAggColumns(queryStatement)) {
                             Analyzer.analyze(queryStatement, context);
@@ -1927,7 +1957,7 @@ public class MaterializedViewAnalyzer {
                 }
             } else {
                 // If the key type is primary key, the distribution must be hash distribution.
-                if  (KeysType.PRIMARY_KEYS.equals(statement.getKeysType())) {
+                if (KeysType.PRIMARY_KEYS.equals(statement.getKeysType())) {
                     distributionDesc = checkDistributionForPrimaryKey(statement);
                 } else {
                     // for non primary key tables, if user not specify distribution, we use hash distribution
@@ -1969,7 +1999,7 @@ public class MaterializedViewAnalyzer {
                 numBuckets = distributionDesc.getBuckets();
                 if (distributionDesc instanceof RandomDistributionDesc) {
                     LOG.warn("Check distribution for primary key mv, ignore random distribution, " +
-                            "use hash distribution with key columns: {}",
+                                    "use hash distribution with key columns: {}",
                             Joiner.on(",").join(keyColNames));
                 } else if (distributionDesc instanceof HashDistributionDesc) {
                     HashDistributionDesc hashDistributionDesc = (HashDistributionDesc) distributionDesc;
