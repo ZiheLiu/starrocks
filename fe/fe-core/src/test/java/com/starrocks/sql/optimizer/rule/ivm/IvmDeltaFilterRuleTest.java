@@ -65,7 +65,8 @@ public class IvmDeltaFilterRuleTest {
                 .build();
 
         LogicalFilterOperator filter = new LogicalFilterOperator(
-                new BinaryPredicateOperator(BinaryType.GT, v2Ref, com.starrocks.sql.optimizer.operator.scalar.ConstantOperator.createInt(100)));
+                new BinaryPredicateOperator(BinaryType.GT, v2Ref,
+                        com.starrocks.sql.optimizer.operator.scalar.ConstantOperator.createInt(100)));
         OptExpression deltaFilterExpr = OptExpression.create(new LogicalDeltaOperator(true, actionRef),
                 OptExpression.create(filter, OptExpression.create(scan)));
         deriveLogicalProperty(deltaFilterExpr);
