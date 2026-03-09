@@ -27,6 +27,7 @@ import com.starrocks.sql.optimizer.base.Ordering;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalIntersectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
@@ -203,6 +204,18 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> outputRowIds =
                     mapRowIdsThroughProjection(window.getProjection().getColumnRefMap(), childRowIds);
             this.context.putRowIds(expression, outputRowIds);
+            return null;
+        }
+
+        @Override
+        public Void visitLogicalIntersect(OptExpression expression, Void context) {
+            collectChildren(expression);
+            LogicalIntersectOperator intersect = (LogicalIntersectOperator) expression.getOp();
+            if (expression.getInputs().size() < 2 || intersect.getOutputColumnRefOp().isEmpty()) {
+                this.context.markUnsupported("intersect must have at least two outputs in OLAP IVM row-id derive");
+                return null;
+            }
+            this.context.putRowIds(expression, intersect.getOutputColumnRefOp());
             return null;
         }
 
@@ -526,6 +539,21 @@ public class IvmRowIdDeriver {
                 builder.setEnforceSortColumns(enforceSortColumns);
             }
             return OptExpression.create(builder.build(), rewrittenChild);
+        }
+
+        @Override
+        public OptExpression visitLogicalIntersect(OptExpression expression, Void context) {
+            List<OptExpression> rewrittenChildren = Lists.newArrayListWithCapacity(expression.arity());
+            boolean changed = false;
+            for (OptExpression child : expression.getInputs()) {
+                OptExpression rewrittenChild = child.getOp().accept(this, child, null);
+                rewrittenChildren.add(rewrittenChild);
+                changed |= rewrittenChild != child;
+            }
+            if (!changed) {
+                return expression;
+            }
+            return OptExpression.create(expression.getOp(), rewrittenChildren);
         }
 
         @Override
