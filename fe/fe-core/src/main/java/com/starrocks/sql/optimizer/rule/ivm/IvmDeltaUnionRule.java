@@ -38,22 +38,26 @@ public class IvmDeltaUnionRule extends TransformationRule {
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
-        LogicalUnionOperator union = (LogicalUnionOperator) input.inputAt(0).getOp();
+        OptExpression unionExpr = input.inputAt(0);
+        LogicalUnionOperator union = (LogicalUnionOperator) unionExpr.getOp();
         if (!union.isUnionAll()) {
             return List.of();
         }
 
         ColumnRefFactory factory = context.getColumnRefFactory();
-        ColumnRefOperator actionColumn = delta.getActionColumn();
+        ColumnRefOperator finalActionColumn = delta.getActionColumn();
         List<ColumnRefOperator> finalOutputs = input.getOutputColumns().getColumnRefOperators(factory);
 
-        List<OptExpression> unionChildren = Lists.newArrayListWithCapacity(input.inputAt(0).arity());
-        List<List<ColumnRefOperator>> unionChildOutputs = Lists.newArrayListWithCapacity(input.inputAt(0).arity());
-        for (int i = 0; i < input.inputAt(0).arity(); i++) {
-            unionChildren.add(OptExpression.create(new LogicalDeltaOperator(false, actionColumn), input.inputAt(0).inputAt(i)));
+        List<OptExpression> unionChildren = Lists.newArrayListWithCapacity(unionExpr.arity());
+        List<List<ColumnRefOperator>> unionChildOutputs = Lists.newArrayListWithCapacity(unionExpr.arity());
+        for (int i = 0; i < unionExpr.arity(); i++) {
+            ColumnRefOperator childActionColumn = finalActionColumn == null ? null :
+                    factory.create(finalActionColumn.getName(), finalActionColumn.getType(), finalActionColumn.isNullable());
+            LogicalDeltaOperator childDelta = new LogicalDeltaOperator(false, childActionColumn);
+            unionChildren.add(OptExpression.create(childDelta, unionExpr.inputAt(i)));
             List<ColumnRefOperator> childOutputs = Lists.newArrayList(union.getChildOutputColumns().get(i));
-            if (actionColumn != null) {
-                childOutputs.add(actionColumn);
+            if (childActionColumn != null) {
+                childOutputs.add(childActionColumn);
             }
             unionChildOutputs.add(childOutputs);
         }

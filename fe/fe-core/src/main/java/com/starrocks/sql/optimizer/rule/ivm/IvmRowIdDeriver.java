@@ -50,6 +50,11 @@ import java.util.stream.Collectors;
 public class IvmRowIdDeriver {
     public static final String DERIVED_ROW_ID_COLUMN_PREFIX = "__row_id_";
 
+    public enum Mode {
+        REWRITE,
+        COLLECT_ONLY
+    }
+
     public record Result(boolean success, OptExpression rewrittenRoot, String unsupportedReason,
                          List<ColumnRefOperator> rootRowIdColumnRefs) {
     }
@@ -62,8 +67,12 @@ public class IvmRowIdDeriver {
     }
 
     public static Result deriveAndRewrite(OptExpression root, OptimizerContext optimizerContext) {
+        return deriveAndRewrite(root, optimizerContext, Mode.REWRITE);
+    }
+
+    public static Result deriveAndRewrite(OptExpression root, OptimizerContext optimizerContext, Mode mode) {
         IvmRowIdContext context = new IvmRowIdContext(optimizerContext.getColumnRefFactory());
-        OptExpression rewritten = root.getOp().accept(new RewriteVisitor(context), root, null);
+        OptExpression rewritten = root.getOp().accept(new RewriteVisitor(context, mode), root, null);
         if (!context.isSupported()) {
             return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"), List.of());
         }
@@ -73,9 +82,11 @@ public class IvmRowIdDeriver {
 
     private static class RewriteVisitor extends OptExpressionVisitor<OptExpression, Void> {
         private final IvmRowIdContext context;
+        private final Mode mode;
 
-        private RewriteVisitor(IvmRowIdContext context) {
+        private RewriteVisitor(IvmRowIdContext context, Mode mode) {
             this.context = context;
+            this.mode = mode;
         }
 
         @Override
@@ -104,6 +115,11 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = keyColumns.stream()
                     .map(col -> getOrCreateKeyRef(scan, col))
                     .collect(Collectors.toList());
+
+            if (!isRewriteEnabled()) {
+                putRowIds(expression, expression, rowIds);
+                return expression;
+            }
 
             Map<ColumnRefOperator, Column> newColRefToMeta = Maps.newHashMap(scan.getColRefToColumnMetaMap());
             Map<Column, ColumnRefOperator> newMetaToColRef = Maps.newHashMap(scan.getColumnMetaToColRefMap());
@@ -174,6 +190,10 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = filter.getProjection() == null
                     ? childRowIds
                     : mapRowIdsThroughProjection(filter.getProjection().getColumnRefMap(), childRowIds);
+            if (!isRewriteEnabled()) {
+                putRowIds(expression, expression, rowIds);
+                return expression;
+            }
             if (filter.getProjection() == null) {
                 OptExpression rewritten = rewrittenChild == child ? expression : OptExpression.create(filter, rewrittenChild);
                 putRowIds(expression, rewritten, rowIds);
@@ -220,6 +240,10 @@ public class IvmRowIdDeriver {
                 return expression;
             }
             List<ColumnRefOperator> rowIds = mapRowIdsThroughProjection(project.getColumnRefMap(), childRowIds);
+            if (!isRewriteEnabled()) {
+                putRowIds(expression, expression, rowIds);
+                return expression;
+            }
 
             Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap(project.getColumnRefMap());
             boolean projectChanged = false;
@@ -292,6 +316,10 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = newProjection == null
                     ? childRowIds
                     : mapRowIdsThroughProjection(newProjection.getColumnRefMap(), childRowIds);
+            if (!isRewriteEnabled()) {
+                putRowIds(expression, expression, rowIds);
+                return expression;
+            }
             if (newProjection != null && rowIds != null && rowIds.size() == childRowIds.size()) {
                 Map<ColumnRefOperator, ScalarOperator> projectionMap = Maps.newHashMap(newProjection.getColumnRefMap());
                 for (int i = 0; i < rowIds.size(); i++) {
@@ -392,14 +420,10 @@ public class IvmRowIdDeriver {
             List<List<ColumnRefOperator>> newChildOutputs = Lists.newArrayListWithCapacity(expression.arity());
             List<ColumnRefOperator> firstChildRowIds = null;
 
-            List<ColumnRefOperator> innerRowIds = Lists.newArrayList();
-            boolean changed = false;
-
             for (int i = 0; i < expression.arity(); i++) {
                 OptExpression child = expression.inputAt(i);
                 OptExpression rewrittenChild = child.getOp().accept(this, child, null);
                 rewrittenChildren.add(rewrittenChild);
-                changed |= rewrittenChild != child;
 
                 List<ColumnRefOperator> childRowIds = this.context.getRowIds(child).orElse(null);
                 if (childRowIds == null || childRowIds.isEmpty()) {
@@ -414,98 +438,71 @@ public class IvmRowIdDeriver {
                 }
             }
 
-            List<ColumnRefOperator> outputRowIds = resolveUnionExistingRowIds(
-                    union, union.getChildOutputColumns().get(0), firstChildRowIds);
-            boolean reuseExistingUnionRowIds = !outputRowIds.isEmpty();
-            if (!reuseExistingUnionRowIds) {
-                outputRowIds = new ArrayList<>(firstChildRowIds.size() + 1);
-                for (int i = 0; i < firstChildRowIds.size(); i++) {
-                    ColumnRefOperator childRowId = firstChildRowIds.get(i);
-                    outputRowIds.add(factory.create(derivedRowIdColumnName(i, childRowId),
-                            childRowId.getType(), childRowId.isNullable()));
+            if (!isRewriteEnabled()) {
+                List<ColumnRefOperator> outputRowIds =
+                        resolveUnionExistingRowIds(union, union.getChildOutputColumns().get(0), firstChildRowIds);
+                if (outputRowIds.isEmpty()) {
+                    this.context.markUnsupported(
+                            "union all must already contain row-id outputs in OLAP IVM row-id derive");
+                    return expression;
                 }
-                outputRowIds.add(factory.create(derivedChildIndexColumnName(firstChildRowIds.size()), IntegerType.INT, false));
-                for (ColumnRefOperator outputRowId : outputRowIds) {
-                    innerRowIds.add(factory.create(outputRowId.getName() + "_inner",
-                            outputRowId.getType(), outputRowId.isNullable()));
-                }
+                putRowIds(expression, expression, outputRowIds);
+                return expression;
             }
-            int childRowIdSize = outputRowIds.size() - 1;
-            List<ColumnRefOperator> innerUnionOutputs = Lists.newArrayList(union.getOutputColumnRefOp());
-            if (!reuseExistingUnionRowIds) {
-                innerUnionOutputs.addAll(innerRowIds);
+
+            List<ColumnRefOperator> outputRowIds = Lists.newArrayList();
+            int numChildRowIds = firstChildRowIds.size();
+            for (int i = 0; i < numChildRowIds; i++) {
+                ColumnRefOperator cRowId = firstChildRowIds.get(i);
+                outputRowIds.add(factory.create(derivedRowIdColumnName(i, cRowId), cRowId.getType(), cRowId.isNullable()));
             }
+            outputRowIds.add(factory.create(derivedChildIndexColumnName(numChildRowIds), IntegerType.INT, false));
+
+            List<ColumnRefOperator> newUnionOutputs = Lists.newArrayList(union.getOutputColumnRefOp());
+            newUnionOutputs.addAll(outputRowIds);
 
             for (int i = 0; i < expression.arity(); i++) {
                 OptExpression child = expression.inputAt(i);
                 OptExpression rewrittenChild = rewrittenChildren.get(i);
                 List<ColumnRefOperator> childRowIds = this.context.getRowIds(child).orElse(null);
+                if (childRowIds == null) {
+                    this.context.markUnsupported("union all child row-id is missing in OLAP IVM row-id derive");
+                    return expression;
+                }
 
                 List<ColumnRefOperator> oldChildOutputs = union.getChildOutputColumns().get(i);
                 List<ColumnRefOperator> childOutputs = Lists.newArrayList(oldChildOutputs);
-                for (ColumnRefOperator childRowId : childRowIds) {
-                    if (!childOutputs.contains(childRowId)) {
-                        childOutputs.add(childRowId);
-                    }
-                }
 
-                String childIndexName = derivedChildIndexColumnName(i);
-                ColumnRefOperator childIndexRef = oldChildOutputs.stream()
-                        .filter(output -> childIndexName.equals(output.getName()))
-                        .findFirst()
-                        .orElseGet(() -> factory.create(childIndexName, IntegerType.INT, false));
-                if (!childOutputs.contains(childIndexRef)) {
-                    childOutputs.add(childIndexRef);
-                }
-
-                Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newLinkedHashMap();
+                Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap();
                 for (ColumnRefOperator output : oldChildOutputs) {
                     projectMap.put(output, output);
                 }
                 for (ColumnRefOperator childRowId : childRowIds) {
-                    projectMap.put(childRowId, childRowId);
+                    ColumnRefOperator newChildRowId =
+                            factory.create(childRowId.getName(), childRowId.getType(), childRowId.isNullable());
+                    childOutputs.add(newChildRowId);
+                    projectMap.put(newChildRowId, childRowId);
                 }
-                if (!reuseExistingUnionRowIds || !oldChildOutputs.contains(childIndexRef)) {
+                String childIndexName = derivedChildIndexColumnName(i);
+                ColumnRefOperator childIndexRef = factory.create(childIndexName, IntegerType.INT, false);
+                childOutputs.add(childIndexRef);
+                if (!oldChildOutputs.contains(childIndexRef)) {
                     projectMap.put(childIndexRef, ConstantOperator.createInt(i));
                 }
 
-                boolean needsProject = !oldChildOutputs.equals(childOutputs)
-                        || projectMap.size() != oldChildOutputs.size()
-                        || !reuseExistingUnionRowIds;
-                if (needsProject) {
-                    rewrittenChildren.set(i, OptExpression.create(new LogicalProjectOperator(projectMap), rewrittenChild));
-                    changed = true;
-                }
+                rewrittenChildren.set(i, OptExpression.create(new LogicalProjectOperator(projectMap), rewrittenChild));
                 newChildOutputs.add(childOutputs);
-            }
-
-            if (!changed && reuseExistingUnionRowIds) {
-                putRowIds(expression, expression, outputRowIds);
-                return expression;
             }
 
             LogicalUnionOperator newUnion = LogicalUnionOperator.builder()
                     .withOperator(union)
-                    .setOutputColumnRefOp(innerUnionOutputs)
+                    .setOutputColumnRefOp(newUnionOutputs)
                     .setChildOutputColumns(newChildOutputs)
                     .build();
             OptExpression unionExpr = OptExpression.create(newUnion, rewrittenChildren);
+            putRowIds(expression, unionExpr, outputRowIds);
 
-            if (reuseExistingUnionRowIds) {
-                putRowIds(expression, unionExpr, outputRowIds);
-                return unionExpr;
-            }
-
-            Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newLinkedHashMap();
-            for (ColumnRefOperator output : union.getOutputColumnRefOp()) {
-                projectMap.put(output, output);
-            }
-            for (int i = 0; i < outputRowIds.size(); i++) {
-                projectMap.put(outputRowIds.get(i), innerRowIds.get(i));
-            }
-            OptExpression rewritten = OptExpression.create(new LogicalProjectOperator(projectMap), unionExpr);
-            putRowIds(expression, rewritten, outputRowIds);
-            return rewritten;
+            return unionExpr;
         }
 
         @Override
@@ -540,6 +537,10 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = join.getProjection() == null
                     ? inputRowIds
                     : mapRowIdsThroughProjection(join.getProjection().getColumnRefMap(), inputRowIds);
+            if (!isRewriteEnabled()) {
+                putRowIds(expression, expression, rowIds);
+                return expression;
+            }
 
             if (join.getProjection() == null) {
                 OptExpression rewritten = rewrittenLeft == leftChild && rewrittenRight == rightChild
@@ -575,6 +576,10 @@ public class IvmRowIdDeriver {
 
         private boolean containsOrderingColumn(List<Ordering> orderings, ColumnRefOperator target) {
             return orderings.stream().anyMatch(ordering -> ordering.getColumnRef().equals(target));
+        }
+
+        private boolean isRewriteEnabled() {
+            return mode == Mode.REWRITE;
         }
 
         private void putRowIds(OptExpression original, OptExpression rewritten, List<ColumnRefOperator> rowIds) {
@@ -643,10 +648,6 @@ public class IvmRowIdDeriver {
         return DERIVED_ROW_ID_COLUMN_PREFIX + idx + "_child_index";
     }
 
-    private static boolean isDerivedChildIndexColumnName(String columnName) {
-        return isDerivedRowIdColumnName(columnName) && columnName.endsWith("_child_index");
-    }
-
     private static List<ColumnRefOperator> resolveUnionExistingRowIds(LogicalUnionOperator union,
                                                                       List<ColumnRefOperator> firstChildOutputs,
                                                                       List<ColumnRefOperator> firstChildRowIds) {
@@ -662,12 +663,11 @@ public class IvmRowIdDeriver {
 
         int lastIdx = firstChildOutputs.size() - 1;
         if (lastIdx >= 0 && lastIdx < unionOutputs.size()) {
-            ColumnRefOperator lastChildOutput = firstChildOutputs.get(lastIdx);
-            ColumnRefOperator lastUnionOutput = unionOutputs.get(lastIdx);
-            if (isDerivedChildIndexColumnName(lastChildOutput.getName()) && !resolved.contains(lastUnionOutput)) {
-                resolved.add(lastUnionOutput);
-            }
+            resolved.add(unionOutputs.get(lastIdx));
+        } else {
+            return List.of();
         }
+
         return resolved;
     }
 }

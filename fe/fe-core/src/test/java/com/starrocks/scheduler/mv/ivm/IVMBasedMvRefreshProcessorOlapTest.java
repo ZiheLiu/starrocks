@@ -282,6 +282,33 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
         MaterializedView mv = getMv("ivm_union_all_mv");
         String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_union_all_mv");
         assertThat(plan)
+                .contains("  7:Project\n" +
+                                "  |  <slot 13> : 13: v1\n" +
+                                "  |  <slot 14> : 14: v2\n" +
+                                "  |  <slot 15> : 15: v3\n" +
+                                "  |  <slot 16> : 16: pk\n" +
+                                "  |  <slot 17> : 17: c_19\n" +
+                                "  |  <slot 21> : CASE WHEN 18: __ACTION__ < 0 THEN 1 ELSE 0 END\n" +
+                                "  |  \n" +
+                                "  0:UNION",
+                        "  5:Project\n" +
+                                "  |  <slot 7> : 7: pk\n" +
+                                "  |  <slot 8> : 8: v1\n" +
+                                "  |  <slot 9> : 9: v2\n" +
+                                "  |  <slot 10> : 10: v3\n" +
+                                "  |  <slot 12> : 1\n" +
+                                "  |  <slot 20> : 20: __ACTION__\n" +
+                                "  |  \n" +
+                                "  4:OlapScanNode",
+                        "  2:Project\n" +
+                                "  |  <slot 1> : 1: pk\n" +
+                                "  |  <slot 2> : 2: v1\n" +
+                                "  |  <slot 3> : 3: v2\n" +
+                                "  |  <slot 4> : 4: v3\n" +
+                                "  |  <slot 6> : 0\n" +
+                                "  |  <slot 19> : 19: __ACTION__\n" +
+                                "  |  \n" +
+                                "  1:OlapScanNode")
                 .contains("TABLE: ivm_union_all_mv", "UNION", "TABLE: t1", "TABLE: t2");
     }
 

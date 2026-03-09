@@ -73,7 +73,10 @@ public class IvmRewriter {
 
         ivmInput = bindBaseTableVersionForIvm(ivmInput, optimizerContext);
 
-        IvmRowIdDeriver.Result rowIdResult = IvmRowIdDeriver.deriveAndRewrite(ivmInput, optimizerContext);
+        // The IVM view definition has already been rewritten during analyze. Refresh only needs
+        // to rebuild row-id context from the existing plan shape instead of rewriting it again.
+        IvmRowIdDeriver.Result rowIdResult =
+                IvmRowIdDeriver.deriveAndRewrite(ivmInput, optimizerContext, IvmRowIdDeriver.Mode.COLLECT_ONLY);
         boolean rowIdRewriteSucceeded = rowIdResult.success();
         if (!rowIdRewriteSucceeded) {
             return;

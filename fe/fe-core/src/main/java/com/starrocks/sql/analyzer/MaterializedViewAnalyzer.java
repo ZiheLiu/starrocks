@@ -208,7 +208,8 @@ public class MaterializedViewAnalyzer {
             LogicalPlan logicalPlan = new RelationTransformer(columnRefFactory, context)
                     .transform(queryStatement.getQueryRelation());
             OptimizerContext optimizerContext = OptimizerFactory.initContext(context, columnRefFactory);
-            IvmRowIdDeriver.Result result = IvmRowIdDeriver.deriveAndRewrite(logicalPlan.getRoot(), optimizerContext);
+            IvmRowIdDeriver.Result result =
+                    IvmRowIdDeriver.deriveAndRewrite(logicalPlan.getRoot(), optimizerContext, IvmRowIdDeriver.Mode.REWRITE);
             if (!result.success()) {
                 if (result.unsupportedReason() != null) {
                     return new OlapIvmAnalyzeResult(Optional.of(result.unsupportedReason()), Optional.empty(), Optional.empty());
