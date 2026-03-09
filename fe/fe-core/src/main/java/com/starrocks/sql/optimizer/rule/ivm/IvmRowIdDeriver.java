@@ -26,6 +26,7 @@ import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.base.Ordering;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalExceptOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalIntersectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
@@ -216,6 +217,18 @@ public class IvmRowIdDeriver {
                 return null;
             }
             this.context.putRowIds(expression, intersect.getOutputColumnRefOp());
+            return null;
+        }
+
+        @Override
+        public Void visitLogicalExcept(OptExpression expression, Void context) {
+            collectChildren(expression);
+            LogicalExceptOperator except = (LogicalExceptOperator) expression.getOp();
+            if (expression.getInputs().size() < 2 || except.getOutputColumnRefOp().isEmpty()) {
+                this.context.markUnsupported("except must have at least two outputs in OLAP IVM row-id derive");
+                return null;
+            }
+            this.context.putRowIds(expression, except.getOutputColumnRefOp());
             return null;
         }
 
@@ -543,6 +556,21 @@ public class IvmRowIdDeriver {
 
         @Override
         public OptExpression visitLogicalIntersect(OptExpression expression, Void context) {
+            List<OptExpression> rewrittenChildren = Lists.newArrayListWithCapacity(expression.arity());
+            boolean changed = false;
+            for (OptExpression child : expression.getInputs()) {
+                OptExpression rewrittenChild = child.getOp().accept(this, child, null);
+                rewrittenChildren.add(rewrittenChild);
+                changed |= rewrittenChild != child;
+            }
+            if (!changed) {
+                return expression;
+            }
+            return OptExpression.create(expression.getOp(), rewrittenChildren);
+        }
+
+        @Override
+        public OptExpression visitLogicalExcept(OptExpression expression, Void context) {
             List<OptExpression> rewrittenChildren = Lists.newArrayListWithCapacity(expression.arity());
             boolean changed = false;
             for (OptExpression child : expression.getInputs()) {

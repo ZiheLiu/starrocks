@@ -15,22 +15,22 @@
 package com.starrocks.sql.optimizer.rule.ivm;
 
 import com.starrocks.sql.optimizer.operator.OperatorType;
-import com.starrocks.sql.optimizer.operator.logical.LogicalIntersectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalExceptOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalSetOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 
 import java.util.List;
 
-public class IvmDeltaIntersectRule extends IvmDeltaSetOperatorRule {
-    public IvmDeltaIntersectRule() {
-        super(RuleType.TF_OLAP_IVM_DELTA_INTERSECT, OperatorType.LOGICAL_INTERSECT);
+public class IvmDeltaExceptRule extends IvmDeltaSetOperatorRule {
+    public IvmDeltaExceptRule() {
+        super(RuleType.TF_OLAP_IVM_DELTA_EXCEPT, OperatorType.LOGICAL_EXCEPT);
     }
 
     @Override
     protected LogicalSetOperator buildSetOperator(List<ColumnRefOperator> detailOutputs,
                                                   List<List<ColumnRefOperator>> childOutputColumns) {
-        return new LogicalIntersectOperator.Builder()
+        return new LogicalExceptOperator.Builder()
                 .setOutputColumnRefOp(detailOutputs)
                 .setChildOutputColumns(childOutputColumns)
                 .build();

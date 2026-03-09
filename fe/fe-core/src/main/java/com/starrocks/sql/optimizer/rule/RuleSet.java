@@ -60,6 +60,7 @@ import com.starrocks.sql.optimizer.rule.implementation.stream.StreamAggregateImp
 import com.starrocks.sql.optimizer.rule.implementation.stream.StreamJoinImplementationRule;
 import com.starrocks.sql.optimizer.rule.implementation.stream.StreamScanImplementationRule;
 import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaAggregateRule;
+import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaExceptRule;
 import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaFilterRule;
 import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaIntersectRule;
 import com.starrocks.sql.optimizer.rule.ivm.IvmDeltaJoinRule;
@@ -456,6 +457,7 @@ public class RuleSet {
                     new IvmDeltaJoinRule(),
                     new IvmDeltaAggregateRule(),
                     new IvmDeltaIntersectRule(),
+                    new IvmDeltaExceptRule(),
                     new IvmDeltaWindowRule(),
                     new IvmVersionProjectRule(),
                     new IvmVersionFilterRule(),
