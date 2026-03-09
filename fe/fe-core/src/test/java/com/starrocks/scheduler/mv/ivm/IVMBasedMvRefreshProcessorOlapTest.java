@@ -196,6 +196,7 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
 
         MaterializedView mv = getMv("ivm_aggregate_mv");
         String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_aggregate_mv");
+        System.out.println(plan);
         assertThat(plan)
                 .contains("TABLE: ivm_aggregate_mv", "AGGREGATE");
     }
@@ -224,6 +225,71 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
         String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_join_mv");
         assertThat(plan)
                 .contains("TABLE: ivm_join_mv", "HASH JOIN", "TABLE: t1", "TABLE: t2");
+    }
+
+    @Test
+    public void testAggregateThenJoinOnGroupingKey() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 10, 200, 2001), (3, 20, 300, 3000)");
+        executeInsertSql("insert into t2 values (1, 10, 101, 1001), (2, 20, 201, 2001), (3, 30, 301, 3001)");
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_agg_join_group_key_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "WITH w1 AS (\n" +
+                "    SELECT v1, v2, max(v3) AS max_v3 FROM t1 GROUP BY v1, v2\n" +
+                ")\n" +
+                "SELECT w1.v1, w1.v2, w1.max_v3, t2.pk, t2.v3 FROM w1 JOIN t2 ON w1.v1 = t2.v1;");
+        createdMVs.add("ivm_agg_join_group_key_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_agg_join_group_key_mv");
+        assertThat(showCreateSql)
+                .contains("ORDER BY (v1,v2,pk)",
+                        "max(v3) AS max_v3",
+                        "JOIN t2 ON w1.v1 = t2.v1");
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_agg_join_group_key_mv with sync mode");
+        executeInsertSql("insert into t1 values (4, 10, 400, 4002)");
+        executeInsertSql("insert into t2 values (4, 10, 401, 4003)");
+
+        MaterializedView mv = getMv("ivm_agg_join_group_key_mv");
+        String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_agg_join_group_key_mv");
+        System.out.println(plan);
+        assertThat(plan)
+                .contains("TABLE: ivm_agg_join_group_key_mv", "HASH JOIN", "AGGREGATE", "TABLE: t1", "TABLE: t2");
+    }
+
+    @Test
+    public void testAggregateThenJoinOnAggregateOutput() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 10, 200, 2001), (3, 20, 300, 3000)");
+        executeInsertSql("insert into t2 values (1, 11, 101, 1000), (2, 21, 201, 2001), (3, 31, 301, 3001)");
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_agg_join_agg_output_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "WITH w1 AS (\n" +
+                "    SELECT v1, v2, max(v3) AS max_v3 FROM t1 GROUP BY v1, v2\n" +
+                ")\n" +
+                "SELECT w1.v1, w1.v2, w1.max_v3, t2.pk, t2.v1 AS t2_v1 FROM w1 JOIN t2 ON w1.max_v3 = t2.v3;");
+        createdMVs.add("ivm_agg_join_agg_output_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_agg_join_agg_output_mv");
+        assertThat(showCreateSql)
+                .contains("ORDER BY (v1,v2,pk)",
+                        "max(v3) AS max_v3",
+                        "JOIN t2 ON w1.max_v3 = t2.v3");
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_agg_join_agg_output_mv with sync mode");
+        executeInsertSql("insert into t1 values (4, 30, 400, 4001)");
+        executeInsertSql("insert into t2 values (4, 41, 401, 4001)");
+
+        MaterializedView mv = getMv("ivm_agg_join_agg_output_mv");
+        String plan = explainMVRefreshExecPlan(mv,
+                "explain refresh materialized view ivm_agg_join_agg_output_mv");
+        System.out.println(plan);
+        assertThat(plan)
+                .contains("TABLE: ivm_agg_join_agg_output_mv", "HASH JOIN", "AGGREGATE", "TABLE: t1", "TABLE: t2");
     }
 
     @Test

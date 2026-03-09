@@ -303,7 +303,9 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         // Child -> Project -> Version
         OptExpression optExpr =
                 OptExpression.create(versionOperator, OptExpression.create(projectOperator, clonedChild.optExpression));
-        return new SnapshotInfo(optExpr, clonedChild.groupingKeys, clonedChild.outputColumns, clonedChild.oldToNewMapping);
+        List<ColumnRefOperator> snapshotOutputs = Lists.newArrayList(clonedChild.outputColumns);
+        snapshotOutputs.add(actionColumn);
+        return new SnapshotInfo(optExpr, snapshotOutputs, clonedChild.groupingKeys, clonedChild.oldToNewMapping);
     }
 
     private OptExpression createLeftSemiJoin(ColumnRefFactory columnRefFactory, int cteId,
