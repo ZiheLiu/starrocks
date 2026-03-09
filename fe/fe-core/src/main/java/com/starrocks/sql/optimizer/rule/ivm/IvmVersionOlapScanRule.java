@@ -67,9 +67,6 @@ public class IvmVersionOlapScanRule extends TransformationRule {
     }
 
     private Long resolveVersion(LogicalVersionOperator version, LogicalOlapScanOperator scan) {
-        if (version.isExactVersion()) {
-            return version.getTableVersion();
-        }
         if (version.getVersionRefType() == LogicalVersionOperator.VersionRefType.FROM_VERSION) {
             return scan.getTableVersion();
         }

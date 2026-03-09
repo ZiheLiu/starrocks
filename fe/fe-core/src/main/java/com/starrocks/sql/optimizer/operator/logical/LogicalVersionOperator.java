@@ -31,22 +31,15 @@ import java.util.List;
  */
 public class LogicalVersionOperator extends LogicalOperator {
     public enum VersionRefType {
-        EXACT,
         FROM_VERSION,
         TO_VERSION
     }
 
     private final VersionRefType versionRefType;
-    private final Long tableVersion;
 
     public LogicalVersionOperator(VersionRefType versionRefType) {
-        this(versionRefType, null);
-    }
-
-    public LogicalVersionOperator(VersionRefType versionRefType, Long tableVersion) {
         super(OperatorType.LOGICAL_VERSION);
         this.versionRefType = versionRefType;
-        this.tableVersion = tableVersion;
     }
 
     public static LogicalVersionOperator fromVersion() {
@@ -59,14 +52,6 @@ public class LogicalVersionOperator extends LogicalOperator {
 
     public VersionRefType getVersionRefType() {
         return versionRefType;
-    }
-
-    public Long getTableVersion() {
-        return tableVersion;
-    }
-
-    public boolean isExactVersion() {
-        return versionRefType == VersionRefType.EXACT;
     }
 
     @Override

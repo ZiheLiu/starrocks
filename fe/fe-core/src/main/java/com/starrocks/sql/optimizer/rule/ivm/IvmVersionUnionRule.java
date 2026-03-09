@@ -14,10 +14,11 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
+import com.google.common.collect.Lists;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
-import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.rule.RuleType;
@@ -25,20 +26,22 @@ import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
 
-public class IvmVersionProjectRule extends TransformationRule {
-    public IvmVersionProjectRule() {
-        super(RuleType.TF_OLAP_IVM_VERSION_PROJECT,
+public class IvmVersionUnionRule extends TransformationRule {
+    public IvmVersionUnionRule() {
+        super(RuleType.TF_OLAP_IVM_VERSION_UNION,
                 Pattern.create(OperatorType.LOGICAL_VERSION)
-                        .addChildren(Pattern.create(OperatorType.LOGICAL_PROJECT, OperatorType.PATTERN_LEAF)));
+                        .addChildren(Pattern.create(OperatorType.LOGICAL_UNION)
+                                .addChildren(Pattern.create(OperatorType.PATTERN_MULTI_LEAF))));
     }
 
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalVersionOperator version = (LogicalVersionOperator) input.getOp();
-        LogicalProjectOperator project = (LogicalProjectOperator) input.inputAt(0).getOp();
-        OptExpression projectChild = input.inputAt(0).inputAt(0);
-        LogicalVersionOperator newVersion = new LogicalVersionOperator(version.getVersionRefType());
-        OptExpression versionChild = OptExpression.create(newVersion, projectChild);
-        return List.of(OptExpression.create(project, versionChild));
+        LogicalUnionOperator union = (LogicalUnionOperator) input.inputAt(0).getOp();
+        List<OptExpression> children = Lists.newArrayListWithCapacity(input.inputAt(0).arity());
+        for (OptExpression child : input.inputAt(0).getInputs()) {
+            children.add(IvmVersionRuleUtils.wrapVersion(version, child));
+        }
+        return List.of(OptExpression.create(LogicalUnionOperator.builder().withOperator(union).build(), children));
     }
 }

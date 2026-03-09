@@ -37,8 +37,7 @@ public class IvmVersionFilterRule extends TransformationRule {
         LogicalVersionOperator version = (LogicalVersionOperator) input.getOp();
         LogicalFilterOperator filter = (LogicalFilterOperator) input.inputAt(0).getOp();
         OptExpression filterChild = input.inputAt(0).inputAt(0);
-        LogicalVersionOperator newVersion =
-                new LogicalVersionOperator(version.getVersionRefType(), version.getTableVersion());
+        LogicalVersionOperator newVersion = new LogicalVersionOperator(version.getVersionRefType());
         OptExpression versionChild = OptExpression.create(newVersion, filterChild);
         return List.of(OptExpression.create(filter, versionChild));
     }

@@ -17,7 +17,7 @@ package com.starrocks.sql.optimizer.rule.ivm;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.OperatorType;
-import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalVersionOperator;
 import com.starrocks.sql.optimizer.operator.pattern.Pattern;
 import com.starrocks.sql.optimizer.rule.RuleType;
@@ -25,20 +25,19 @@ import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
 
-public class IvmVersionProjectRule extends TransformationRule {
-    public IvmVersionProjectRule() {
-        super(RuleType.TF_OLAP_IVM_VERSION_PROJECT,
+public class IvmVersionAggregateRule extends TransformationRule {
+    public IvmVersionAggregateRule() {
+        super(RuleType.TF_OLAP_IVM_VERSION_AGGREGATE,
                 Pattern.create(OperatorType.LOGICAL_VERSION)
-                        .addChildren(Pattern.create(OperatorType.LOGICAL_PROJECT, OperatorType.PATTERN_LEAF)));
+                        .addChildren(Pattern.create(OperatorType.LOGICAL_AGGR, OperatorType.PATTERN_LEAF)));
     }
 
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalVersionOperator version = (LogicalVersionOperator) input.getOp();
-        LogicalProjectOperator project = (LogicalProjectOperator) input.inputAt(0).getOp();
-        OptExpression projectChild = input.inputAt(0).inputAt(0);
-        LogicalVersionOperator newVersion = new LogicalVersionOperator(version.getVersionRefType());
-        OptExpression versionChild = OptExpression.create(newVersion, projectChild);
-        return List.of(OptExpression.create(project, versionChild));
+        LogicalAggregationOperator aggregate = (LogicalAggregationOperator) input.inputAt(0).getOp();
+        return List.of(OptExpression.create(
+                LogicalAggregationOperator.builder().withOperator(aggregate).build(),
+                IvmVersionRuleUtils.wrapVersion(version, input.inputAt(0).inputAt(0))));
     }
 }
