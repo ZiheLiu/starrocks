@@ -187,7 +187,8 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
 
         String showCreateSql = getShowCreateMaterializedView("ivm_aggregate_mv");
         assertThat(showCreateSql)
-                .contains("AS SELECT v1, sum(v2) AS sum_v2 FROM t1 GROUP BY v1",
+                .contains("ORDER BY (v1)",
+                        "AS SELECT v1, sum(v2) AS sum_v2 FROM t1 GROUP BY v1",
                         "sum_v2");
 
         starRocksAssert.refreshMV("refresh materialized view ivm_aggregate_mv with sync mode");
@@ -239,9 +240,10 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
         createdMVs.add("ivm_window_mv");
 
         String showCreateSql = getShowCreateMaterializedView("ivm_window_mv");
+        System.out.println(showCreateSql);
         assertThat(showCreateSql)
-                .contains("PARTITION BY v1 ORDER BY v2",
-                        "__row_id_0_pk");
+                .contains("ORDER BY (__row_id_0_pk)",
+                        "PARTITION BY v1 ORDER BY v2");
 
         starRocksAssert.refreshMV("refresh materialized view ivm_window_mv with sync mode");
         executeInsertSql("insert into t1 values (3, 10, 300, 3000)");
@@ -250,6 +252,37 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
         String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_window_mv");
         assertThat(plan)
                 .contains("TABLE: ivm_window_mv", "ANALYTIC");
+    }
+
+    @Test
+    public void testUnionAll() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 20, 200, 2000)");
+        executeInsertSql("insert into t2 values (3, 30, 300, 3000), (4, 40, 400, 4000)");
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_union_all_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "SELECT v1, v2, v3 FROM t1\n" +
+                "UNION ALL\n" +
+                "SELECT v1, v2, v3 FROM t2;");
+        createdMVs.add("ivm_union_all_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_union_all_mv");
+        assertThat(showCreateSql)
+                .contains("ORDER BY (__row_id_0_pk,__row_id_1_child_index)",
+                        "AS SELECT v1, v2, v3 FROM t1\n" +
+                                "UNION ALL\n" +
+                                "SELECT v1, v2, v3 FROM t2");
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_union_all_mv with sync mode");
+        executeInsertSql("insert into t1 values (5, 50, 500, 5000)");
+        executeInsertSql("insert into t2 values (6, 60, 600, 6000)");
+
+        MaterializedView mv = getMv("ivm_union_all_mv");
+        String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_union_all_mv");
+        assertThat(plan)
+                .contains("TABLE: ivm_union_all_mv", "UNION", "TABLE: t1", "TABLE: t2");
     }
 
     private String getShowCreateMaterializedView(String mvName) throws Exception {

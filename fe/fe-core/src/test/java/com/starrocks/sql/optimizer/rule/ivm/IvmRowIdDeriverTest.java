@@ -24,6 +24,8 @@ import com.starrocks.sql.optimizer.OptimizerFactory;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.base.Ordering;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
+import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalWindowOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
@@ -37,6 +39,79 @@ import java.util.List;
 import java.util.Map;
 
 public class IvmRowIdDeriverTest {
+    @Test
+    public void testUnionAllRewritesRowIdWithChildIndex(@Mocked OlapTable leftTable,
+                                                        @Mocked OlapTable rightTable) {
+        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
+        ColumnRefOperator leftPkRef = columnRefFactory.create("pk", IntegerType.INT, false);
+        ColumnRefOperator leftValueRef = columnRefFactory.create("v1", IntegerType.INT, false);
+        ColumnRefOperator rightPkRef = columnRefFactory.create("pk", IntegerType.INT, false);
+        ColumnRefOperator rightValueRef = columnRefFactory.create("v1", IntegerType.INT, false);
+        ColumnRefOperator unionValueRef = columnRefFactory.create("v1", IntegerType.INT, false);
+
+        Column pkColumn = new Column("pk", IntegerType.INT, false);
+        Column valueColumn = new Column("v1", IntegerType.INT, false);
+        new Expectations() {
+            {
+                leftTable.getKeysType();
+                result = KeysType.PRIMARY_KEYS;
+                leftTable.getKeyColumnsInOrder();
+                result = List.of(pkColumn);
+                leftTable.getBaseIndexMetaId();
+                result = 1L;
+
+                rightTable.getKeysType();
+                result = KeysType.PRIMARY_KEYS;
+                rightTable.getKeyColumnsInOrder();
+                result = List.of(pkColumn);
+                rightTable.getBaseIndexMetaId();
+                result = 1L;
+            }
+        };
+
+        OptExpression leftScan = OptExpression.create(LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(leftTable,
+                        Maps.newHashMap(Map.of(leftPkRef, pkColumn, leftValueRef, valueColumn)),
+                        Maps.newHashMap(Map.of(pkColumn, leftPkRef, valueColumn, leftValueRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build());
+        OptExpression rightScan = OptExpression.create(LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(rightTable,
+                        Maps.newHashMap(Map.of(rightPkRef, pkColumn, rightValueRef, valueColumn)),
+                        Maps.newHashMap(Map.of(pkColumn, rightPkRef, valueColumn, rightValueRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build());
+
+        LogicalUnionOperator union = LogicalUnionOperator.builder()
+                .isUnionAll(true)
+                .setOutputColumnRefOp(List.of(unionValueRef))
+                .setChildOutputColumns(List.of(List.of(leftValueRef), List.of(rightValueRef)))
+                .build();
+        OptExpression root = OptExpression.create(union, leftScan, rightScan);
+
+        IvmRowIdDeriver.Result result = IvmRowIdDeriver.deriveAndRewrite(root, context);
+        Assertions.assertTrue(result.success());
+        Assertions.assertEquals(2, result.rootRowIdColumnRefs().size());
+        Assertions.assertEquals("__row_id_0_pk", result.rootRowIdColumnRefs().get(0).getName());
+        Assertions.assertEquals("__row_id_1_child_index", result.rootRowIdColumnRefs().get(1).getName());
+
+        Assertions.assertTrue(result.rewrittenRoot().getOp() instanceof LogicalProjectOperator);
+        Assertions.assertTrue(result.rewrittenRoot().inputAt(0).getOp() instanceof LogicalUnionOperator);
+        LogicalUnionOperator rewrittenUnion = (LogicalUnionOperator) result.rewrittenRoot().inputAt(0).getOp();
+        Assertions.assertEquals(3, rewrittenUnion.getOutputColumnRefOp().size());
+        Assertions.assertEquals(3, rewrittenUnion.getChildOutputColumns().get(0).size());
+        Assertions.assertEquals(3, rewrittenUnion.getChildOutputColumns().get(1).size());
+        Assertions.assertTrue(result.rewrittenRoot().inputAt(0).inputAt(0).getOp() instanceof LogicalProjectOperator);
+        Assertions.assertTrue(result.rewrittenRoot().inputAt(0).inputAt(1).getOp() instanceof LogicalProjectOperator);
+    }
+
     @Test
     public void testWindowAppendsRowIdToOrderBy(@Mocked OlapTable table) {
         ColumnRefFactory columnRefFactory = new ColumnRefFactory();
