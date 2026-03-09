@@ -148,6 +148,110 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
                 .contains("EXCEPT", "LEFT ANTI JOIN", "UNION", "TABLE: ivm_except_mv");
     }
 
+    @Test
+    public void testFilter() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 20, 200, 2000)");
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_filter_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "SELECT v1, v2, v3 FROM t1 WHERE v2 > 100;");
+        createdMVs.add("ivm_filter_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_filter_mv");
+        assertThat(showCreateSql)
+                .contains("ORDER BY (__row_id_0_pk)",
+                        "AS SELECT v1, v2, v3 FROM t1",
+                        "WHERE v2 > 100");
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_filter_mv with sync mode");
+        executeInsertSql("insert into t1 values (3, 30, 300, 3000)");
+
+        MaterializedView mv = getMv("ivm_filter_mv");
+        String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_filter_mv");
+        assertThat(plan)
+                .contains("TABLE: ivm_filter_mv", "PREDICATES:", "v2 > 100");
+    }
+
+    @Test
+    public void testAggregate() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 10, 200, 2000)");
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_aggregate_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "SELECT v1, sum(v2) AS sum_v2 FROM t1 GROUP BY v1;");
+        createdMVs.add("ivm_aggregate_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_aggregate_mv");
+        assertThat(showCreateSql)
+                .contains("AS SELECT v1, sum(v2) AS sum_v2 FROM t1 GROUP BY v1",
+                        "sum_v2");
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_aggregate_mv with sync mode");
+        executeInsertSql("insert into t1 values (3, 10, 300, 3000)");
+
+        MaterializedView mv = getMv("ivm_aggregate_mv");
+        String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_aggregate_mv");
+        assertThat(plan)
+                .contains("TABLE: ivm_aggregate_mv", "AGGREGATE");
+    }
+
+    @Test
+    public void testJoin() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 20, 200, 2000)");
+        executeInsertSql("insert into t2 values (1, 11, 101, 1001), (3, 30, 300, 3000)");
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_join_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "SELECT t1.v1, t1.v2, t2.v3 FROM t1 JOIN t2 ON t1.pk = t2.pk;");
+        createdMVs.add("ivm_join_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_join_mv");
+        assertThat(showCreateSql)
+                .contains("ORDER BY (__row_id_0_pk,__row_id_1_pk)",
+                        "AS SELECT t1.v1, t1.v2, t2.v3 FROM t1 JOIN t2 ON t1.pk = t2.pk");
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_join_mv with sync mode");
+        executeInsertSql("insert into t1 values (3, 30, 300, 3000)");
+
+        MaterializedView mv = getMv("ivm_join_mv");
+        String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_join_mv");
+        assertThat(plan)
+                .contains("TABLE: ivm_join_mv", "HASH JOIN", "TABLE: t1", "TABLE: t2");
+    }
+
+    @Test
+    public void testWindow() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 10, 200, 2000)");
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_window_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "SELECT v1,\n" +
+                "       sum(v2) OVER (PARTITION BY v1 ORDER BY v2 ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS sum_v2\n" +
+                "FROM t1;");
+        createdMVs.add("ivm_window_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_window_mv");
+        assertThat(showCreateSql)
+                .contains("PARTITION BY v1 ORDER BY v2",
+                        "__row_id_0_pk");
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_window_mv with sync mode");
+        executeInsertSql("insert into t1 values (3, 10, 300, 3000)");
+
+        MaterializedView mv = getMv("ivm_window_mv");
+        String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_window_mv");
+        assertThat(plan)
+                .contains("TABLE: ivm_window_mv", "ANALYTIC");
+    }
+
     private String getShowCreateMaterializedView(String mvName) throws Exception {
         String showCreateSql = "show create materialized view test." + mvName + ";";
         ShowCreateTableStmt stmt = (ShowCreateTableStmt) UtFrameUtils.parseStmtWithNewParser(showCreateSql, connectContext);

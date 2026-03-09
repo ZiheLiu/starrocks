@@ -29,6 +29,8 @@ import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class IvmDeltaFilterRule extends TransformationRule {
     public IvmDeltaFilterRule() {
@@ -45,9 +47,20 @@ public class IvmDeltaFilterRule extends TransformationRule {
         LogicalFilterOperator newFilter = filter;
         ColumnRefOperator actionColumn = delta.getActionColumn();
         if (actionColumn != null) {
-            Map<ColumnRefOperator, ScalarOperator> projectionMap = Maps.newHashMap(filter.getProjection().getColumnRefMap());
+            Projection filterProjection = filter.getProjection();
+            Map<ColumnRefOperator, ScalarOperator> projectionMap;
+            Map<ColumnRefOperator, ScalarOperator> commonSubOperatorMap;
+            if (filterProjection != null) {
+                projectionMap = Maps.newHashMap(filterProjection.getColumnRefMap());
+                commonSubOperatorMap = filterProjection.getCommonSubOperatorMap();
+            } else {
+                projectionMap = input.inputAt(0).getOutputColumns().getColumnRefOperators(context.getColumnRefFactory()).stream()
+                        .collect(Collectors.toMap(Function.identity(), Function.identity(),
+                                (left, right) -> left, Maps::newHashMap));
+                commonSubOperatorMap = Maps.newHashMap();
+            }
             projectionMap.put(actionColumn, actionColumn);
-            Projection newProjection = new Projection(projectionMap, filter.getProjection().getCommonSubOperatorMap());
+            Projection newProjection = new Projection(projectionMap, commonSubOperatorMap);
             newFilter = new LogicalFilterOperator.Builder()
                     .withOperator(filter)
                     .setProjection(newProjection)
