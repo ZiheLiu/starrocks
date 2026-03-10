@@ -2405,6 +2405,11 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true)
     public static double statistics_min_sample_row_ratio = 0.01;
 
+    @ConfField(mutable = true, comment = "The maximum multiplier applied to base row count when capping the " +
+            "estimated output row count for CHANGES queries. A value of 2.0 means the estimate will not exceed " +
+            "two times the base row count.")
+    public static double statistic_max_changes_rows_estimate_ratio = 2.0;
+
     @ConfField(mutable = true, comment = "The NDV estimator: DUJ1/GEE/LINEAR/POLYNOMIAL")
     public static String statistics_sample_ndv_estimator =
             NDVEstimator.NDVEstimatorDesc.defaultConfig().name();

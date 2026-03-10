@@ -20,6 +20,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.Table;
+import com.starrocks.common.Config;
 import com.starrocks.connector.statistics.ConnectorTableColumnStats;
 import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
@@ -88,7 +89,8 @@ public interface StatisticStorage {
         if (isPrimaryKey) {
             changesRowCount = changedKeys * 1.5D;
         }
-        changesRowCount = Math.max(1D, Math.min(baseRowCount * 2D, changesRowCount));
+        double maxEstimatedRowCount = baseRowCount * Math.max(0D, Config.statistic_max_changes_rows_estimate_ratio);
+        changesRowCount = Math.max(1D, Math.min(maxEstimatedRowCount, changesRowCount));
 
         List<Map.Entry<ColumnRefOperator, Column>> entries = colRefToColumnMetaMap.entrySet().stream()
                 .collect(Collectors.toList());
