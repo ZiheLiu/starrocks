@@ -89,7 +89,7 @@ public interface StatisticStorage {
         if (isPrimaryKey) {
             changesRowCount = changedKeys * 1.5D;
         }
-        double maxEstimatedRowCount = baseRowCount * Math.max(0D, Config.statistic_max_changes_rows_estimate_ratio);
+        double maxEstimatedRowCount = Math.max(0L, Config.statistic_max_changes_rows_estimate_value);
         changesRowCount = Math.max(1D, Math.min(maxEstimatedRowCount, changesRowCount));
 
         List<Map.Entry<ColumnRefOperator, Column>> entries = colRefToColumnMetaMap.entrySet().stream()

@@ -29,6 +29,7 @@ import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.TableFunctionTable;
+import com.starrocks.load.Load;
 import com.starrocks.catalog.TableName;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
@@ -60,6 +61,7 @@ import com.starrocks.sql.ast.expression.LiteralExpr;
 import com.starrocks.sql.ast.expression.LiteralExprFactory;
 import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.common.MetaUtils;
+import com.starrocks.type.IntegerType;
 import com.starrocks.type.NullType;
 import com.starrocks.type.Type;
 import org.apache.iceberg.PartitionField;
@@ -85,6 +87,10 @@ public class InsertAnalyzer {
     private static final ImmutableSet<String> PUSH_DOWN_PROPERTIES_SET = new ImmutableSet.Builder<String>()
             .add(LoadStmt.STRICT_MODE)
             .build();
+
+    private static boolean isLoadOpColumnForInsert(Table table, String columnName) {
+        return Load.LOAD_OP_COLUMN.equalsIgnoreCase(columnName) && Load.tableSupportOpColumn(table);
+    }
 
     /**
      * Normal path of analyzer
@@ -271,17 +277,21 @@ public class InsertAnalyzer {
                     .filter(c -> !c.isAutoIncrement()).map(c -> c.getName().toLowerCase()).collect(Collectors.toSet());
             for (String colName : insertStmt.getTargetColumnNames()) {
                 Column column = table.getColumn(colName);
-                if (column == null) {
+                if (column == null && !isLoadOpColumnForInsert(table, colName)) {
                     throw new SemanticException("Unknown column '%s' in '%s'", colName, table.getName());
                 }
-                if (column.isGeneratedColumn()) {
+                if (column != null && column.isGeneratedColumn()) {
                     throw new SemanticException("generated column '%s' can not be specified", colName);
                 }
                 if (!mentionedColumns.add(colName)) {
                     ErrorReport.reportSemanticException(ErrorCode.ERR_DUP_FIELDNAME, colName);
                 }
                 requiredKeyColumns.remove(colName.toLowerCase());
-                targetColumns.add(column);
+                if (column != null) {
+                    targetColumns.add(column);
+                } else if (isLoadOpColumnForInsert(table, colName)) {
+                    targetColumns.add(new Column(Load.LOAD_OP_COLUMN, IntegerType.TINYINT, false));
+                }
             }
             if (table.isNativeTable()) {
                 OlapTable olapTable = (OlapTable) table;

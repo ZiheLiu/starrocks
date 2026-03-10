@@ -62,18 +62,18 @@ public class StatisticStorageTest extends PlanTestBase {
                 .setDistinctValuesCount(1000)
                 .build());
 
-        double previous = Config.statistic_max_changes_rows_estimate_ratio;
+        long previous = Config.statistic_max_changes_rows_estimate_value;
         try {
-            Config.statistic_max_changes_rows_estimate_ratio = 0.6;
+            Config.statistic_max_changes_rows_estimate_value = 400;
             Statistics statistics = storage.getChangesStatistics(
                     table,
                     List.of(partition),
                     ImmutableMap.of(),
                     1,
                     101);
-            Assertions.assertEquals(600.0, statistics.getOutputRowCount(), 0.001);
+            Assertions.assertEquals(400.0, statistics.getOutputRowCount(), 0.001);
         } finally {
-            Config.statistic_max_changes_rows_estimate_ratio = previous;
+            Config.statistic_max_changes_rows_estimate_value = previous;
         }
     }
 }

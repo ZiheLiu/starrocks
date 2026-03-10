@@ -158,6 +158,23 @@ public class InsertPlanner {
 
     private static final Logger LOG = LogManager.getLogger(InsertPlanner.class);
 
+    private boolean hasExplicitLoadOpColumn(InsertStmt insertStmt, Table targetTable) {
+        return Load.tableSupportOpColumn(targetTable)
+                && insertStmt.getTargetColumnNames() != null
+                && insertStmt.getTargetColumnNames().stream().anyMatch(Load.LOAD_OP_COLUMN::equalsIgnoreCase);
+    }
+
+    private void appendExplicitLoadOpSchemaIfNeeded(InsertStmt insertStmt, Table targetTable) {
+        if (!hasExplicitLoadOpColumn(insertStmt, targetTable)) {
+            return;
+        }
+        boolean hasLoadOpSchema = outputFullSchema.stream()
+                .anyMatch(col -> col != null && col.getName().equalsIgnoreCase(Load.LOAD_OP_COLUMN));
+        if (!hasLoadOpSchema) {
+            outputFullSchema.add(new Column(Load.LOAD_OP_COLUMN, IntegerType.TINYINT, false));
+        }
+    }
+
     public InsertPlanner() {
         this.useOptimisticLock = false;
     }
@@ -312,6 +329,7 @@ public class InsertPlanner {
             outputFullSchema = outputFullSchema.stream().filter(col ->
                     !IcebergTable.ICEBERG_META_COLUMNS.contains(col.getName())).toList();
         }
+        appendExplicitLoadOpSchemaIfNeeded(insertStmt, targetTable);
 
         refreshExternalTable(insertStmt.getQueryStatement(), session);
 
@@ -824,6 +842,12 @@ public class InsertPlanner {
                 }
             }
         }
+        if (hasExplicitLoadOpColumn(insertStatement, insertStatement.getTargetTable())) {
+            int loadOpIdx = insertStatement.getTargetColumnNames().indexOf(Load.LOAD_OP_COLUMN);
+            ColumnRefOperator loadOpColumn = logicalPlan.getOutputColumn().get(loadOpIdx);
+            outputColumns.add(loadOpColumn);
+            columnRefMap.put(loadOpColumn, loadOpColumn);
+        }
         return logicalPlan.getRootBuilder().withNewRoot(new LogicalProjectOperator(new HashMap<>(columnRefMap)));
     }
 
@@ -875,6 +899,9 @@ public class InsertPlanner {
                 outputColumns.add(columnRefOperator);
                 columnRefMap.put(columnRefOperator, scalarOperator);
             } else if (baseSchema.contains(outputFullSchema.get(columnIdx))) {
+                ColumnRefOperator columnRefOperator = outputColumns.get(columnIdx);
+                columnRefMap.put(columnRefOperator, columnRefOperator);
+            } else if (targetColumn.nameEquals(Load.LOAD_OP_COLUMN, false)) {
                 ColumnRefOperator columnRefOperator = outputColumns.get(columnIdx);
                 columnRefMap.put(columnRefOperator, columnRefOperator);
             }
