@@ -29,7 +29,6 @@ import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.Partition;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.TableFunctionTable;
-import com.starrocks.load.Load;
 import com.starrocks.catalog.TableName;
 import com.starrocks.common.AnalysisException;
 import com.starrocks.common.Config;
@@ -39,6 +38,7 @@ import com.starrocks.common.ErrorReport;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.util.concurrent.lock.LockType;
 import com.starrocks.common.util.concurrent.lock.Locker;
+import com.starrocks.load.Load;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
@@ -169,7 +169,7 @@ public class InsertAnalyzer {
                 checkStaticKeyPartitionInsert(insertStmt, table, targetPartitionNames);
             } else {
                 if ((insertStmt.isOverwrite() && session.getSessionVariable().isDynamicOverwrite())
-                            && olapTable.supportedAutomaticPartition()) {
+                        && olapTable.supportedAutomaticPartition()) {
                     insertStmt.setIsDynamicOverwrite(true);
                 } else {
                     for (Partition partition : olapTable.getPartitions()) {
@@ -300,7 +300,7 @@ public class InsertAnalyzer {
                         String missingKeyColumns = String.join(",", requiredKeyColumns);
                         ErrorReport.reportSemanticException(ErrorCode.ERR_MISSING_KEY_COLUMNS, missingKeyColumns);
                     }
-                    if (targetColumns.size() < olapTable.getBaseSchemaWithoutGeneratedColumn().size() && 
+                    if (targetColumns.size() < olapTable.getBaseSchemaWithoutGeneratedColumn().size() &&
                             session.getSessionVariable().isEnableInsertPartialUpdate()) {
                         insertStmt.setUsePartialUpdate();
                         // mark if partial update for auto increment column if and only if:
@@ -310,7 +310,7 @@ public class InsertAnalyzer {
                         if (olapTable.hasAutoIncrementColumn() &&
                                 !targetColumns.stream().anyMatch(col -> col.isAutoIncrement())) {
                             Column autoIncrementColumn =
-                                        table.getBaseSchema().stream().filter(Column::isAutoIncrement).findFirst().get();
+                                    table.getBaseSchema().stream().filter(Column::isAutoIncrement).findFirst().get();
                             if (!autoIncrementColumn.isKey()) {
                                 insertStmt.setAutoIncrementPartialUpdate();
                             }
@@ -423,7 +423,7 @@ public class InsertAnalyzer {
      * for example, integer in csv will be inferred to bigint type.
      * when the target table column is tinyint, the data may be filtered because it is bigger than tinyint.
      * but strict mode will not take effect in file scan if using bigint type.
-     *
+     * <p>
      * only push down slot ref select column to files.
      *
      * @return true if can push down schema, else false.
