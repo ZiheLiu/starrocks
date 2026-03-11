@@ -44,7 +44,8 @@ public class IvmDeltaWindowRuleTest {
     @Test
     public void testTransformPartitionedWindow(@Mocked OlapTable table) {
         WindowRewriteContext rewriteContext = createWindowRewriteContext(table, true);
-        List<OptExpression> result = new IvmDeltaWindowRule().transform(rewriteContext.deltaWindowExpr(), rewriteContext.context());
+        List<OptExpression> result =
+                new IvmDeltaWindowRule().transform(rewriteContext.deltaWindowExpr(), rewriteContext.context());
         assertRewriteResult(result, rewriteContext.columnRefFactory(), rewriteContext.deltaWindowExpr(),
                 LogicalVersionOperator.VersionRefType.FROM_VERSION, LogicalVersionOperator.VersionRefType.TO_VERSION);
     }
@@ -52,7 +53,8 @@ public class IvmDeltaWindowRuleTest {
     @Test
     public void testTransformPartitionedWindowWithoutActionColumn(@Mocked OlapTable table) {
         WindowRewriteContext rewriteContext = createWindowRewriteContext(table, false);
-        List<OptExpression> result = new IvmDeltaWindowRule().transform(rewriteContext.deltaWindowExpr(), rewriteContext.context());
+        List<OptExpression> result =
+                new IvmDeltaWindowRule().transform(rewriteContext.deltaWindowExpr(), rewriteContext.context());
         assertRewriteResult(result, rewriteContext.columnRefFactory(), rewriteContext.deltaWindowExpr(),
                 LogicalVersionOperator.VersionRefType.FROM_VERSION, LogicalVersionOperator.VersionRefType.TO_VERSION);
     }
