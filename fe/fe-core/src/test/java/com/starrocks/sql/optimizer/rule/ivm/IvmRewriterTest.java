@@ -14,7 +14,6 @@
 
 package com.starrocks.sql.optimizer.rule.ivm;
 
-import com.google.common.collect.Lists;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
