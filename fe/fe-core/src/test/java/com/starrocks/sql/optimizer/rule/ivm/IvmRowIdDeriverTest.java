@@ -17,12 +17,15 @@ package com.starrocks.sql.optimizer.rule.ivm;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
+import com.starrocks.sql.ast.JoinOperator;
 import com.starrocks.sql.ast.KeysType;
 import com.starrocks.sql.optimizer.OptExpression;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.OptimizerFactory;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.base.Ordering;
+import com.starrocks.sql.optimizer.operator.Projection;
+import com.starrocks.sql.optimizer.operator.logical.LogicalJoinOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalOlapScanOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalProjectOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
@@ -198,5 +201,69 @@ public class IvmRowIdDeriverTest {
         IvmRowIdDeriver.Result result = IvmRowIdDeriver.deriveAndRewrite(
                 OptExpression.create(window, OptExpression.create(scan)), context);
         Assertions.assertFalse(result.success());
+    }
+
+    @Test
+    public void testNullableRootRowIdIsUnsupported(@Mocked OlapTable leftTable,
+                                                   @Mocked OlapTable rightTable) {
+        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
+        ColumnRefOperator leftPkRef = columnRefFactory.create("left_pk", IntegerType.INT, false);
+        ColumnRefOperator rightPkRef = columnRefFactory.create("right_pk", IntegerType.INT, false);
+        ColumnRefOperator nullableLeftPkRef = columnRefFactory.create("nullable_left_pk", IntegerType.INT, true);
+        ColumnRefOperator nullableRightPkRef = columnRefFactory.create("nullable_right_pk", IntegerType.INT, true);
+
+        Column leftPkColumn = new Column("left_pk", IntegerType.INT, false);
+        Column rightPkColumn = new Column("right_pk", IntegerType.INT, false);
+        new Expectations() {
+            {
+                leftTable.getKeysType();
+                result = KeysType.PRIMARY_KEYS;
+                leftTable.getKeyColumnsInOrder();
+                result = List.of(leftPkColumn);
+                leftTable.getBaseIndexMetaId();
+                result = 1L;
+
+                rightTable.getKeysType();
+                result = KeysType.PRIMARY_KEYS;
+                rightTable.getKeyColumnsInOrder();
+                result = List.of(rightPkColumn);
+                rightTable.getBaseIndexMetaId();
+                result = 1L;
+            }
+        };
+
+        OptExpression leftScan = OptExpression.create(LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(leftTable,
+                        Maps.newHashMap(Map.of(leftPkRef, leftPkColumn)),
+                        Maps.newHashMap(Map.of(leftPkColumn, leftPkRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build());
+        OptExpression rightScan = OptExpression.create(LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(rightTable,
+                        Maps.newHashMap(Map.of(rightPkRef, rightPkColumn)),
+                        Maps.newHashMap(Map.of(rightPkColumn, rightPkRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build());
+
+        LogicalJoinOperator join = LogicalJoinOperator.builder()
+                .setJoinType(JoinOperator.FULL_OUTER_JOIN)
+                .setProjection(new Projection(Map.of(
+                        nullableLeftPkRef, leftPkRef,
+                        nullableRightPkRef, rightPkRef
+                )))
+                .build();
+
+        IvmRowIdDeriver.Result result = IvmRowIdDeriver.deriveAndRewrite(
+                OptExpression.create(join, leftScan, rightScan), context);
+        Assertions.assertFalse(result.success());
+        Assertions.assertTrue(result.unsupportedReason().contains("root row-id column must be non-nullable"));
+        Assertions.assertTrue(result.rootRowIdColumnRefs().isEmpty());
     }
 }

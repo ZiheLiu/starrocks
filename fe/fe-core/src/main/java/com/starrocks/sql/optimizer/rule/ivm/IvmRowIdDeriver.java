@@ -77,6 +77,13 @@ public class IvmRowIdDeriver {
             return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"), List.of());
         }
         List<ColumnRefOperator> rootRowIds = context.getRowIds(root).orElse(List.of());
+        Optional<ColumnRefOperator> nullableRootRowId = rootRowIds.stream().filter(ColumnRefOperator::isNullable).findFirst();
+        if (nullableRootRowId.isPresent()) {
+            return new Result(false, root,
+                    "root row-id column must be non-nullable in OLAP IVM row-id derive: "
+                            + nullableRootRowId.get().getName(),
+                    List.of());
+        }
         return new Result(true, rewritten, null, rootRowIds);
     }
 
