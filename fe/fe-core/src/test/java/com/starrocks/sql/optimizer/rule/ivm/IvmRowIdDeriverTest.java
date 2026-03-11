@@ -32,6 +32,7 @@ import com.starrocks.sql.optimizer.operator.logical.LogicalUnionOperator;
 import com.starrocks.sql.optimizer.operator.logical.LogicalWindowOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
+import com.starrocks.sql.optimizer.rule.tvr.common.TvrOpUtils;
 import com.starrocks.type.IntegerType;
 import mockit.Expectations;
 import mockit.Mocked;
@@ -105,14 +106,17 @@ public class IvmRowIdDeriverTest {
         Assertions.assertEquals("__row_id_0_pk", result.rootRowIdColumnRefs().get(0).getName());
         Assertions.assertEquals("__row_id_1_child_index", result.rootRowIdColumnRefs().get(1).getName());
 
-        Assertions.assertTrue(result.rewrittenRoot().getOp() instanceof LogicalProjectOperator);
-        Assertions.assertTrue(result.rewrittenRoot().inputAt(0).getOp() instanceof LogicalUnionOperator);
-        LogicalUnionOperator rewrittenUnion = (LogicalUnionOperator) result.rewrittenRoot().inputAt(0).getOp();
+        OptExpression rewrittenUnionExpr = result.rewrittenRoot();
+        if (rewrittenUnionExpr.getOp() instanceof LogicalProjectOperator) {
+            rewrittenUnionExpr = rewrittenUnionExpr.inputAt(0);
+        }
+        Assertions.assertTrue(rewrittenUnionExpr.getOp() instanceof LogicalUnionOperator);
+        LogicalUnionOperator rewrittenUnion = (LogicalUnionOperator) rewrittenUnionExpr.getOp();
         Assertions.assertEquals(3, rewrittenUnion.getOutputColumnRefOp().size());
         Assertions.assertEquals(3, rewrittenUnion.getChildOutputColumns().get(0).size());
         Assertions.assertEquals(3, rewrittenUnion.getChildOutputColumns().get(1).size());
-        Assertions.assertTrue(result.rewrittenRoot().inputAt(0).inputAt(0).getOp() instanceof LogicalProjectOperator);
-        Assertions.assertTrue(result.rewrittenRoot().inputAt(0).inputAt(1).getOp() instanceof LogicalProjectOperator);
+        Assertions.assertTrue(rewrittenUnionExpr.inputAt(0).getOp() instanceof LogicalProjectOperator);
+        Assertions.assertTrue(rewrittenUnionExpr.inputAt(1).getOp() instanceof LogicalProjectOperator);
     }
 
     @Test
@@ -204,8 +208,8 @@ public class IvmRowIdDeriverTest {
     }
 
     @Test
-    public void testNullableRootRowIdIsUnsupported(@Mocked OlapTable leftTable,
-                                                   @Mocked OlapTable rightTable) {
+    public void testNullableRootRowIdIsEncodedInRewriteMode(@Mocked OlapTable leftTable,
+                                                            @Mocked OlapTable rightTable) {
         ColumnRefFactory columnRefFactory = new ColumnRefFactory();
         OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
         ColumnRefOperator leftPkRef = columnRefFactory.create("left_pk", IntegerType.INT, false);
@@ -262,8 +266,81 @@ public class IvmRowIdDeriverTest {
 
         IvmRowIdDeriver.Result result = IvmRowIdDeriver.deriveAndRewrite(
                 OptExpression.create(join, leftScan, rightScan), context);
-        Assertions.assertFalse(result.success());
-        Assertions.assertTrue(result.unsupportedReason().contains("root row-id column must be non-nullable"));
-        Assertions.assertTrue(result.rootRowIdColumnRefs().isEmpty());
+        Assertions.assertTrue(result.success());
+        Assertions.assertNull(result.unsupportedReason());
+        Assertions.assertEquals(1, result.rootRowIdColumnRefs().size());
+        Assertions.assertEquals(TvrOpUtils.COLUMN_ROW_ID, result.rootRowIdColumnRefs().get(0).getName());
+        Assertions.assertFalse(result.rootRowIdColumnRefs().get(0).isNullable());
+        Assertions.assertTrue(result.rewrittenRoot().getOp() instanceof LogicalProjectOperator);
+        LogicalProjectOperator rewrittenProject = (LogicalProjectOperator) result.rewrittenRoot().getOp();
+        Assertions.assertTrue(rewrittenProject.getColumnRefMap().containsKey(result.rootRowIdColumnRefs().get(0)));
+    }
+
+    @Test
+    public void testCollectOnlyModeReturnsExistingEncodedRootRowId(@Mocked OlapTable leftTable,
+                                                                   @Mocked OlapTable rightTable) {
+        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
+        ColumnRefOperator leftPkRef = columnRefFactory.create("left_pk", IntegerType.INT, false);
+        ColumnRefOperator rightPkRef = columnRefFactory.create("right_pk", IntegerType.INT, false);
+        ColumnRefOperator nullableLeftPkRef = columnRefFactory.create("nullable_left_pk", IntegerType.INT, true);
+        ColumnRefOperator nullableRightPkRef = columnRefFactory.create("nullable_right_pk", IntegerType.INT, true);
+
+        Column leftPkColumn = new Column("left_pk", IntegerType.INT, false);
+        Column rightPkColumn = new Column("right_pk", IntegerType.INT, false);
+        new Expectations() {
+            {
+                leftTable.getKeysType();
+                result = KeysType.PRIMARY_KEYS;
+                leftTable.getKeyColumnsInOrder();
+                result = List.of(leftPkColumn);
+                leftTable.getBaseIndexMetaId();
+                result = 1L;
+
+                rightTable.getKeysType();
+                result = KeysType.PRIMARY_KEYS;
+                rightTable.getKeyColumnsInOrder();
+                result = List.of(rightPkColumn);
+                rightTable.getBaseIndexMetaId();
+                result = 1L;
+            }
+        };
+
+        OptExpression leftScan = OptExpression.create(LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(leftTable,
+                        Maps.newHashMap(Map.of(leftPkRef, leftPkColumn)),
+                        Maps.newHashMap(Map.of(leftPkColumn, leftPkRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build());
+        OptExpression rightScan = OptExpression.create(LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(rightTable,
+                        Maps.newHashMap(Map.of(rightPkRef, rightPkColumn)),
+                        Maps.newHashMap(Map.of(rightPkColumn, rightPkRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build());
+
+        LogicalJoinOperator join = LogicalJoinOperator.builder()
+                .setJoinType(JoinOperator.FULL_OUTER_JOIN)
+                .setProjection(new Projection(Map.of(
+                        nullableLeftPkRef, leftPkRef,
+                        nullableRightPkRef, rightPkRef
+                )))
+                .build();
+
+        IvmRowIdDeriver.Result rewritten = IvmRowIdDeriver.deriveAndRewrite(
+                OptExpression.create(join, leftScan, rightScan), context, IvmRowIdDeriver.Mode.REWRITE);
+        Assertions.assertTrue(rewritten.success());
+
+        IvmRowIdDeriver.Result collected = IvmRowIdDeriver.deriveAndRewrite(
+                rewritten.rewrittenRoot(), context, IvmRowIdDeriver.Mode.COLLECT_ONLY);
+        Assertions.assertTrue(collected.success());
+        Assertions.assertSame(rewritten.rewrittenRoot(), collected.rewrittenRoot());
+        Assertions.assertEquals(rewritten.rootRowIdColumnRefs(), collected.rootRowIdColumnRefs());
     }
 }

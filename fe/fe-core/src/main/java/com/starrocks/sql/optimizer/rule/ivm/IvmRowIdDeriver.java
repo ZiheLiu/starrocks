@@ -39,6 +39,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.ivm.common.IvmRowIdContext;
+import com.starrocks.sql.optimizer.rule.tvr.common.TvrOpUtils;
 import com.starrocks.type.IntegerType;
 
 import java.util.ArrayList;
@@ -77,14 +78,51 @@ public class IvmRowIdDeriver {
             return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"), List.of());
         }
         List<ColumnRefOperator> rootRowIds = context.getRowIds(root).orElse(List.of());
-        Optional<ColumnRefOperator> nullableRootRowId = rootRowIds.stream().filter(ColumnRefOperator::isNullable).findFirst();
-        if (nullableRootRowId.isPresent()) {
-            return new Result(false, root,
-                    "root row-id column must be non-nullable in OLAP IVM row-id derive: "
-                            + nullableRootRowId.get().getName(),
-                    List.of());
+        if (rootRowIds.stream().anyMatch(ColumnRefOperator::isNullable)) {
+            Optional<ColumnRefOperator> existingEncodedRootRowId = resolveEncodedRootRowId(rewritten, rootRowIds);
+            if (existingEncodedRootRowId.isPresent()) {
+                return new Result(true, rewritten, null, List.of(existingEncodedRootRowId.get()));
+            }
+            if (mode == Mode.COLLECT_ONLY) {
+                return new Result(false, root,
+                        "nullable root row-id column must be pre-encoded in OLAP IVM row-id derive",
+                        List.of());
+            }
+            RootRowIdRewriteResult rewriteResult = rewriteNullableRootRowId(rewritten, rootRowIds, context);
+            return new Result(true, rewriteResult.rewrittenRoot(), null, List.of(rewriteResult.encodedRowId()));
         }
         return new Result(true, rewritten, null, rootRowIds);
+    }
+
+    private record RootRowIdRewriteResult(OptExpression rewrittenRoot, ColumnRefOperator encodedRowId) {
+    }
+
+    private static RootRowIdRewriteResult rewriteNullableRootRowId(OptExpression root,
+                                                                   List<ColumnRefOperator> rootRowIds,
+                                                                   IvmRowIdContext context) {
+        ColumnRefOperator encodedRootRowId = context.getColumnRefFactory()
+                .create(TvrOpUtils.COLUMN_ROW_ID, buildEncodedRootRowId(rootRowIds).getType(), false);
+        Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap(root.getRowOutputInfo().getColumnRefMap());
+        projectMap.put(encodedRootRowId, buildEncodedRootRowId(rootRowIds));
+        OptExpression rewrittenRoot = OptExpression.create(new LogicalProjectOperator(projectMap), root);
+        context.putRowIds(root, List.of(encodedRootRowId));
+        context.putRowIds(rewrittenRoot, List.of(encodedRootRowId));
+        return new RootRowIdRewriteResult(rewrittenRoot, encodedRootRowId);
+    }
+
+    private static Optional<ColumnRefOperator> resolveEncodedRootRowId(OptExpression root,
+                                                                       List<ColumnRefOperator> rootRowIds) {
+        ScalarOperator encodedRootRowId = buildEncodedRootRowId(rootRowIds);
+        return root.getRowOutputInfo().getColumnRefMap().entrySet().stream()
+                .filter(entry -> TvrOpUtils.COLUMN_ROW_ID.equalsIgnoreCase(entry.getKey().getName())
+                        || entry.getValue().equals(encodedRootRowId))
+                .map(Map.Entry::getKey)
+                .findFirst();
+    }
+
+    private static ScalarOperator buildEncodedRootRowId(List<ColumnRefOperator> rootRowIds) {
+        int encodeRowIdVersion = TvrOpUtils.deduceEncodeRowIdVersionForScalarOperators(List.copyOf(rootRowIds));
+        return TvrOpUtils.buildRowIdColumnOperator(encodeRowIdVersion, List.copyOf(rootRowIds));
     }
 
     private static class RewriteVisitor extends OptExpressionVisitor<OptExpression, Void> {
