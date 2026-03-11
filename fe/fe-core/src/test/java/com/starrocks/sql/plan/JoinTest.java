@@ -483,6 +483,11 @@ public class JoinTest extends PlanTestBase {
                 "  |  join op: FULL OUTER JOIN (BUCKET_SHUFFLE(S))\n" +
                 "  |  colocate: false, reason: \n" +
                 "  |  equal join conjunct: 3: v6 = 14: v6");
+
+        ExecPlan execPlan = UtFrameUtils.getPlanAndFragment(connectContext,
+                "select v5, v6 from t1 full outer join test_using a using(v5, v6)").second;
+        Assertions.assertFalse(execPlan.getOutputColumns().get(0).isNullable());
+        Assertions.assertFalse(execPlan.getOutputColumns().get(1).isNullable());
     }
 
     @Test

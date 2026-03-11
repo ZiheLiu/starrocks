@@ -1310,7 +1310,7 @@ public class RelationTransformer implements AstVisitorExtendInterface<LogicalPla
                     commonType = leftExpr.getType();
                 }
 
-                ColumnRefOperator coalesceCol = columnRefFactory.create(colName, commonType, true);
+                ColumnRefOperator coalesceCol = columnRefFactory.create(colName, commonType, false);
                 ScalarOperator coalesceExpr = createCoalesceOperator(leftExpr, rightExpr);
 
                 outputs.add(coalesceCol);
