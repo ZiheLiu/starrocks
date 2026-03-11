@@ -43,62 +43,18 @@ import java.util.Map;
 public class IvmDeltaWindowRuleTest {
     @Test
     public void testTransformPartitionedWindow(@Mocked OlapTable table) {
-        new Expectations() {
-            {
-                table.getBaseIndexMetaId();
-                result = 1L;
-            }
-        };
+        WindowRewriteContext rewriteContext = createWindowRewriteContext(table, true);
+        List<OptExpression> result = new IvmDeltaWindowRule().transform(rewriteContext.deltaWindowExpr(), rewriteContext.context());
+        assertRewriteResult(result, rewriteContext.columnRefFactory(), rewriteContext.deltaWindowExpr(),
+                LogicalVersionOperator.VersionRefType.FROM_VERSION, LogicalVersionOperator.VersionRefType.TO_VERSION);
+    }
 
-        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
-        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
-        ColumnRefOperator partitionRef = columnRefFactory.create("k1", IntegerType.INT, false);
-        ColumnRefOperator orderRef = columnRefFactory.create("v1", IntegerType.INT, true);
-        ColumnRefOperator windowRef = columnRefFactory.create("w1", IntegerType.BIGINT, false);
-        ColumnRefOperator actionRef = columnRefFactory.create("__op", IntegerType.TINYINT, false);
-
-        Column partitionColumn = new Column("k1", IntegerType.INT, false);
-        Column orderColumn = new Column("v1", IntegerType.INT, true);
-        LogicalOlapScanOperator scan = LogicalOlapScanOperator.builder()
-                .withOperator(new LogicalOlapScanOperator(table,
-                        Maps.newHashMap(Map.of(partitionRef, partitionColumn, orderRef, orderColumn)),
-                        Maps.newHashMap(Map.of(partitionColumn, partitionRef, orderColumn, orderRef)),
-                        null,
-                        -1,
-                        null))
-                .setTableVersion(1L)
-                .build();
-
-        LogicalWindowOperator window = LogicalWindowOperator.builder()
-                .setPartitionExpressions(List.of(partitionRef))
-                .setOrderByElements(List.of(
-                        new Ordering(orderRef, true, true),
-                        new Ordering(partitionRef, true, true)))
-                .setEnforceSortColumns(List.of(
-                        new Ordering(orderRef, true, true),
-                        new Ordering(partitionRef, true, true)))
-                .setWindowCall(Map.of(windowRef, new CallOperator("row_number", IntegerType.BIGINT, List.of())))
-                .build();
-        OptExpression deltaWindowExpr = OptExpression.create(
-                new LogicalDeltaOperator(true, actionRef),
-                OptExpression.create(window, OptExpression.create(scan)));
-        deriveLogicalProperty(deltaWindowExpr);
-
-        List<OptExpression> result = new IvmDeltaWindowRule().transform(deltaWindowExpr, context);
-        Assertions.assertEquals(1, result.size());
-
-        OptExpression rewritten = result.get(0);
-        Assertions.assertTrue(rewritten.getOp() instanceof LogicalCTEAnchorOperator);
-        Assertions.assertTrue(rewritten.inputAt(1).getOp() instanceof LogicalUnionOperator);
-
-        OptExpression unionExpr = rewritten.inputAt(1);
-        Assertions.assertEquals(2, unionExpr.arity());
-        Assertions.assertEquals(
-                deltaWindowExpr.getOutputColumns().getColumnRefOperators(columnRefFactory),
-                ((LogicalUnionOperator) unionExpr.getOp()).getOutputColumnRefOp());
-
-        assertWindowBranch(unionExpr.inputAt(0), LogicalVersionOperator.VersionRefType.FROM_VERSION);
-        assertWindowBranch(unionExpr.inputAt(1), LogicalVersionOperator.VersionRefType.TO_VERSION);
+    @Test
+    public void testTransformPartitionedWindowWithoutActionColumn(@Mocked OlapTable table) {
+        WindowRewriteContext rewriteContext = createWindowRewriteContext(table, false);
+        List<OptExpression> result = new IvmDeltaWindowRule().transform(rewriteContext.deltaWindowExpr(), rewriteContext.context());
+        assertRewriteResult(result, rewriteContext.columnRefFactory(), rewriteContext.deltaWindowExpr(),
+                LogicalVersionOperator.VersionRefType.FROM_VERSION, LogicalVersionOperator.VersionRefType.TO_VERSION);
     }
 
     @Test
@@ -139,6 +95,73 @@ public class IvmDeltaWindowRuleTest {
         Assertions.assertTrue(new IvmDeltaWindowRule().transform(deltaWindowExpr, context).isEmpty());
     }
 
+    private WindowRewriteContext createWindowRewriteContext(OlapTable table, boolean withActionColumn) {
+        new Expectations() {
+            {
+                table.getBaseIndexMetaId();
+                result = 1L;
+            }
+        };
+
+        ColumnRefFactory columnRefFactory = new ColumnRefFactory();
+        OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
+        ColumnRefOperator partitionRef = columnRefFactory.create("k1", IntegerType.INT, false);
+        ColumnRefOperator orderRef = columnRefFactory.create("v1", IntegerType.INT, true);
+        ColumnRefOperator windowRef = columnRefFactory.create("w1", IntegerType.BIGINT, false);
+        ColumnRefOperator actionRef = withActionColumn
+                ? columnRefFactory.create("__op", IntegerType.TINYINT, false)
+                : null;
+
+        Column partitionColumn = new Column("k1", IntegerType.INT, false);
+        Column orderColumn = new Column("v1", IntegerType.INT, true);
+        LogicalOlapScanOperator scan = LogicalOlapScanOperator.builder()
+                .withOperator(new LogicalOlapScanOperator(table,
+                        Maps.newHashMap(Map.of(partitionRef, partitionColumn, orderRef, orderColumn)),
+                        Maps.newHashMap(Map.of(partitionColumn, partitionRef, orderColumn, orderRef)),
+                        null,
+                        -1,
+                        null))
+                .setTableVersion(1L)
+                .build();
+
+        LogicalWindowOperator window = LogicalWindowOperator.builder()
+                .setPartitionExpressions(List.of(partitionRef))
+                .setOrderByElements(List.of(
+                        new Ordering(orderRef, true, true),
+                        new Ordering(partitionRef, true, true)))
+                .setEnforceSortColumns(List.of(
+                        new Ordering(orderRef, true, true),
+                        new Ordering(partitionRef, true, true)))
+                .setWindowCall(Map.of(windowRef, new CallOperator("row_number", IntegerType.BIGINT, List.of())))
+                .build();
+        OptExpression deltaWindowExpr = OptExpression.create(
+                new LogicalDeltaOperator(true, actionRef),
+                OptExpression.create(window, OptExpression.create(scan)));
+        deriveLogicalProperty(deltaWindowExpr);
+        return new WindowRewriteContext(columnRefFactory, context, deltaWindowExpr);
+    }
+
+    private void assertRewriteResult(List<OptExpression> result,
+                                     ColumnRefFactory columnRefFactory,
+                                     OptExpression deltaWindowExpr,
+                                     LogicalVersionOperator.VersionRefType firstVersion,
+                                     LogicalVersionOperator.VersionRefType secondVersion) {
+        Assertions.assertEquals(1, result.size());
+
+        OptExpression rewritten = result.get(0);
+        Assertions.assertTrue(rewritten.getOp() instanceof LogicalCTEAnchorOperator);
+        Assertions.assertTrue(rewritten.inputAt(1).getOp() instanceof LogicalUnionOperator);
+
+        OptExpression unionExpr = rewritten.inputAt(1);
+        Assertions.assertEquals(2, unionExpr.arity());
+        Assertions.assertEquals(
+                deltaWindowExpr.getOutputColumns().getColumnRefOperators(columnRefFactory),
+                ((LogicalUnionOperator) unionExpr.getOp()).getOutputColumnRefOp());
+
+        assertWindowBranch(unionExpr.inputAt(0), firstVersion);
+        assertWindowBranch(unionExpr.inputAt(1), secondVersion);
+    }
+
     private void assertWindowBranch(OptExpression branch, LogicalVersionOperator.VersionRefType versionRefType) {
         Assertions.assertTrue(branch.getOp() instanceof LogicalWindowOperator);
         Assertions.assertTrue(branch.inputAt(0).getOp() instanceof LogicalJoinOperator);
@@ -152,5 +175,10 @@ public class IvmDeltaWindowRuleTest {
             deriveLogicalProperty(child);
         }
         expression.deriveLogicalPropertyItself();
+    }
+
+    private record WindowRewriteContext(ColumnRefFactory columnRefFactory,
+                                        OptimizerContext context,
+                                        OptExpression deltaWindowExpr) {
     }
 }

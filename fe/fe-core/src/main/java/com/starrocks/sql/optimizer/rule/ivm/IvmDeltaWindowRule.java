@@ -60,9 +60,6 @@ public class IvmDeltaWindowRule extends TransformationRule {
         OptExpression windowExpr = input.inputAt(0);
         LogicalWindowOperator window = (LogicalWindowOperator) windowExpr.getOp();
         OptExpression child = windowExpr.inputAt(0);
-        if (delta.getActionColumn() == null) {
-            return List.of();
-        }
 
         List<ColumnRefOperator> partitionKeys = extractPartitionKeys(window);
         if (partitionKeys.isEmpty()) {
@@ -77,8 +74,9 @@ public class IvmDeltaWindowRule extends TransformationRule {
 
         int cteId = context.getCteContext().getNextCteId();
         List<ColumnRefOperator> finalOutputs = input.getOutputColumns().getColumnRefOperators(factory);
+        ColumnRefOperator actionColumn = delta.getActionColumn();
         List<ColumnRefOperator> finalOutputsWithoutAction = finalOutputs.stream()
-                .filter(output -> !output.equals(delta.getActionColumn()))
+                .filter(output -> !output.equals(actionColumn))
                 .toList();
 
         CloneInfo affectedPartitions = cloneChild(context, child, childOutputs, partitionKeys);
@@ -91,10 +89,10 @@ public class IvmDeltaWindowRule extends TransformationRule {
 
         BranchInfo fromBranch = buildWindowBranch(context, cteId, windowExpr, childOutputs,
                 finalOutputsWithoutAction, partitionKeys, affectedPartitions.partitionKeys(),
-                LogicalVersionOperator.VersionRefType.FROM_VERSION, (byte) -1, delta.getActionColumn());
+                LogicalVersionOperator.VersionRefType.FROM_VERSION, (byte) -1, actionColumn);
         BranchInfo toBranch = buildWindowBranch(context, cteId, windowExpr, childOutputs,
                 finalOutputsWithoutAction, partitionKeys, affectedPartitions.partitionKeys(),
-                LogicalVersionOperator.VersionRefType.TO_VERSION, (byte) 1, delta.getActionColumn());
+                LogicalVersionOperator.VersionRefType.TO_VERSION, (byte) 1, actionColumn);
         if (fromBranch == null || toBranch == null) {
             return List.of();
         }
@@ -123,9 +121,12 @@ public class IvmDeltaWindowRule extends TransformationRule {
         for (ColumnRefOperator output : cloned.childOutputs()) {
             projectMap.put(output, output);
         }
-        ColumnRefOperator branchActionColumn = factory.create(
-                finalActionColumn.getName(), finalActionColumn.getType(), finalActionColumn.isNullable());
-        projectMap.put(branchActionColumn, ConstantOperator.createTinyInt(actionValue));
+        ColumnRefOperator branchActionColumn = null;
+        if (finalActionColumn != null) {
+            branchActionColumn = factory.create(
+                    finalActionColumn.getName(), finalActionColumn.getType(), finalActionColumn.isNullable());
+            projectMap.put(branchActionColumn, ConstantOperator.createTinyInt(actionValue));
+        }
 
         OptExpression snapshotExpr = OptExpression.create(new LogicalVersionOperator(versionRefType),
                 OptExpression.create(new LogicalProjectOperator(projectMap), cloned.optExpression()));
@@ -137,7 +138,9 @@ public class IvmDeltaWindowRule extends TransformationRule {
 
         OptExpression branchWindowExpr = OptExpression.create(cloned.window(), semiJoinExpr);
         List<ColumnRefOperator> branchOutputs = new ArrayList<>(cloned.finalOutputsWithoutAction());
-        branchOutputs.add(branchActionColumn);
+        if (branchActionColumn != null) {
+            branchOutputs.add(branchActionColumn);
+        }
         return new BranchInfo(branchWindowExpr, branchOutputs);
     }
 
