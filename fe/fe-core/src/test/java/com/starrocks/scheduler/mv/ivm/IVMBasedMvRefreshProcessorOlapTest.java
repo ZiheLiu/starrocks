@@ -378,6 +378,66 @@ public class IVMBasedMvRefreshProcessorOlapTest extends MVTestBase {
                 .contains("TABLE: ivm_union_all_mv", "UNION", "TABLE: t1", "TABLE: t2");
     }
 
+    /**
+     * CREATE MATERIALIZED VIEW mv15_non_overlap_window_agg
+     * REFRESH MANUAL
+     * DISTRIBUTED BY HASH(i3_1, i2_1) BUCKETS 192
+     * ORDER BY (i3_1, i2_1)
+     * PROPERTIES("refresh_mode"="INCREMENTAL")
+     * AS
+     * with w1 as (
+     *     select
+     *         *,
+     *         max(i1_1) over(partition by s1_1 order by s2_1) as max_i1_1
+     *     from t10
+     * )
+     * select
+     *     i3_1, i2_1,
+     *     sum(max_i1_1) as sum_max_i1_1,
+     *     max(s1_1) as max_s1_1,
+     *     max(s2_1) as max_s2_1,
+     *     count(1) as cnt_1
+     * from w1
+     * group by i3_1, i2_1;
+     * @throws Exception
+     */
+    @Test
+    public void testWindowAgg() throws Exception {
+        executeInsertSql("insert into t1 values (1, 10, 100, 1000), (2, 20, 200, 2000)");
+        executeInsertSql("insert into t2 values (3, 30, 300, 3000), (4, 40, 400, 4000)");
+
+
+
+        starRocksAssert.withMaterializedView("CREATE MATERIALIZED VIEW `test`.`ivm_union_all_mv`\n" +
+                "REFRESH DEFERRED MANUAL\n" +
+                "PROPERTIES (\"refresh_mode\" = \"incremental\")\n" +
+                "AS\n" +
+                "with w1 as (\n" +
+                "    select \n" +
+                "        *,\n" +
+                "        max(v3) over(partition by v1 order by v2) as max_v3\n" +
+                "    from t1\n" +
+                ")\n" +
+                "select \n" +
+                "    v2, \n" +
+                "    max(v1) as max_v2,\n" +
+                "    count(max_v3) as cnt_1\n" +
+                "from w1\n" +
+                "group by v2;");
+        createdMVs.add("ivm_union_all_mv");
+
+        String showCreateSql = getShowCreateMaterializedView("ivm_union_all_mv");
+        System.out.println(showCreateSql);
+
+        starRocksAssert.refreshMV("refresh materialized view ivm_union_all_mv with sync mode");
+        executeInsertSql("insert into t1 values (5, 50, 500, 5000)");
+        executeInsertSql("insert into t2 values (6, 60, 600, 6000)");
+
+        MaterializedView mv = getMv("ivm_union_all_mv");
+        String plan = explainMVRefreshExecPlan(mv, "explain refresh materialized view ivm_union_all_mv");
+        System.out.println(plan);
+    }
+
     private String getShowCreateMaterializedView(String mvName) throws Exception {
         String showCreateSql = "show create materialized view test." + mvName + ";";
         ShowCreateTableStmt stmt = (ShowCreateTableStmt) UtFrameUtils.parseStmtWithNewParser(showCreateSql, connectContext);
