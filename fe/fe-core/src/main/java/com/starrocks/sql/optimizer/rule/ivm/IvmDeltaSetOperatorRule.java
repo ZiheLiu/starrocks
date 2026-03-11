@@ -57,15 +57,12 @@ abstract class IvmDeltaSetOperatorRule extends TransformationRule {
     @Override
     public List<OptExpression> transform(OptExpression input, OptimizerContext context) {
         LogicalDeltaOperator delta = (LogicalDeltaOperator) input.getOp();
-        if (delta.getActionColumn() == null) {
-            return List.of();
-        }
-
         OptExpression setExpr = input.inputAt(0);
         LogicalSetOperator setOperator = setExpr.getOp().cast();
+        ColumnRefOperator actionColumn = delta.getActionColumn();
         List<ColumnRefOperator> finalOutputs = input.getOutputColumns().getColumnRefOperators(context.getColumnRefFactory());
         List<ColumnRefOperator> detailOutputs = finalOutputs.stream()
-                .filter(output -> !output.equals(delta.getActionColumn()))
+                .filter(output -> !output.equals(actionColumn))
                 .toList();
         if (detailOutputs.isEmpty() || setExpr.arity() < 2) {
             return List.of();
@@ -93,9 +90,9 @@ abstract class IvmDeltaSetOperatorRule extends TransformationRule {
         OptExpression newProducer = OptExpression.create(new LogicalCTEProduceOperator(newPartCteId), newPart);
 
         DiffBranch plusPart = buildDiffBranch(
-                factory, newPartCteId, oldPartCteId, detailOutputs, delta.getActionColumn(), (byte) 1);
+                factory, newPartCteId, oldPartCteId, detailOutputs, actionColumn, (byte) 1);
         DiffBranch minusPart = buildDiffBranch(
-                factory, oldPartCteId, newPartCteId, detailOutputs, delta.getActionColumn(), (byte) -1);
+                factory, oldPartCteId, newPartCteId, detailOutputs, actionColumn, (byte) -1);
 
         LogicalUnionOperator unionOperator = new LogicalUnionOperator(
                 finalOutputs, List.of(plusPart.outputs(), minusPart.outputs()), true);
@@ -168,15 +165,18 @@ abstract class IvmDeltaSetOperatorRule extends TransformationRule {
                 left.optExpression(), right.optExpression());
 
         Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newLinkedHashMap();
-        List<ColumnRefOperator> projectOutputs = Lists.newArrayListWithCapacity(left.outputColumns().size() + 1);
+        List<ColumnRefOperator> projectOutputs =
+                Lists.newArrayListWithCapacity(left.outputColumns().size() + (actionColumn == null ? 0 : 1));
         for (ColumnRefOperator output : left.outputColumns()) {
             projectMap.put(output, output);
             projectOutputs.add(output);
         }
-        ColumnRefOperator branchAction =
-                factory.create(actionColumn.getName(), actionColumn.getType(), actionColumn.isNullable());
-        projectMap.put(branchAction, ConstantOperator.createTinyInt(actionValue));
-        projectOutputs.add(branchAction);
+        if (actionColumn != null) {
+            ColumnRefOperator branchAction =
+                    factory.create(actionColumn.getName(), actionColumn.getType(), actionColumn.isNullable());
+            projectMap.put(branchAction, ConstantOperator.createTinyInt(actionValue));
+            projectOutputs.add(branchAction);
+        }
 
         return new DiffBranch(OptExpression.create(new LogicalProjectOperator(projectMap), antiJoinExpr), projectOutputs);
     }

@@ -46,6 +46,26 @@ public class IvmDeltaExceptRuleTest {
     @Test
     public void testTransformExceptDetail(@Mocked OlapTable leftTable,
                                           @Mocked OlapTable rightTable) {
+        SetRewriteContext<LogicalExceptOperator> rewriteContext =
+                createExceptRewriteContext(leftTable, rightTable, true);
+        List<OptExpression> result =
+                new IvmDeltaExceptRule().transform(rewriteContext.deltaExpr(), rewriteContext.context());
+        assertRewriteResult(result, rewriteContext.deltaExpr());
+    }
+
+    @Test
+    public void testTransformExceptDetailWithoutAction(@Mocked OlapTable leftTable,
+                                                        @Mocked OlapTable rightTable) {
+        SetRewriteContext<LogicalExceptOperator> rewriteContext =
+                createExceptRewriteContext(leftTable, rightTable, false);
+        List<OptExpression> result =
+                new IvmDeltaExceptRule().transform(rewriteContext.deltaExpr(), rewriteContext.context());
+        assertRewriteResult(result, rewriteContext.deltaExpr());
+    }
+
+    private SetRewriteContext<LogicalExceptOperator> createExceptRewriteContext(OlapTable leftTable,
+                                                                                OlapTable rightTable,
+                                                                                boolean withAction) {
         new Expectations() {
             {
                 leftTable.getBaseIndexMetaId();
@@ -61,7 +81,7 @@ public class IvmDeltaExceptRuleTest {
         ColumnRefOperator rightRef = columnRefFactory.create("c2", IntegerType.INT, false);
         ColumnRefOperator leftRef2 = columnRefFactory.create("d1", IntegerType.INT, false);
         ColumnRefOperator rightRef2 = columnRefFactory.create("d2", IntegerType.INT, false);
-        ColumnRefOperator actionRef = columnRefFactory.create("__op", IntegerType.TINYINT, false);
+        ColumnRefOperator actionRef = withAction ? columnRefFactory.create("__op", IntegerType.TINYINT, false) : null;
 
         Column leftColumn = new Column("c1", IntegerType.INT, false);
         Column rightColumn = new Column("c2", IntegerType.INT, false);
@@ -95,8 +115,10 @@ public class IvmDeltaExceptRuleTest {
                 new LogicalDeltaOperator(true, actionRef),
                 OptExpression.create(except, leftScan, rightScan));
         deriveLogicalProperty(deltaExceptExpr);
+        return new SetRewriteContext<>(columnRefFactory, context, deltaExceptExpr);
+    }
 
-        List<OptExpression> result = new IvmDeltaExceptRule().transform(deltaExceptExpr, context);
+    private void assertRewriteResult(List<OptExpression> result, OptExpression deltaExpr) {
         Assertions.assertEquals(1, result.size());
 
         OptExpression rewritten = result.get(0);
@@ -108,6 +130,8 @@ public class IvmDeltaExceptRuleTest {
         OptExpression finalUnion = rewritten.inputAt(1).inputAt(1).inputAt(1);
         Assertions.assertTrue(finalUnion.getOp() instanceof LogicalUnionOperator);
         Assertions.assertEquals(2, finalUnion.arity());
+        Assertions.assertEquals(deltaExpr.getOutputColumns().getStream().count(),
+                ((LogicalUnionOperator) finalUnion.getOp()).getOutputColumnRefOp().size());
 
         assertDiffBranch(finalUnion.inputAt(0));
         assertDiffBranch(finalUnion.inputAt(1));
@@ -134,5 +158,10 @@ public class IvmDeltaExceptRuleTest {
             deriveLogicalProperty(child);
         }
         expression.deriveLogicalPropertyItself();
+    }
+
+    private record SetRewriteContext<T>(ColumnRefFactory columnRefFactory,
+                                        OptimizerContext context,
+                                        OptExpression deltaExpr) {
     }
 }
