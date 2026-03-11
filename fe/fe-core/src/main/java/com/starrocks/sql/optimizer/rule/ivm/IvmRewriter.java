@@ -73,26 +73,17 @@ public class IvmRewriter {
 
         ivmInput = bindBaseTableVersionForIvm(ivmInput, optimizerContext);
 
-        // The IVM view definition has already been rewritten during analyze. Refresh only needs
-        // to rebuild row-id context from the existing plan shape instead of rewriting it again.
-        IvmRowIdDeriver.Result rowIdResult =
-                IvmRowIdDeriver.deriveAndRewrite(ivmInput, optimizerContext, IvmRowIdDeriver.Mode.COLLECT_ONLY);
-        boolean rowIdRewriteSucceeded = rowIdResult.success();
-        if (!rowIdRewriteSucceeded) {
-            return;
-        }
-
         MaterializedView targetMv = loadTargetMv(optimizerContext);
         Map<ColumnRefOperator, Column> mvColumnMapping = Maps.newHashMap();
         if (targetMv != null) {
-            deriveLogicalProperty(rowIdResult.rewrittenRoot());
-            mvColumnMapping = buildMvColumnMapping(rowIdResult.rewrittenRoot(), optimizerContext, targetMv);
+            deriveLogicalProperty(ivmInput);
+            mvColumnMapping = buildMvColumnMapping(ivmInput, optimizerContext, targetMv);
         }
 
         ColumnRefOperator actionColumn = optimizerContext.getColumnRefFactory()
                 .create(IvmRuleUtils.ACTION_COLUMN_NAME, IvmRuleUtils.ACTION_COLUMN_TYPE, false);
         tree.setChild(0, OptExpression.create(
-                new LogicalDeltaOperator(true, actionColumn, mvColumnMapping), rowIdResult.rewrittenRoot()));
+                new LogicalDeltaOperator(true, actionColumn, mvColumnMapping), ivmInput));
         deriveLogicalProperty(tree);
         scheduler.rewriteIterative(tree, rootTaskContext, RuleSet.OLAP_IVM_DELTA_REWRITE_RULES);
         if (IvmRuleUtils.containsLogicalDelta(tree.getInputs().get(0))
@@ -105,8 +96,7 @@ public class IvmRewriter {
         OptExpression rewrittenRoot = tree.getInputs().get(0);
         deriveLogicalProperty(rewrittenRoot);
         if (isPrimaryKeyTargetMv(optimizerContext)) {
-            rewrittenRoot =
-                    appendPkLoadOpColumn(rewrittenRoot, rootTaskContext, requiredColumns, rowIdResult.rootRowIdColumnRefs());
+            rewrittenRoot = appendPkLoadOpColumn(rewrittenRoot, rootTaskContext, requiredColumns, targetMv, mvColumnMapping);
         }
         tree.setChild(0, rewrittenRoot);
         deriveLogicalProperty(tree);
@@ -189,8 +179,8 @@ public class IvmRewriter {
     }
 
     private static OptExpression appendPkLoadOpColumn(OptExpression root, TaskContext rootTaskContext,
-                                                      ColumnRefSet requiredColumns,
-                                                      List<ColumnRefOperator> rootRowIdColumns) {
+                                                      ColumnRefSet requiredColumns, MaterializedView targetMv,
+                                                      Map<ColumnRefOperator, Column> mvColumnMapping) {
         ColumnRefOperator actionColumn = IvmRuleUtils.findActionColumn(root).orElse(null);
         if (actionColumn == null) {
             return root;
@@ -219,6 +209,7 @@ public class IvmRewriter {
             }
         }
         projectMap.put(loadOpColumn, loadOpExpr);
+        List<ColumnRefOperator> shuffleColumns = deriveTargetMvPkShuffleColumns(targetMv, mvColumnMapping);
 
         requiredColumns.union(loadOpColumn);
         rootTaskContext.getRequiredColumns().union(loadOpColumn);
@@ -231,9 +222,36 @@ public class IvmRewriter {
                         new LogicalTopNOperator(orderings, Operator.DEFAULT_LIMIT, Operator.DEFAULT_OFFSET, SortPhase.PARTIAL))
                 .setOrderByElements(orderings)
                 .setPerPipeline(true)
-                .setShuffleColumns(rootRowIdColumns);
+                .setShuffleColumns(shuffleColumns);
         LogicalTopNOperator topN = topNBuilder.build();
         return OptExpression.create(topN, projectExpr);
+    }
+
+    static List<ColumnRefOperator> deriveTargetMvPkShuffleColumns(MaterializedView targetMv,
+                                                                  Map<ColumnRefOperator, Column> mvColumnMapping) {
+        if (targetMv == null || mvColumnMapping == null || mvColumnMapping.isEmpty()) {
+            return Lists.newArrayList();
+        }
+
+        List<ColumnRefOperator> pkShuffleColumns = Lists.newArrayList();
+        for (Column keyColumn : targetMv.getKeyColumnsInOrder()) {
+            ColumnRefOperator keyColumnRef = findMappedColumnRef(mvColumnMapping, keyColumn);
+            if (keyColumnRef == null) {
+                return Lists.newArrayList();
+            }
+            pkShuffleColumns.add(keyColumnRef);
+        }
+        return pkShuffleColumns;
+    }
+
+    private static ColumnRefOperator findMappedColumnRef(Map<ColumnRefOperator, Column> mvColumnMapping, Column targetColumn) {
+        for (Map.Entry<ColumnRefOperator, Column> entry : mvColumnMapping.entrySet()) {
+            Column mappedColumn = entry.getValue();
+            if (mappedColumn != null && mappedColumn.getColumnId().equals(targetColumn.getColumnId())) {
+                return entry.getKey();
+            }
+        }
+        return null;
     }
 
     private static MvId parseTargetMvId(OptimizerContext optimizerContext) {
