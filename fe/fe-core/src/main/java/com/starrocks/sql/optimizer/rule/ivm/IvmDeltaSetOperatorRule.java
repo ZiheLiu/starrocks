@@ -40,6 +40,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
+import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.OptExpressionDuplicator;
 
@@ -71,7 +72,7 @@ abstract class IvmDeltaSetOperatorRule extends TransformationRule {
         ColumnRefFactory factory = context.getColumnRefFactory();
         int affectedKeyCteId = context.getCteContext().getNextCteId();
         OptExpression affectedKeyProducer =
-                buildAffectedKeyProducer(context, affectedKeyCteId, setExpr, setOperator, detailOutputs);
+                buildAffectedKeyProducer(context, actionColumn, affectedKeyCteId, setExpr, setOperator, detailOutputs);
         if (affectedKeyProducer == null) {
             return List.of();
         }
@@ -107,6 +108,7 @@ abstract class IvmDeltaSetOperatorRule extends TransformationRule {
                                                            List<List<ColumnRefOperator>> childOutputColumns);
 
     private OptExpression buildAffectedKeyProducer(OptimizerContext context,
+                                                   ColumnRefOperator parentActionColumn,
                                                    int cteId,
                                                    OptExpression setExpr,
                                                    LogicalSetOperator setOperator,
@@ -115,7 +117,10 @@ abstract class IvmDeltaSetOperatorRule extends TransformationRule {
         List<List<ColumnRefOperator>> unionChildOutputs = Lists.newArrayList();
         for (int i = 0; i < setExpr.arity(); i++) {
             ChildClone childClone = cloneChild(context, setExpr.inputAt(i), setOperator.getChildOutputColumns().get(i));
-            unionChildren.add(OptExpression.create(new LogicalDeltaOperator(false), childClone.optExpression()));
+            ColumnRefOperator childActionColumn =
+                    IvmRuleUtils.createActionColumn(context.getColumnRefFactory(), parentActionColumn);
+            unionChildren.add(OptExpression.create(new LogicalDeltaOperator(false, childActionColumn),
+                    childClone.optExpression()));
             unionChildOutputs.add(childClone.outputColumns());
         }
 

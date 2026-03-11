@@ -14,6 +14,7 @@
 
 package com.starrocks.sql.optimizer.operator.logical;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Maps;
 import com.starrocks.catalog.Column;
 import com.starrocks.sql.optimizer.ExpressionContext;
@@ -44,14 +45,6 @@ public class LogicalDeltaOperator extends LogicalOperator {
         this(false, null, Maps.newHashMap());
     }
 
-    public LogicalDeltaOperator(boolean isRootDelta) {
-        this(isRootDelta, null, Maps.newHashMap());
-    }
-
-    public LogicalDeltaOperator(boolean isRootDelta, Map<ColumnRefOperator, Column> mvColumnMapping) {
-        this(isRootDelta, null, mvColumnMapping);
-    }
-
     public LogicalDeltaOperator(boolean isRootDelta, ColumnRefOperator actionColumn) {
         this(isRootDelta, actionColumn, Maps.newHashMap());
     }
@@ -59,6 +52,8 @@ public class LogicalDeltaOperator extends LogicalOperator {
     public LogicalDeltaOperator(boolean isRootDelta, ColumnRefOperator actionColumn,
                                 Map<ColumnRefOperator, Column> mvColumnMapping) {
         super(OperatorType.LOGICAL_DELTA);
+        Preconditions.checkArgument(actionColumn == null || !actionColumn.isNullable(),
+                "Logical delta action column must be non-nullable");
         this.isRootDelta = isRootDelta;
         this.actionColumn = actionColumn;
         this.mvColumnMapping = Collections.unmodifiableMap(

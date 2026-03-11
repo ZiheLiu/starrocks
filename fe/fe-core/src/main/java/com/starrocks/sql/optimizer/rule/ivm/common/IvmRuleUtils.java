@@ -18,6 +18,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.PhysicalPartition;
 import com.starrocks.sql.optimizer.OptExpression;
+import com.starrocks.sql.optimizer.base.ColumnRefFactory;
 import com.starrocks.sql.optimizer.operator.OperatorType;
 import com.starrocks.sql.optimizer.operator.Projection;
 import com.starrocks.sql.optimizer.operator.logical.LogicalAggregationOperator;
@@ -151,6 +152,13 @@ public class IvmRuleUtils {
 
     public static boolean isActionColumn(ColumnRefOperator columnRef) {
         return columnRef != null && ACTION_COLUMN_NAME.equalsIgnoreCase(columnRef.getName());
+    }
+
+    public static ColumnRefOperator createActionColumn(ColumnRefFactory factory, ColumnRefOperator parentActionColumn) {
+        if (parentActionColumn != null) {
+            return factory.create(parentActionColumn.getName(), parentActionColumn.getType(), false);
+        }
+        return factory.create(ACTION_COLUMN_NAME, ACTION_COLUMN_TYPE, false);
     }
 
     public static String count1StateColumnName(String aggOutputColumnName) {

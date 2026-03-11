@@ -109,8 +109,10 @@ public class IvmDeltaAggregateRule extends TransformationRule {
         List<ColumnRefOperator> affectedKeys = affectedKeysChild.groupingKeys;
         LogicalAggregationOperator affectedKeysOperator =
                 new LogicalAggregationOperator(AggType.GLOBAL, affectedKeys, Maps.newHashMap());
+        ColumnRefOperator affectedKeysActionColumn =
+                IvmRuleUtils.createActionColumn(columnRefFactory, delta.getActionColumn());
         OptExpression affectedKeysOptExpr = OptExpression.create(affectedKeysOperator,
-                OptExpression.create(new LogicalDeltaOperator(false), affectedKeysChild.optExpression));
+                OptExpression.create(new LogicalDeltaOperator(false, affectedKeysActionColumn), affectedKeysChild.optExpression));
         int cteId = context.getCteContext().getNextCteId();
         OptExpression affectedKeysProducer = OptExpression.create(new LogicalCTEProduceOperator(cteId), affectedKeysOptExpr);
 

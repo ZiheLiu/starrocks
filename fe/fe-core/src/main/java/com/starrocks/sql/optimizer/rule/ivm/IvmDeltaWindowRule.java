@@ -40,6 +40,7 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
+import com.starrocks.sql.optimizer.rule.ivm.common.IvmRuleUtils;
 import com.starrocks.sql.optimizer.rule.transformation.TransformationRule;
 import com.starrocks.sql.optimizer.rule.transformation.materialization.OptExpressionDuplicator;
 
@@ -82,8 +83,11 @@ public class IvmDeltaWindowRule extends TransformationRule {
         CloneInfo affectedPartitions = cloneChild(context, child, childOutputs, partitionKeys);
         LogicalAggregationOperator affectedPartitionsAgg =
                 new LogicalAggregationOperator(AggType.GLOBAL, affectedPartitions.partitionKeys(), Maps.newHashMap());
+        ColumnRefOperator affectedPartitionsActionColumn =
+                IvmRuleUtils.createActionColumn(factory, actionColumn);
         OptExpression affectedPartitionsExpr = OptExpression.create(affectedPartitionsAgg,
-                OptExpression.create(new LogicalDeltaOperator(false), affectedPartitions.optExpression()));
+                OptExpression.create(new LogicalDeltaOperator(false, affectedPartitionsActionColumn),
+                        affectedPartitions.optExpression()));
         OptExpression affectedPartitionsProducer =
                 OptExpression.create(new LogicalCTEProduceOperator(cteId), affectedPartitionsExpr);
 
