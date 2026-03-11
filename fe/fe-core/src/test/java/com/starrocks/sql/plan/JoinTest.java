@@ -25,6 +25,7 @@ import com.starrocks.server.RunMode;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.rule.RuleSet;
 import com.starrocks.sql.optimizer.rule.transformation.JoinAssociativityRule;
+import com.starrocks.utframe.UtFrameUtils;
 import mockit.Mock;
 import mockit.MockUp;
 import org.apache.commons.lang3.StringUtils;
@@ -3612,7 +3613,7 @@ public class JoinTest extends PlanTestBase {
                 "  |  asof join conjunct: 2: v2 <= 5: v5\n" +
                 "  |  other join predicates: (3: v3 = 6: v6) OR (3: v3 = 4: v4)");
     }
-    
+
     @Test
     public void testJoinWithMultiAnalytic() throws Exception {
         FeConstants.runningUnitTest = true;
