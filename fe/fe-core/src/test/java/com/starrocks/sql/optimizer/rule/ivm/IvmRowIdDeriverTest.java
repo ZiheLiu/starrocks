@@ -277,8 +277,8 @@ public class IvmRowIdDeriverTest {
     }
 
     @Test
-    public void testCollectOnlyModeReturnsExistingEncodedRootRowId(@Mocked OlapTable leftTable,
-                                                                   @Mocked OlapTable rightTable) {
+    public void testRewriteKeepsExistingEncodedRootRowId(@Mocked OlapTable leftTable,
+                                                         @Mocked OlapTable rightTable) {
         ColumnRefFactory columnRefFactory = new ColumnRefFactory();
         OptimizerContext context = OptimizerFactory.mockContext(columnRefFactory);
         ColumnRefOperator leftPkRef = columnRefFactory.create("left_pk", IntegerType.INT, false);
@@ -334,13 +334,14 @@ public class IvmRowIdDeriverTest {
                 .build();
 
         IvmRowIdDeriver.Result rewritten = IvmRowIdDeriver.deriveAndRewrite(
-                OptExpression.create(join, leftScan, rightScan), context, IvmRowIdDeriver.Mode.REWRITE);
+                OptExpression.create(join, leftScan, rightScan), context);
         Assertions.assertTrue(rewritten.success());
 
-        IvmRowIdDeriver.Result collected = IvmRowIdDeriver.deriveAndRewrite(
-                rewritten.rewrittenRoot(), context, IvmRowIdDeriver.Mode.COLLECT_ONLY);
-        Assertions.assertTrue(collected.success());
-        Assertions.assertSame(rewritten.rewrittenRoot(), collected.rewrittenRoot());
-        Assertions.assertEquals(rewritten.rootRowIdColumnRefs(), collected.rootRowIdColumnRefs());
+        IvmRowIdDeriver.Result rewrittenAgain = IvmRowIdDeriver.deriveAndRewrite(
+                rewritten.rewrittenRoot(), context);
+        Assertions.assertTrue(rewrittenAgain.success());
+        Assertions.assertEquals(rewritten.rootRowIdColumnRefs(), rewrittenAgain.rootRowIdColumnRefs());
+        ColumnRefOperator encodedRowId = rewritten.rootRowIdColumnRefs().get(0);
+        Assertions.assertTrue(rewrittenAgain.rewrittenRoot().getRowOutputInfo().getOutputColRefs().contains(encodedRowId));
     }
 }

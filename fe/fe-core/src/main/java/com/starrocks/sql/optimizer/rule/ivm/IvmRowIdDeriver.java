@@ -51,11 +51,6 @@ import java.util.stream.Collectors;
 public class IvmRowIdDeriver {
     public static final String DERIVED_ROW_ID_COLUMN_PREFIX = "__row_id_";
 
-    public enum Mode {
-        REWRITE,
-        COLLECT_ONLY
-    }
-
     public record Result(boolean success, OptExpression rewrittenRoot, String unsupportedReason,
                          List<ColumnRefOperator> rootRowIdColumnRefs) {
     }
@@ -68,12 +63,8 @@ public class IvmRowIdDeriver {
     }
 
     public static Result deriveAndRewrite(OptExpression root, OptimizerContext optimizerContext) {
-        return deriveAndRewrite(root, optimizerContext, Mode.REWRITE);
-    }
-
-    public static Result deriveAndRewrite(OptExpression root, OptimizerContext optimizerContext, Mode mode) {
         IvmRowIdContext context = new IvmRowIdContext(optimizerContext.getColumnRefFactory());
-        OptExpression rewritten = root.getOp().accept(new RewriteVisitor(context, mode), root, null);
+        OptExpression rewritten = root.getOp().accept(new RewriteVisitor(context), root, null);
         if (!context.isSupported()) {
             return new Result(false, root, context.getUnsupportedReason().orElse("row-id derive failed"), List.of());
         }
@@ -82,11 +73,6 @@ public class IvmRowIdDeriver {
             Optional<ColumnRefOperator> existingEncodedRootRowId = resolveEncodedRootRowId(rewritten, rootRowIds);
             if (existingEncodedRootRowId.isPresent()) {
                 return new Result(true, rewritten, null, List.of(existingEncodedRootRowId.get()));
-            }
-            if (mode == Mode.COLLECT_ONLY) {
-                return new Result(false, root,
-                        "nullable root row-id column must be pre-encoded in OLAP IVM row-id derive",
-                        List.of());
             }
             RootRowIdRewriteResult rewriteResult = rewriteNullableRootRowId(rewritten, rootRowIds, context);
             return new Result(true, rewriteResult.rewrittenRoot(), null, List.of(rewriteResult.encodedRowId()));
@@ -127,11 +113,9 @@ public class IvmRowIdDeriver {
 
     private static class RewriteVisitor extends OptExpressionVisitor<OptExpression, Void> {
         private final IvmRowIdContext context;
-        private final Mode mode;
 
-        private RewriteVisitor(IvmRowIdContext context, Mode mode) {
+        private RewriteVisitor(IvmRowIdContext context) {
             this.context = context;
-            this.mode = mode;
         }
 
         @Override
@@ -160,11 +144,6 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = keyColumns.stream()
                     .map(col -> getOrCreateKeyRef(scan, col))
                     .collect(Collectors.toList());
-
-            if (!isRewriteEnabled()) {
-                putRowIds(expression, expression, rowIds);
-                return expression;
-            }
 
             Map<ColumnRefOperator, Column> newColRefToMeta = Maps.newHashMap(scan.getColRefToColumnMetaMap());
             Map<Column, ColumnRefOperator> newMetaToColRef = Maps.newHashMap(scan.getColumnMetaToColRefMap());
@@ -235,10 +214,6 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = filter.getProjection() == null
                     ? childRowIds
                     : mapRowIdsThroughProjection(filter.getProjection().getColumnRefMap(), childRowIds);
-            if (!isRewriteEnabled()) {
-                putRowIds(expression, expression, rowIds);
-                return expression;
-            }
             if (filter.getProjection() == null) {
                 OptExpression rewritten = rewrittenChild == child ? expression : OptExpression.create(filter, rewrittenChild);
                 putRowIds(expression, rewritten, rowIds);
@@ -285,10 +260,6 @@ public class IvmRowIdDeriver {
                 return expression;
             }
             List<ColumnRefOperator> rowIds = mapRowIdsThroughProjection(project.getColumnRefMap(), childRowIds);
-            if (!isRewriteEnabled()) {
-                putRowIds(expression, expression, rowIds);
-                return expression;
-            }
 
             Map<ColumnRefOperator, ScalarOperator> projectMap = Maps.newHashMap(project.getColumnRefMap());
             boolean projectChanged = false;
@@ -361,10 +332,6 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = newProjection == null
                     ? childRowIds
                     : mapRowIdsThroughProjection(newProjection.getColumnRefMap(), childRowIds);
-            if (!isRewriteEnabled()) {
-                putRowIds(expression, expression, rowIds);
-                return expression;
-            }
             if (newProjection != null && rowIds != null && rowIds.size() == childRowIds.size()) {
                 Map<ColumnRefOperator, ScalarOperator> projectionMap = Maps.newHashMap(newProjection.getColumnRefMap());
                 for (int i = 0; i < rowIds.size(); i++) {
@@ -483,18 +450,6 @@ public class IvmRowIdDeriver {
                 }
             }
 
-            if (!isRewriteEnabled()) {
-                List<ColumnRefOperator> outputRowIds =
-                        resolveUnionExistingRowIds(union, union.getChildOutputColumns().get(0), firstChildRowIds);
-                if (outputRowIds.isEmpty()) {
-                    this.context.markUnsupported(
-                            "union all must already contain row-id outputs in OLAP IVM row-id derive");
-                    return expression;
-                }
-                putRowIds(expression, expression, outputRowIds);
-                return expression;
-            }
-
             List<ColumnRefOperator> outputRowIds = Lists.newArrayList();
             int numChildRowIds = firstChildRowIds.size();
             for (int i = 0; i < numChildRowIds; i++) {
@@ -582,11 +537,6 @@ public class IvmRowIdDeriver {
             List<ColumnRefOperator> rowIds = join.getProjection() == null
                     ? inputRowIds
                     : mapRowIdsThroughProjection(join.getProjection().getColumnRefMap(), inputRowIds);
-            if (!isRewriteEnabled()) {
-                putRowIds(expression, expression, rowIds);
-                return expression;
-            }
-
             if (join.getProjection() == null) {
                 OptExpression rewritten = rewrittenLeft == leftChild && rewrittenRight == rightChild
                         ? expression : OptExpression.create(join, rewrittenLeft, rewrittenRight);
@@ -621,10 +571,6 @@ public class IvmRowIdDeriver {
 
         private boolean containsOrderingColumn(List<Ordering> orderings, ColumnRefOperator target) {
             return orderings.stream().anyMatch(ordering -> ordering.getColumnRef().equals(target));
-        }
-
-        private boolean isRewriteEnabled() {
-            return mode == Mode.REWRITE;
         }
 
         private void putRowIds(OptExpression original, OptExpression rewritten, List<ColumnRefOperator> rowIds) {
@@ -691,28 +637,5 @@ public class IvmRowIdDeriver {
 
     private static String derivedChildIndexColumnName(int idx) {
         return DERIVED_ROW_ID_COLUMN_PREFIX + idx + "_child_index";
-    }
-
-    private static List<ColumnRefOperator> resolveUnionExistingRowIds(LogicalUnionOperator union,
-                                                                      List<ColumnRefOperator> firstChildOutputs,
-                                                                      List<ColumnRefOperator> firstChildRowIds) {
-        List<ColumnRefOperator> unionOutputs = union.getOutputColumnRefOp();
-        List<ColumnRefOperator> resolved = new ArrayList<>(firstChildRowIds.size() + 1);
-        for (ColumnRefOperator childRowId : firstChildRowIds) {
-            int idx = firstChildOutputs.indexOf(childRowId);
-            if (idx < 0 || idx >= unionOutputs.size()) {
-                return List.of();
-            }
-            resolved.add(unionOutputs.get(idx));
-        }
-
-        int lastIdx = firstChildOutputs.size() - 1;
-        if (lastIdx >= 0 && lastIdx < unionOutputs.size()) {
-            resolved.add(unionOutputs.get(lastIdx));
-        } else {
-            return List.of();
-        }
-
-        return resolved;
     }
 }
